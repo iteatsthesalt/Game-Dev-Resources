@@ -2,7 +2,7 @@
 
 This collection contains full Git clones, including repository history. The repositories are grouped by engine and purpose:
 
-This GitHub repository indexes the source projects as submodules rather than copying their histories into one large repository. Clone it with `git clone --recurse-submodules` to check out the linked projects.
+This GitHub repository indexes the source projects as submodules rather than copying their histories into one large repository. When cloning, pass `--recurse-submodules` to `git clone` to check out the linked projects.
 
 ## Engines and game projects
 
