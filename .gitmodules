@@ -1,0 +1,66 @@
+[submodule "resource-01"]
+	path = Art and Assets/Game Icons
+	url = https://github.com/game-icons/icons.git
+[submodule "resource-02"]
+	path = Engines/Bevy/Community Assets
+	url = https://github.com/bevyengine/bevy-assets.git
+[submodule "resource-03"]
+	path = Engines/Bevy/Engine
+	url = https://github.com/bevyengine/bevy.git
+[submodule "resource-04"]
+	path = Engines/Defold/Examples
+	url = https://github.com/britzl/publicexamples.git
+[submodule "resource-05"]
+	path = Engines/Godot/Demos
+	url = https://github.com/godotengine/godot-demo-projects.git
+[submodule "resource-06"]
+	path = Engines/Godot/Third-Person Shooter Demo
+	url = https://github.com/godotengine/tps-demo.git
+[submodule "resource-07"]
+	path = Engines/libGDX/Framework
+	url = https://github.com/libgdx/libgdx.git
+[submodule "resource-08"]
+	path = Engines/libGDX/Super Jumper Demo
+	url = https://github.com/libgdx/libgdx-demo-superjumper.git
+[submodule "resource-09"]
+	path = Engines/LÖVE/Framework
+	url = https://github.com/love2d/love.git
+[submodule "resource-10"]
+	path = Engines/Phaser/Examples
+	url = https://github.com/phaserjs/examples.git
+[submodule "resource-11"]
+	path = Engines/raylib/Engine and Examples
+	url = https://github.com/raysan5/raylib.git
+[submodule "resource-12"]
+	path = Engines/Unity/2D Extras
+	url = https://github.com/Unity-Technologies/2d-extras.git
+[submodule "resource-13"]
+	path = Engines/Unity/2D Tech Demos
+	url = https://github.com/Unity-Technologies/2d-techdemos.git
+[submodule "resource-14"]
+	path = Engines/Unity/Tilemap Extras Package
+	url = https://github.com/needle-mirror/com.unity.2d.tilemap.extras.git
+[submodule "resource-15"]
+	path = Engines/Unreal/Animation Sample
+	url = https://github.com/PolygonHive/GASPALS.git
+[submodule "resource-16"]
+	path = Engines/Unreal/Style Guide
+	url = https://github.com/Allar/ue5-style-guide.git
+[submodule "resource-17"]
+	path = Reference Collections/Awesome GameDev Resources
+	url = https://github.com/Calinou/awesome-gamedev.git
+[submodule "resource-18"]
+	path = Reference Collections/Awesome LÖVE Resources
+	url = https://github.com/love2d-community/awesome-love2d.git
+[submodule "resource-19"]
+	path = Reference Collections/GameDev Agent Skills
+	url = https://github.com/gamedev-skills/awesome-gamedev-agent-skills.git
+[submodule "resource-20"]
+	path = Tools and Editors/LDtk
+	url = https://github.com/deepnight/ldtk.git
+[submodule "resource-21"]
+	path = Tools and Editors/LibreSprite
+	url = https://github.com/LibreSprite/LibreSprite.git
+[submodule "resource-22"]
+	path = Tools and Editors/Tiled
+	url = https://github.com/mapeditor/tiled.git
