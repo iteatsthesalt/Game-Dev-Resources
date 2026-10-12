@@ -37,7 +37,7 @@ fi
 gh auth setup-git
 
 step "4/6 Making the easy commands"
-for name in push ask look undo status stop menu; do
+for name in push improve ask look undo status stop menu; do
 	printf '#!%s/bash\nexec python3 "%s" %s "$@"\n' "$BIN" "$TOOL" "$name" > "$BIN/$name"
 	chmod +x "$BIN/$name"
 done

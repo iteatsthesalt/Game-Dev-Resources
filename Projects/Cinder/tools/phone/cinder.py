@@ -52,6 +52,15 @@ NUMBERS = {
     "wear": (0.0, 0.0, 0.25),
     "seed": (0, 0, 9999),
 }
+# One focus per round, so repeated pushes try different things.
+FOCUS = [
+    "glow balance: embers should pop without washing out the shape",
+    "colour harmony with the ember-and-ash palette",
+    "size and presence next to the other creatures",
+    "weathered, battle-worn surface detail",
+    "contrast and readability from far away",
+    "a fresh variation of the shape",
+]
 DEFAULT_WISH = ("Make it look a little better and more dramatic for a dark ember-and-ash fantasy game, "
                 "while keeping it easy to read. Change one to three settings by small amounts.")
 
@@ -175,30 +184,60 @@ def ensure_model(cfg, model):
     subprocess.run(["ollama", "pull", model], check=True)
 
 
-def ask_ai(cfg, model, asset, current, wish, temperature):
+def chat(cfg, model, system, user, temperature, json_mode):
+    body = {
+        "model": model,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+        "stream": False,
+        "keep_alive": "30s",  # unload soon after, to give the memory back
+        "options": {"num_ctx": 2048, "temperature": temperature},
+    }
+    if json_mode:
+        body["format"] = "json"
+    if cfg["think"] is not None:
+        body["think"] = cfg["think"]
+    req = urllib.request.Request(cfg["ai_url"] + "/api/chat", data=json.dumps(body).encode(),
+                                 headers={"Content-Type": "application/json"})
+    reply = json.loads(urllib.request.urlopen(req, timeout=300).read())
+    return (reply.get("message", {}).get("content") or "").strip()
+
+
+def history(cfg, asset):
+    """The last few changes to this asset, so the AI doesn't repeat itself."""
+    log = git(cfg, "log", "-3", "--format=%s", "--",
+              "Projects/Cinder/assets/tuning/%s.json" % asset, check=False)
+    notes = [line.split(" - ", 1)[-1] for line in log.splitlines() if " - " in line]
+    return "; ".join(notes) or "none yet"
+
+
+def make_brief(cfg, model, asset, current, wish, focus):
+    """Step 1, the prompt generator: the AI writes its own clear instruction."""
+    system = (
+        "You are the art director of Cinderdeep, a dark fantasy voxel game of ember, ash and soot. "
+        "Write ONE short instruction (at most 2 sentences) for a tuner who can ONLY change these settings: "
+        "size (scale), glow strength, brightness, a colour tint and how strong it is, colour saturation, "
+        "surface wear, and a variation seed. Name which settings to change and in which direction. "
+        "Keep the model readable against a dark background. Reply with the instruction only.")
+    user = ("Model: %s\nWhat it is: %s\nCurrent settings: %s\nRecent changes: %s\nGoal: %s\nFocus this time: %s"
+            % (asset.replace("_", " "), describe(cfg, asset), json.dumps(current), history(cfg, asset), wish, focus))
+    brief = chat(cfg, model, system, user, 0.8, False)
+    brief = " ".join(brief.split())[:400]
+    return brief or wish
+
+
+def tune(cfg, model, asset, current, brief, temperature):
+    """Step 2: follow the instruction, answering only with safe settings."""
     ranges = ", ".join("%s %s..%s" % (k, v[1], v[2]) for k, v in NUMBERS.items())
     system = (
-        "You tune the look of ONE voxel 3D model in a dark fantasy game. "
+        "You tune the look of ONE voxel 3D model. Follow the instruction. "
         "Reply with ONLY one JSON object with exactly these keys: "
         "scale, glow, brightness, tint, tint_strength, saturation, wear, seed, notes. "
         "Allowed ranges: " + ranges + ". tint is a colour like \"#ff7a2a\". "
         "seed 0 keeps the original shape; another number makes a new variation. "
-        "notes: what you changed, under 15 words. No other text.")
-    user = ("Asset: %s\nWhat it is: %s\nCurrent settings: %s\nRequest: %s"
-            % (asset, describe(cfg, asset), json.dumps(current), wish))
-    body = json.dumps({
-        "model": model,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-        "format": "json",
-        "stream": False,
-        "keep_alive": "30s",  # unload soon after, to give the phone its memory back
-        "options": {"num_ctx": 2048, "temperature": temperature},
-        **({"think": cfg["think"]} if cfg["think"] is not None else {}),
-    }).encode()
-    req = urllib.request.Request(cfg["ai_url"] + "/api/chat", data=body,
-                                 headers={"Content-Type": "application/json"})
-    reply = json.loads(urllib.request.urlopen(req, timeout=300).read())
-    return reply.get("message", {}).get("content", "")
+        "Change only what the instruction asks, by small amounts. "
+        "notes: what you changed, under 12 words.")
+    user = "Current settings: %s\nInstruction: %s" % (json.dumps(current), brief)
+    return chat(cfg, model, system, user, temperature, True)
 
 
 def clean(raw, current):
@@ -228,16 +267,19 @@ def clean(raw, current):
 
 # ---------------------------------------------------------------- commands
 
-def improve(cfg, asset, wish):
+def improve(cfg, asset, wish, focus="whatever helps most"):
     path = os.path.join(project(cfg), "assets", "tuning", asset + ".json")
     current = {k: v[0] for k, v in NUMBERS.items()}
     current.update({"tint": "#ff7a2a", "notes": ""})
     current.update(load_json(path, {}))
     model = pick_model(cfg)
     ensure_model(cfg, model)
-    say("Thinking about %s..." % asset.replace("_", " "))
-    for temperature in (0.5, 0.9):
-        result = clean(ask_ai(cfg, model, asset, current, wish, temperature), current)
+    name = asset.replace("_", " ")
+    say("Writing a plan for %s..." % name)
+    brief = make_brief(cfg, model, asset, current, wish, focus)
+    say("Plan: " + brief)
+    for temperature in (0.4, 0.8):
+        result = clean(tune(cfg, model, asset, current, brief, temperature), current)
         if result:
             save_json(path, result)
             try:
@@ -247,10 +289,18 @@ def improve(cfg, asset, wish):
                 git(cfg, "reset", "-q", check=False)
                 git(cfg, "checkout", "-q", "--", path, check=False)
                 raise
-            say("Changed %s: %s" % (asset.replace("_", " "), result["notes"] or "small tweak"))
+            changes = ", ".join("%s %s -> %s" % (k, current.get(k), result[k])
+                                for k in list(NUMBERS) + ["tint"] if result[k] != current.get(k))
+            say("Changed %s: %s (%s)" % (name, result["notes"] or "small tweak", changes))
             return True
-    say("The AI's answer for %s was not usable, skipped it." % asset)
+    say("The AI's answer for %s was not usable, skipped it." % name)
     return False
+
+
+def find_asset(names, text):
+    words = text.lower()
+    found = [a for a in names if any(part in words for part in a.split("_") if len(part) > 3)]
+    return found[0] if len(found) == 1 else None
 
 
 def sync(cfg):
@@ -272,17 +322,24 @@ def publish(cfg):
 
 
 def cmd_push(cfg, args):
-    rounds = int(args[0]) if args and args[0].isdigit() else 1
+    """push / push 5 / push hound / improve hound: plan, change, save."""
+    rounds = next((min(int(a), 20) for a in args if a.isdigit()), 1)
     sync(cfg)
-    start_ai(cfg)
     names = assets(cfg)
-    state = load_json(STATE_PATH, {"next": 0})
+    target = find_asset(names, " ".join(args))
+    start_ai(cfg)
+    state = load_json(STATE_PATH, {"next": 0, "focus": 0})
     done = 0
     for _ in range(rounds):
-        asset = names[state["next"] % len(names)]
-        state["next"] += 1
+        if target:
+            asset = target
+        else:
+            asset = names[state["next"] % len(names)]
+            state["next"] += 1
+        focus = FOCUS[state.get("focus", 0) % len(FOCUS)]
+        state["focus"] = state.get("focus", 0) + 1
         save_json(STATE_PATH, state)
-        done += improve(cfg, asset, DEFAULT_WISH)
+        done += improve(cfg, asset, DEFAULT_WISH, focus)
     if done:
         publish(cfg)
 
@@ -312,7 +369,7 @@ def cmd_ask(cfg, args):
             return
         found = [names[int(choice) - 1]]
     start_ai(cfg)
-    if improve(cfg, found[0], wish):
+    if improve(cfg, found[0], wish, "exactly what was asked"):
         publish(cfg)
 
 
@@ -362,8 +419,9 @@ def cmd_stop(cfg, args):
 
 
 HELP = """Commands:
-push - improve the next model a little and save it
+push - the AI writes a plan, improves the next model and saves it
 push 5 - do that 5 times
+improve hound - plan and improve one model you name
 ask make the hound glow more - make a change you describe
 look - see the newest pictures
 undo - take back the last change
@@ -375,7 +433,7 @@ def cmd_help(cfg, args):
     say(HELP)
 
 
-COMMANDS = {"help": cmd_help, "push": cmd_push, "ask": cmd_ask, "look": cmd_look, "undo": cmd_undo,
+COMMANDS = {"help": cmd_help, "push": cmd_push, "improve": cmd_push, "ask": cmd_ask, "look": cmd_look, "undo": cmd_undo,
             "status": cmd_status, "stop": cmd_stop}
 
 
