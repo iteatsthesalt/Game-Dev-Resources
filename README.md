@@ -56,6 +56,10 @@ Check each repository's license and any separate notices for bundled media and t
 - [LDtk](./Tools%20and%20Editors/LDtk/) — user-friendly 2D level editor; MIT.
 - [LibreSprite](./Tools%20and%20Editors/LibreSprite/) — pixel-art and sprite-animation editor; GPL-2.0.
 
+## Guides
+
+- [Mobile Voxel Agent](./Guides/Mobile%20Voxel%20Agent/): set up Termux, Godot 4 and a local or remote AI model on an Android phone to generate voxel assets, without giving the model a shell. Includes the controller, boundary tests, and a headless Godot builder.
+
 ## Assets and reference collections
 
 - [Game Icons](./Art%20and%20Assets/Game%20Icons/) — SVG icon collection; CC-BY, so provide attribution as required.

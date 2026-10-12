@@ -1,0 +1,24 @@
+{
+  "workspace": "/data/data/com.termux/files/home/voxel-workspace",
+  "godot_bin": "/data/data/com.termux/files/usr/bin/godot",
+  "local": {
+    "base_url": "http://127.0.0.1:8080/v1",
+    "model": "local-coder",
+    "json_mode": true
+  },
+  "remote": {
+    "base_url": "https://provider.example/v1",
+    "model": "provider-model",
+    "api_key_file": "/data/data/com.termux/files/home/.config/voxel-agent/remote_api_key",
+    "json_mode": true
+  },
+  "limits": {
+    "command_timeout_seconds": 120,
+    "request_timeout_seconds": 300,
+    "maximum_spec_bytes": 2097152,
+    "maximum_axis": 64,
+    "maximum_voxels": 262144,
+    "maximum_palette": 256,
+    "maximum_steps": 12
+  }
+}

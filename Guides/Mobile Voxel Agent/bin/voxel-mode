@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Manual OFF / LOCAL / REMOTE switch for the voxel agent.
+# OFF writes a cooperative STOP file that the controller checks before every
+# model call and every action; it does not kill any process.
+set -eu
+
+DIR="$HOME/.config/voxel-agent"
+STATE="$DIR/mode"
+STOP="$DIR/STOP"
+
+umask 077
+mkdir -p "$DIR"
+
+case "${1:-}" in
+  off)
+    : > "$STOP"
+    printf '%s\n' off > "$STATE.new"
+    mv "$STATE.new" "$STATE"
+    ;;
+  local|remote)
+    printf '%s\n' "$1" > "$STATE.new"
+    mv "$STATE.new" "$STATE"
+    rm -f "$STOP"
+    ;;
+  status)
+    if [ -e "$STOP" ]; then
+      printf '%s\n' off
+    else
+      cat "$STATE" 2>/dev/null || printf '%s\n' off
+    fi
+    ;;
+  *)
+    echo "Usage: voxel-mode {off|local|remote|status}" >&2
+    exit 2
+    ;;
+esac
