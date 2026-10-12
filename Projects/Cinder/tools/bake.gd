@@ -43,7 +43,10 @@ func _init() -> void:
 			continue
 		var recipe: GDScript = load(RECIPE_DIR + file)
 		var start := Time.get_ticks_msec()
-		var model: VoxelModel = recipe.build(_const(recipe, "SEED", 1))
+		var tune := Tuning.load_for(asset)
+		var seed: int = int(tune.seed) if int(tune.seed) > 0 else _const(recipe, "SEED", 1)
+		var model: VoxelModel = recipe.build(seed)
+		Tuning.apply(model, tune, seed)
 		var err := VoxIO.save_file(model, ProjectSettings.globalize_path(vox_path))
 		if err != OK:
 			push_error("Could not write %s: %s" % [vox_path, error_string(err)])
@@ -81,6 +84,8 @@ func _bake_scene(asset: String) -> void:
 
 	var root := Node3D.new()
 	root.name = asset.to_pascal_case()
+	var size_scale: float = Tuning.load_for(asset).scale
+	root.scale = Vector3.ONE * size_scale
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.name = "Mesh"
 	mesh_instance.mesh = mesh

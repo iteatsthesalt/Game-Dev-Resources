@@ -19,7 +19,7 @@ shape = SubResource("ConvexPolygonShape3D_q32ne")
 [node name="EmberLight" type="OmniLight3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0261427, 0.638455, -0.00726396)
 light_color = Color(0.908564, 0.50194, 0.286416, 1)
-light_energy = 2.5
-omni_range = 6.0
+light_energy = 1.4
+omni_range = 3.34845
 omni_attenuation = 1.4
 script = ExtResource("2_7myj1")

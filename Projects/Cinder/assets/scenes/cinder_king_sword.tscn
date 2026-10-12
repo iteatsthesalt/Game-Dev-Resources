@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/vox/cinder_king_sword.vox" id="1_rybxd"]
+[ext_resource type="Script" path="res://assets/ember_light.gd" id="2_xv1mt"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_dvmsh"]
+points = PackedVector3Array(0.0745412, 1.78885, 0.0356121, -0.257548, 1.21508, -0.039846, -0.0461363, 0.249356, -0.0700479, -0.0461363, 0.249356, 0.065814, 0.255708, 1.351, -0.039846, -0.0461363, 1.78885, -0.0700479, -0.0763308, 1.7586, 0.065814, 0.255708, 1.21508, 0.0356121, 0.0745412, 0.0833621, -0.039846, -0.257548, 1.21508, 0.0356121, -0.0461363, -0.00737202, 0.0356121, 0.0443467, 0.249356, 0.065814, 0.0745412, 1.7586, -0.0700479, 0.0745412, 1.7586, 0.065814, -0.0763308, 0.0833621, -0.039846, 0.0443467, 0.249356, -0.0700479, 0.0745412, 0.0833621, 0.0356121, -0.257548, 1.351, -0.039846, 0.255708, 1.21508, -0.039846, -0.0763308, 1.7586, -0.0700479, 0.0443467, -0.00737202, -0.039846, -0.0763308, 0.0833621, 0.0356121, -0.0763308, 1.78885, 0.0356121, -0.0461363, -0.00737202, -0.039846, 0.0443467, -0.00737202, 0.0356121, 0.104736, 0.249356, -0.039846, -0.106525, 0.249356, -0.039846, 0.0745412, 1.78885, -0.039846, -0.0763308, 1.78885, -0.039846, 0.0443467, 1.78885, -0.0700479, 0.0745412, 1.68317, -0.0700479, 0.0745412, 1.68317, 0.065814)
+
+[node name="CinderKingSword" type="Node3D"]
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("1_rybxd")
+
+[node name="Body" type="StaticBody3D" parent="."]
+
+[node name="Shape" type="CollisionShape3D" parent="Body"]
+shape = SubResource("ConvexPolygonShape3D_dvmsh")
+
+[node name="EmberLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.20537e-06, 0.687386, 6.49691e-06)
+light_color = Color(0.958403, 0.602976, 0.331232, 1)
+light_energy = 1.4
+omni_range = 2.41986
+omni_attenuation = 1.4
+script = ExtResource("2_xv1mt")
