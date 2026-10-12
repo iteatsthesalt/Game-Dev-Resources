@@ -10,6 +10,7 @@ the Cinderdeep voxel assets.
     status      show the last changes
     stop        stop the AI and free the phone's memory
     menu        number buttons for all of the above
+    serve       run as a chat model for Odysseus (type the commands in chat)
 
 The AI may only change the safe settings in assets/tuning/<asset>.json, so it
 can never break the game. GitHub rebuilds the 3D models and pictures itself.
@@ -35,6 +36,11 @@ DEFAULTS = {
     "ai_url": "http://127.0.0.1:11434",
     "model": "qwen2.5:1.5b",
     "small_model": "qwen2.5:0.5b",
+    # Phone: this tool starts/stops ollama itself. PC: Odysseus's stack owns it.
+    "manage_ai": True,
+    # Set to false for thinking models (qwen3.5, gpt-oss) so they answer directly.
+    "think": None,
+    "port": 8740,
 }
 # key: (default, min, max) — must match assets/tuning.gd
 NUMBERS = {
@@ -52,13 +58,17 @@ DEFAULT_WISH = ("Make it look a little better and more dramatic for a dark ember
 
 # ---------------------------------------------------------------- helpers
 
+SINK = [lambda text: print(text, flush=True)]
+INTERACTIVE = [True]
+
+
 def say(text):
-    print(text, flush=True)
+    SINK[-1](text)
 
 
 def load_json(path, fallback):
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8-sig") as f:  # -sig: Windows PowerShell adds a BOM
             return json.load(f)
     except (OSError, ValueError):
         return fallback
@@ -130,6 +140,8 @@ def ai_running(cfg):
 def start_ai(cfg):
     if ai_running(cfg):
         return
+    if not cfg["manage_ai"]:
+        raise RuntimeError("Your local AI (Ollama) is not running. Start your AI PC stack first.")
     if not shutil.which("ollama"):
         raise RuntimeError("The AI (ollama) is not installed. Run the install line again.")
     say("Starting the AI...")
@@ -146,7 +158,7 @@ def start_ai(cfg):
 def pick_model(cfg):
     """Use the smaller model when the phone is short on memory."""
     free = free_memory_mb()
-    if free is not None and free < 1800:
+    if cfg["manage_ai"] and free is not None and free < 1800:
         say("Phone memory is low (%d MB free), using the small AI." % free)
         return cfg["small_model"]
     return cfg["model"]
@@ -157,6 +169,8 @@ def ensure_model(cfg, model):
     names = [m.get("name", "") for m in tags.get("models", [])]
     if model in names or model + ":latest" in names:
         return
+    if not cfg["manage_ai"]:
+        raise RuntimeError("The model %s is not installed on this PC." % model)
     say("Downloading the AI model %s (one time only)..." % model)
     subprocess.run(["ollama", "pull", model], check=True)
 
@@ -179,6 +193,7 @@ def ask_ai(cfg, model, asset, current, wish, temperature):
         "stream": False,
         "keep_alive": "30s",  # unload soon after, to give the phone its memory back
         "options": {"num_ctx": 2048, "temperature": temperature},
+        **({"think": cfg["think"]} if cfg["think"] is not None else {}),
     }).encode()
     req = urllib.request.Request(cfg["ai_url"] + "/api/chat", data=body,
                                  headers={"Content-Type": "application/json"})
@@ -227,7 +242,7 @@ def improve(cfg, asset, wish):
             save_json(path, result)
             try:
                 git(cfg, "add", path)
-                git(cfg, "commit", "-q", "-m", "Phone AI: %s - %s" % (asset, result["notes"] or "tweak"))
+                git(cfg, "commit", "-q", "-m", "Cinder AI: %s - %s" % (asset, result["notes"] or "tweak"))
             except RuntimeError:
                 git(cfg, "reset", "-q", check=False)
                 git(cfg, "checkout", "-q", "--", path, check=False)
@@ -274,13 +289,20 @@ def cmd_push(cfg, args):
 
 def cmd_ask(cfg, args):
     wish = " ".join(args).strip()
-    if not wish:
+    if not wish and INTERACTIVE[0]:
         wish = input("What should change? ").strip()
+    if not wish:
+        say("Tell me what to change, for example:  ask make the hound glow more")
+        return
     sync(cfg)
     names = assets(cfg)
     words = wish.lower()
     found = [a for a in names if any(part in words for part in a.split("_") if len(part) > 3)]
     if len(found) != 1:
+        if not INTERACTIVE[0]:
+            say("Which model? Say one of these names in your request:")
+            say(", ".join(a.replace("_", " ") for a in names))
+            return
         say("Which one?")
         for i, a in enumerate(names, 1):
             say("  %d  %s" % (i, a.replace("_", " ")))
@@ -296,6 +318,11 @@ def cmd_ask(cfg, args):
 
 def cmd_look(cfg, args):
     url = "https://github.com/%s/tree/%s/Projects/Cinder/previews" % (cfg["github"], cfg["branch"])
+    raw = "https://raw.githubusercontent.com/%s/%s/Projects/Cinder/previews/" % (cfg["github"], cfg["branch"])
+    if not INTERACTIVE[0]:
+        say("![All models](%s_lineup.png?t=%d)" % (raw, int(time.time())))
+        say("All pictures: " + url)
+        return
     say(url)
     if shutil.which("termux-open-url"):
         subprocess.run(["termux-open-url", url])
@@ -304,8 +331,8 @@ def cmd_look(cfg, args):
 def cmd_undo(cfg, args):
     sync(cfg)
     last = git(cfg, "log", "-1", "--format=%H %s")
-    if "Phone AI:" not in last:
-        say("The last change was not made by the phone AI, so nothing was undone.")
+    if "Cinder AI:" not in last and "Phone AI:" not in last:
+        say("The last change was not made by the Cinder AI, so nothing was undone.")
         return
     git(cfg, "revert", "--no-edit", last.split()[0])
     say("Undid: " + last.split(" ", 1)[1])
@@ -321,11 +348,34 @@ def cmd_status(cfg, args):
 
 
 def cmd_stop(cfg, args):
-    subprocess.run(["pkill", "-f", "ollama"], capture_output=True)
+    if cfg["manage_ai"] and shutil.which("pkill"):
+        subprocess.run(["pkill", "-f", "ollama"], capture_output=True)
+    else:
+        for model in (cfg["model"], cfg["small_model"]):
+            try:
+                body = json.dumps({"model": model, "keep_alive": 0}).encode()
+                urllib.request.urlopen(urllib.request.Request(
+                    cfg["ai_url"] + "/api/generate", data=body, headers={"Content-Type": "application/json"}), timeout=20)
+            except (urllib.error.URLError, OSError):
+                pass
     say("AI stopped. Memory is free again.")
 
 
-COMMANDS = {"push": cmd_push, "ask": cmd_ask, "look": cmd_look, "undo": cmd_undo,
+HELP = """Commands:
+push - improve the next model a little and save it
+push 5 - do that 5 times
+ask make the hound glow more - make a change you describe
+look - see the newest pictures
+undo - take back the last change
+status - recent changes
+stop - unload the AI to free memory"""
+
+
+def cmd_help(cfg, args):
+    say(HELP)
+
+
+COMMANDS = {"help": cmd_help, "push": cmd_push, "ask": cmd_ask, "look": cmd_look, "undo": cmd_undo,
             "status": cmd_status, "stop": cmd_stop}
 
 
@@ -356,11 +406,115 @@ def run(cfg, name, args):
         say("Nothing was broken. Try again, or type: stop")
 
 
+# ---------------------------------------------------------------- Odysseus
+
+def serve(cfg):
+    """Pretend to be an OpenAI-style model called "cinder" on 127.0.0.1, so
+    Odysseus (or any chat app) can run the commands by typing them."""
+    import http.server
+    import threading
+
+    lock = threading.Lock()
+    INTERACTIVE[0] = False
+
+    def user_text(body):
+        for message in reversed(body.get("messages", [])):
+            if message.get("role") == "user":
+                content = message.get("content", "")
+                if isinstance(content, list):
+                    content = " ".join(part.get("text", "") for part in content if isinstance(part, dict))
+                return str(content)
+        return ""
+
+    def command_for(text):
+        words = re.sub(r"[^\w\s#.]", " ", text.lower()).split()
+        if words and words[0] in COMMANDS:
+            return words[0], words[1:]
+        return "help", []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        protocol_version = "HTTP/1.1"
+
+        def log_message(self, *args):
+            pass
+
+        def send_json(self, obj):
+            data = json.dumps(obj).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_GET(self):
+            if self.path.rstrip("/").endswith("/models"):
+                self.send_json({"object": "list", "data": [{"id": "cinder", "object": "model", "owned_by": "cinder"}]})
+            else:
+                self.send_json({"status": "ok", "commands": sorted(COMMANDS)})
+
+        def do_POST(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(length) or b"{}")
+            except ValueError:
+                body = {}
+            name, args = command_for(user_text(body))
+            stream = bool(body.get("stream"))
+            stamp = int(time.time())
+            chunk = {"id": "cinder-%d" % stamp, "created": stamp, "model": "cinder"}
+            lines = []
+
+            if stream:
+                self.send_response(200)
+                self.send_header("Content-Type", "text/event-stream")
+                self.send_header("Cache-Control", "no-cache")
+                self.send_header("Connection", "close")
+                self.end_headers()
+
+            def emit(text):
+                lines.append(text)
+                if stream:
+                    delta = {"role": "assistant", "content": text + "\n"} if len(lines) == 1 else {"content": text + "\n"}
+                    event = dict(chunk, object="chat.completion.chunk",
+                                 choices=[{"index": 0, "delta": delta, "finish_reason": None}])
+                    self.wfile.write(("data: " + json.dumps(event) + "\n\n").encode())
+                    self.wfile.flush()
+
+            if lock.acquire(blocking=False):
+                SINK.append(emit)
+                try:
+                    run(config(), name, args)
+                finally:
+                    SINK.pop()
+                    lock.release()
+            else:
+                emit("Busy with the last command. Try again in a minute.")
+
+            if stream:
+                done = dict(chunk, object="chat.completion.chunk",
+                            choices=[{"index": 0, "delta": {}, "finish_reason": "stop"}])
+                self.wfile.write(("data: " + json.dumps(done) + "\n\ndata: [DONE]\n\n").encode())
+                self.wfile.flush()
+                self.close_connection = True
+            else:
+                self.send_json(dict(chunk, object="chat.completion", choices=[{
+                    "index": 0, "finish_reason": "stop",
+                    "message": {"role": "assistant", "content": "\n".join(lines)}}],
+                    usage={"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}))
+
+    port = int(cfg["port"])
+    print("Cinder is ready for Odysseus at http://127.0.0.1:%d/v1  (model name: cinder)" % port, flush=True)
+    http.server.ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+
+
 def main():
     args = sys.argv[1:]
     name = os.path.basename(sys.argv[0]).replace(".py", "")
     if name not in COMMANDS and name != "menu":
         name = args.pop(0) if args else "menu"
+    if name == "serve":
+        serve(config())
+        return
     if name not in COMMANDS and name != "menu":
         say(__doc__)
         return
