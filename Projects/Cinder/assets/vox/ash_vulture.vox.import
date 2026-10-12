@@ -1,0 +1,16 @@
+[remap]
+
+importer="cinder_voxel.vox_mesh"
+type="ArrayMesh"
+uid="uid://vnbeuqp64klg"
+path="res://.godot/imported/ash_vulture.vox-636c2fc180a0d08ac28c76f6335b48d1.mesh"
+
+[deps]
+
+source_file="res://assets/vox/ash_vulture.vox"
+dest_files=["res://.godot/imported/ash_vulture.vox-636c2fc180a0d08ac28c76f6335b48d1.mesh"]
+
+[params]
+
+voxel_size=0.03125
+pivot=Vector3(0.5, 0, 0.5)

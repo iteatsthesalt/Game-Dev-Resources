@@ -1,0 +1,16 @@
+[remap]
+
+importer="cinder_voxel.vox_mesh"
+type="ArrayMesh"
+uid="uid://bve836rjiiwvr"
+path="res://.godot/imported/ember_wisp.vox-66cd376753581f0d9c0f227b6d6d954a.mesh"
+
+[deps]
+
+source_file="res://assets/vox/ember_wisp.vox"
+dest_files=["res://.godot/imported/ember_wisp.vox-66cd376753581f0d9c0f227b6d6d954a.mesh"]
+
+[params]
+
+voxel_size=0.03125
+pivot=Vector3(0.5, 0, 0.5)
