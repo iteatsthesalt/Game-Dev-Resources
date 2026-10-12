@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Create, list or discard disposable AI worktrees.
+#
+#   voxel-session new            -> prints the new session path
+#   voxel-session list
+#   voxel-session discard <ID>   -> removes the worktree and its ai/<ID> branch
+#
+# Approving a session stays manual: inspect the diff, commit on ai/<ID>, merge.
+set -eu
+
+WORKSPACE="${VOXEL_WORKSPACE:-$HOME/voxel-workspace}"
+PROJECT="$WORKSPACE/project"
+SESSIONS="$WORKSPACE/sessions"
+
+case "${1:-}" in
+  new)
+    if [ -n "$(git -C "$PROJECT" status --porcelain)" ]; then
+      echo "Commit or stash changes in $PROJECT before starting a session." >&2
+      exit 1
+    fi
+    ID="$(date +%Y%m%d-%H%M%S)"
+    git -C "$PROJECT" worktree add --quiet -b "ai/$ID" "$SESSIONS/$ID" HEAD
+    printf '%s\n' "$SESSIONS/$ID"
+    ;;
+  list)
+    git -C "$PROJECT" worktree list
+    ;;
+  discard)
+    ID="${2:-}"
+    if ! printf '%s' "$ID" | grep -Eq '^[0-9]{8}-[0-9]{6}$'; then
+      echo "Usage: voxel-session discard YYYYmmdd-HHMMSS" >&2
+      exit 2
+    fi
+    git -C "$PROJECT" worktree remove --force "$SESSIONS/$ID"
+    git -C "$PROJECT" branch -D "ai/$ID"
+    ;;
+  *)
+    echo "Usage: voxel-session {new|list|discard <ID>}" >&2
+    exit 2
+    ;;
+esac
