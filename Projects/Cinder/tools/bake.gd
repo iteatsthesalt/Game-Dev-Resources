@@ -17,6 +17,9 @@ const RECIPE_DIR := "res://assets/recipes/"
 const VOX_DIR := "res://assets/vox/"
 const SCENE_DIR := "res://assets/scenes/"
 const EMBER_LIGHT := preload("res://assets/ember_light.gd")
+## Recipes are refined to this many times their design resolution (see
+## VoxelRefine); a recipe can override it with its own DETAIL constant.
+const DEFAULT_DETAIL := 2
 
 
 func _init() -> void:
@@ -47,6 +50,8 @@ func _init() -> void:
 		var seed: int = int(tune.seed) if int(tune.seed) > 0 else _const(recipe, "SEED", 1)
 		var model: VoxelModel = recipe.build(seed)
 		Tuning.apply(model, tune, seed)
+		var detail: int = _const(recipe, "DETAIL", DEFAULT_DETAIL)
+		model = VoxelRefine.refine(model, detail, 2, 0.18, seed, _const(recipe, "TEXTURE", ""))
 		var err := VoxIO.save_file(model, ProjectSettings.globalize_path(vox_path))
 		if err != OK:
 			push_error("Could not write %s: %s" % [vox_path, error_string(err)])
@@ -85,7 +90,8 @@ func _bake_scene(asset: String) -> void:
 	var root := Node3D.new()
 	root.name = asset.to_pascal_case()
 	var size_scale: float = Tuning.load_for(asset).scale
-	root.scale = Vector3.ONE * size_scale
+	var detail: int = _const(recipe, "DETAIL", DEFAULT_DETAIL) if recipe else 1
+	root.scale = Vector3.ONE * size_scale / detail
 	var mesh_instance := MeshInstance3D.new()
 	mesh_instance.name = "Mesh"
 	mesh_instance.mesh = mesh

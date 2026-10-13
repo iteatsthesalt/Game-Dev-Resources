@@ -5,6 +5,7 @@ extends RefCounted
 ## Faces +Z.
 
 const SEED := 21
+const TEXTURE := "ash"
 
 
 static func build(seed := SEED) -> VoxelModel:

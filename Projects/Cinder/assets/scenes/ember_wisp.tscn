@@ -4,13 +4,14 @@
 [ext_resource type="Script" path="res://assets/ember_light.gd" id="2_tkh3j"]
 
 [node name="EmberWisp" type="Node3D"]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
 
 [node name="Mesh" type="MeshInstance3D" parent="."]
 mesh = ExtResource("1_0ti6e")
 
 [node name="EmberLight" type="OmniLight3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000304937, 0.847705, -0.0066272)
-light_color = Color(0.999746, 0.65565, 0.329054, 1)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.000581503, 1.63403, -0.0132194)
+light_color = Color(0.999828, 0.655166, 0.328838, 1)
 light_energy = 1.4
 omni_attenuation = 1.4
 script = ExtResource("2_tkh3j")

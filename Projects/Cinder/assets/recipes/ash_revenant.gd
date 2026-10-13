@@ -5,6 +5,7 @@ extends RefCounted
 ## embers, iron pauldrons and a notched steel blade held low. Faces +Z.
 
 const SEED := 31
+const TEXTURE := "plate"
 
 
 static func build(seed := SEED) -> VoxelModel:

@@ -121,7 +121,8 @@ func _spawn_assets(only: String) -> void:
 func _aabb_of(node: Node3D) -> AABB:
 	for child in node.get_children():
 		if child is MeshInstance3D:
-			return child.mesh.get_aabb()
+			var box: AABB = child.mesh.get_aabb()
+			return AABB(box.position * node.scale, box.size * node.scale)
 	return AABB(Vector3(-0.5, 0, -0.5), Vector3.ONE)
 
 

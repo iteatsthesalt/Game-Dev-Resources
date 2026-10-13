@@ -5,6 +5,7 @@ extends RefCounted
 ## neck, smouldering wingtips and talons hooked forward. Faces +Z.
 
 const SEED := 51
+const TEXTURE := "feather"
 
 
 static func build(seed := SEED) -> VoxelModel:
