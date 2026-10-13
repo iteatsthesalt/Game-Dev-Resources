@@ -25,6 +25,10 @@ voxel-agent --session "$SESSION" "a small glowing ember, 8x8x8"
 
 `termux-setup` is safe to re-run. It installs packages, creates the private folders, installs the helpers, writes a LOCAL-only config (no remote section, no API key), makes a project baseline commit, and runs the safety tests. It never downloads a model. Everything below explains each step.
 
+## Home-screen shortcut
+
+`shortcuts/` has a Termux:Widget launcher for Odysseus and an ember-voxel icon (`ember.png`, redrawn by `make_icon.py`). On the phone, install the **Termux:Widget** add-on from the same source as Termux, then run `bash shortcuts/install-shortcut.sh` and add a Termux:Widget widget to your home screen. The icon path (`~/.shortcuts/icons/<script>.png`) is how recent Termux:Widget versions pick up icons; if yours doesn't show it, check the add-on's own documentation.
+
 ## Files in this folder
 
 | Path | Purpose |
