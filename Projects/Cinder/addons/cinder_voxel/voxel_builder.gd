@@ -24,16 +24,17 @@ func _init(size: Vector3i, seed := 1) -> void:
 
 ## Registers one material and returns its palette index. `color` is a Color or
 ## an HTML string such as "#ff6a1a".
-func mat(color: Variant, emission := 0.0, roughness := 0.9, metallic := 0.0) -> int:
-	return model.add_material(Color(color), emission, roughness, metallic)
+func mat(color: Variant, emission := 0.0, roughness := 0.9, metallic := 0.0, round := false) -> int:
+	return model.add_material(Color(color), emission, roughness, metallic, round)
 
 
 ## Registers a dark-to-light ramp. `emission` is a float or one value per colour.
-func ramp(colors: Array, emission: Variant = 0.0, roughness := 0.9, metallic := 0.0) -> PackedInt32Array:
+## round = true draws these voxels as small spheres instead of cubes.
+func ramp(colors: Array, emission: Variant = 0.0, roughness := 0.9, metallic := 0.0, round := false) -> PackedInt32Array:
 	var out := PackedInt32Array()
 	for i in colors.size():
 		var e: float = emission[i] if emission is Array else emission
-		out.append(mat(colors[i], e, roughness, metallic))
+		out.append(mat(colors[i], e, roughness, metallic, round))
 	return out
 
 

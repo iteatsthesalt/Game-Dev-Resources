@@ -17,6 +17,7 @@ static func build(seed := SEED) -> VoxelModel:
 	var steel := b.ramp(CinderPalette.STEEL, 0.0, 0.4, 0.25)
 	var brass := b.ramp(CinderPalette.BRASS, 0.0, 0.45, 0.25)
 	var ember := b.ramp(CinderPalette.EMBER, [0.4, 0.6, 0.9, 1.2, 1.6, 2.2])
+	var bead := b.ramp(CinderPalette.EMBER, [0.5, 0.7, 1.0, 1.4, 1.9, 2.6], 0.6, 0.0, true) # round voxels
 	var cx := 22.0
 	var cz := 18.0
 
@@ -71,7 +72,7 @@ static func build(seed := SEED) -> VoxelModel:
 	b.ellipsoid(Vector3(cx, 49.5, cz + 6.5), Vector3(4, 4.5, 2.5), soot[0]) # face hollow
 	for side in [-1, 1]:
 		var e := Vector3i(int(cx) + side * 2 - (1 if side < 0 else 0), 50, int(cz) + 6)
-		b.box(e, e + Vector3i(side, 0, 0), ember[5])
+		b.box(e, e + Vector3i(side, 0, 0), bead[5])
 
 	# Ember trim on the tabard hem and across the chest.
 	b.recolor(func(p: Vector3i, current: int) -> int:

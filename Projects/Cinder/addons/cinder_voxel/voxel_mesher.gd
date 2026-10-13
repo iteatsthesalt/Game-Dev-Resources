@@ -69,9 +69,9 @@ static func build(model: VoxelModel, voxel_size := DEFAULT_VOXEL_SIZE, pivot := 
 						p[u] = i
 						var key := 0
 						var value := model.voxels[p.x + size.x * (p.y + size.y * p.z)]
-						if value != 0:
+						if value != 0 and not model.is_round_value(value):
 							var q := p + dn
-							if not model.is_solid(q):
+							if not model.is_cube(q):
 								key = value \
 									| (_ao(model, q, -du, -dv) << 8) \
 									| (_ao(model, q, du, -dv) << 10) \

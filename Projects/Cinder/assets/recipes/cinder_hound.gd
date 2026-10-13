@@ -13,6 +13,7 @@ static func build(seed := SEED) -> VoxelModel:
 	var fur := b.ramp(CinderPalette.FUR)
 	var bone := b.ramp(CinderPalette.BONE)
 	var ember := b.ramp(CinderPalette.EMBER, [0.35, 0.5, 0.7, 1.0, 1.4, 2.0])
+	var bead := b.ramp(CinderPalette.EMBER, [0.5, 0.7, 1.0, 1.4, 1.9, 2.6], 0.6, 0.0, true) # round voxels
 	var soot := b.mat(CinderPalette.SOOT[1])
 	var cx := 15.0
 
@@ -68,7 +69,7 @@ static func build(seed := SEED) -> VoxelModel:
 	# Eyes: two bright embers on the brow.
 	for side in [-1, 1]:
 		var e := Vector3i(int(cx) + side * 3 - (1 if side < 0 else 0), 33, 54)
-		b.set_v(e, ember[5])
-		b.set_v(e + Vector3i(side, 0, 0), ember[4])
-		b.set_v(e + Vector3i(0, 0, -1), ember[3])
+		b.set_v(e, bead[5])
+		b.set_v(e + Vector3i(side, 0, 0), bead[4])
+		b.set_v(e + Vector3i(0, 0, -1), bead[3])
 	return b.model

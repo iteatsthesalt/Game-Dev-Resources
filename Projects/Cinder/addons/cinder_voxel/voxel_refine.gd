@@ -22,6 +22,9 @@ static func refine(model: VoxelModel, factor := 2, smooth_passes := 2, grain := 
 	out.emission = model.emission.duplicate()
 	out.roughness = model.roughness.duplicate()
 	out.metallic = model.metallic.duplicate()
+	out.round = model.round.duplicate()
+	while out.round.size() < out.colors.size():
+		out.round.append(0)
 
 	# 1. Upsample.
 	var size := out.size
@@ -48,10 +51,10 @@ static func refine(model: VoxelModel, factor := 2, smooth_passes := 2, grain := 
 	for i in range(1, out.colors.size()):
 		if out.emission[i] <= 0.0:
 			var c := out.colors[i].darkened(0.22)
-			darker[i] = out.add_material(c, 0.0, out.roughness[i], out.metallic[i])
+			darker[i] = out.add_material(c, 0.0, out.roughness[i], out.metallic[i], out.is_round_value(i))
 	var lighter := {}
 	for i in darker:
-		lighter[i] = out.add_material(out.colors[i].lightened(0.08), 0.0, out.roughness[i], out.metallic[i])
+		lighter[i] = out.add_material(out.colors[i].lightened(0.08), 0.0, out.roughness[i], out.metallic[i], out.is_round_value(i))
 	var changes := {}
 	for p: Vector3i in _surface_band(out):
 		var value := out.get_voxel(p)
@@ -80,7 +83,7 @@ static func refine(model: VoxelModel, factor := 2, smooth_passes := 2, grain := 
 				open += 1
 		if open >= 2:
 			if not edge_tone.has(value):
-				edge_tone[value] = out.add_material(out.colors[value].lightened(edge_boost), 0.0, out.roughness[value], out.metallic[value])
+				edge_tone[value] = out.add_material(out.colors[value].lightened(edge_boost), 0.0, out.roughness[value], out.metallic[value], out.is_round_value(value))
 			edges[p] = edge_tone[value]
 	for p: Vector3i in edges:
 		out.set_voxel(p, edges[p])

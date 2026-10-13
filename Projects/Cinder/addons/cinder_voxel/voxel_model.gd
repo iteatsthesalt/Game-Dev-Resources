@@ -14,6 +14,8 @@ extends Resource
 @export var emission := PackedFloat32Array([0.0])
 @export var roughness := PackedFloat32Array([1.0])
 @export var metallic := PackedFloat32Array([0.0])
+## 1 = drawn as a round voxel (a small sphere) instead of a cube.
+@export var round := PackedByteArray([0])
 
 
 static func create(p_size: Vector3i) -> VoxelModel:
@@ -47,10 +49,13 @@ func is_solid(p: Vector3i) -> bool:
 
 
 ## Adds a palette entry, or returns an identical existing one. Returns 1..255.
-func add_material(color: Color, p_emission := 0.0, p_roughness := 0.9, p_metallic := 0.0) -> int:
+func add_material(color: Color, p_emission := 0.0, p_roughness := 0.9, p_metallic := 0.0, p_round := false) -> int:
+	while round.size() < colors.size():
+		round.append(0)
 	for i in range(1, colors.size()):
 		if colors[i].is_equal_approx(color) and is_equal_approx(emission[i], p_emission) \
-				and is_equal_approx(roughness[i], p_roughness) and is_equal_approx(metallic[i], p_metallic):
+				and is_equal_approx(roughness[i], p_roughness) and is_equal_approx(metallic[i], p_metallic) \
+				and round[i] == int(p_round):
 			return i
 	if colors.size() > 255:
 		push_error("VoxelModel palette is full (255 materials); reusing the last entry.")
@@ -59,7 +64,20 @@ func add_material(color: Color, p_emission := 0.0, p_roughness := 0.9, p_metalli
 	emission.append(p_emission)
 	roughness.append(p_roughness)
 	metallic.append(p_metallic)
+	round.append(int(p_round))
 	return colors.size() - 1
+
+
+func is_round_value(value: int) -> bool:
+	return value > 0 and value < round.size() and round[value] == 1
+
+
+## Solid AND drawn as a cube (round voxels don't hide the faces next to them).
+func is_cube(p: Vector3i) -> bool:
+	if not has_point(p):
+		return false
+	var value := voxels[index_of(p)]
+	return value != 0 and not is_round_value(value)
 
 
 func count_solid() -> int:

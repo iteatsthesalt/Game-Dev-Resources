@@ -13,6 +13,7 @@ static func build(seed := SEED) -> VoxelModel:
 	var flame := b.ramp(CinderPalette.FLAME, [0.9, 1.1, 1.4, 1.8, 2.4], 0.6)
 	var mask := b.ramp(["#c9935a", "#e8b680", "#ffd08a", "#ffe6c0"], 0.35, 0.6)
 	var soot := b.mat(CinderPalette.SOOT[0])
+	var spark := b.ramp(CinderPalette.FLAME, [0.9, 1.1, 1.4, 1.8, 2.4], 0.6, 0.0, true) # round voxels
 	var c := Vector2(17, 17)
 	var y0 := 8
 	var y1 := 44
@@ -49,5 +50,5 @@ static func build(seed := SEED) -> VoxelModel:
 	for i in 10:
 		var p := Vector3i(b.rng.randi_range(2, 31), b.rng.randi_range(10, 54), b.rng.randi_range(2, 31))
 		if Vector2(p.x - c.x, p.z - c.y).length() > 10.0:
-			b.set_v(p, flame[b.rng.randi_range(2, 4)])
+			b.set_v(p, spark[b.rng.randi_range(2, 4)])
 	return b.model

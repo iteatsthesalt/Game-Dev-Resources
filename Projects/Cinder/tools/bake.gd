@@ -17,6 +17,7 @@ const RECIPE_DIR := "res://assets/recipes/"
 const VOX_DIR := "res://assets/vox/"
 const SCENE_DIR := "res://assets/scenes/"
 const EMBER_LIGHT := preload("res://assets/ember_light.gd")
+const ROUND_VOXELS := preload("res://addons/cinder_voxel/round_voxels.gd")
 ## Recipes are refined to this many times their design resolution (see
 ## VoxelRefine); a recipe can override it with its own DETAIL constant.
 const DEFAULT_DETAIL := 2
@@ -97,6 +98,19 @@ func _bake_scene(asset: String) -> void:
 	mesh_instance.mesh = mesh
 	_add(root, root, mesh_instance)
 
+	# Round voxels (eyes, embers, sparks) are drawn as little spheres.
+	var beads := VoxelRound.collect(model, voxel_size, pivot)
+	var bead_count: int = beads.positions.size()
+	if bead_count > 0:
+		var bead_instance := MultiMeshInstance3D.new()
+		bead_instance.name = "RoundVoxels"
+		bead_instance.set_script(ROUND_VOXELS)
+		bead_instance.radius = VoxelRound.RADIUS * voxel_size
+		bead_instance.positions = beads.positions
+		bead_instance.colors = beads.colors
+		bead_instance.custom = beads.custom
+		_add(root, root, bead_instance)
+
 	if collision != "none":
 		var body := StaticBody3D.new()
 		body.name = "Body"
@@ -136,7 +150,9 @@ func _bake_scene(asset: String) -> void:
 	if err != OK:
 		push_error("Could not save %s: %s" % [scene_path, error_string(err)])
 	else:
-		print("scene  %s (%d triangles)" % [scene_path, mesh.surface_get_array_index_len(0) / 3 if mesh.get_surface_count() else 0])
+		print("scene  %s (%d triangles, %d round voxels)" % [scene_path,
+			mesh.surface_get_array_index_len(0) / 3 if mesh.get_surface_count() else 0,
+			bead_count])
 
 
 func _add(root: Node, parent: Node, child: Node) -> void:

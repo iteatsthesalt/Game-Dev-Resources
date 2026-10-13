@@ -14,6 +14,8 @@ var _radius := 3.0
 var _yaw := -30.0
 var _pitch := -18.0
 var _zoom := 1.0
+## Moves the camera target up by this fraction of the asset radius (close-ups of heads).
+var _lift := 0.0
 var _shot_path := ""
 var _auto_rotate := true
 
@@ -30,6 +32,7 @@ func _ready() -> void:
 			"pitch": _pitch = float(parts[1])
 			"zoom": _zoom = float(parts[1])
 			"shot": _shot_path = parts[1]
+			"lift": _lift = float(parts[1])
 
 	_build_environment()
 	_build_ground()
@@ -70,8 +73,9 @@ func _unhandled_input(event: InputEvent) -> void:
 func _update_camera() -> void:
 	var distance := _radius / sin(deg_to_rad(_camera.fov * 0.5)) * _zoom
 	var dir := Basis.from_euler(Vector3(deg_to_rad(_pitch), deg_to_rad(_yaw), 0.0)) * Vector3.BACK
-	_camera.position = _focus + dir * distance
-	_camera.look_at(_focus)
+	var focus := _focus + Vector3(0, _radius * _lift, 0)
+	_camera.position = focus + dir * distance
+	_camera.look_at(focus)
 
 
 func _spawn_assets(only: String) -> void:

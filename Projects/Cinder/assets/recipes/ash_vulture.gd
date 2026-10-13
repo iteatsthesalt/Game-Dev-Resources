@@ -15,6 +15,7 @@ static func build(seed := SEED) -> VoxelModel:
 	var flesh := b.ramp(CinderPalette.FLESH)
 	var beak := b.ramp(["#a8361c", "#ff7a2a", "#ffa04a"], 0.0, 0.5)
 	var ember := b.ramp(CinderPalette.EMBER, [0.4, 0.6, 0.9, 1.2, 1.6, 2.2])
+	var bead := b.ramp(CinderPalette.EMBER, [0.5, 0.7, 1.0, 1.4, 1.9, 2.6], 0.6, 0.0, true) # round voxels
 	var soot := b.mat(CinderPalette.SOOT[0])
 	var cx := 42.0
 
@@ -33,7 +34,7 @@ static func build(seed := SEED) -> VoxelModel:
 	b.tube(Vector3(cx, 33, 38), Vector3(cx, 32, 42), 1.8, 1.2, func(p: Vector3i) -> int: return beak[1])
 	b.tube(Vector3(cx, 32, 42), Vector3(cx, 29.5, 42.5), 1.1, 0.5, func(p: Vector3i) -> int: return beak[0])
 	for side in [-1, 1]:
-		b.set_v(Vector3i(int(cx) + side * 3 - (1 if side < 0 else 0), 34, 37), ember[5])
+		b.set_v(Vector3i(int(cx) + side * 3 - (1 if side < 0 else 0), 34, 37), bead[5])
 		b.set_v(Vector3i(int(cx) + side * 3 - (1 if side < 0 else 0), 34, 36), soot)
 
 	# Wings: arm bone plus a fan of long primaries, raised mid-beat.

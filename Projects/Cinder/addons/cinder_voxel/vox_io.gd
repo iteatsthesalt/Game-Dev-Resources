@@ -184,6 +184,8 @@ static func serialize(model: VoxelModel) -> PackedByteArray:
 		else:
 			props["_type"] = "_diffuse"
 		props["_rough"] = str(model.roughness[i])
+		if model.is_round_value(i):
+			props["_round"] = "1"
 		_write_dict(matl, props)
 		children.append_array(_chunk("MATL", matl.data_array))
 
@@ -205,7 +207,7 @@ static func _add_vox_material(model: VoxelModel, color: Color, props: Dictionary
 	var default_rough := "0.3" if type == "_metal" else "0.9"
 	var rough := float(props.get("_rough", default_rough))
 	color.a = 1.0
-	return model.add_material(color, emission, rough, metal)
+	return model.add_material(color, emission, rough, metal, props.get("_round", "0") == "1")
 
 
 static func _walk(nodes: Dictionary, id: int, offset: Vector3i, placed: Array) -> void:

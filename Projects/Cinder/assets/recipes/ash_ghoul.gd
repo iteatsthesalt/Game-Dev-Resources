@@ -14,6 +14,7 @@ static func build(seed := SEED) -> VoxelModel:
 	var soot := b.ramp(CinderPalette.SOOT)
 	var bone := b.ramp(CinderPalette.BONE)
 	var ember := b.ramp(CinderPalette.EMBER, [0.4, 0.6, 0.9, 1.2, 1.6, 2.2])
+	var bead := b.ramp(CinderPalette.EMBER, [0.5, 0.7, 1.0, 1.4, 1.9, 2.6], 0.6, 0.0, true) # round voxels
 	var cx := 22.0
 
 	var skin := func(p: Vector3i) -> int:
@@ -66,11 +67,11 @@ static func build(seed := SEED) -> VoxelModel:
 
 	# Ember mouth and eyes.
 	b.box(Vector3i(19, 36, 31), Vector3i(24, 37, 33), soot[0])
-	b.box(Vector3i(20, 36, 30), Vector3i(23, 36, 31), ember[2])
+	b.box(Vector3i(20, 36, 30), Vector3i(23, 36, 31), bead[2])
 	for side in [-1, 1]:
 		var e := Vector3i(int(cx) + side * 3 - (1 if side < 0 else 0), 41, 31)
-		b.box(e, e + Vector3i(side, 0, 0), ember[5])
-		b.set_v(e + Vector3i(0, 0, -1), ember[3])
+		b.box(e, e + Vector3i(side, 0, 0), bead[5])
+		b.set_v(e + Vector3i(0, 0, -1), bead[3])
 
 	# Ash flaking off the shoulders and back.
 	b.erode(0.08, 30)
