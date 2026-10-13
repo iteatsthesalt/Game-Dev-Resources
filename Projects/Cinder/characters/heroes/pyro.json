@@ -1,0 +1,38 @@
+{
+ "id": "pyro",
+ "name": "Pyromancer",
+ "blurb": "Every room is kindling. Calls meteors down on the crowd.",
+ "seed": 303,
+ "build": {
+  "height": 0.86,
+  "bulk": 0.95,
+  "head": 1.1,
+  "arms": 1.0,
+  "legs": 1.0
+ },
+ "colors": {
+  "skin": "#f0c09a",
+  "hair": "#e8e2d6",
+  "main": "#b33a2a",
+  "dark": "#6e1f1a",
+  "trim": "#f2b53c",
+  "cloth": "#b33a2a",
+  "metal": "#c8901c",
+  "eye": "#1a1214",
+  "glow": "#ff8a2a"
+ },
+ "head": "wizard",
+ "hair": "long",
+ "weapon": "firestaff",
+ "offhand": "orb",
+ "armor": "robe",
+ "texture": "",
+ "fx": "fire",
+ "glow": 1.8,
+ "features": [
+  "beard",
+  "ember_cracks",
+  "sash",
+  "gem"
+ ]
+}

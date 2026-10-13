@@ -1,0 +1,16 @@
+[remap]
+
+importer="cinder_voxel.vox_mesh"
+type="ArrayMesh"
+uid="uid://dtwyf6qkuj3wc"
+path="res://.godot/imported/ash_revenant.vox-dd5fe3dea6686abc7231e0b12565ca6f.mesh"
+
+[deps]
+
+source_file="res://assets/vox/ash_revenant.vox"
+dest_files=["res://.godot/imported/ash_revenant.vox-dd5fe3dea6686abc7231e0b12565ca6f.mesh"]
+
+[params]
+
+voxel_size=0.03125
+pivot=Vector3(0.5, 0, 0.5)

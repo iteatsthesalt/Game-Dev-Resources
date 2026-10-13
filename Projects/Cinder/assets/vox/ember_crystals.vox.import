@@ -1,0 +1,16 @@
+[remap]
+
+importer="cinder_voxel.vox_mesh"
+type="ArrayMesh"
+uid="uid://cmnssl5xjknda"
+path="res://.godot/imported/ember_crystals.vox-23375e3bb8a5e4a91ad5414725106e33.mesh"
+
+[deps]
+
+source_file="res://assets/vox/ember_crystals.vox"
+dest_files=["res://.godot/imported/ember_crystals.vox-23375e3bb8a5e4a91ad5414725106e33.mesh"]
+
+[params]
+
+voxel_size=0.03125
+pivot=Vector3(0.5, 0, 0.5)

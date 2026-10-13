@@ -1,0 +1,39 @@
+{
+ "id": "necro",
+ "name": "Necromancer",
+ "blurb": "The dead owe her favors. She collects in skeletons.",
+ "seed": 707,
+ "build": {
+  "height": 0.86,
+  "bulk": 0.85,
+  "head": 1.05,
+  "arms": 1.0,
+  "legs": 1.0
+ },
+ "colors": {
+  "skin": "#b8c4b0",
+  "hair": "#1c1a20",
+  "main": "#2c2a34",
+  "dark": "#18161e",
+  "trim": "#8fe05c",
+  "cloth": "#2c2a34",
+  "metal": "#6a6460",
+  "eye": "#8fe05c",
+  "glow": "#8fe05c"
+ },
+ "head": "skullhood",
+ "hair": "none",
+ "weapon": "tome",
+ "offhand": "lantern",
+ "armor": "robe",
+ "texture": "",
+ "fx": "poison",
+ "glow": 1.8,
+ "features": [
+  "glow_eyes",
+  "skull_charms",
+  "chain",
+  "spikes",
+  "runes"
+ ]
+}

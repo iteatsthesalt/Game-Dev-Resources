@@ -1,0 +1,41 @@
+{
+ "id": "knight",
+ "name": "Knight",
+ "blurb": "Steel and nerve. Built to take a beating and keep swinging.",
+ "seed": 101,
+ "build": {
+  "height": 0.9,
+  "bulk": 1.15,
+  "head": 1.0,
+  "arms": 1.0,
+  "legs": 1.0
+ },
+ "colors": {
+  "skin": "#e8b48c",
+  "hair": "#6b4428",
+  "main": "#8fa3b8",
+  "dark": "#55677c",
+  "trim": "#2f5fa8",
+  "cloth": "#2f5fa8",
+  "metal": "#b3b0b4",
+  "eye": "#1a1214",
+  "glow": "#7ab8ff"
+ },
+ "head": "helm",
+ "hair": "short",
+ "weapon": "sword",
+ "offhand": "shield",
+ "armor": "plate",
+ "texture": "plate",
+ "fx": "holy",
+ "glow": 1.2,
+ "features": [
+  "pauldrons",
+  "tabard",
+  "belt",
+  "greaves",
+  "kneepads",
+  "plume",
+  "cape"
+ ]
+}

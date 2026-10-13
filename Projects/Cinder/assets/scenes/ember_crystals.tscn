@@ -1,0 +1,25 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="ArrayMesh" path="res://assets/vox/ember_crystals.vox" id="1_6yq5u"]
+[ext_resource type="Script" path="res://assets/ember_light.gd" id="2_7myj1"]
+
+[sub_resource type="ConvexPolygonShape3D" id="ConvexPolygonShape3D_q32ne"]
+points = PackedVector3Array(0.915045, 0.0641885, -0.213744, -0.7813, 0.0587153, 0.239099, -0.75, 0.0850421, -0.569883, 0.104621, 2.70883, 0.0846628, -0.108464, 0.960256, 0.852679, -0.364517, 2.02629, -0.76827, -0.791037, 1.77, 0.340611, 0.75, 0.0486837, 0.483957, 0.530966, 1.89828, 0.63936, 0.530966, 1.34375, -0.64021, -0.02323, 0.149439, -0.896329, -0.52219, 0.00831795, 0.625, 0.595171, 0.0313, -0.616369, -0.791037, 0.192198, -0.64021, 0.957837, 0.277449, 0.127463, -0.833829, 0.23469, 0.468671, 0.403115, 2.06878, 0.63936, -0.0658469, 2.70883, -0.085684, -0.505701, 0.0460112, -0.8125, 0.530966, 2.06878, 0.55393, -0.736827, 1.74292, 0.4375, 0.104621, 2.70883, -0.085684, -0.193873, 1.088, 0.852679, -0.430039, 2, -0.739519, 0.573758, 0.277449, -0.72564, 0.659168, 0.31994, 0.596559, -0.577601, 0.192198, -0.853529, -0.791037, 0.960256, -0.341632, 0.915045, 0.277449, 0.383412, -0.0658469, 2.70883, 0.0846628, -0.663186, 0.23469, 0.63936, 0.184926, 0.0313, 0.613868)
+
+[node name="EmberCrystals" type="Node3D"]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, 0, 0)
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = ExtResource("1_6yq5u")
+
+[node name="Body" type="StaticBody3D" parent="."]
+
+[node name="Shape" type="CollisionShape3D" parent="Body"]
+shape = SubResource("ConvexPolygonShape3D_q32ne")
+
+[node name="EmberLight" type="OmniLight3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.0522134, 1.21212, -0.0147485)
+light_color = Color(0.90845, 0.501358, 0.285952, 1)
+light_energy = 1.4
+omni_attenuation = 1.4
+script = ExtResource("2_7myj1")

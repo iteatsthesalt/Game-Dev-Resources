@@ -1,0 +1,40 @@
+{
+ "id": "berserker",
+ "name": "Berserker",
+ "blurb": "The closer to death, the harder he hits. Then he hits harder.",
+ "seed": 505,
+ "build": {
+  "height": 0.92,
+  "bulk": 1.4,
+  "head": 1.0,
+  "arms": 1.1,
+  "legs": 0.95
+ },
+ "colors": {
+  "skin": "#d79c74",
+  "hair": "#c4501f",
+  "main": "#7a5a3a",
+  "dark": "#4a3424",
+  "trim": "#d8d0c0",
+  "cloth": "#7a2a24",
+  "metal": "#9a9693",
+  "eye": "#1a1214",
+  "glow": "#ff4630"
+ },
+ "head": "horns",
+ "hair": "long",
+ "weapon": "axe",
+ "offhand": "none",
+ "armor": "bare",
+ "texture": "",
+ "fx": "blood",
+ "glow": 1.5,
+ "features": [
+  "beard",
+  "fur_collar",
+  "tattoos",
+  "bracers",
+  "belt",
+  "skull_charms"
+ ]
+}

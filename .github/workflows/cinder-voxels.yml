@@ -1,0 +1,46 @@
+# Rebuilds the Cinderdeep voxel models and preview pictures whenever the
+# project changes (for example after a phone "push"), then saves them back.
+name: Cinder voxel previews
+
+on:
+  push:
+    branches: [ccr-031f1132-nxzsb1]
+    paths:
+      - "Projects/Cinder/**"
+      - "!Projects/Cinder/previews/**"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: cinder-voxels-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install virtual screen and software graphics
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libglx-mesa0 unzip
+
+      - name: Install Godot 4.4.1
+        run: |
+          curl -fsSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.4.1-stable/Godot_v4.4.1-stable_linux.x86_64.zip
+          unzip -q godot.zip -d "$RUNNER_TEMP/godot"
+          echo "GODOT=$RUNNER_TEMP/godot/Godot_v4.4.1-stable_linux.x86_64" >> "$GITHUB_ENV"
+
+      - name: Rebuild models and render previews
+        run: Projects/Cinder/tools/render_previews.sh
+
+      - name: Save results
+        run: |
+          git config user.name "cinder-bot"
+          git config user.email "cinder-bot@users.noreply.github.com"
+          git add Projects/Cinder/previews Projects/Cinder/assets/vox Projects/Cinder/assets/scenes
+          if git diff --cached --quiet; then echo "Nothing new."; exit 0; fi
+          git commit -m "Rebuild voxel models and previews [skip ci]"
+          for i in 1 2 3; do git pull --rebase origin "$GITHUB_REF_NAME" && git push origin "HEAD:$GITHUB_REF_NAME" && break; sleep 5; done
