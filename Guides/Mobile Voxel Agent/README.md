@@ -25,6 +25,15 @@ voxel-agent --session "$SESSION" "a small glowing ember, 8x8x8"
 
 `termux-setup` is safe to re-run. It installs packages, creates the private folders, installs the helpers, writes a LOCAL-only config (no remote section, no API key), makes a project baseline commit, and runs the safety tests. It never downloads a model. Everything below explains each step.
 
+## Home-screen shortcuts: Odysseus Start and End
+
+`shortcuts/` has two Termux:Widget buttons, each with its own icon: **Odysseus-Start** (lit ember) and **Odysseus-Stop** (burnt-out ember). Install the **Termux:Widget** add-on from the same source as Termux, run `bash shortcuts/install-shortcut.sh`, then add a Termux:Widget widget to your home screen.
+
+- **Start** warns if the phone has under about 900 MB of free RAM, keeps Termux awake, runs `~/bin/odysseus-start`, waits for `http://127.0.0.1:7100/` to answer, then opens it in Chrome. Output goes to `~/odysseus-shortcut.log`.
+- **End** runs `~/bin/odysseus-stop` if you have one. Otherwise it stops only processes whose command line mentions "odysseus", prints what it stopped, and releases the wake lock, which frees memory.
+
+The address, port and `odysseus-start` name come from an earlier session's log, not from this phone. If `ls ~/bin` doesn't show `odysseus-start`, the Start button says so. `make_icon.py` redraws the icons. Icons are read from `~/.shortcuts/icons/<script>.png`; if your Termux:Widget version doesn't show them, check the add-on's documentation.
+
 ## Files in this folder
 
 | Path | Purpose |
