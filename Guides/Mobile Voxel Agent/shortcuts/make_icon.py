@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
-"""Draw the Ember voxel launcher icon. Needs Pillow: python make_icon.py [out.png]"""
+"""Draw the Ember voxel launcher icon. Needs Pillow.
+  python make_icon.py ember.png            lit (Start)
+  python make_icon.py ember-off.png --off  burnt out (End)
+"""
 import math
 import random
 import sys
@@ -23,7 +26,7 @@ def lerp(a, b, t):
 glow = Image.new("L", (N, N), 0)
 ImageDraw.Draw(glow).ellipse((N * .12, N * .38, N * .88, N * 1.0), fill=255)
 glow = glow.filter(ImageFilter.GaussianBlur(N * .11))
-img = Image.composite(Image.new("RGB", (N, N), (150, 48, 14)),
+img = Image.composite(Image.new("RGB", (N, N), (46, 42, 42) if '--off' in sys.argv else (150, 48, 14)),
                       Image.new("RGB", (N, N), (14, 8, 7)), glow)
 
 # Flame-shaped voxel stack.
@@ -38,7 +41,8 @@ for z in range(8):
 for _ in range(7):  # drifting sparks
     voxels.add((rng.randint(-3, 3), rng.randint(-3, 3), rng.randint(8, 9)))
 
-COLD, HOT = (122, 31, 14), (255, 190, 50)
+OFF = '--off' in sys.argv
+COLD, HOT = ((40, 36, 36), (120, 112, 108)) if OFF else ((122, 31, 14), (255, 190, 50))
 unit = N * .047
 cx, cy = N * .5, N * .70
 draw = ImageDraw.Draw(img)
@@ -62,4 +66,4 @@ for x, y, z in sorted(voxels, key=lambda v: (v[0] + v[1] + v[2], v[2])):
         draw.polygon(pts, fill=shade(rgb, k), outline=shade(rgb, .3))
 
 img = img.resize((SIZE, SIZE), Image.LANCZOS)
-img.save(sys.argv[1] if len(sys.argv) > 1 else "ember.png")
+img.save(next((a for a in sys.argv[1:] if not a.startswith("--")), "ember.png"))
