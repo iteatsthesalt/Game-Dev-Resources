@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Hive</title>
+<style>
+:root {
+  --bg: #0d0a0f; --panel: #17121a; --line: #2c2230; --text: #e9dfcf; --dim: #8b7f86;
+  --ember: #ff7a2a; --ember2: #ffb35e; --pink: #ff6fb5; --green: #8fe05c; --red: #ff4d5a; --cyan: #7fe8ff;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.4 ui-monospace, "Cascadia Mono", Menlo, Consolas, monospace; }
+html, body { overflow-x: hidden; }
+main { max-width: 980px; margin: 0 auto; padding: 16px; display: grid; gap: 14px; grid-template-columns: minmax(0, 1fr); }
+main > *, .panel > *, .swarm > * { min-width: 0; }
+.caption, .log div, .cell, .judge, .critter small { overflow-wrap: anywhere; }
+h1 { margin: 0; font-size: 22px; letter-spacing: .08em; color: var(--ember2); }
+h1 small { color: var(--dim); font-size: 12px; letter-spacing: 0; }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+textarea { width: 100%; min-height: 64px; background: #0a080c; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 10px; font: inherit; }
+select, button { font: inherit; color: var(--text); background: #221a25; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+button.run { background: var(--ember); color: #1a0904; border-color: var(--ember2); font-weight: 700; }
+button.halt { background: #3a1018; border-color: var(--red); }
+.timer { height: 8px; background: #0a080c; border-radius: 4px; overflow: hidden; flex: 1; min-width: 120px; }
+.timer i { display: block; height: 100%; width: 0; background: linear-gradient(90deg, var(--ember), var(--ember2)); }
+.mascot { color: var(--ember2); white-space: pre; }
+.caption { color: var(--dim); }
+.swarm { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.critter { border: 1px solid var(--line); border-radius: 10px; padding: 10px; background: #120e15; }
+.critter pre { margin: 0; color: var(--green); line-height: 1.1; min-height: 72px; }
+.critter.off pre { color: var(--dim); }
+.critter.rest pre { color: var(--cyan); }
+.critter b { color: var(--ember2); }
+.critter small { color: var(--dim); display: block; }
+.cells { display: flex; flex-wrap: wrap; gap: 8px; }
+.cell { border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; max-width: 100%; }
+.cell.seed { color: var(--dim); }
+.cell.growing { color: var(--green); border-color: var(--green); animation: pulse 1.4s infinite; }
+.cell.checking { color: var(--ember2); border-color: var(--ember2); }
+.cell.wounded { color: var(--red); border-color: var(--red); animation: pulse .8s infinite; }
+.cell.done { color: #1a0904; background: var(--ember); border-color: var(--ember2); }
+.cell.necrotic { color: #555; text-decoration: line-through; border-style: dashed; }
+@keyframes pulse { 50% { opacity: .55; } }
+.judge { border: 1px solid var(--pink); color: var(--pink); border-radius: 10px; padding: 10px; }
+.log { max-height: 260px; overflow: auto; display: grid; gap: 2px; }
+.log div { color: var(--dim); }
+.log div b { color: var(--ember2); font-weight: 400; }
+.legend span { margin-right: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>HIVE <small>· your devices growing AoDJV, one cell at a time</small></h1>
+
+  <section class="panel" style="display:grid;gap:10px">
+    <div class="row"><span class="mascot" id="mascot">(=^･ω･^=)</span><span class="caption" id="caption">resting…</span></div>
+    <textarea id="goal" placeholder="What should the hive build? e.g. a survival hunger and thirst system for AoDJV"></textarea>
+    <div class="row">
+      <select id="minutes">
+        <option value="15">15 minutes</option><option value="30">30 minutes</option>
+        <option value="60" selected>1 hour</option><option value="120">2 hours</option>
+      </select>
+      <button class="run" id="run">run ▸</button>
+      <button class="halt" id="halt">halt</button>
+      <div class="timer"><i id="bar"></i></div>
+      <span id="clock">--:--</span>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between"><b>The swarm</b><span class="caption" id="summary"></span></div>
+    <div class="swarm" id="swarm" style="margin-top:10px"></div>
+  </section>
+
+  <section class="panel">
+    <div class="row" style="justify-content:space-between"><b>Cells (tasks)</b>
+      <span class="caption legend"><span>○ seed</span><span style="color:var(--green)">◍ growing</span><span style="color:var(--red)">✚ wounded</span><span style="color:var(--ember)">● grown</span><span>✕ necrotic</span></span></div>
+    <div class="cells" id="cells" style="margin-top:10px"></div>
+  </section>
+
+  <div class="judge" id="judge" hidden></div>
+
+  <section class="panel"><b>Log</b><div class="log" id="log" style="margin-top:8px"></div></section>
+</main>
+<script>
+const FRAMES = {
+  working: [" /\\_/\\\n( o.o )~\n > ⌨ <", " /\\_/\\\n( -.- )~\n > ⌨ <", " /\\_/\\\n( o.o )~\n  >⌨<"],
+  thinking: [" /\\_/\\\n( °.° ) ?\n /   \\", " /\\_/\\\n( °.° )  ?\n /   \\"],
+  rest: [" /\\_/\\\n( -.- ) z\n /   \\", " /\\_/\\\n( -.- )  Z\n /   \\"],
+  off: [" /\\_/\\\n( x.x )\n /   \\"],
+};
+const MASCOT = ["(=^･ω･^=)", "(=^･ｪ･^=)", "(=^‥^=)"];
+let frame = 0, last = null;
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c]);
+
+function savedCode() { try { return localStorage.getItem("hiveCode") || ""; } catch (e) { return ""; } }
+async function api(path, body) {
+  const opts = body ? { method: "POST", headers: { "Content-Type": "application/json", "X-Hive-Code": savedCode() }, body: JSON.stringify(body) } : {};
+  let r = await fetch(path, opts);
+  if (r.status === 403) {
+    const c = (prompt("Pairing code (shown on the old PC):") || "").trim();
+    try { localStorage.setItem("hiveCode", c); } catch (e) {}
+    opts.headers["X-Hive-Code"] = c;
+    r = await fetch(path, opts);
+  }
+  return r.json();
+}
+
+function render(s) {
+  last = s;
+  const running = s.status === "running";
+  const left = Math.max(0, s.deadline - s.now);
+  $("bar").style.width = running ? (100 * (1 - left / (s.minutes * 60))) + "%" : (s.status === "idle" ? "0" : "100%");
+  $("clock").textContent = running ? Math.floor(left / 60) + ":" + String(Math.floor(left % 60)).padStart(2, "0") : s.status;
+  $("run").disabled = running;
+  if (running && document.activeElement !== $("goal")) $("goal").value = s.goal;
+
+  const busy = Object.values(s.cells).filter((c) => c.alive && c.job);
+  $("caption").textContent = !running ? (s.status === "idle" ? "resting… write a goal and press run" : "finished: " + s.commits + " features grown on " + s.branch)
+    : busy.length ? busy.map((c) => c.name + " is " + c.job).join(" · ") : "waiting for a cell to wake up…";
+
+  const grown = s.tasks.filter((t) => t.state === "done").length;
+  $("summary").textContent = "round " + s.round + " · " + grown + " grown · " + s.commits + " saved" + (s.branch ? " · " + s.branch : "");
+
+  $("swarm").innerHTML = Object.values(s.cells).map((c) => {
+    const kind = !c.alive ? "off" : (c.job || "").startsWith("resting") ? "rest" : c.job ? ((c.job.startsWith("writing") || c.job.startsWith("healing")) ? "working" : "thinking") : "rest";
+    const f = FRAMES[kind][frame % FRAMES[kind].length];
+    return '<div class="critter ' + kind + '"><pre>' + esc(f) + '</pre><b>' + esc(c.name) + '</b>'
+      + '<small>' + esc(c.model || "") + (c.free_mb ? " · " + c.free_mb + " MB free" : "") + '</small>'
+      + '<small>' + esc(!c.alive ? "offline" : c.job || "idle") + ' · ' + (c.done || 0) + ' grown</small></div>';
+  }).join("") || '<span class="caption">No devices yet. Start a cell on each phone.</span>';
+
+  const icon = { seed: "○", growing: "◍", checking: "◌", wounded: "✚", done: "●", necrotic: "✕" };
+  $("cells").innerHTML = s.tasks.map((t) => '<span class="cell ' + t.state + '" title="' + esc(t.detail || "") + '">'
+    + icon[t.state] + " " + esc(t.title) + (t.tries ? " (" + t.tries + " heals)" : "") + "</span>").join("") || '<span class="caption">No cells yet.</span>';
+
+  $("judge").hidden = !s.judge;
+  $("judge").textContent = "judge → next focus: " + s.judge;
+  $("log").innerHTML = s.log.slice().reverse().map((l) => "<div><b>" + new Date(l.t * 1000).toLocaleTimeString() + " " + esc(l.cell) + "</b> " + esc(l.text) + "</div>").join("");
+}
+
+async function poll() {
+  try { render(await api("/api/state")); } catch (e) { $("caption").textContent = "hub not reachable…"; }
+}
+$("run").onclick = async () => { await api("/api/start", { goal: $("goal").value, minutes: +$("minutes").value }); poll(); };
+$("halt").onclick = async () => { await api("/api/halt", {}); poll(); };
+setInterval(() => { frame++; $("mascot").textContent = MASCOT[frame % MASCOT.length]; if (last) render(last); }, 700);
+setInterval(poll, 2500);
+poll();
+</script>
+</body>
+</html>
