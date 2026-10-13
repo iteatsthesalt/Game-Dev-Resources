@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+# Start the local llama.cpp server on loopback only, with small, safe defaults.
+#   voxel-llama ~/models/<model>.gguf [ctx-size]
+# Stop it with Ctrl+C. It listens on 127.0.0.1:8080 and nothing else.
+set -eu
+
+MODEL="${1:-}"
+CTX="${2:-2048}"
+SERVER="${LLAMA_SERVER:-$HOME/src/llama.cpp/build/bin/llama-server}"
+
+if [ -z "$MODEL" ] || [ ! -f "$MODEL" ]; then
+  echo "Usage: voxel-llama /path/to/model.gguf [ctx-size]" >&2
+  exit 2
+fi
+if [ ! -x "$SERVER" ]; then
+  echo "llama-server not found at $SERVER" >&2
+  echo "Build it with: bash termux-setup --llama" >&2
+  exit 1
+fi
+case "$CTX" in
+  ''|*[!0-9]*) echo "ctx-size must be a number" >&2; exit 2 ;;
+esac
+
+exec "$SERVER" --model "$MODEL" --host 127.0.0.1 --port 8080 \
+  --ctx-size "$CTX" --parallel 1

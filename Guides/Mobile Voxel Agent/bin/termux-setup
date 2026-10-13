@@ -1,0 +1,120 @@
+#!/usr/bin/env bash
+# One-shot Termux setup for the voxel agent, LOCAL mode only.
+# Nothing here uses a Claude account or any API key.
+#
+#   bash termux-setup            install packages, folders, helpers, config; run tests
+#   bash termux-setup --llama    also build llama.cpp (slow; 10+ minutes on a phone)
+#   bash termux-setup --skip-pkg skip pkg installs (for machines that are not Termux)
+#
+# Safe to re-run. It never downloads a model, never touches shared storage,
+# and never writes your remote API key.
+set -eu
+
+BUILD_LLAMA=0
+SKIP_PKG=0
+for arg in "$@"; do
+  case "$arg" in
+    --llama) BUILD_LLAMA=1 ;;
+    --skip-pkg) SKIP_PKG=1 ;;
+    *) echo "Usage: termux-setup [--llama] [--skip-pkg]" >&2; exit 2 ;;
+  esac
+done
+
+GUIDE="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+WORKSPACE="$HOME/voxel-workspace"
+CONFIG_DIR="$HOME/.config/voxel-agent"
+BIN="$HOME/.local/bin"
+
+say() { printf '\n== %s\n' "$*"; }
+
+umask 077
+
+if [ "$SKIP_PKG" -eq 0 ]; then
+  say "Installing packages"
+  pkg update -y
+  pkg install -y git python
+  [ "$BUILD_LLAMA" -eq 1 ] && pkg install -y clang cmake ninja
+fi
+
+say "Creating private folders"
+mkdir -p "$BIN" "$CONFIG_DIR" "$HOME/models" "$HOME/src" \
+         "$WORKSPACE/project" "$WORKSPACE/sessions" "$WORKSPACE/logs"
+chmod 700 "$CONFIG_DIR" "$WORKSPACE"
+
+say "Installing helpers into $BIN"
+install -m 700 "$GUIDE/bin/voxel-mode" "$GUIDE/bin/voxel-session" \
+               "$GUIDE/bin/voxel-llama" "$BIN/"
+install -m 700 "$GUIDE/agent/voxel_agent.py" "$BIN/voxel-agent"
+case ":$PATH:" in
+  *":$BIN:"*) ;;
+  *)
+    grep -qs 'local/bin' "$HOME/.bashrc" ||
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$HOME/.bashrc"
+    export PATH="$BIN:$PATH"
+    echo "Added $BIN to PATH (new shells pick it up)."
+    ;;
+esac
+
+say "Writing LOCAL-only config (kept if it already exists)"
+if [ ! -e "$CONFIG_DIR/config.json" ]; then
+  GODOT="$(command -v godot || command -v godot4 || true)"
+  python3 -I - "$GUIDE/agent/config.example.json" "$CONFIG_DIR/config.json" \
+      "$WORKSPACE" "$GODOT" <<'PY'
+import json, sys
+src, dst, workspace, godot = sys.argv[1:5]
+config = json.load(open(src))
+config["workspace"] = workspace
+if godot:
+    config["godot_bin"] = godot
+else:
+    config.pop("godot_bin", None)
+config.pop("remote", None)
+with open(dst, "w") as handle:
+    json.dump(config, handle, indent=2)
+    handle.write("\n")
+PY
+  chmod 600 "$CONFIG_DIR/config.json"
+  [ -n "$GODOT" ] && echo "Godot found: $GODOT" ||
+    echo "No Godot binary found; validate_voxel will say so until you install one."
+else
+  echo "Existing config kept."
+fi
+
+say "Committing a project baseline if the project is empty"
+if [ ! -d "$WORKSPACE/project/.git" ]; then
+  git -C "$WORKSPACE/project" init -q
+  mkdir -p "$WORKSPACE/project/tools"
+  cp "$GUIDE/godot/tools/build_voxel.gd" "$WORKSPACE/project/tools/"
+  [ -e "$WORKSPACE/project/project.godot" ] ||
+    printf 'config_version=5\n\n[application]\nconfig/name="Voxel Workspace"\n' \
+      > "$WORKSPACE/project/project.godot"
+  git -C "$WORKSPACE/project" add -A
+  git -C "$WORKSPACE/project" \
+      -c user.name="voxel-agent" -c user.email="voxel-agent@localhost" \
+      commit -q -m "Baseline before AI sessions"
+fi
+
+say "Running the safety tests"
+( cd "$GUIDE/agent" && python3 -B -m unittest test_voxel_agent 2>&1 | tail -4 )
+
+if [ "$BUILD_LLAMA" -eq 1 ]; then
+  say "Building llama.cpp (this is slow)"
+  if [ ! -d "$HOME/src/llama.cpp" ]; then
+    git clone --depth 1 https://github.com/ggml-org/llama.cpp.git "$HOME/src/llama.cpp"
+  fi
+  cd "$HOME/src/llama.cpp"
+  cmake -S . -B build -G Ninja -DGGML_OPENMP=OFF
+  cmake --build build -j2
+fi
+
+say "Done"
+voxel-mode off
+cat <<EOF
+Mode is OFF. Next:
+  1. Put a .gguf model in $HOME/models/
+  2. Terminal A:  voxel-llama $HOME/models/<your-model>.gguf
+  3. Terminal B:  voxel-mode local
+                  SESSION="\$(voxel-session new)"
+                  voxel-agent --session "\$SESSION" "a small glowing ember, 8x8x8"
+  4. When finished: voxel-mode off
+EOF
