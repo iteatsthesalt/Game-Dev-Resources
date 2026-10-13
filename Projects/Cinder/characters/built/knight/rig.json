@@ -1,0 +1,226 @@
+{
+	"blurb": "Steel and nerve. Built to take a beating and keep swinging.",
+	"detail": 2,
+	"fx": "holy",
+	"glow": "#7ab8ff",
+	"grid": 64,
+	"height": 57.6,
+	"id": "knight",
+	"name": "Knight",
+	"order": [
+		"pelvis",
+		"torso",
+		"head",
+		"arm_up_l",
+		"arm_up_r",
+		"arm_lo_l",
+		"arm_lo_r",
+		"leg_up_l",
+		"leg_up_r",
+		"leg_lo_l",
+		"leg_lo_r",
+		"weapon",
+		"offhand",
+		"cape"
+	],
+	"parts": {
+		"arm_lo_l": {
+			"file": "arm_lo_l.vox",
+			"joint": [
+				42.0,
+				33.0,
+				33.0
+			],
+			"offset": [
+				8.0,
+				12.0,
+				6.0
+			],
+			"parent": "arm_up_l"
+		},
+		"arm_lo_r": {
+			"file": "arm_lo_r.vox",
+			"joint": [
+				22.0,
+				33.0,
+				33.0
+			],
+			"offset": [
+				8.0,
+				12.0,
+				6.0
+			],
+			"parent": "arm_up_r"
+		},
+		"arm_up_l": {
+			"file": "arm_up_l.vox",
+			"joint": [
+				41.0,
+				43.0,
+				32.0
+			],
+			"offset": [
+				10.0,
+				20.0,
+				10.0
+			],
+			"parent": "torso"
+		},
+		"arm_up_r": {
+			"file": "arm_up_r.vox",
+			"joint": [
+				23.0,
+				43.0,
+				32.0
+			],
+			"offset": [
+				14.0,
+				20.0,
+				10.0
+			],
+			"parent": "torso"
+		},
+		"cape": {
+			"file": "cape.vox",
+			"joint": [
+				32.0,
+				44.0,
+				27.0
+			],
+			"offset": [
+				24.0,
+				74.0,
+				16.0
+			],
+			"parent": "torso"
+		},
+		"head": {
+			"file": "head.vox",
+			"joint": [
+				32.0,
+				46.0,
+				32.0
+			],
+			"offset": [
+				16.0,
+				6.0,
+				16.0
+			],
+			"parent": "torso"
+		},
+		"leg_lo_l": {
+			"file": "leg_lo_l.vox",
+			"joint": [
+				36.0,
+				14.0,
+				32.0
+			],
+			"offset": [
+				8.0,
+				30.0,
+				8.0
+			],
+			"parent": "leg_up_l"
+		},
+		"leg_lo_r": {
+			"file": "leg_lo_r.vox",
+			"joint": [
+				28.0,
+				14.0,
+				32.0
+			],
+			"offset": [
+				8.0,
+				30.0,
+				8.0
+			],
+			"parent": "leg_up_r"
+		},
+		"leg_up_l": {
+			"file": "leg_up_l.vox",
+			"joint": [
+				36.0,
+				26.0,
+				32.0
+			],
+			"offset": [
+				8.0,
+				28.0,
+				10.0
+			],
+			"parent": "pelvis"
+		},
+		"leg_up_r": {
+			"file": "leg_up_r.vox",
+			"joint": [
+				28.0,
+				26.0,
+				32.0
+			],
+			"offset": [
+				8.0,
+				28.0,
+				10.0
+			],
+			"parent": "pelvis"
+		},
+		"offhand": {
+			"file": "offhand.vox",
+			"joint": [
+				42.0,
+				31.0,
+				41.0
+			],
+			"offset": [
+				14.0,
+				18.0,
+				4.0
+			],
+			"parent": "arm_lo_l"
+		},
+		"pelvis": {
+			"file": "pelvis.vox",
+			"joint": [
+				32.0,
+				26.0,
+				32.0
+			],
+			"offset": [
+				18.0,
+				24.0,
+				14.0
+			],
+			"parent": ""
+		},
+		"torso": {
+			"file": "torso.vox",
+			"joint": [
+				32.0,
+				32.0,
+				32.0
+			],
+			"offset": [
+				16.0,
+				4.0,
+				12.0
+			],
+			"parent": "pelvis"
+		},
+		"weapon": {
+			"file": "weapon.vox",
+			"joint": [
+				22.0,
+				31.0,
+				41.0
+			],
+			"offset": [
+				10.0,
+				10.0,
+				4.0
+			],
+			"parent": "arm_lo_r"
+		}
+	},
+	"weapon": "sword",
+	"weapon_hand": "r"
+}

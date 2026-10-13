@@ -1,0 +1,39 @@
+{
+ "id": "storm",
+ "name": "Stormcaller",
+ "blurb": "Lightning arcs from foe to foe. The air tastes of copper.",
+ "seed": 606,
+ "build": {
+  "height": 0.88,
+  "bulk": 0.95,
+  "head": 1.0,
+  "arms": 1.0,
+  "legs": 1.02
+ },
+ "colors": {
+  "skin": "#e2b896",
+  "hair": "#dfe8f2",
+  "main": "#3a5e9a",
+  "dark": "#22385e",
+  "trim": "#fff27a",
+  "cloth": "#3a5e9a",
+  "metal": "#b3b8c4",
+  "eye": "#9ff6ff",
+  "glow": "#9ff6ff"
+ },
+ "head": "cowl",
+ "hair": "none",
+ "weapon": "stormrod",
+ "offhand": "orb",
+ "armor": "cloth",
+ "texture": "",
+ "fx": "storm",
+ "glow": 2.0,
+ "features": [
+  "glow_eyes",
+  "runes",
+  "pauldrons",
+  "sash",
+  "cape"
+ ]
+}

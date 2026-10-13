@@ -1,0 +1,40 @@
+{
+ "id": "ranger",
+ "name": "Ranger",
+ "blurb": "Quick on her feet, deadly at range. Arrows find the gaps.",
+ "seed": 202,
+ "build": {
+  "height": 0.86,
+  "bulk": 0.85,
+  "head": 1.05,
+  "arms": 1.05,
+  "legs": 1.08
+ },
+ "colors": {
+  "skin": "#d9a07a",
+  "hair": "#9a4d22",
+  "main": "#4f7a3a",
+  "dark": "#2f4d24",
+  "trim": "#8a5a32",
+  "cloth": "#4f7a3a",
+  "metal": "#9a9693",
+  "eye": "#1a1214",
+  "glow": "#b8f070"
+ },
+ "head": "hood",
+ "hair": "braids",
+ "weapon": "bow",
+ "offhand": "none",
+ "armor": "leather",
+ "texture": "",
+ "fx": "poison",
+ "glow": 1.0,
+ "features": [
+  "quiver",
+  "bracers",
+  "belt",
+  "pouches",
+  "scarf",
+  "cape"
+ ]
+}

@@ -1,0 +1,40 @@
+{
+ "id": "rogue",
+ "name": "Rogue",
+ "blurb": "In, out, gone. Twin daggers and a talent for vanishing.",
+ "seed": 404,
+ "build": {
+  "height": 0.85,
+  "bulk": 0.85,
+  "head": 1.0,
+  "arms": 1.05,
+  "legs": 1.05
+ },
+ "colors": {
+  "skin": "#c99272",
+  "hair": "#2a2230",
+  "main": "#4a3a5e",
+  "dark": "#2a2036",
+  "trim": "#b04060",
+  "cloth": "#3a2c4a",
+  "metal": "#b3b0b4",
+  "eye": "#ffe08a",
+  "glow": "#ffe08a"
+ },
+ "head": "mask",
+ "hair": "topknot",
+ "weapon": "daggers",
+ "offhand": "dagger",
+ "armor": "leather",
+ "texture": "",
+ "fx": "shadow",
+ "glow": 1.6,
+ "features": [
+  "glow_eyes",
+  "scarf",
+  "bracers",
+  "belt",
+  "pouches",
+  "sash"
+ ]
+}
