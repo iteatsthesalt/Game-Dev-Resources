@@ -10,6 +10,21 @@ The AI gets no shell. It can only return structured JSON requests. The controlle
 
 > **Unverified details.** Live sources couldn't be checked when this guide was written. It doesn't name exact 2026 Termux or Godot package versions, and no single authoritative Godot project called **Cinder** could be identified. Where a capability matters, the guide gives a command that checks for it before you turn it on.
 
+## Quick start (local model only, no Claude account)
+
+In Termux, from a clone of this repository:
+
+```bash
+cd "Game-Dev-Resources/Guides/Mobile Voxel Agent"
+bash bin/termux-setup            # add --llama to also build llama.cpp (slow)
+voxel-llama ~/models/<your-model>.gguf     # terminal A: server on 127.0.0.1 only
+voxel-mode local                           # terminal B
+SESSION="$(voxel-session new)"
+voxel-agent --session "$SESSION" "a small glowing ember, 8x8x8"
+```
+
+`termux-setup` is safe to re-run. It installs packages, creates the private folders, installs the helpers, writes a LOCAL-only config (no remote section, no API key), makes a project baseline commit, and runs the safety tests. It never downloads a model. Everything below explains each step.
+
 ## Files in this folder
 
 | Path | Purpose |
@@ -19,6 +34,8 @@ The AI gets no shell. It can only return structured JSON requests. The controlle
 | [`agent/config.example.json`](agent/config.example.json) | Example configuration. |
 | [`bin/voxel-mode`](bin/voxel-mode) | OFF / LOCAL / REMOTE switch. |
 | [`bin/voxel-session`](bin/voxel-session) | Creates, lists, or discards disposable worktrees. |
+| [`bin/termux-setup`](bin/termux-setup) | One-shot, re-runnable Termux setup for LOCAL mode. |
+| [`bin/voxel-llama`](bin/voxel-llama) | Starts llama.cpp bound to `127.0.0.1` with small defaults. |
 | [`godot/tools/build_voxel.gd`](godot/tools/build_voxel.gd) | Headless Godot script that re-validates a spec and builds a `MultiMesh` scene. |
 
 ---
