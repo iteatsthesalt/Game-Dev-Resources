@@ -8,7 +8,11 @@ extends SceneTree
 ## Exits with code 0 when every test passes. On Godot 4.5+ a test also fails if it
 ## logs an engine or script error.
 
-const Suite := preload("res://tests/test_effects.gd")
+const SUITES: Array[GDScript] = [
+	preload("res://tests/test_effects.gd"),
+	preload("res://tests/test_cellular.gd"),
+	preload("res://tests/test_demo.gd"),
+]
 
 # Collects engine and script errors so a test that logs one fails. Logger only exists
 # on Godot 4.5+, so it's compiled from source at runtime to keep older editors happy.
@@ -44,15 +48,6 @@ func _initialize() -> void:
 func _run() -> void:
 	await process_frame  # Let the root become ready so _ready() runs on added nodes.
 	var filter := OS.get_cmdline_user_args()
-	var suite: Suite = Suite.new()
-	suite.tree = self
-	var names: Array[String] = []
-	for method in suite.get_method_list():
-		var method_name: String = method.name
-		if method_name.begins_with("test_") and not names.has(method_name):
-			if filter.is_empty() or Array(filter).any(func(f: String) -> bool: return method_name.contains(f)):
-				names.append(method_name)
-
 	var logger: RefCounted = null
 	if ClassDB.class_exists(&"Logger"):
 		var script := GDScript.new()
@@ -62,22 +57,33 @@ func _run() -> void:
 		OS.call(&"add_logger", logger)
 
 	var started := Time.get_ticks_msec()
-	for method_name in names:
-		suite.begin(method_name)
-		await suite.call(method_name)
-		await suite.end()
-		if logger != null:
-			for error in logger.take():
-				suite.check(false, "engine error: " + error)
-		var failures := suite.failures_for(method_name)
-		if failures.is_empty():
-			print("  ok    ", method_name)
-		else:
-			print("  FAIL  ", method_name)
-			for failure in failures:
-				print("          ", failure)
+	var total := 0
+	var failed := 0
+	for suite_script in SUITES:
+		var suite = suite_script.new()
+		suite.tree = self
+		var names: Array[String] = []
+		for method in suite.get_method_list():
+			var method_name: String = method.name
+			if method_name.begins_with("test_") and not names.has(method_name):
+				if filter.is_empty() or Array(filter).any(func(f: String) -> bool: return method_name.contains(f)):
+					names.append(method_name)
+		for method_name in names:
+			suite.begin(method_name)
+			await suite.call(method_name)
+			await suite.end()
+			if logger != null:
+				for error in logger.take():
+					suite.check(false, "engine error: " + error)
+			var failures: Array = suite.failures_for(method_name)
+			total += 1
+			if failures.is_empty():
+				print("  ok    ", method_name)
+			else:
+				failed += 1
+				print("  FAIL  ", method_name)
+				for failure in failures:
+					print("          ", failure)
 
-	var failed := suite.failed_tests()
-	print("\n%d tests, %d passed, %d failed (%d ms)" % [
-		names.size(), names.size() - failed, failed, Time.get_ticks_msec() - started])
-	quit(1 if failed > 0 or names.is_empty() else 0)
+	print("\n%d tests, %d passed, %d failed (%d ms)" % [total, total - failed, failed, Time.get_ticks_msec() - started])
+	quit(1 if failed > 0 or total == 0 else 0)

@@ -244,6 +244,99 @@ static func play_sound(stream: AudioStream, at: Variant = null, volume_db: float
 	return player
 
 
+# --- 3D impacts ------------------------------------------------------------------
+
+## A flash of light at [param at] that fades out: explosions, spell hits, sparks.
+static func impact_light(at: Vector3, color: Color, energy: float = 4.0, reach: float = 5.0,
+		duration: float = 0.35, parent: Node = null) -> OmniLight3D:
+	if parent == null:
+		parent = _default_parent()
+	if parent == null:
+		return null
+	var light := OmniLight3D.new()
+	light.light_color = color
+	light.light_energy = energy
+	light.omni_range = reach
+	light.shadow_enabled = false
+	parent.add_child(light)
+	light.global_position = at
+	var tween := light.create_tween()
+	tween.tween_property(light, "light_energy", 0.0, duration).set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+	tween.tween_callback(light.queue_free)
+	return light
+
+
+## A glowing ring that expands flat across the ground to [param radius] metres and fades.
+static func shockwave(at: Vector3, color: Color, radius: float = 3.0, duration: float = 0.4,
+		parent: Node = null) -> MeshInstance3D:
+	if parent == null:
+		parent = _default_parent()
+	if parent == null:
+		return null
+	var torus := TorusMesh.new()
+	torus.inner_radius = 0.86
+	torus.outer_radius = 1.0
+	torus.rings = 40
+	torus.ring_segments = 6
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	material.albedo_color = Color(color, 0.9)
+	var ring := MeshInstance3D.new()
+	ring.mesh = torus
+	ring.material_override = material
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(ring)
+	ring.global_position = at
+	ring.scale = Vector3(0.1, 0.05, 0.1)
+	var tween := ring.create_tween().set_parallel()
+	tween.tween_property(ring, "scale", Vector3(radius, radius * 0.25, radius), duration) \
+		.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_CUBIC)
+	tween.tween_property(material, "albedo_color:a", 0.0, duration).set_ease(Tween.EASE_IN)
+	tween.chain().tween_callback(ring.queue_free)
+	return ring
+
+
+## Voxel debris flying out from [param at] and falling, then gone: hits, breaking
+## blocks, a cell colony bursting.
+static func voxel_burst(at: Vector3, color: Color, amount: int = 24, voxel_size: float = 0.08,
+		speed: float = 3.0, parent: Node = null) -> CPUParticles3D:
+	if parent == null:
+		parent = _default_parent()
+	if parent == null:
+		return null
+	var particles := CPUParticles3D.new()
+	particles.one_shot = true
+	particles.explosiveness = 1.0
+	particles.amount = maxi(amount, 1)
+	particles.lifetime = 0.9
+	particles.direction = Vector3.UP
+	particles.spread = 75.0
+	particles.initial_velocity_min = speed * 0.5
+	particles.initial_velocity_max = speed
+	particles.gravity = Vector3(0.0, -9.8, 0.0)
+	particles.angular_velocity_min = -360.0
+	particles.angular_velocity_max = 360.0
+	var shrink := Curve.new()
+	shrink.add_point(Vector2(0.0, 1.0))
+	shrink.add_point(Vector2(1.0, 0.0))
+	particles.scale_amount_curve = shrink
+	var box := BoxMesh.new()
+	box.size = Vector3.ONE * voxel_size
+	var material := StandardMaterial3D.new()
+	material.albedo_color = color
+	material.emission_enabled = true
+	material.emission = color
+	material.emission_energy_multiplier = 1.5
+	box.material = material
+	particles.mesh = box
+	parent.add_child(particles)
+	particles.global_position = at
+	_autostart(particles, 0.0)
+	return particles
+
+
 # --- Internals -------------------------------------------------------------------
 
 static func _server() -> Node:

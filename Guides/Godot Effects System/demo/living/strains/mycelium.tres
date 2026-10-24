@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/mended.tres" id="1_mb775"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/motes.tscn" id="2_ykmqi"]
+[ext_resource type="Resource" path="res://demo/living/substrates/loam.tres" id="3_1o6sd"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="4_cq40f"]
+
+[resource]
+script = ExtResource("4_cq40f")
+id = &"mycelium"
+display_name = "Mycelium"
+tags = Array[StringName]([&"mycelium", &"life"])
+seed_energy = 8.0
+max_energy = 12.0
+metabolism = 0.35
+feeds_on = &"organic"
+feed_rate = 1.2
+rest_energy = 1.0
+wake_energy = 2.0
+mature_time = 1.0
+split_energy = 6.0
+division_cost = 0.5
+spread_up = 0.0
+spread_down = 0.1
+infection_effect = ExtResource("1_mb775")
+infection_cost = 0.5
+host_capacity = 4.0
+shed_energy = 0.0
+root_regen = 7.0
+supply_rate = 0.6
+residue = ExtResource("3_1o6sd")
+shape = 2
+color = Color(0.18431373, 0.72156864, 0.5803922, 1)
+hot_color = Color(0.84705883, 1, 0.95686275, 1)
+emission = 2.2
+cell_scale = 0.96
+light_color = Color(0.24705882, 0.8392157, 0.6901961, 1)
+light_energy = 0.8
+max_lights = 2
+particles = ExtResource("2_ykmqi")
+max_emitters = 5

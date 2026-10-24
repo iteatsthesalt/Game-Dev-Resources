@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Reaction" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/reaction.gd" id="1_asvtj"]
+
+[resource]
+script = ExtResource("1_asvtj")
+tag_a = &"blight"
+tag_b = &"mycelium"
+chance = 0.5
+wound_a = 1
+wound_b = 1
+wound_energy = 1.5

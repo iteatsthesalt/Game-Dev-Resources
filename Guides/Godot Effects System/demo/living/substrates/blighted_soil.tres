@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_dj40k"]
+
+[resource]
+script = ExtResource("1_dj40k")
+id = &"blighted_soil"
+display_name = "Blighted Soil"
+nutrients = {
+&"organic": 4.0
+}
+color = Color(0.23921569, 0.17254902, 0.26666668, 1)
+shape = 2
+slab_height = 0.22

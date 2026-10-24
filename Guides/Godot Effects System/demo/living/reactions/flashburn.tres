@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="Reaction" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/flashburn.tres" id="1_52cf2"]
+[ext_resource type="Resource" path="res://demo/living/strains/ember.tres" id="2_rekj2"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/reaction.gd" id="3_yqla6"]
+
+[resource]
+script = ExtResource("3_yqla6")
+tag_a = &"fire"
+tag_b = &"blight"
+product = ExtResource("2_rekj2")
+efficiency = 0.9
+burst_effect = ExtResource("1_52cf2")
+burst_radius = 2.0
+burst_color = Color(1, 0.7019608, 0.36862746, 1)
+shake = 0.25

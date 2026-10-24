@@ -1,0 +1,20 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/substrates/ash.tres" id="1_fdbfy"]
+[ext_resource type="Resource" path="res://demo/living/substrates/loam.tres" id="2_bokwa"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="3_50nsc"]
+
+[resource]
+script = ExtResource("3_50nsc")
+id = &"ash_grass"
+display_name = "Ash Grass"
+nutrients = {
+&"fuel": 14.0,
+&"organic": 8.0
+}
+residues = {
+&"fire": ExtResource("1_fdbfy"),
+&"mycelium": ExtResource("2_bokwa")
+}
+color = Color(0.24705882, 0.2509804, 0.17254902, 1)
+shape = 2

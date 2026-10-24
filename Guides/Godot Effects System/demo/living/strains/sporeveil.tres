@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/spore_sickness.tres" id="1_hm0yi"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/spores.tscn" id="2_0ahro"]
+[ext_resource type="Resource" path="res://demo/living/substrates/blighted_soil.tres" id="3_l3pvh"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="4_fdhph"]
+
+[resource]
+script = ExtResource("4_fdhph")
+id = &"sporeveil"
+display_name = "Sporeveil"
+tags = Array[StringName]([&"blight.veil", &"corruption"])
+seed_energy = 8.0
+max_energy = 14.0
+metabolism = 0.5
+feeds_on = &"organic"
+feed_rate = 1.8
+rest_energy = 1.0
+wake_energy = 2.0
+mature_time = 1.0
+split_energy = 5.0
+division_cost = 0.5
+spread_up = 0.6
+spread_down = 0.2
+infection_effect = ExtResource("1_hm0yi")
+infection_interval = 1.0
+infection_cost = 1.5
+host_capacity = 10.0
+shed_energy = 2.5
+shed_interval = 1.0
+root_regen = 8.0
+supply_rate = 0.5
+residue = ExtResource("3_l3pvh")
+shape = 1
+color = Color(0.41568628, 0.16470589, 0.47843137, 1)
+hot_color = Color(0.8784314, 0.5411765, 0.9607843, 1)
+emission = 1.8
+cell_scale = 0.7
+bob = 0.5
+light_color = Color(0.7058824, 0.3529412, 0.8392157, 1)
+light_energy = 1.2
+max_lights = 2
+particles = ExtResource("2_0ahro")
+max_emitters = 8

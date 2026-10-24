@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_xoma7"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/tint_cue.gd" id="2_ew742"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="3_uu5hd"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="4_12mx5"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="5_u84bi"]
+
+[sub_resource type="Resource" id="Resource_fuw1g"]
+script = ExtResource("2_ew742")
+color = Color(0.65882355, 0.89411765, 1, 1)
+events = 0
+
+[sub_resource type="Resource" id="Resource_ttlfk"]
+script = ExtResource("3_uu5hd")
+text = "Frostbite"
+color = Color(0.7490196, 0.91764706, 1, 1)
+offset = Vector3(0, 2.1, 0)
+
+[sub_resource type="Resource" id="Resource_yqyo4"]
+script = ExtResource("4_12mx5")
+stat = &"speed"
+operation = 2
+value = 0.6
+
+[resource]
+script = ExtResource("5_u84bi")
+id = &"frostbite"
+display_name = "Frostbite"
+description = "40% slower per stack."
+color = Color(0.56078434, 0.83137256, 1, 1)
+duration = 3.0
+stack_mode = 1
+max_stacks = 2
+modifiers = Array[ExtResource("4_12mx5")]([SubResource("Resource_yqyo4")])
+tags = Array[StringName]([&"cold.frostbite", &"debuff"])
+cues = Array[ExtResource("1_xoma7")]([SubResource("Resource_fuw1g"), SubResource("Resource_ttlfk")])

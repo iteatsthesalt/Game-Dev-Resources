@@ -6,15 +6,14 @@ config_version=5
 [application]
 
 config/name="Godot Effects System"
-config/description="Status effects, stat modifiers and game-feel cues for Godot 4."
+config/description="Living effects for 3D Godot games: strains that grow, fight and scar the world, status effects and game feel."
 run/main_scene="res://demo/demo.tscn"
 config/features=PackedStringArray("4.3")
 
 [display]
 
-window/size/viewport_width=1152
-window/size/viewport_height=648
-window/stretch/mode="canvas_items"
+window/size/viewport_width=1600
+window/size/viewport_height=900
 
 [rendering]
 

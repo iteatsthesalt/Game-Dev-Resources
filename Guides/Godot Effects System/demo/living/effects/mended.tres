@@ -1,0 +1,30 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_1w0dj"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="2_oqv1u"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="3_6jrjd"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="4_jkkse"]
+
+[sub_resource type="Resource" id="Resource_5rhr2"]
+script = ExtResource("2_oqv1u")
+text = "{signed}"
+color = Color(0.49803922, 1, 0.84705883, 1)
+offset = Vector3(0, 2.1, 0)
+events = 2
+
+[sub_resource type="Resource" id="Resource_ldns1"]
+script = ExtResource("3_6jrjd")
+stat = &"health"
+value = 2.0
+
+[resource]
+script = ExtResource("4_jkkse")
+id = &"mended"
+display_name = "Mended"
+description = "The mycelium knits your wounds."
+color = Color(0.24705882, 0.8392157, 0.6901961, 1)
+duration = 2.0
+period = 0.5
+periodic_changes = Array[ExtResource("3_6jrjd")]([SubResource("Resource_ldns1")])
+tags = Array[StringName]([&"buff.mended"])
+cues = Array[ExtResource("1_1w0dj")]([SubResource("Resource_5rhr2")])
