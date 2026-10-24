@@ -1,0 +1,44 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_umtop"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/tint_cue.gd" id="2_ahqir"]
+[ext_resource type="PackedScene" path="res://demo/fx/drips.tscn" id="3_mybvn"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/scene_cue.gd" id="4_spgxi"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="5_7ohwe"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="6_ee17k"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="7_torfk"]
+
+[sub_resource type="Resource" id="Resource_72quf"]
+script = ExtResource("2_ahqir")
+color = Color(0.7, 0.82, 1, 1)
+events = 0
+
+[sub_resource type="Resource" id="Resource_iaa5m"]
+script = ExtResource("4_spgxi")
+scene = ExtResource("3_mybvn")
+mode = 1
+offset = Vector3(0, -50, 0)
+
+[sub_resource type="Resource" id="Resource_mquta"]
+script = ExtResource("5_7ohwe")
+text = "Wet"
+color = Color(0.55, 0.8, 1, 1)
+offset = Vector3(0, -100, 0)
+
+[sub_resource type="Resource" id="Resource_yhpsm"]
+script = ExtResource("6_ee17k")
+stat = &"speed"
+operation = 2
+value = 0.85
+
+[resource]
+script = ExtResource("7_torfk")
+id = &"wet"
+display_name = "Wet"
+description = "15% slower. Puts out fire and conducts electricity."
+color = Color(0.4, 0.7, 1, 1)
+duration = 6.0
+modifiers = Array[ExtResource("6_ee17k")]([SubResource("Resource_yhpsm")])
+tags = Array[StringName]([&"wet"])
+removes_tags = Array[StringName]([&"debuff.fire"])
+cues = Array[ExtResource("1_umtop")]([SubResource("Resource_72quf"), SubResource("Resource_iaa5m"), SubResource("Resource_mquta")])

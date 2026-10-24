@@ -59,6 +59,7 @@ Check each repository's license and any separate notices for bundled media and t
 ## Guides
 
 - [Mobile Voxel Agent](./Guides/Mobile%20Voxel%20Agent/): set up Termux, Godot 4 and a local or remote AI model on an Android phone to generate voxel assets, without giving the model a shell. Includes the controller, boundary tests, and a headless Godot builder.
+- [Godot Effects System](./Guides/Godot%20Effects%20System/): a drop-in GDScript addon for Godot 4.3+. It handles status effects (stacking, durations, damage over time, tags, immunities and stat modifiers) and game feel (screen shake, hit-stop, flashes, tints, particles and damage numbers). Includes a playable demo and headless tests.
 
 ## Assets and reference collections
 

@@ -1,0 +1,37 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_e6e6x"]
+[ext_resource type="PackedScene" path="res://demo/fx/haste_trail.tscn" id="2_umsu4"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/scene_cue.gd" id="3_jdu6w"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="4_a1w0i"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="5_83mdp"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="6_hkglx"]
+
+[sub_resource type="Resource" id="Resource_mpp5a"]
+script = ExtResource("3_jdu6w")
+scene = ExtResource("2_umsu4")
+mode = 1
+offset = Vector3(0, -28, 0)
+
+[sub_resource type="Resource" id="Resource_e0wo4"]
+script = ExtResource("4_a1w0i")
+text = "Haste!"
+color = Color(1, 0.95, 0.55, 1)
+offset = Vector3(0, -100, 0)
+
+[sub_resource type="Resource" id="Resource_t6e5b"]
+script = ExtResource("5_83mdp")
+stat = &"speed"
+operation = 1
+value = 0.6
+
+[resource]
+script = ExtResource("6_hkglx")
+id = &"haste"
+display_name = "Haste"
+description = "60% faster for 5 seconds. Removes slows."
+color = Color(1, 0.95, 0.5, 1)
+modifiers = Array[ExtResource("5_83mdp")]([SubResource("Resource_t6e5b")])
+tags = Array[StringName]([&"buff.haste"])
+removes_tags = Array[StringName]([&"debuff.slow"])
+cues = Array[ExtResource("1_e6e6x")]([SubResource("Resource_mpp5a"), SubResource("Resource_e0wo4")])

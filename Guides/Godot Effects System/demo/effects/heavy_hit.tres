@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_cgn3g"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/flash_cue.gd" id="2_w45cg"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/shake_cue.gd" id="3_ax6bq"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/hitstop_cue.gd" id="4_bcypf"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="5_0im0f"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="6_3s6ob"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="7_hg0kv"]
+
+[sub_resource type="Resource" id="Resource_08ty6"]
+script = ExtResource("2_w45cg")
+
+[sub_resource type="Resource" id="Resource_sj0gu"]
+script = ExtResource("3_ax6bq")
+trauma = 0.45
+
+[sub_resource type="Resource" id="Resource_845ps"]
+script = ExtResource("4_bcypf")
+duration = 0.07
+
+[sub_resource type="Resource" id="Resource_py2eu"]
+script = ExtResource("5_0im0f")
+text = "{amount}"
+offset = Vector3(0, -100, 0)
+
+[sub_resource type="Resource" id="Resource_54qjr"]
+script = ExtResource("6_3s6ob")
+stat = &"health"
+value = -15.0
+value_key = &"amount"
+
+[resource]
+script = ExtResource("7_hg0kv")
+id = &"heavy_hit"
+display_name = "Heavy hit"
+description = "Instant damage. The amount comes from params[\"amount\"]."
+color = Color(0.95, 0.95, 0.95, 1)
+duration_type = 0
+instant_changes = Array[ExtResource("6_3s6ob")]([SubResource("Resource_54qjr")])
+cues = Array[ExtResource("1_cgn3g")]([SubResource("Resource_08ty6"), SubResource("Resource_sj0gu"), SubResource("Resource_845ps"), SubResource("Resource_py2eu")])
