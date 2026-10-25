@@ -1701,13 +1701,11 @@ function propSprite(kind, act = 0, v = 0) {
   });
 }
 // the merchant and the forge-keeper share one painter
+const npcLookOf = (kind) => kind === 'smith'
+  ? { skin: '#d79c74', hair: '#3a2a20', main: '#5a4a3a', dark: '#3a2a20', trim: '#c8901c', cloth: '#4a3a2a', head: 'none', eye: '#1a1214', bare: true }
+  : { skin: '#9ad08a', hair: '#e8d8b0', main: '#6a3a8a', dark: '#4a2a6a', trim: '#ffd35c', cloth: '#6a3a8a', head: 'wizard', eye: '#ffe08a' };
 function npcSprite(kind, frame = 0) {
-  return spr(`npc:${kind}:${frame}`, () => {
-    const look = kind === 'smith'
-      ? { skin: '#d79c74', hair: '#3a2a20', main: '#5a4a3a', dark: '#3a2a20', trim: '#c8901c', cloth: '#4a3a2a', head: 'none', eye: '#1a1214', bare: true }
-      : { skin: '#9ad08a', hair: '#e8d8b0', main: '#6a3a8a', dark: '#4a2a6a', trim: '#ffd35c', cloth: '#6a3a8a', head: 'wizard', eye: '#ffe08a' };
-    return paintHero(look, 'front', frame);
-  });
+  return spr(`npc:${kind}:${frame}`, () => paintHero(npcLookOf(kind), 'front', frame));
 }
 
 /* ============================================================
@@ -2037,26 +2035,31 @@ const EYE_RED = '#ff4a4a';
 const MON = {
   skeleton(p, f, o) {
     const B = o.tint || C.bone, B2 = shade(B, -0.2), lf = f === 1 ? 1 : 0;
-    p.line(7, 14, 6 - lf, 18, B2); p.line(9, 14, 10 + lf, 18, B2); p.px(6 - lf, 19, B2); p.px(10 + lf, 19, B2);
-    p.line(8, 9, 8, 13, B2); p.line(6, 10, 10, 10, B); p.line(6, 12, 10, 12, B); p.rect(6, 13, 5, 1, B2);
+    rigOrient(p, 'front', 0.8);
+    rigPart(p, 'leg'); p.line(7, 14, 6 - lf, 18, B2); p.line(9, 14, 10 + lf, 18, B2); p.px(6 - lf, 19, B2); p.px(10 + lf, 19, B2);
+    rigPart(p, 'body'); p.line(8, 9, 8, 13, B2); p.line(6, 10, 10, 10, B); p.line(6, 12, 10, 12, B); p.rect(6, 13, 5, 1, B2);
     const up = f === 2 ? -3 : 0;
-    p.line(6, 10, 4, 14 + (f === 1 ? -1 : 0), B); p.line(10, 10, 12, 13 + up, B);
-    p.ell(8, 5, 3.6, 3.2, B); p.rect(6, 8, 5, 1, B2); p.px(7, 9, B2); p.px(9, 9, B2);
-    p.rect(6, 5, 2, 2, '#2a0a10'); p.rect(9, 5, 2, 2, '#2a0a10'); p.px(6, 5, o.eye || EYE_RED); p.px(10, 5, o.eye || EYE_RED);
+    rigPart(p, 'arm'); p.line(6, 10, 4, 14 + (f === 1 ? -1 : 0), B); p.line(10, 10, 12, 13 + up, B);
+    rigPart(p, 'head'); p.ell(8, 5, 3.6, 3.2, B); p.rect(6, 8, 5, 1, B2); p.px(7, 9, B2); p.px(9, 9, B2);
+    rigPart(p, 'face'); p.rect(6, 5, 2, 2, '#2a0a10'); p.rect(9, 5, 2, 2, '#2a0a10'); p.px(6, 5, o.eye || EYE_RED); p.px(10, 5, o.eye || EYE_RED);
+    rigPart(p, 'gear');
     if (o.bow) { for (let y = 7; y < 18; y++) p.px(2 + Math.round(Math.sin(((y - 7) / 10) * Math.PI) * -2) + 1, y, C.wood); p.line(3, 7, 3, 17, '#e8e0cc'); }
     else { p.line(12, 13 + up, 14, 7 + up, '#a8a296'); p.line(13, 13 + up, 15, 7 + up, '#8a8478'); p.line(11, 12 + up, 13, 14 + up, C.wood2); }
   },
   bat(p, f, o) {
     const c = o.tint ? shade(o.tint, -0.45) : '#4a2a56', w = o.tint || '#6a3a78';
+    rigOrient(p, 'front', 0.8); rigPart(p, 'wing'); 
     if (f === 0) { p.poly([[7, 6], [1, 1], [0, 5], [3, 8]], w); p.poly([[9, 6], [15, 1], [16, 5], [13, 8]], w); }
     else { p.poly([[7, 6], [1, 10], [2, 6], [4, 5]], w); p.poly([[9, 6], [15, 10], [14, 6], [12, 5]], w); }
-    p.disc(8, 6, 2.6, c); p.px(7, 3, c); p.px(9, 3, c); p.px(7, 6, EYE_RED); p.px(9, 6, EYE_RED); p.px(8, 8, '#ffffff');
+    rigPart(p, 'body'); p.disc(8, 6, 2.6, c); p.px(7, 3, c); p.px(9, 3, c); rigPart(p, 'face'); p.px(7, 6, EYE_RED); p.px(9, 6, EYE_RED); p.px(8, 8, '#ffffff');
   },
   slime(p, f, o) {
     const c = o.tint || '#5fd36a', sm = o.small;
     const rx = sm ? (f ? 3.6 : 4.4) : f ? 5.2 : 6.4, ry = sm ? (f ? 3.6 : 2.8) : f ? 5.4 : 4.4, cy = sm ? 8 - ry + 3 : 12 - ry;
+    rigOrient(p, 'front', 1.5);
     p.ball(8, cy + 1, rx, ry, c, 0.4, -0.3);
     p.rect(8 - Math.round(rx), Math.round(cy + ry), Math.round(rx * 2) + 1, 1, shade(c, -0.35));
+    rigPart(p, 'face');
     const ey = Math.round(cy);
     if (sm) { p.px(6, ey, '#ffffff'); p.px(9, ey, '#ffffff'); p.px(6, ey + 1, '#1a1214'); p.px(9, ey + 1, '#1a1214'); }
     else { p.rect(5, ey, 2, 2, '#ffffff'); p.rect(10, ey, 2, 2, '#ffffff'); p.px(6, ey + 1, '#1a1214'); p.px(11, ey + 1, '#1a1214'); p.px(6, ey - 2, '#ffffff'); }
@@ -2064,31 +2067,36 @@ const MON = {
   },
   ghost(p, f, o) {
     const c = o.tint || '#dfe8f2', a = 215;
+    rigOrient(p, 'front', { depth: 0.8, float: true });
     p.disc(7, 6, 5, c, a); p.rect(2, 6, 11, 8, c, a);
     for (let x = 2; x <= 12; x++) { const y = 14 + (((x + f) % 3) === 0 ? 1 : 0); p.rect(x, 14, 1, y - 13, c, a); }
     p.rect(2, 6, 2, 8, shade(c, 0.2), a); p.rect(11, 6, 2, 8, shade(c, -0.15), a);
-    p.rect(4, 5, 2, 3, '#2a3040'); p.rect(9, 5, 2, 3, '#2a3040'); p.ell(7, 10, 1.2, 1.4, '#2a3040');
+    rigPart(p, 'face'); p.rect(4, 5, 2, 3, '#2a3040'); p.rect(9, 5, 2, 3, '#2a3040'); p.ell(7, 10, 1.2, 1.4, '#2a3040');
   },
   cultist(p, f, o) {
     const r = o.tint || '#5a2a6a';
+    rigOrient(p, 'front', { depth: 0.8, float: true });
     p.poly([[5, 8], [11, 8], [13.5, 19], [2.5, 19]], r); p.rect(3, 18, 11, 1, shade(r, -0.3));
     p.line(8, 9, 8, 18, shade(r, -0.2)); p.rect(5, 12, 7, 1, '#c8901c');
-    p.disc(8, 6, 4.2, shade(r, -0.15)); p.ell(8, 7, 2.6, 2.2, '#140a14'); p.px(7, 7, '#ff5ad0'); p.px(9, 7, '#ff5ad0');
+    rigPart(p, 'head'); p.disc(8, 6, 4.2, shade(r, -0.15)); rigPart(p, 'face'); p.ell(8, 7, 2.6, 2.2, '#140a14'); p.px(7, 7, '#ff5ad0'); p.px(9, 7, '#ff5ad0');
+    rigPart(p, 'body');
     const hy = f === 2 ? 8 : 13;
     p.px(3, hy, '#c8b8a8'); p.px(13, hy, '#c8b8a8');
     if (f === 2) { p.disc(8, 2, 2, '#ff5ad0'); p.px(8, 2, '#ffffff'); }
   },
   sporeling(p, f, o) {
     const cap = o.tint || '#c43a5a', sq = f === 1 ? 1 : 0;
+    rigOrient(p, 'front', 1.1);
     p.px(6, 15, '#8a7a68'); p.px(10, 15, '#8a7a68');
     p.rect(5, 9 + sq, 7, 6 - sq, '#e8dcc8'); p.rect(5, 9 + sq, 1, 6 - sq, '#ffffff');
-    p.px(6, 11 + sq, '#1a1214'); p.px(10, 11 + sq, '#1a1214'); p.rect(7, 13, 3, 1, '#8a6a5a');
-    p.ell(8, 7 + sq, 7 + sq * 0.5, 4 - sq * 0.5, cap); p.ell(8, 6 + sq, 5, 2, shade(cap, 0.2));
+    rigPart(p, 'face'); p.px(6, 11 + sq, '#1a1214'); p.px(10, 11 + sq, '#1a1214'); p.rect(7, 13, 3, 1, '#8a6a5a');
+    rigPart(p, 'head'); p.ell(8, 7 + sq, 7 + sq * 0.5, 4 - sq * 0.5, cap); p.ell(8, 6 + sq, 5, 2, shade(cap, 0.2));
     p.px(5, 6 + sq, '#ffffff'); p.px(10, 5 + sq, '#ffffff'); p.px(12, 8 + sq, '#ffffff'); p.px(8, 8 + sq, '#ffffff');
     if (f === 2) for (let i = 0; i < 5; i++) p.px(3 + i * 2.5, 1 + (i % 2), '#d8ff9a');
   },
   spider(p, f, o) {
     const c = o.tint || '#2e2638';
+    rigOrient(p, 'top');
     for (let i = 0; i < 4; i++) {
       const y0 = 6 + i * 1.6, dy = (i % 2 === f % 2) ? -1 : 1;
       p.line(8, y0, 3, 3 + i * 3 + dy, c); p.line(3, 3 + i * 3 + dy, 1, 6 + i * 2.5 + dy, c);
@@ -2100,22 +2108,25 @@ const MON = {
   },
   bloat(p, f, o) {
     const c = o.tint || '#86b04a', r = f === 1 ? 6.8 : 6;
+    rigOrient(p, 'front', 1.2);
     p.ball(8, 9, r, r - 0.5, c, 0.3, -0.3);
     p.line(4, 7, 6, 11, '#c45a3a'); p.line(11, 6, 12, 10, '#c45a3a');
     p.disc(5, 12, 1, shade(c, -0.3)); p.disc(11, 12, 1.2, shade(c, -0.3)); p.disc(9, 5, 0.8, shade(c, -0.3));
-    p.px(6, 8, '#ffe08a'); p.px(10, 8, '#ffe08a'); p.rect(7, 11, 3, 1, '#3a2a1a');
+    rigPart(p, 'face'); p.px(6, 8, '#ffe08a'); p.px(10, 8, '#ffe08a'); p.rect(7, 11, 3, 1, '#3a2a1a');
   },
   thornvine(p, f, o) {
     const g = '#4a8a3a', sw = f === 1 ? 1 : 0;
+    rigOrient(p, 'front', 0.9);
     p.line(8, 19, 8 + sw, 10, g); p.line(9, 19, 9 + sw, 10, shade(g, -0.2));
     p.poly([[8, 16], [2, 12], [4, 15]], '#5aa84a'); p.poly([[9, 14], [15, 10], [13, 14]], '#5aa84a');
     p.px(3, 12, '#e8e0cc'); p.px(15, 10, '#e8e0cc');
-    p.ball(8 + sw, 6, 5, 4.5, o.tint || '#d0507a', 0.3, -0.3);
-    p.ell(8 + sw, 7, 2.6, f === 2 ? 2.2 : 1.2, '#2a0a14'); p.px(7 + sw, 6, '#ffffff'); p.px(10 + sw, 6, '#ffffff');
-    p.px(4 + sw, 3, '#5aa84a'); p.px(12 + sw, 3, '#5aa84a');
+    rigPart(p, 'head'); p.ball(8 + sw, 6, 5, 4.5, o.tint || '#d0507a', 0.3, -0.3);
+    rigPart(p, 'face'); p.ell(8 + sw, 7, 2.6, f === 2 ? 2.2 : 1.2, '#2a0a14'); p.px(7 + sw, 6, '#ffffff'); p.px(10 + sw, 6, '#ffffff');
+    rigPart(p, 'head'); p.px(4 + sw, 3, '#5aa84a'); p.px(12 + sw, 3, '#5aa84a');
   },
   beetle(p, f, o) {
     const c = o.tint || '#3a4a8a', d = f === 1 ? 1 : 0;
+    rigOrient(p, 'top');
     for (let i = 0; i < 3; i++) { p.line(5, 7 + i * 2, 1, 6 + i * 3 + (i % 2 ? d : -d), '#1a1a2a'); p.line(13, 7 + i * 2, 17, 6 + i * 3 - (i % 2 ? d : -d), '#1a1a2a'); }
     p.ball(9, 9, 6.5, 5, c, 0.4, -0.35); p.line(9, 5, 9, 14, shade(c, -0.35)); p.line(6, 6, 7, 11, shade(c, 0.45));
     p.ell(9, 3.5, 3, 2, '#1e1e30'); p.line(9, 2, 9, 0, '#d8d0b8'); p.line(8, 1, 10, 1, '#d8d0b8');
@@ -2123,94 +2134,106 @@ const MON = {
   },
   wraith(p, f, o) {
     const c = o.tint || '#a8d8f0';
+    rigOrient(p, 'front', { depth: 0.7, float: true });
     p.poly([[8, 1], [13, 6], [12, 14], [8 + (f ? 1 : -1), 19], [4, 14], [3, 6]], c, 220);
     p.poly([[8, 2], [11, 6], [5, 6]], shade(c, 0.3));
-    p.ell(8, 7, 2.6, 2.4, '#0a1a2a'); p.px(7, 7, '#e9ffff'); p.px(9, 7, '#e9ffff');
-    const cy = f === 2 ? 8 : 11;
+    rigPart(p, 'face'); p.ell(8, 7, 2.6, 2.4, '#0a1a2a'); p.px(7, 7, '#e9ffff'); p.px(9, 7, '#e9ffff');
+    rigPart(p, 'arm'); const cy = f === 2 ? 8 : 11;
     p.line(3, 9, 1, cy, '#e9f8ff'); p.line(13, 9, 15, cy, '#e9f8ff'); p.px(1, cy + 1, '#ffffff'); p.px(15, cy + 1, '#ffffff');
   },
   wolf(p, f, o) {
     const c = o.tint || '#cfd8e2', d = shade(c, -0.25);
     const l = f === 1 ? 1 : 0;
-    p.line(5, 9, 4 - l, 13, d); p.line(8, 9, 8 + l, 13, d); p.line(13, 9, 12 - l, 13, d); p.line(15, 9, 16 + l, 13, d);
-    p.line(4, 6, 0, 4 - l, c); p.line(4, 7, 1, 6, d);
-    p.ball(10, 7, 6.5, 3.4, c, 0.3, -0.3);
-    p.ell(16, 5, 3.4, 2.8, c); p.rect(18, 5, 3, 2, shade(c, -0.1)); p.px(21, 5, '#1a1214');
+    rigOrient(p, 'side');
+    rigPart(p, 'leg:f'); p.line(5, 9, 4 - l, 13, d); p.line(13, 9, 12 - l, 13, d);
+    rigPart(p, 'leg:n'); p.line(8, 9, 8 + l, 13, d); p.line(15, 9, 16 + l, 13, d);
+    rigPart(p, 'tail'); p.line(4, 6, 0, 4 - l, c); p.line(4, 7, 1, 6, d);
+    rigPart(p, 'body'); p.ball(10, 7, 6.5, 3.4, c, 0.3, -0.3);
+    rigPart(p, 'head'); p.ell(16, 5, 3.4, 2.8, c); p.rect(18, 5, 3, 2, shade(c, -0.1)); p.px(21, 5, '#1a1214');
     p.poly([[14, 1], [16, 3], [14, 4]], c); p.px(17, 4, f === 2 ? '#ff4a4a' : '#1a3a5a'); p.rect(18, 7, 2, 1, '#ffffff');
     if (o.ghostly) p.map((v, x, y) => ((v & 0x00ffffff) | (170 << 24)) >>> 0);
   },
   yeti(p, f, o) {
     const c = o.tint || '#e8eef6', up = f === 2 ? -5 : 0;
-    p.ell(4, 15 + up, 3.5, 6, shade(c, -0.08)); p.ell(22, 15 + up, 3.5, 6, shade(c, -0.08));
-    p.rect(8, 22, 4, 3, shade(c, -0.25)); p.rect(14, 22, 4, 3, shade(c, -0.25));
-    p.ball(13, 14, 10, 9.5, c, 0.2, -0.25);
-    p.ell(13, 10, 5.5, 4, '#5a7a9a'); p.px(11, 9, '#ffffff'); p.px(15, 9, '#ffffff'); p.px(11, 10, '#1a1214'); p.px(15, 10, '#1a1214');
+    rigOrient(p, 'front', 1);
+    rigPart(p, 'arm'); p.ell(4, 15 + up, 3.5, 6, shade(c, -0.08)); p.ell(22, 15 + up, 3.5, 6, shade(c, -0.08));
+    rigPart(p, 'leg'); p.rect(8, 22, 4, 3, shade(c, -0.25)); p.rect(14, 22, 4, 3, shade(c, -0.25));
+    rigPart(p, 'body'); p.ball(13, 14, 10, 9.5, c, 0.2, -0.25);
+    rigPart(p, 'face'); p.ell(13, 10, 5.5, 4, '#5a7a9a'); p.px(11, 9, '#ffffff'); p.px(15, 9, '#ffffff'); p.px(11, 10, '#1a1214'); p.px(15, 10, '#1a1214');
     p.rect(11, 12, 5, 1, '#2a3a4a'); p.px(11, 13, '#ffffff'); p.px(15, 13, '#ffffff');
-    p.line(7, 5, 5, 1, '#b8a888'); p.line(19, 5, 21, 1, '#b8a888');
+    rigPart(p, 'body'); p.line(7, 5, 5, 1, '#b8a888'); p.line(19, 5, 21, 1, '#b8a888');
   },
   crystal(p, f, o) {
     const c = o.tint || C.ice;
+    rigOrient(p, 'front', 0.9);
     p.poly([[8, 1], [11, 8], [10, 20], [6, 20], [5, 8]], c); p.line(8, 2, 8, 19, C.ice2);
     p.poly([[3, 8], [6, 12], [6, 20], [2, 20], [1, 13]], shade(c, -0.15)); p.poly([[13, 6], [15, 12], [14, 20], [10, 20], [11, 11]], shade(c, -0.1));
     p.px(8, 6, '#ffffff'); p.px(13, 10, '#ffffff'); if (f) p.px(3, 12, '#ffffff');
   },
   snowimp(p, f, o) {
     const c = o.tint || '#cfe6f8';
+    rigOrient(p, 'front', 1);
     p.px(5, 15, '#7a9ab8'); p.px(9, 15, '#7a9ab8');
-    p.ball(7, 11, 4, 4, c, 0.3, -0.25); p.disc(7, 6, 3.6, c);
+    p.ball(7, 11, 4, 4, c, 0.3, -0.25); rigPart(p, 'head'); p.disc(7, 6, 3.6, c);
     p.px(4, 2, '#7a9ab8'); p.px(10, 2, '#7a9ab8'); p.px(4, 3, '#9ab8d0'); p.px(10, 3, '#9ab8d0');
-    p.px(6, 6, '#1a2a4a'); p.px(8, 6, '#1a2a4a'); p.rect(6, 8, 3, 1, '#3a4a6a');
-    p.disc(f === 2 ? 12 : 11, f === 2 ? 4 : 10, 2, '#ffffff');
+    rigPart(p, 'face'); p.px(6, 6, '#1a2a4a'); p.px(8, 6, '#1a2a4a'); p.rect(6, 8, 3, 1, '#3a4a6a');
+    rigPart(p, 'gear'); p.disc(f === 2 ? 12 : 11, f === 2 ? 4 : 10, 2, '#ffffff');
   },
   imp(p, f, o) {
     const c = o.tint || '#d8402a';
+    rigOrient(p, 'front', 0.9); rigPart(p, 'wing'); 
     if (f === 0) { p.poly([[5, 7], [0, 2], [1, 8]], '#7a1a1a'); p.poly([[11, 7], [16, 2], [15, 8]], '#7a1a1a'); }
     else { p.poly([[5, 7], [0, 10], [2, 6]], '#7a1a1a'); p.poly([[11, 7], [16, 10], [14, 6]], '#7a1a1a'); }
-    p.line(8, 13, 12, 15, c); p.px(13, 14, c);
-    p.ball(8, 10, 3.6, 4, c, 0.3, -0.3); p.disc(8, 5, 3.3, c);
+    rigPart(p, 'tail'); p.line(8, 13, 12, 15, c); p.px(13, 14, c);
+    rigPart(p, 'body'); p.ball(8, 10, 3.6, 4, c, 0.3, -0.3); rigPart(p, 'head'); p.disc(8, 5, 3.3, c);
     p.px(5, 2, '#3a1a1a'); p.px(11, 2, '#3a1a1a'); p.px(6, 2, '#5a2a2a'); p.px(10, 2, '#5a2a2a');
-    p.px(7, 5, '#ffe08a'); p.px(9, 5, '#ffe08a'); p.rect(7, 7, 3, 1, '#3a0a0a');
+    rigPart(p, 'face'); p.px(7, 5, '#ffe08a'); p.px(9, 5, '#ffe08a'); p.rect(7, 7, 3, 1, '#3a0a0a');
     if (f === 2) { p.disc(8, 0.5, 1.6, '#ffd08a'); }
   },
   emberknight(p, f, o) {
     const a = o.tint || '#3a3038', l = f === 1 ? 1 : 0;
+    rigOrient(p, 'front', 0.9); rigPart(p, 'leg'); 
     p.rect(6, 17, 2, 4 - l, '#1e1a1e'); p.rect(10, 17, 2, 3 + l, '#1e1a1e');
-    p.rect(5, 9, 8, 8, a); p.rect(5, 9, 2, 8, shade(a, 0.2)); p.rect(5, 14, 8, 1, '#ff7a2a');
-    p.rect(5, 2, 8, 7, shade(a, 0.05)); p.rect(5, 2, 8, 1, shade(a, 0.3)); p.rect(6, 5, 6, 1, '#ff9a3c'); p.px(8, 5, '#ffe08a');
-    p.px(9, 0, '#ff7a2a'); p.px(9, 1, '#ffb35e');
-    p.rect(1, 8, 5, 9, '#5a4a52'); p.rect(1, 8, 5, 1, '#8a7a82'); p.disc(3, 12, 1.5, '#ff7a2a');
+    rigPart(p, 'body'); p.rect(5, 9, 8, 8, a); p.rect(5, 9, 2, 8, shade(a, 0.2)); p.rect(5, 14, 8, 1, '#ff7a2a');
+    rigPart(p, 'head'); p.rect(5, 2, 8, 7, shade(a, 0.05)); p.rect(5, 2, 8, 1, shade(a, 0.3)); rigPart(p, 'face'); p.rect(6, 5, 6, 1, '#ff9a3c'); p.px(8, 5, '#ffe08a');
+    rigPart(p, 'head'); p.px(9, 0, '#ff7a2a'); p.px(9, 1, '#ffb35e');
+    rigPart(p, 'body'); p.rect(1, 8, 5, 9, '#5a4a52'); p.rect(1, 8, 5, 1, '#8a7a82'); p.disc(3, 12, 1.5, '#ff7a2a');
     const up = f === 2 ? -6 : 0;
-    p.line(14, 14 + up, 16, 4 + up, '#c8c8d0'); p.line(13, 12 + up, 15, 14 + up, C.gold2);
+    rigPart(p, 'gear'); p.line(14, 14 + up, 16, 4 + up, '#c8c8d0'); p.line(13, 12 + up, 15, 14 + up, C.gold2);
   },
   bomber(p, f, o) {
     const c = o.tint || '#6aa84a', l = f === 1 ? 1 : 0;
+    rigOrient(p, 'front', 0.9);
     p.px(5, 15 - l, '#3a2a1a'); p.px(9, 15 - (1 - l), '#3a2a1a');
     p.rect(4, 9, 7, 6, '#7a5a3a'); p.rect(4, 12, 7, 1, '#5a3a1e');
-    p.disc(7, 6, 3.6, c); p.poly([[3, 5], [0, 3], [3, 7]], c); p.poly([[11, 5], [14, 3], [11, 7]], c);
-    p.px(6, 6, '#ffe08a'); p.px(8, 6, '#ffe08a'); p.rect(6, 8, 3, 1, '#2a1a0a');
-    const bx = f === 2 ? 11 : 12, by = f === 2 ? 3 : 11;
+    rigPart(p, 'head'); p.disc(7, 6, 3.6, c); p.poly([[3, 5], [0, 3], [3, 7]], c); p.poly([[11, 5], [14, 3], [11, 7]], c);
+    rigPart(p, 'face'); p.px(6, 6, '#ffe08a'); p.px(8, 6, '#ffe08a'); p.rect(6, 8, 3, 1, '#2a1a0a');
+    rigPart(p, 'gear'); const bx = f === 2 ? 11 : 12, by = f === 2 ? 3 : 11;
     p.disc(bx, by, 2.4, '#1e1e26'); p.px(bx - 1, by - 1, '#5a5a6a'); p.px(bx + 1, by - 3, '#ffd08a');
   },
   salamander(p, f, o) {
     const c = o.tint || '#e8642a', l = f === 1 ? 1 : 0;
-    p.line(4, 8, 2, 11 - l, shade(c, -0.3)); p.line(8, 8, 9, 11 + l, shade(c, -0.3)); p.line(12, 8, 11, 11 - l, shade(c, -0.3)); p.line(15, 8, 16, 11 + l, shade(c, -0.3));
-    p.line(4, 6, 0, 8 + l, c); p.px(0, 9, c);
-    p.ball(10, 6, 7, 3, c, 0.35, -0.3); p.ell(17, 5, 3, 2.4, c);
-    p.px(18, 4, '#ffe08a'); p.px(19, 4, '#1a1214'); p.px(8, 5, '#ffd35c'); p.px(12, 4, '#ffd35c'); p.px(5, 6, '#ffd35c');
-    if (f === 2) { p.px(20, 6, '#ffd08a'); p.px(21, 6, '#ff9a3c'); }
+    rigOrient(p, 'side'); rigPart(p, 'leg:f'); p.line(4, 8, 2, 11 - l, shade(c, -0.3)); rigPart(p, 'leg:n'); p.line(8, 8, 9, 11 + l, shade(c, -0.3)); rigPart(p, 'leg:f'); p.line(12, 8, 11, 11 - l, shade(c, -0.3)); rigPart(p, 'leg:n'); p.line(15, 8, 16, 11 + l, shade(c, -0.3));
+    rigPart(p, 'tail'); p.line(4, 6, 0, 8 + l, c); p.px(0, 9, c);
+    rigPart(p, 'body'); p.ball(10, 6, 7, 3, c, 0.35, -0.3); rigPart(p, 'head'); p.ell(17, 5, 3, 2.4, c);
+    p.px(18, 4, '#ffe08a'); p.px(19, 4, '#1a1214'); rigPart(p, 'body'); p.px(8, 5, '#ffd35c'); p.px(12, 4, '#ffd35c'); p.px(5, 6, '#ffd35c');
+    rigPart(p, 'head'); if (f === 2) { p.px(20, 6, '#ffd08a'); p.px(21, 6, '#ff9a3c'); }
   },
   golem(p, f, o) {
     const c = o.tint || '#2e2630', up = f === 2 ? -5 : 0;
-    p.rect(1, 10 + up, 6, 9, shade(c, 0.05)); p.rect(19, 10 + up, 6, 9, shade(c, 0.05));
-    p.rect(7, 21, 5, 4, shade(c, -0.2)); p.rect(14, 21, 5, 4, shade(c, -0.2));
-    p.poly([[5, 6], [21, 6], [23, 21], [3, 21]], c); p.poly([[8, 1], [18, 1], [19, 7], [7, 7]], shade(c, 0.1));
-    p.rect(10, 3, 2, 2, '#ff9a3c'); p.rect(15, 3, 2, 2, '#ff9a3c');
-    p.line(9, 9, 13, 15, '#ff7a2a'); p.line(13, 15, 17, 12, '#c4401c'); p.line(13, 15, 12, 20, '#ff7a2a');
-    p.px(5, 14 + up, '#ff7a2a'); p.px(21, 13 + up, '#ff7a2a');
+    rigOrient(p, 'front', 1.3);
+    rigPart(p, 'arm'); p.rect(1, 10 + up, 6, 9, shade(c, 0.05)); p.rect(19, 10 + up, 6, 9, shade(c, 0.05));
+    rigPart(p, 'leg'); p.rect(7, 21, 5, 4, shade(c, -0.2)); p.rect(14, 21, 5, 4, shade(c, -0.2));
+    rigPart(p, 'body'); p.poly([[5, 6], [21, 6], [23, 21], [3, 21]], c);
+    rigPart(p, 'head'); p.poly([[8, 1], [18, 1], [19, 7], [7, 7]], shade(c, 0.1));
+    rigPart(p, 'face'); p.rect(10, 3, 2, 2, '#ff9a3c'); p.rect(15, 3, 2, 2, '#ff9a3c');
+    rigPart(p, 'body'); p.line(9, 9, 13, 15, '#ff7a2a'); p.line(13, 15, 17, 12, '#c4401c'); p.line(13, 15, 12, 20, '#ff7a2a');
+    rigPart(p, 'arm'); p.px(5, 14 + up, '#ff7a2a'); p.px(21, 13 + up, '#ff7a2a');
   },
   turret(p, f) {
+    rigOrient(p, 'front', 1);
     p.rect(3, 10, 8, 6, '#4a4a6a'); p.rect(3, 10, 8, 1, '#6a6a8a'); p.rect(5, 7, 4, 3, '#3a3a5a');
-    p.ell(7, 4, 3, 3.4, C.arcane); p.px(6, 3, '#ffffff'); if (f) p.px(8, 5, '#e8d8ff');
+    rigPart(p, 'head'); p.ell(7, 4, 3, 3.4, C.arcane); p.px(6, 3, '#ffffff'); if (f) p.px(8, 5, '#e8d8ff');
   },
 };
 const MON_SIZE = {
@@ -2223,13 +2246,14 @@ function monsterFrames(sprite, o = {}) {
   return spr(key, () => {
     const id = sprite === 'archer' ? 'skeleton' : sprite;
     const opts = { ...o, bow: sprite === 'archer' || o.bow, magma: o.tint === '#ff7a2a' || o.tint === '#ffa04a' };
-    const [w, h] = MON_SIZE[id] || [16, 16];
-    return [0, 1, 2].map((f) => {
+    const [w, h] = MON_SIZE[id] || [16, 16], paint = (p, f) => (MON[id] || MON.slime)(p, f, opts);
+    // the painter stays with its frames, so the rig can paint the body again part by part
+    return crigAttach([0, 1, 2].map((f) => {
       const p = new PP(w, h);
-      (MON[id] || MON.slime)(p, f, opts);
+      paint(p, f);
       p.outline();
       return p.sprite(Math.floor(w / 2), h - 1);
-    });
+    }), { w, h, ax: Math.floor(w / 2), ay: h - 1, atkF: 2, paint });
   });
 }
 
@@ -3190,7 +3214,8 @@ function killEnemy(e, info = {}) {
   runHooks('onKill', e, info);
   Sound.play(e.bone ? 'bones' : 'die', { p: rnd(0.85, 1.15) });
   burst(e.x, e.y - e.h / 2, e.big ? 22 : 12, e.blood || ['#e2434f', '#a8202a'], { smax: 130, vz: 90 });
-  G.fx.push({ kind: 'corpse', x: e.x, y: e.y, sp: e.frames ? e.frames[0] : null, face: e.face, t: 0, life: 0.45 });
+  const fallSp = crigCorpse(e);
+  G.fx.push({ kind: 'corpse', x: e.x, y: e.y, sp: fallSp || (e.frames ? e.frames[0] : null), face: e.face, t: 0, life: fallSp ? 0.6 : 0.45, fall: !!fallSp });
   if (e.boss) return bossDefeated(e);
   if (e.summoned) return;
   // rewards
@@ -5736,7 +5761,12 @@ function drawProp(g, pr, cx, cy) {
     if (!pr.opened && Math.sin(G.t * 3 + pr.x) > 0.85) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(x + rnd(-6, 6)), Math.round(y - rnd(4, 12)), 1, 1); }
     return;
   }
-  if (pr.npc) { sp = npcSprite(pr.npc, Math.floor(G.t * 1.5) % 2 ? 0 : 0); shadow(g, x, y, 6); drawSprite(g, sp, x, y + (Math.sin(G.t * 2) > 0.9 ? -1 : 0), G.p.x < pr.x); return; }
+  if (pr.npc) {
+    // the merchant and the forge-keeper turn to watch you, on the heroes' skeleton
+    sp = npcSprite(pr.npc, 0);
+    if (CD.settings.turn8 !== false) { pr.turn = pickTurn(pr.turn, G.p.x - pr.x, G.p.y - pr.y); pr.face = G.p.x < pr.x ? -1 : 1; pr.view = pr.turn >= 3 ? 'back' : 'front'; sp = rigHeroFrame(heroSprites(npcLookOf(pr.npc), 'dnpc:' + pr.npc), pr, 0, true); }
+    shadow(g, x, y, 6); drawSprite(g, sp, x, y + (Math.sin(G.t * 2) > 0.9 ? -1 : 0), G.p.x < pr.x); return;
+  }
   if (pr.kind === 'altar' && pr.relicChoice) { sp = propSprite('altar', G.fl.actIdx); drawSprite(g, sp, x, y, false); if (!pr.used) { const ic = relicIcon('phoenix'); g.globalAlpha = 0.6 + Math.sin(G.t * 3) * 0.3; g.drawImage(miscIcon('rune').c, Math.round(x - 8), Math.round(y - 30 + Math.sin(G.t * 2) * 2)); g.globalAlpha = 1; } return; }
   sp = propSprite(pr.kind, G.fl.actIdx, pr.v || 0);
   if (pr.kind === 'pedestal' || pr.kind === 'altar' || pr.kind === 'anvil' || pr.kind === 'fountain' || pr.kind === 'shrine' || pr.kind === 'statue' || pr.kind === 'table' || pr.kind === 'brazier') shadow(g, x, y, (pr.r || 6) + 1);
@@ -5837,7 +5867,7 @@ function drawEnt(g, e, cx, cy) {
   const x = e.x - cx, y = e.y - cy - (e.z || 0) - (e.fly ? 6 + Math.sin(G.t * 4 + e.x) * 2 : 0);
   if (x < -40 || y < -40 || x > R.VW + 40 || y > R.VH + 40) return;
   const fi = e.pose === 2 ? 2 : e.pose === 1 ? 1 : Math.floor(e.anim * (e.fly ? 8 : 4)) % 2;
-  const sp = e.frames[fi] || e.frames[0];
+  const sp = crigEntFrame(e) || e.frames[fi] || e.frames[0];
   if (e.spawnT > 0) {
     const k = 1 - e.spawnT / 0.7;
     drawSprite(g, sp, x, y + (1 - k) * 6, e.face < 0, { alpha: k * 0.8, white: true });
@@ -5874,6 +5904,15 @@ function drawEntOverlay(g, e, cx, cy) {
 }
 function drawCorpse(g, f, cx, cy) {
   const k = f.t / f.life;
+  if (f.fall) {
+    // a rigged body topples over backwards, away from where it was looking, and fades
+    const sp = f.sp, a = Math.min(1, k * 2.4), fx = f.face < 0 ? -1 : 1;
+    g.save(); g.translate(Math.round(f.x - cx), Math.round(f.y - cy + k * 2)); g.rotate(-fx * a * a * 1.35); g.scale(fx, 1);
+    g.globalAlpha = Math.min(1, (1 - k) * 1.6) * 0.85;
+    g.drawImage(k < 0.12 ? whiteOf(sp) : sp.c, -sp.ax, -sp.ay);
+    g.restore();
+    return;
+  }
   drawSprite(g, f.sp, f.x - cx, f.y - cy + k * 2, f.face < 0, { alpha: (1 - k) * 0.7, white: k < 0.15, scale: 1 });
 }
 
@@ -6607,6 +6646,7 @@ UI.settings = function (back) {
     check('set-bright', 'Brighter dungeon', 'bright'),
     check('set-lowfx', 'Fewer effects (faster)', 'lowFx'),
     check('set-turn8', 'Rigged heroes: eight directions, full walk cycles', 'turn8'),
+    check('set-rigworld', 'Rigged world: creatures turn and walk, trees and things move', 'rigWorld'),
     check('set-autofire', 'Gamepad: right stick also attacks', 'padAutoFire'),
     h('div', { class: 'row' }, btn('Done', () => back ? back() : UI.close(), 'primary', { 'data-autofocus': true }), reset)));
   UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: () => (back ? back() : UI.close()) });
@@ -6934,7 +6974,7 @@ function sheetDrop(onDone) {
    per-person store when it is there, plus run checkpoints
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
-const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true };
+const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
     v: 1, embers: 0, meta: {}, unlocks: { classes: ['knight', 'ranger', 'pyro', 'emberpup'], weapons: [], abilities: [] }, feats: {}, fs: {},
@@ -7447,12 +7487,12 @@ function setFormBody(p) {
 function beastFrames(id) {
   return spr('beast:' + id, () => {
     const F = FORMS[id], [w, h] = FORM_SIZE[id];
-    return [0, 1, 2, 3].map((f) => {
+    return crigAttach([0, 1, 2, 3].map((f) => {
       const p = new PP(w, h);
       BEAST_ART[F.fam](p, F, f);
       p.outline();
       return p.sprite(Math.floor(w / 2), h - 1);
-    });
+    }), { w, h, ax: Math.floor(w / 2), ay: h - 1, atkF: 3, stepF: 1, paint: (p, f) => BEAST_ART[F.fam](p, F, f) });
   });
 }
 function beastFrame(p) {
@@ -7640,14 +7680,14 @@ const BEAST_ART = {
     const step = f === 1 ? 1 : f === 2 ? -1 : 0, lunge = f === 3 ? R2(2 * k) : 0;
     const lw = Math.max(1, R2(k * 0.9));
     const leg = (x, off, col) => { const y0 = R2(by + bRy * 0.3); p.rect(R2(x + off), y0, lw, gy - y0, col); p.rect(R2(x + off), gy, lw + 1, 1, F.c3); };
-    leg(bx - bRx * 0.55, -step, F.c3); leg(bx + bRx * 0.5 + lunge * 0.5, step, F.c3);
+    rigOrient(p, 'side'); rigPart(p, 'leg:f'); leg(bx - bRx * 0.55, -step, F.c3); leg(bx + bRx * 0.5 + lunge * 0.5, step, F.c3);
     // a tail of flame
-    const tn = R2(4 * k), tx0 = bx - bRx + 1, ty0 = by - bRy * 0.3;
+    rigPart(p, 'tail'); const tn = R2(4 * k), tx0 = bx - bRx + 1, ty0 = by - bRy * 0.3;
     for (let i = 0; i < tn; i++) p.disc(tx0 - i * 0.9, ty0 - i * 0.95 - Math.sin((i + f) * 1.3) * 0.7, Math.max(0.6, (1 - i / tn) * 1.5 * k), i % 2 ? F.c2 : F.acc);
-    p.ball(bx, by, bRx, bRy, F.c1, 0.3, -0.3);
+    rigPart(p, 'body'); p.ball(bx, by, bRx, bRy, F.c1, 0.3, -0.3);
     p.ell(bx + 1, by + bRy * 0.55, bRx * 0.6, bRy * 0.3, shade(F.c1, 0.18));
-    leg(bx - bRx * 0.3, step, shade(F.c1, -0.15)); leg(bx + bRx * 0.75 + lunge * 0.5, -step, shade(F.c1, -0.15));
-    if (st >= 2) for (let i = 0; i < R2(bRx * 1.3); i += 2) { const x = bx - bRx * 0.7 + i, h2 = 1 + ((i / 2 + f) % 3 === 0 ? 1 : 0) + (lean ? 1 : 0); p.rect(R2(x), R2(by - bRy - h2 + 1), 1, h2, (i / 2) % 2 ? F.c2 : F.acc); }
+    rigPart(p, 'leg:n'); leg(bx - bRx * 0.3, step, shade(F.c1, -0.15)); leg(bx + bRx * 0.75 + lunge * 0.5, -step, shade(F.c1, -0.15));
+    rigPart(p, 'body'); if (st >= 2) for (let i = 0; i < R2(bRx * 1.3); i += 2) { const x = bx - bRx * 0.7 + i, h2 = 1 + ((i / 2 + f) % 3 === 0 ? 1 : 0) + (lean ? 1 : 0); p.rect(R2(x), R2(by - bRy - h2 + 1), 1, h2, (i / 2) % 2 ? F.c2 : F.acc); }
     const head = (hx, hy, dark) => {
       const c = dark ? shade(F.c1, -0.22) : F.c1, r = 2.6 * k;
       p.poly([[hx - r * 0.7, hy - r * 0.4], [hx - r * 0.25, hy - r * 1.75], [hx + r * 0.3, hy - r * 0.45]], F.c3);
@@ -7659,7 +7699,7 @@ const BEAST_ART = {
       p.px(R2(hx + r * 0.2), R2(hy - r * 0.3), F.eye);
       if (k >= 1.3) p.px(R2(hx + r * 0.2) + 1, R2(hy - r * 0.3), F.eye);
     };
-    const hx = bx + bRx * 0.95 + lunge, hy = by - bRy * 0.95;
+    rigPart(p, 'head'); const hx = bx + bRx * 0.95 + lunge, hy = by - bRy * 0.95;
     if (multi) { head(hx - 4, hy - 5, true); head(hx + 1, hy + 1.5, true); }
     head(hx, hy - (multi ? 1.5 : 0), false);
   },
@@ -7668,9 +7708,11 @@ const BEAST_ART = {
   plant(p, F, f) {
     const W = p.w, H = p.h, gy = H - 2, step = f === 1 ? 1 : f === 2 ? -1 : 0;
     if (F.id === 'mossling' || F.id === 'thornback') {
+      if (F.id === 'thornback') rigOrient(p, 'side'); else rigOrient(p, 'front', 1.1);
       const big = F.id === 'thornback', cx = R2(W / 2) - (big ? 1 : 0), rx = big ? 8 : 5, ry = big ? 5 : 4.5, cy = gy - ry - 1;
       // feet
-      p.rect(cx - R2(rx * 0.6) + step, gy - 1, 2, 2, F.c3); p.rect(cx + R2(rx * 0.4) - step, gy - 1, 2, 2, F.c3);
+      rigPart(p, 'leg'); p.rect(cx - R2(rx * 0.6) + step, gy - 1, 2, 2, F.c3); p.rect(cx + R2(rx * 0.4) - step, gy - 1, 2, 2, F.c3);
+      rigPart(p, 'body'); 
       if (!big) {
         p.poly([[cx - 1, cy - ry + 1], [cx - 6, cy - ry - 4 + (f === 3 ? -1 : 0)], [cx - 3, cy - ry + 1]], F.c2);
         p.poly([[cx + 1, cy - ry + 1], [cx + 5, cy - ry - 5], [cx + 3, cy - ry + 1]], shade(F.c2, -0.1));
@@ -7680,33 +7722,34 @@ const BEAST_ART = {
       if (big) for (let i = 0; i < 6; i++) { const x = cx - rx + 2 + i * 2.4, y = cy - ry * (1 - Math.abs(i - 2.5) / 6) + 1; p.poly([[x - 1, y], [x + 0.5, y - 3 - (i % 2)], [x + 1.5, y]], F.acc); }
       // face toward the right
       const ex = cx + (big ? rx - 1 : 1), ey = cy - 1;
-      if (big) { p.ball(cx + rx, cy + 1, 3.4, 3, F.c2, 0.3, -0.25); p.px(cx + rx + 1, cy, F.eye); p.px(cx + rx + 2, cy, F.eye); if (f === 3) p.rect(cx + rx + 1, cy + 2, 3, 1, '#1a0a0a'); }
-      else { p.rect(ex - 2, ey - 1, 2, 2, '#ffffff'); p.rect(ex + 1, ey - 1, 2, 2, '#ffffff'); p.px(ex - 1, ey, F.eye); p.px(ex + 2, ey, F.eye); if (f === 3) p.disc(ex + 1, ey + 3, 1.2, '#2a1a0a'); else p.rect(ex - 1, ey + 2, 3, 1, F.c3); }
+      rigPart(p, 'head'); if (big) { p.ball(cx + rx, cy + 1, 3.4, 3, F.c2, 0.3, -0.25); p.px(cx + rx + 1, cy, F.eye); p.px(cx + rx + 2, cy, F.eye); if (f === 3) p.rect(cx + rx + 1, cy + 2, 3, 1, '#1a0a0a'); }
+      else { rigPart(p, 'face'); p.rect(ex - 2, ey - 1, 2, 2, '#ffffff'); p.rect(ex + 1, ey - 1, 2, 2, '#ffffff'); p.px(ex - 1, ey, F.eye); p.px(ex + 2, ey, F.eye); if (f === 3) p.disc(ex + 1, ey + 3, 1.2, '#2a1a0a'); else p.rect(ex - 1, ey + 2, 3, 1, F.c3); }
       return;
     }
     if (F.id === 'treant') {
       const cx = R2(W / 2) - 1, top = 4;
       // roots
-      for (let i = -1; i <= 1; i++) p.line(cx + i * 3, gy - 6, cx + i * 5 + (i ? step * i : step), gy, F.c3);
-      p.rect(cx - 4, 14, 9, gy - 18, F.c1); p.rect(cx - 4, 14, 2, gy - 18, shade(F.c1, 0.18)); p.rect(cx + 3, 14, 2, gy - 18, shade(F.c1, -0.25));
+      rigOrient(p, 'front', 0.9); rigPart(p, 'leg'); for (let i = -1; i <= 1; i++) p.line(cx + i * 3, gy - 6, cx + i * 5 + (i ? step * i : step), gy, F.c3);
+      rigPart(p, 'body'); p.rect(cx - 4, 14, 9, gy - 18, F.c1); p.rect(cx - 4, 14, 2, gy - 18, shade(F.c1, 0.18)); p.rect(cx + 3, 14, 2, gy - 18, shade(F.c1, -0.25));
       for (let y = 17; y < gy - 5; y += 4) p.px(cx - 1 + (y % 3), y, F.c3);
       // branch arms
-      const up = f === 3 ? -8 : step;
+      rigPart(p, 'arm'); rigRoot(p, cx - 4, 19); rigRoot(p, cx + 4, 19); const up = f === 3 ? -8 : step;
       p.line(cx - 4, 19, cx - 10, 15 + up, F.c1); p.line(cx - 10, 15 + up, cx - 12, 11 + up, F.c1); p.disc(cx - 12, 11 + up, 2.4, F.c2);
       p.line(cx + 4, 19, cx + 10, 16 - up * 0.5, F.c1); p.line(cx + 10, 16 - up * 0.5, cx + 12, 12 - up, F.c1); p.disc(cx + 12, 12 - up, 2.4, F.c2);
       // crown
-      for (const [dx, dy, r] of [[0, 8, 7], [-6, 10, 5], [6, 10, 5], [-3, 5, 5], [4, 4, 5], [0, top + 2, 4]]) p.ball(cx + dx, dy, r, r * 0.85, dx < 0 ? shade(F.c2, -0.08) : F.c2, 0.3, -0.3);
+      rigPart(p, 'head'); for (const [dx, dy, r] of [[0, 8, 7], [-6, 10, 5], [6, 10, 5], [-3, 5, 5], [4, 4, 5], [0, top + 2, 4]]) p.ball(cx + dx, dy, r, r * 0.85, dx < 0 ? shade(F.c2, -0.08) : F.c2, 0.3, -0.3);
       p.px(cx + 2, 6, F.acc); p.px(cx - 5, 9, F.acc); p.px(cx + 6, 11, F.acc);
       // face in the bark
-      p.rect(cx, 17, 2, 2, '#1a0e06'); p.rect(cx + 3, 17, 2, 2, '#1a0e06'); p.px(cx + 1, 17, F.eye); p.px(cx + 4, 17, F.eye);
+      rigPart(p, 'face'); p.rect(cx, 17, 2, 2, '#1a0e06'); p.rect(cx + 3, 17, 2, 2, '#1a0e06'); p.px(cx + 1, 17, F.eye); p.px(cx + 4, 17, F.eye);
       p.rect(cx + 1, 21, 3, f === 3 ? 2 : 1, '#1a0e06');
       return;
     }
     // venus maw
+    rigOrient(p, 'side');
     const bx = R2(W / 2) - 3;
     p.ell(bx, gy - 1, 7, 2, F.c3);
     p.poly([[bx - 8, gy - 1], [bx - 3, gy - 6], [bx - 1, gy - 1]], F.c1); p.poly([[bx + 1, gy - 1], [bx + 6, gy - 7 + step], [bx + 8, gy - 1]], shade(F.c1, -0.1));
-    const sway = f === 1 ? -1 : f === 2 ? 1 : 0, hx = bx + 6 + (f === 3 ? 3 : sway), hy = 10;
+    rigPart(p, 'head'); const sway = f === 1 ? -1 : f === 2 ? 1 : 0, hx = bx + 6 + (f === 3 ? 3 : sway), hy = 10;
     for (let i = 0; i <= 10; i++) { const t = i / 10; p.disc(lerp(bx, hx - 2, t) + Math.sin(t * 3) * 2, lerp(gy - 3, hy + 5, t), 1.4, i % 3 ? F.c3 : F.c1); }
     const open = f === 3 ? 6 : 2.5;
     p.poly([[hx - 7, hy], [hx + 5, hy - open - 3], [hx + 9, hy - 1]], F.c1);
@@ -7724,66 +7767,69 @@ const BEAST_ART = {
     const bx = R2(W / 2 - (cat ? 0 : 1.5) * k), by = gy - legH - bRy + 1;
     const step = f === 1 ? 1 : f === 2 ? -1 : 0, lunge = f === 3 ? R2(2 * k) : 0, lw = Math.max(1, R2(k * 0.85));
     const leg = (x, off, col) => { const y0 = R2(by + bRy * 0.3); p.rect(R2(x + off), y0, lw, gy - y0, col); p.px(R2(x + off) + lw, gy, col); };
-    leg(bx - bRx * 0.55, -step, F.c3); leg(bx + bRx * 0.5 + lunge * 0.5, step, F.c3);
+    rigOrient(p, 'side'); rigPart(p, 'leg:f'); leg(bx - bRx * 0.55, -step, F.c3); leg(bx + bRx * 0.5 + lunge * 0.5, step, F.c3);
     // tails
-    const tail = (ang, len, w) => {
+    rigPart(p, 'tail'); const tail = (ang, len, w) => {
       const tx = bx - bRx + 1, ty = by - 1;
       for (let i = 0; i <= len; i++) { const t = i / len, x = tx - Math.cos(ang) * i * 1.1, y = ty - Math.sin(ang) * i * 1.1 - Math.sin(t * 3 + f) * 0.6; p.disc(x, y, Math.max(0.8, w * Math.sin(Math.min(1, t * 1.6 + 0.25) * Math.PI * 0.85)), t > 0.75 ? F.c2 : cat && R2(i) % 3 === 0 ? F.acc : F.c1); }
     };
-    if (nine) for (let i = 0; i < 5; i++) tail(0.25 + i * 0.32, 8 * k * 0.8, 1.6 * k);
+    // the kitsune's tails fan out to both sides when it faces you
+    if (nine) for (let i = 0; i < 5; i++) { rigPart(p, i === 2 ? 'tail' : i % 2 ? 'tail:n' : 'tail:f'); tail(0.25 + i * 0.32, 8 * k * 0.8, 1.6 * k); }
     else tail(cat ? 0.15 : 0.6, (cat ? 9 : 5.5) * k, (cat ? 1.4 : 1.9) * k);
-    p.ball(bx, by, bRx, bRy, F.c1, 0.3, -0.3);
+    rigPart(p, 'body'); p.ball(bx, by, bRx, bRy, F.c1, 0.3, -0.3);
     p.ell(bx + 1, by + bRy * 0.55, bRx * 0.6, bRy * 0.3, shade(F.c2, -0.05));
     if (cat) for (let i = 0; i < 5; i++) p.px(R2(bx - bRx * 0.6 + i * 2.6), R2(by - bRy * 0.3 + (i % 2)), F.acc);
     if (F.id === 'rimefox' || nine) for (let i = 0; i < 3; i++) { const x = R2(bx - 3 + i * 3); p.line(x, R2(by - bRy), x + 1, R2(by - bRy - 2 - (i % 2)), F.acc); }
-    leg(bx - bRx * 0.3, step, shade(F.c1, -0.12)); leg(bx + bRx * 0.75 + lunge * 0.5, -step, shade(F.c1, -0.12));
+    rigPart(p, 'leg:n'); leg(bx - bRx * 0.3, step, shade(F.c1, -0.12)); leg(bx + bRx * 0.75 + lunge * 0.5, -step, shade(F.c1, -0.12));
     // head
-    const r = (cat ? 3 : 2.4) * k, hx = bx + bRx * 0.95 + lunge, hy = by - bRy * (cat ? 0.6 : 0.95);
+    rigPart(p, 'head'); const r = (cat ? 3 : 2.4) * k, hx = bx + bRx * 0.95 + lunge, hy = by - bRy * (cat ? 0.6 : 0.95);
     const ear = (x) => p.poly([[x - r * 0.5, hy - r * 0.5], [x - r * 0.1, hy - r * (cat ? 1.4 : 2.1)], [x + r * 0.35, hy - r * 0.55]], cat ? F.c1 : shade(F.c1, -0.15));
-    ear(hx - r * 0.35); if (!cat) ear(hx + r * 0.3);
+    rigPart(p, 'head:f'); ear(hx - r * 0.35); rigPart(p, 'head:n'); if (!cat) ear(hx + r * 0.3);
+    rigPart(p, 'head');
     p.ball(hx, hy, r, r * 0.88, F.c1, 0.3, -0.25);
     const sx = hx + r * 0.5, sy = hy + r * 0.1;
     p.poly([[sx, sy - r * 0.35], [sx + r * (cat ? 0.9 : 1.4), sy + r * 0.2], [sx, sy + r * 0.55]], shade(F.c2, -0.04));
     p.px(R2(sx + r * (cat ? 0.9 : 1.4)), R2(sy + r * 0.2), F.c3);
     if (f === 3) { p.line(R2(sx), R2(sy + r * 0.5), R2(sx + r), R2(sy + r * 0.6), '#2a0a10'); }
     p.px(R2(hx + r * 0.25), R2(hy - r * 0.2), F.eye); if (k > 1.2) p.px(R2(hx + r * 0.25) + 1, R2(hy - r * 0.2), F.eye);
-    if (nine) for (let i = 0; i < 3; i++) p.disc(bx - bRx - 4 + i * 6, 3 + (i + f) % 2, 1.2, F.acc);
+    rigPart(p, 'body'); if (nine) for (let i = 0; i < 3; i++) p.disc(bx - bRx - 4 + i * 6, 3 + (i + f) % 2, 1.2, F.acc);
   },
 
   /* ---- beetles: sparkmite, voltbeetle, thunderhorn, stormwing ---- */
   beetle(p, F, f) {
     const W = p.w, H = p.h, st = F.stage, gy = H - 2, step = f === 1 ? 1 : f === 2 ? -1 : 0;
     if (F.id === 'stormwing') {
+      rigOrient(p, 'side');
       const cx = R2(W / 2) - 2, cy = 14;
       // wings flap with the frame
       const up = f % 2 === 0;
       // far wing, then near wing, both rooted on the thorax
-      p.poly([[cx, cy - 2], [cx - 9, up ? cy - 13 : cy - 5], [cx - 13, up ? cy - 10 : cy - 2], [cx - 3, cy]], shade(F.acc, -0.15), 170);
-      p.poly([[cx + 1, cy - 2], [cx - 4, up ? cy - 15 : cy - 7], [cx - 9, up ? cy - 13 : cy - 3], [cx - 1, cy]], F.acc, 200);
+      rigPart(p, 'wing:f'); p.poly([[cx, cy - 2], [cx - 9, up ? cy - 13 : cy - 5], [cx - 13, up ? cy - 10 : cy - 2], [cx - 3, cy]], shade(F.acc, -0.15), 170);
+      rigPart(p, 'wing:n'); p.poly([[cx + 1, cy - 2], [cx - 4, up ? cy - 15 : cy - 7], [cx - 9, up ? cy - 13 : cy - 3], [cx - 1, cy]], F.acc, 200);
       p.line(cx, cy - 2, cx - 6, up ? cy - 13 : cy - 5, '#ffffff', 200);
       // abdomen with stinger, thorax, head
-      for (let i = 0; i < 4; i++) p.ball(cx - 4 - i * 2.6, cy + 2 + i * 1.2, 3.2 - i * 0.4, 2.6 - i * 0.3, i % 2 ? F.c2 : F.c1, 0.3, -0.3);
+      rigPart(p, 'body'); for (let i = 0; i < 4; i++) p.ball(cx - 4 - i * 2.6, cy + 2 + i * 1.2, 3.2 - i * 0.4, 2.6 - i * 0.3, i % 2 ? F.c2 : F.c1, 0.3, -0.3);
       p.line(cx - 14, cy + 6, cx - 17, cy + 8 + (f === 3 ? -2 : 0), '#ffffff');
-      p.ball(cx + 1, cy, 3.4, 3, F.c1, 0.3, -0.3); p.ball(cx + 5, cy - 1, 2.6, 2.4, F.c3, 0.3, -0.3);
+      p.ball(cx + 1, cy, 3.4, 3, F.c1, 0.3, -0.3); rigPart(p, 'head'); p.ball(cx + 5, cy - 1, 2.6, 2.4, F.c3, 0.3, -0.3);
       p.px(cx + 6, cy - 2, F.eye); p.px(cx + 7, cy - 2, F.eye);
       p.line(cx + 6, cy - 3, cx + 9, cy - 7, F.c3); p.px(cx + 9, cy - 8, F.c2);
-      for (let i = 0; i < 3; i++) p.line(cx - 1 + i * 2, cy + 2, cx - 2 + i * 2 + step, cy + 6, F.c3);
+      rigPart(p, 'leg'); for (let i = 0; i < 3; i++) p.line(cx - 1 + i * 2, cy + 2, cx - 2 + i * 2 + step, cy + 6, F.c3);
       return;
     }
-    const k = st === 1 ? 1 : st === 2 ? 1.3 : 1.65, horn = F.id === 'thunderhorn';
+    rigOrient(p, 'side'); rigPart(p, 'leg:f'); const k = st === 1 ? 1 : st === 2 ? 1.3 : 1.65, horn = F.id === 'thunderhorn';
     const rx = 6 * k, ry = 4 * k, cx = R2(W / 2 - 1.5 * k), cy = gy - ry - R2(1.5 * k);
     for (let i = 0; i < 3; i++) {
       const lx = cx - rx * 0.5 + i * rx * 0.5, o = (i % 2 ? step : -step);
       p.line(R2(lx), R2(cy + ry * 0.5), R2(lx + o - 1), gy, F.c3);
     }
-    p.ball(cx, cy, rx, ry, F.c1, 0.4, -0.35);
+    rigPart(p, 'body'); p.ball(cx, cy, rx, ry, F.c1, 0.4, -0.35);
     p.line(R2(cx - rx * 0.1), R2(cy - ry + 1), R2(cx - rx * 0.1), R2(cy + ry - 1), shade(F.c1, -0.35));
     // lightning on the shell
     const zx = cx - rx * 0.55, zy = cy - ry * 0.5;
     p.line(R2(zx), R2(zy), R2(zx + 2 * k), R2(zy + 1.5 * k), F.c2); p.line(R2(zx + 2 * k), R2(zy + 1.5 * k), R2(zx + 1 * k), R2(zy + 2 * k), F.c2); p.line(R2(zx + 1 * k), R2(zy + 2 * k), R2(zx + 3.2 * k), R2(zy + 3.4 * k), F.c2);
     for (let i = 0; i < 3; i++) p.px(R2(cx + i * 2 * k - 2), R2(cy - ry * 0.6 + (i % 2)), shade(F.c1, 0.4));
-    for (let i = 0; i < 3; i++) { const lx = cx - rx * 0.3 + i * rx * 0.45, o = (i % 2 ? -step : step); p.line(R2(lx), R2(cy + ry * 0.6), R2(lx + o + 1), gy, shade(F.c3, 0.15)); }
-    const hx = cx + rx * 0.95 + (f === 3 ? 2 : 0), hy = cy + ry * 0.15, hr = 2.4 * k;
+    rigPart(p, 'leg:n'); for (let i = 0; i < 3; i++) { const lx = cx - rx * 0.3 + i * rx * 0.45, o = (i % 2 ? -step : step); p.line(R2(lx), R2(cy + ry * 0.6), R2(lx + o + 1), gy, shade(F.c3, 0.15)); }
+    rigPart(p, 'head'); const hx = cx + rx * 0.95 + (f === 3 ? 2 : 0), hy = cy + ry * 0.15, hr = 2.4 * k;
     p.ball(hx, hy, hr, hr * 0.9, F.c3, 0.3, -0.25);
     p.px(R2(hx + hr * 0.3), R2(hy - hr * 0.3), F.eye); if (k > 1.2) p.px(R2(hx + hr * 0.3) + 1, R2(hy - hr * 0.3), F.eye);
     if (horn) {
@@ -7800,87 +7846,92 @@ const BEAST_ART = {
   /* ---- shades: gloomling, shade, void reaper, nightmare (all float) ---- */
   shade(p, F, f) {
     const W = p.w, H = p.h, cx = R2(W / 2), wob = f === 1 ? 1 : f === 2 ? -1 : 0;
+    rigOrient(p, 'front', { depth: 0.9, float: true });
     if (F.id === 'gloomling') {
       const cy = 8;
-      for (let i = 0; i < 6; i++) p.disc(cx - 1 + Math.sin(i * 1.3 + f) * 1.5 - i * 0.6, cy + 6 + i * 1.4, Math.max(0.6, 3.2 - i * 0.55), i % 2 ? F.c3 : F.c1);
-      p.ball(cx, cy, 6, 5.5, F.c1, 0.35, -0.3);
+      rigPart(p, 'tail'); for (let i = 0; i < 6; i++) p.disc(cx - 1 + Math.sin(i * 1.3 + f) * 1.5 - i * 0.6, cy + 6 + i * 1.4, Math.max(0.6, 3.2 - i * 0.55), i % 2 ? F.c3 : F.c1);
+      rigPart(p, 'body'); p.ball(cx, cy, 6, 5.5, F.c1, 0.35, -0.3);
       p.px(cx - 3, cy - 3, F.c2); p.px(cx - 2, cy - 4, F.c2);
-      p.rect(cx, cy - 1, 2, 3, F.eye); p.rect(cx + 3, cy - 1, 2, 3, F.eye); p.px(cx + 1, cy, '#1a1214'); p.px(cx + 4, cy, '#1a1214');
+      rigPart(p, 'face'); p.rect(cx, cy - 1, 2, 3, F.eye); p.rect(cx + 3, cy - 1, 2, 3, F.eye); p.px(cx + 1, cy, '#1a1214'); p.px(cx + 4, cy, '#1a1214');
       if (f === 3) p.rect(cx + 1, cy + 3, 3, 1, '#ff6f9c');
       return;
     }
     if (F.id === 'shade') {
       const top = 3, bot = H - 4;
-      p.poly([[cx, top], [cx + 6, top + 6], [cx + 7, bot - 6], [cx + 4 + wob, bot], [cx - 1, bot - 3], [cx - 4 - wob, bot], [cx - 7, bot - 6], [cx - 6, top + 6]], F.c1, 230);
-      p.poly([[cx, top + 1], [cx + 4, top + 6], [cx - 4, top + 6]], F.c2);
-      p.ell(cx + 1, top + 8, 3.6, 3, '#05030a');
+      rigPart(p, 'body'); p.poly([[cx, top], [cx + 6, top + 6], [cx + 7, bot - 6], [cx + 4 + wob, bot], [cx - 1, bot - 3], [cx - 4 - wob, bot], [cx - 7, bot - 6], [cx - 6, top + 6]], F.c1, 230);
+      rigPart(p, 'head'); p.poly([[cx, top + 1], [cx + 4, top + 6], [cx - 4, top + 6]], F.c2);
+      rigPart(p, 'face'); p.ell(cx + 1, top + 8, 3.6, 3, '#05030a');
       p.px(cx + 1, top + 8, F.eye); p.px(cx + 3, top + 8, F.eye);
-      const arm = f === 3 ? -4 : 0;
+      rigPart(p, 'arm'); const arm = f === 3 ? -4 : 0;
       p.line(cx + 6, top + 12, cx + 10, top + 15 + arm, F.c2); p.line(cx - 6, top + 12, cx - 9, top + 16, F.c3);
       return;
     }
     if (F.id === 'reaper') {
       const top = 4, bot = H - 3;
       // scythe behind/in front
-      const sa = f === 3 ? -1 : 0;
+      rigPart(p, 'gear'); const sa = f === 3 ? -1 : 0;
       p.line(cx + 9, bot - 2, cx + 6 + sa * 4, top - 1, F.acc);
       p.line(cx + 10, bot - 2, cx + 7 + sa * 4, top - 1, shade(F.acc, -0.3));
       for (let i = 0; i < 10; i++) { const x = cx + 6 + sa * 4 - i * 1.2, y = top - 1 + Math.sin(i / 9 * 2.6) * 4; p.px(x, y, F.c2); p.px(x, y + 1, '#ffffff'); }
-      p.poly([[cx, top], [cx + 7, top + 7], [cx + 8, bot - 5], [cx + 5 + wob, bot], [cx + 1, bot - 2], [cx - 3, bot], [cx - 7 - wob, bot - 1], [cx - 8, top + 9]], F.c1, 240);
-      p.poly([[cx, top], [cx + 5, top + 5], [cx + 4, top + 10], [cx - 3, top + 10], [cx - 4, top + 5]], shade(F.c1, 0.12));
-      p.ell(cx + 1, top + 7, 3, 2.6, '#020104'); p.px(cx + 1, top + 7, F.eye); p.px(cx + 3, top + 7, F.eye);
-      p.rect(cx + 6, top + 14 + sa * 3, 3, 2, '#d8d0bc');
+      rigPart(p, 'body'); p.poly([[cx, top], [cx + 7, top + 7], [cx + 8, bot - 5], [cx + 5 + wob, bot], [cx + 1, bot - 2], [cx - 3, bot], [cx - 7 - wob, bot - 1], [cx - 8, top + 9]], F.c1, 240);
+      rigPart(p, 'head'); p.poly([[cx, top], [cx + 5, top + 5], [cx + 4, top + 10], [cx - 3, top + 10], [cx - 4, top + 5]], shade(F.c1, 0.12));
+      rigPart(p, 'face'); p.ell(cx + 1, top + 7, 3, 2.6, '#020104'); p.px(cx + 1, top + 7, F.eye); p.px(cx + 3, top + 7, F.eye);
+      rigPart(p, 'body'); p.rect(cx + 6, top + 14 + sa * 3, 3, 2, '#d8d0bc');
       return;
     }
     // nightmare: a mass of dark with too many eyes
     const cy = H / 2 - 1;
-    for (let i = 0; i < 7; i++) { const x = cx - 9 + i * 3, y = H - 4; p.line(x, cy + 4, x + Math.sin(i + f) * 2, y + (i % 2), F.c3); }
-    p.ball(cx, cy, 11, 8.5, F.c1, 0.25, -0.3);
+    rigPart(p, 'leg'); for (let i = 0; i < 7; i++) { const x = cx - 9 + i * 3, y = H - 4; p.line(x, cy + 4, x + Math.sin(i + f) * 2, y + (i % 2), F.c3); }
+    rigPart(p, 'body'); p.ball(cx, cy, 11, 8.5, F.c1, 0.25, -0.3);
     for (let i = 0; i < 6; i++) { const a = -2.6 + i * 0.5; p.px(cx + Math.cos(a) * 11, cy + Math.sin(a) * 8 - 1, F.c2); p.px(cx + Math.cos(a) * 12, cy + Math.sin(a) * 9 - 2 - (i + f) % 2, F.c2); }
     const eyes = [[4, -2, 1.6], [-2, -3, 1.2], [7, 2, 1.1], [0, 2, 1.4], [-6, 0, 1], [3, 5, 0.9]];
-    for (const [ex, ey, er] of eyes) { p.disc(cx + ex, cy + ey, er + 0.6, '#ffffff'); p.disc(cx + ex + 0.4, cy + ey, er * 0.55, f === 3 ? F.acc : F.eye); }
+    rigPart(p, 'face'); for (const [ex, ey, er] of eyes) { p.disc(cx + ex, cy + ey, er + 0.6, '#ffffff'); p.disc(cx + ex + 0.4, cy + ey, er * 0.55, f === 3 ? F.acc : F.eye); }
   },
 
   /* ---- golems: pebblet, boulderback, mountain titan, crystal golem ---- */
   golem(p, F, f) {
     const W = p.w, H = p.h, gy = H - 2, step = f === 1 ? 1 : f === 2 ? -1 : 0;
     if (F.id === 'pebblet') {
+      rigOrient(p, 'front', 1.1);
       const cx = R2(W / 2), cy = gy - 6;
-      p.rect(cx - 4 + step, gy - 2, 3, 3, F.c3); p.rect(cx + 2 - step, gy - 2, 3, 3, F.c3);
-      p.ball(cx, cy, 6.2, 5.2, F.c1, 0.35, -0.35);
+      rigPart(p, 'leg'); p.rect(cx - 4 + step, gy - 2, 3, 3, F.c3); p.rect(cx + 2 - step, gy - 2, 3, 3, F.c3);
+      rigPart(p, 'body'); p.ball(cx, cy, 6.2, 5.2, F.c1, 0.35, -0.35);
       p.line(cx - 3, cy - 2, cx - 1, cy + 1, F.c3); p.line(cx + 1, cy + 2, cx + 3, cy + 1, F.c3);
       p.rect(cx - 2, cy - 6, 4, 1, F.acc); p.px(cx - 1, cy - 7, F.acc); p.px(cx + 1, cy - 7, shade(F.acc, 0.2));
-      p.px(cx + 2, cy - 1, F.eye); p.px(cx + 4, cy - 1, F.eye);
-      if (f === 3) { p.rect(cx + 5, cy, 3, 3, F.c1); p.px(cx + 7, cy + 1, F.c2); }
+      rigPart(p, 'face'); p.px(cx + 2, cy - 1, F.eye); p.px(cx + 4, cy - 1, F.eye);
+      rigPart(p, 'body'); if (f === 3) { p.rect(cx + 5, cy, 3, 3, F.c1); p.px(cx + 7, cy + 1, F.c2); }
       return;
     }
     if (F.id === 'boulderback') {
+      rigOrient(p, 'side');
       const cx = R2(W / 2) - 2, cy = gy - 10;
-      for (let i = 0; i < 4; i++) { const lx = cx - 7 + i * 4.5, o = i % 2 ? step : -step; p.rect(lx + o, gy - 4, 3, 5, F.c3); }
-      p.ell(cx, gy - 5, 10, 3, F.c3);
+      for (let i = 0; i < 4; i++) { const lx = cx - 7 + i * 4.5, o = i % 2 ? step : -step; rigPart(p, i % 2 ? 'leg:n' : 'leg:f'); p.rect(lx + o, gy - 4, 3, 5, F.c3); }
+      rigPart(p, 'body'); p.ell(cx, gy - 5, 10, 3, F.c3);
       p.ball(cx, cy, 10, 7.5, F.c1, 0.35, -0.35);
       p.line(cx - 6, cy - 3, cx - 2, cy + 2, shade(F.c1, -0.3)); p.line(cx + 2, cy - 5, cx + 5, cy, shade(F.c1, -0.3));
       p.rect(cx - 4, cy - 8, 6, 1, F.acc); p.px(cx - 3, cy - 9, F.acc); p.px(cx, cy - 9, F.acc);
-      const hx = cx + 11 + (f === 3 ? 2 : 0), hy = gy - 6;
+      rigPart(p, 'head'); const hx = cx + 11 + (f === 3 ? 2 : 0), hy = gy - 6;
       p.ball(hx, hy, 3.6, 3, F.c2, 0.3, -0.25); p.px(hx + 1, hy - 1, F.eye); p.px(hx + 2, hy - 1, F.eye);
       if (f === 3) p.rect(hx + 1, hy + 1, 3, 1, '#2a2418');
       return;
     }
     // humanoid golems
+    rigOrient(p, 'front', 1.1);
     const crys = F.id === 'crystalgolem', cx = R2(W / 2) - 1, hip = gy - 9;
-    p.rect(cx - 6 + step, hip, 5, gy - hip + 1, F.c3); p.rect(cx + 2 - step, hip, 5, gy - hip + 1, shade(F.c3, 0.12));
-    p.poly([[cx - 10, hip - 14], [cx + 11, hip - 14], [cx + 9, hip + 1], [cx - 8, hip + 1]], F.c1);
+    rigPart(p, 'leg'); p.rect(cx - 6 + step, hip, 5, gy - hip + 1, F.c3); p.rect(cx + 2 - step, hip, 5, gy - hip + 1, shade(F.c3, 0.12));
+    rigPart(p, 'body'); p.poly([[cx - 10, hip - 14], [cx + 11, hip - 14], [cx + 9, hip + 1], [cx - 8, hip + 1]], F.c1);
     p.rect(cx - 10, hip - 14, 3, 14, shade(F.c1, 0.15)); p.rect(cx + 8, hip - 14, 3, 14, shade(F.c1, -0.25));
     if (!crys) { p.line(cx - 4, hip - 10, cx, hip - 5, F.c3); p.line(cx, hip - 5, cx + 4, hip - 8, F.c3); p.disc(cx + 1, hip - 8, 2, F.eye); p.px(cx + 1, hip - 8, '#ffffff'); }
     else for (let i = 0; i < 4; i++) p.line(cx - 6 + i * 4, hip - 12, cx - 4 + i * 4, hip - 3, shade(F.c2, -0.2));
     // head
-    p.rect(cx - 3, hip - 20, 8, 6, shade(F.c1, 0.05)); p.rect(cx - 3, hip - 20, 8, 1, shade(F.c1, 0.3));
-    p.px(cx + 2, hip - 18, F.eye); p.px(cx + 4, hip - 18, F.eye);
+    rigPart(p, 'head'); p.rect(cx - 3, hip - 20, 8, 6, shade(F.c1, 0.05)); p.rect(cx - 3, hip - 20, 8, 1, shade(F.c1, 0.3));
+    rigPart(p, 'face'); p.px(cx + 2, hip - 18, F.eye); p.px(cx + 4, hip - 18, F.eye);
     // arms: the near arm punches on attack
-    const punch = f === 3;
+    rigPart(p, 'arm'); const punch = f === 3;
     p.rect(cx - 13, hip - 13 + step, 4, 12, shade(F.c1, -0.1)); p.rect(cx - 14, hip - 2 + step, 5, 4, F.c3);
     if (punch) { p.rect(cx + 10, hip - 12, 9, 4, F.c1); p.rect(cx + 18, hip - 13, 4, 6, F.c3); }
     else { p.rect(cx + 10, hip - 13 - step, 4, 12, F.c1); p.rect(cx + 10, hip - 2 - step, 5, 4, F.c3); }
+    rigPart(p, 'body'); 
     if (crys) {
       const shard = (x, y, hgt, lean) => { p.poly([[x - 2, y], [x + lean, y - hgt], [x + 2, y]], F.c2); p.line(x, y - 1, x + lean * 0.8, y - hgt + 1, '#ffffff'); };
       shard(cx - 8, hip - 14, 7, -2); shard(cx - 4, hip - 14, 9, 0); shard(cx + 7, hip - 14, 8, 2); shard(cx + 1, hip - 20, 6, 1);
@@ -8075,109 +8126,116 @@ metaIcon = function (id) {
 Object.assign(MON, {
   boneknight(p, f) {
     const B = C.bone, B2 = shade(B, -0.2), lf = f === 1 ? 1 : 0;
-    p.line(7, 15, 6 - lf, 19, B2); p.line(10, 15, 11 + lf, 19, B2); p.rect(5 - lf, 19, 3, 1, '#3a3a42'); p.rect(10 + lf, 19, 3, 1, '#3a3a42');
-    p.rect(5, 9, 8, 7, '#5a5a6a'); p.rect(5, 9, 8, 1, '#8a8a9a'); p.rect(5, 13, 8, 1, '#3a3a46'); p.px(8, 11, '#7a2a32');
-    p.ell(9, 5, 3.8, 3.4, '#7a7a8a'); p.rect(5, 2, 8, 2, '#9a9aaa'); p.rect(6, 5, 7, 1, '#1a0a10'); p.px(10, 5, EYE_RED); p.px(12, 5, EYE_RED); p.rect(8, 0, 2, 2, '#7a2a32');
+    rigOrient(p, 'front', 0.9); rigPart(p, 'leg'); p.line(7, 15, 6 - lf, 19, B2); p.line(10, 15, 11 + lf, 19, B2); p.rect(5 - lf, 19, 3, 1, '#3a3a42'); p.rect(10 + lf, 19, 3, 1, '#3a3a42');
+    rigPart(p, 'body'); p.rect(5, 9, 8, 7, '#5a5a6a'); p.rect(5, 9, 8, 1, '#8a8a9a'); p.rect(5, 13, 8, 1, '#3a3a46'); p.px(8, 11, '#7a2a32');
+    rigPart(p, 'head'); p.ell(9, 5, 3.8, 3.4, '#7a7a8a'); p.rect(5, 2, 8, 2, '#9a9aaa'); rigPart(p, 'face'); p.rect(6, 5, 7, 1, '#1a0a10'); p.px(10, 5, EYE_RED); p.px(12, 5, EYE_RED); rigPart(p, 'head'); p.rect(8, 0, 2, 2, '#7a2a32');
     const up = f === 2 ? -5 : 0;
-    p.line(4, 11, 2, 7 + up, '#c8c8d0'); p.line(3, 11, 1, 7 + up, '#9a9aa8'); p.px(4, 12, C.gold2);
-    p.rect(12, 8, 5, 9, '#4a4a5a'); p.rect(12, 8, 5, 1, '#8a8a9a'); p.rect(13, 10, 3, 4, '#7a2a32'); p.px(14, 11, B);
+    rigPart(p, 'gear'); p.line(4, 11, 2, 7 + up, '#c8c8d0'); p.line(3, 11, 1, 7 + up, '#9a9aa8'); p.px(4, 12, C.gold2);
+    rigPart(p, 'body'); p.rect(12, 8, 5, 9, '#4a4a5a'); p.rect(12, 8, 5, 1, '#8a8a9a'); p.rect(13, 10, 3, 4, '#7a2a32'); p.px(14, 11, B);
   },
   crawler(p, f) {
     const B = '#c8c0a8', B2 = shade(B, -0.25), a = f === 1 ? 1 : f === 2 ? -1 : 0;
-    p.line(12, 7, 15, 11 + a, B2); p.line(12, 8, 13, 11 - a, B2);
-    p.ell(7, 8, 5, 2.6, '#7a6a5a'); for (let i = 0; i < 4; i++) p.line(4 + i * 2, 6, 4 + i * 2, 10, B);
-    p.line(2, 8, 0, 10, B2);
-    p.ell(13, 6, 2.8, 2.6, B); p.px(14, 5, EYE_RED); p.px(15, 7, '#3a1a1a');
+    rigOrient(p, 'side'); rigPart(p, 'leg:n'); p.line(12, 7, 15, 11 + a, B2); rigPart(p, 'leg:f'); p.line(12, 8, 13, 11 - a, B2);
+    rigPart(p, 'body'); p.ell(7, 8, 5, 2.6, '#7a6a5a'); for (let i = 0; i < 4; i++) p.line(4 + i * 2, 6, 4 + i * 2, 10, B);
+    rigPart(p, 'tail'); p.line(2, 8, 0, 10, B2);
+    rigPart(p, 'head'); p.ell(13, 6, 2.8, 2.6, B); p.px(14, 5, EYE_RED); p.px(15, 7, '#3a1a1a');
     if (f === 2) { p.line(14, 8, 15, 9, '#e8e0cc'); }
   },
   banshee(p, f) {
     const c = '#cfe0f0', a = 200;
+    rigOrient(p, 'front', { depth: 0.7, float: true });
     for (let i = 0; i < 5; i++) p.line(3 + i * 2, 12, 2 + i * 2 + (f + i) % 2, 19, shade(c, -0.15), 170);
     p.poly([[4, 7], [12, 7], [14, 15], [2, 15]], c, a);
-    p.ell(8, 5, 3.4, 3.6, '#e8f0f8', 230);
+    rigPart(p, 'head'); p.ell(8, 5, 3.4, 3.6, '#e8f0f8', 230);
     p.line(4, 3, 1, 10, '#e9f8ff'); p.line(5, 2, 2, 12, '#ffffff', 200); p.line(11, 3, 14, 9, '#e9f8ff');
-    p.px(7, 5, '#1a2a3a'); p.px(10, 5, '#1a2a3a');
+    rigPart(p, 'face'); p.px(7, 5, '#1a2a3a'); p.px(10, 5, '#1a2a3a');
     p.rect(8, 7, 2, f === 2 ? 3 : 1, '#1a2a3a');
-    const arm = f === 2 ? -3 : 0;
+    rigPart(p, 'arm'); const arm = f === 2 ? -3 : 0;
     p.line(12, 9, 15, 7 + arm, '#e9f8ff'); p.line(4, 9, 1, 11, '#e9f8ff');
   },
   firefly(p, f) {
     const up = f % 2 === 0;
-    p.ell(4, up ? 3 : 5, 3, up ? 2.2 : 1.4, '#e9f8ff', 160); p.ell(8, up ? 2 : 4, 3, up ? 2.2 : 1.4, '#e9f8ff', 140);
-    p.ball(4, 6, 2.6, 2.2, '#d8ff6a', 0.5, -0.2); p.px(3, 6, '#ffffff');
-    p.disc(8, 6, 2, '#3a3a2a'); p.px(9, 5, '#ff4a4a'); p.line(9, 4, 11, 2, '#3a3a2a');
+    rigOrient(p, 'side'); rigPart(p, 'wing:f'); p.ell(4, up ? 3 : 5, 3, up ? 2.2 : 1.4, '#e9f8ff', 160); rigPart(p, 'wing:n'); p.ell(8, up ? 2 : 4, 3, up ? 2.2 : 1.4, '#e9f8ff', 140);
+    rigPart(p, 'body'); p.ball(4, 6, 2.6, 2.2, '#d8ff6a', 0.5, -0.2); p.px(3, 6, '#ffffff');
+    rigPart(p, 'head'); p.disc(8, 6, 2, '#3a3a2a'); p.px(9, 5, '#ff4a4a'); p.line(9, 4, 11, 2, '#3a3a2a');
   },
   toad(p, f) {
     const c = '#5a8a3a', d = shade(c, -0.3), sq = f === 1 ? 1 : 0;
+    rigOrient(p, 'side', 1.1);
     p.ell(4, 13, 3, 1.4, d); p.ell(13, 13, 2.4, 1.2, d);
     p.ball(9, 9 + sq, 7.5, 5 - sq * 0.5, c, 0.25, -0.3);
     p.ell(9, 11 + sq, 5, 2.4, '#c8d880');
     for (let i = 0; i < 4; i++) p.px(5 + i * 2.6, 7 + (i % 2) + sq, d);
-    p.disc(12, 4 + sq, 2.2, c); p.disc(15, 5 + sq, 2, c); p.px(12, 4 + sq, '#ffe08a'); p.px(15, 5 + sq, '#ffe08a'); p.px(12, 3 + sq, '#1a1214'); p.px(15, 4 + sq, '#1a1214');
+    rigPart(p, 'head'); p.disc(12, 4 + sq, 2.2, c); p.disc(15, 5 + sq, 2, c); p.px(12, 4 + sq, '#ffe08a'); p.px(15, 5 + sq, '#ffe08a'); p.px(12, 3 + sq, '#1a1214'); p.px(15, 4 + sq, '#1a1214');
     p.line(10, 9 + sq, 17, 8 + sq, '#2a3a1a');
     if (f === 2) { p.rect(16, 8, 3, 2, '#e2607a'); }
   },
   shroombrute(p, f) {
     const cap = '#c43a3a', st = '#e8dcc6', up = f === 2 ? -5 : 0, l = f === 1 ? 1 : 0;
-    p.rect(8, 21 - l, 4, 4 + l, shade(st, -0.25)); p.rect(15, 21 - (1 - l), 4, 4 + (1 - l), shade(st, -0.25));
-    p.ball(13, 16, 8, 6, st, 0.2, -0.25);
-    p.rect(3, 12 + up, 5, 9, shade(st, -0.1)); p.rect(19, 12 + up, 5, 9, shade(st, -0.1)); p.rect(2, 19 + up, 6, 4, '#8a7a68'); p.rect(19, 19 + up, 6, 4, '#8a7a68');
-    p.ball(13, 8, 12, 6.5, cap, 0.3, -0.3); p.rect(2, 11, 22, 2, shade(cap, -0.35));
+    rigOrient(p, 'front', 1); rigPart(p, 'leg'); p.rect(8, 21 - l, 4, 4 + l, shade(st, -0.25)); p.rect(15, 21 - (1 - l), 4, 4 + (1 - l), shade(st, -0.25));
+    rigPart(p, 'body'); p.ball(13, 16, 8, 6, st, 0.2, -0.25);
+    rigPart(p, 'arm'); p.rect(3, 12 + up, 5, 9, shade(st, -0.1)); p.rect(19, 12 + up, 5, 9, shade(st, -0.1)); p.rect(2, 19 + up, 6, 4, '#8a7a68'); p.rect(19, 19 + up, 6, 4, '#8a7a68');
+    rigPart(p, 'head'); p.ball(13, 8, 12, 6.5, cap, 0.3, -0.3); p.rect(2, 11, 22, 2, shade(cap, -0.35));
     for (const [x, y] of [[7, 6], [13, 4], [19, 7], [10, 9], [17, 10]]) p.ell(x, y, 1.6, 1.1, '#f4e8d8');
-    p.rect(15, 15, 2, 2, '#1a0a14'); p.rect(19, 15, 2, 2, '#1a0a14'); p.px(16, 15, '#c8ff6a'); p.px(20, 15, '#c8ff6a');
+    rigPart(p, 'face'); p.rect(15, 15, 2, 2, '#1a0a14'); p.rect(19, 15, 2, 2, '#1a0a14'); p.px(16, 15, '#c8ff6a'); p.px(20, 15, '#c8ff6a');
   },
   frostmage(p, f) {
     const r = '#5a8ab8', l = f === 1 ? 1 : 0;
+    rigOrient(p, 'front', { depth: 0.8, float: true });
     p.poly([[5, 8], [11, 8], [13.5, 20], [2.5, 20]], r); p.rect(3, 19, 11, 1, shade(r, -0.3)); p.line(8, 9, 8, 19, '#cfe9f7');
-    p.poly([[8, 0], [12, 7], [4, 7]], shade(r, 0.15)); p.disc(8, 6, 3.6, shade(r, -0.1)); p.ell(9, 7, 2.2, 1.8, '#0a1422'); p.px(9, 7, '#9ff6ff'); p.px(11, 7, '#9ff6ff');
+    rigPart(p, 'head'); p.poly([[8, 0], [12, 7], [4, 7]], shade(r, 0.15)); p.disc(8, 6, 3.6, shade(r, -0.1)); rigPart(p, 'face'); p.ell(9, 7, 2.2, 1.8, '#0a1422'); p.px(9, 7, '#9ff6ff'); p.px(11, 7, '#9ff6ff');
     const sy = f === 2 ? -4 : 0;
-    p.line(13, 20, 13, 6 + sy, '#cfe9f7'); p.poly([[13, 2 + sy], [15, 5 + sy], [13, 8 + sy], [11, 5 + sy]], C.ice); p.px(13, 4 + sy, '#ffffff');
-    p.px(3, 13 + l, '#cfe9f7');
+    rigPart(p, 'gear'); p.line(13, 20, 13, 6 + sy, '#cfe9f7'); p.poly([[13, 2 + sy], [15, 5 + sy], [13, 8 + sy], [11, 5 + sy]], C.ice); p.px(13, 4 + sy, '#ffffff');
+    rigPart(p, 'body'); p.px(3, 13 + l, '#cfe9f7');
   },
   mammoth(p, f) {
     const c = '#7a5a3a', d = shade(c, -0.3), l = f === 1 ? 1 : 0;
-    for (const [x, o] of [[5, l], [10, -l], [17, l], [22, -l]]) p.rect(x, 17 + o, 4, 7 - o, d);
+    rigOrient(p, 'side');
+    for (const [x, o] of [[5, l], [10, -l], [17, l], [22, -l]]) { rigPart(p, x === 5 || x === 17 ? 'leg:f' : 'leg:n'); p.rect(x, 17 + o, 4, 7 - o, d); }
+    rigPart(p, 'body');
     p.ball(14, 12, 12, 8, c, 0.25, -0.3);
     for (let i = 0; i < 10; i++) p.px(4 + i * 2.2, 6 + (i % 3), shade(c, 0.2));
-    p.ball(24, 11, 5, 5, c, 0.25, -0.3);
+    rigPart(p, 'head'); p.ball(24, 11, 5, 5, c, 0.25, -0.3);
     p.line(27, 13, 28, 20 + (f === 2 ? -6 : 0), shade(c, -0.1)); p.line(28, 13, 29, 20 + (f === 2 ? -6 : 0), d);
     p.line(23, 15, 27, 18, '#f4f0e4'); p.line(27, 18, 29, 16, '#f4f0e4'); p.line(22, 15, 26, 19, '#d8d0c0');
     p.px(25, 9, '#1a1214'); p.ell(21, 9, 2, 3, d);
-    p.line(2, 10, 0, 14, d);
+    rigPart(p, 'tail'); p.line(2, 10, 0, 14, d);
   },
   elemental(p, f) {
     const fl = f % 2;
+    rigOrient(p, 'front', { depth: 0.9, float: true });
     p.poly([[8, 19], [3, 12], [4, 6], [6, 9], [8, 2 + fl], [10, 8], [12, 5], [13, 12]], '#e8521c');
     p.poly([[8, 17], [5, 12], [6, 8], [8, 6 + fl], [10, 9], [11, 12]], '#ff9a3c');
     p.ell(8, 12, 2.4, 3, '#ffd08a'); p.px(7, 9, '#fff3c0');
-    p.px(7, 10, '#1a0808'); p.px(10, 10, '#1a0808');
-    if (f === 2) { p.disc(14, 6, 1.6, '#ffd08a'); p.disc(2, 6, 1.6, '#ffd08a'); }
+    rigPart(p, 'face'); p.px(7, 10, '#1a0808'); p.px(10, 10, '#1a0808');
+    rigPart(p, 'body'); if (f === 2) { p.disc(14, 6, 1.6, '#ffd08a'); p.disc(2, 6, 1.6, '#ffd08a'); }
   },
   hellhound(p, f) {
     const c = '#3a1a1a', d = shade(c, -0.3), l = f === 1 ? 1 : 0;
-    p.line(5, 9, 4 - l, 13, d); p.line(8, 9, 8 + l, 13, d); p.line(13, 9, 12 - l, 13, d); p.line(15, 9, 16 + l, 13, d);
-    p.line(4, 7, 0, 4 - l, '#ff7a2a'); p.px(0, 3, '#ffd08a');
-    p.ball(10, 7, 6.5, 3.2, c, 0.3, -0.3);
+    rigOrient(p, 'side'); rigPart(p, 'leg:f'); p.line(5, 9, 4 - l, 13, d); rigPart(p, 'leg:n'); p.line(8, 9, 8 + l, 13, d); rigPart(p, 'leg:f'); p.line(13, 9, 12 - l, 13, d); rigPart(p, 'leg:n'); p.line(15, 9, 16 + l, 13, d);
+    rigPart(p, 'tail'); p.line(4, 7, 0, 4 - l, '#ff7a2a'); p.px(0, 3, '#ffd08a');
+    rigPart(p, 'body'); p.ball(10, 7, 6.5, 3.2, c, 0.3, -0.3);
     for (let i = 0; i < 5; i++) p.px(6 + i * 2, 3 + (i % 2), i % 2 ? '#ffd08a' : '#ff7a2a');
-    p.ell(16, 5, 3.4, 2.8, c); p.rect(18, 5, 3, 2, shade(c, 0.1)); p.px(21, 5, '#1a0808');
+    rigPart(p, 'head'); p.ell(16, 5, 3.4, 2.8, c); p.rect(18, 5, 3, 2, shade(c, 0.1)); p.px(21, 5, '#1a0808');
     p.poly([[14, 1], [16, 3], [14, 4]], c); p.px(17, 4, '#ffd35c');
     if (f === 2) { p.rect(19, 7, 3, 1, '#ffd08a'); p.px(21, 8, '#ff7a2a'); }
   },
   mimic(p, f) {
     const body = '#8a5a32', band = '#5a3a1e', open = f === 2 ? 5 : f === 1 ? 2 : 1;
+    rigOrient(p, 'front', 0.8);
     p.rect(1, 9, 16, 6, body); p.rect(1, 14, 16, 1, shade(body, -0.35));
-    p.rect(1, 9 - open - 3, 16, 4, shade(body, 0.12)); p.rect(1, 9 - open - 3, 16, 1, shade(body, 0.3));
-    p.rect(2, 9 - open + 1, 14, open, '#2a0808'); p.rect(4, 9 - open + 1, 10, Math.max(1, open - 2), '#c43a5a');
+    rigPart(p, 'head'); p.rect(1, 9 - open - 3, 16, 4, shade(body, 0.12)); p.rect(1, 9 - open - 3, 16, 1, shade(body, 0.3));
+    rigPart(p, 'face'); p.rect(2, 9 - open + 1, 14, open, '#2a0808'); p.rect(4, 9 - open + 1, 10, Math.max(1, open - 2), '#c43a5a');
     for (let i = 0; i < 6; i++) { p.px(2 + i * 2.6, 9 - open + 1, '#ffffff'); p.px(3 + i * 2.6, 8, '#ffffff'); }
-    p.rect(3, 9 - open - 3, 2, 4 + open + 6, band); p.rect(13, 9 - open - 3, 2, 4 + open + 6, band);
-    p.px(6, 9 - open - 2, '#ffe08a'); p.px(11, 9 - open - 2, '#ffe08a');
-    if (f === 2) p.line(9, 9, 13, 12, '#e2607a');
+    rigPart(p, 'body'); p.rect(3, 9 - open - 3, 2, 4 + open + 6, band); p.rect(13, 9 - open - 3, 2, 4 + open + 6, band);
+    rigPart(p, 'head'); p.px(6, 9 - open - 2, '#ffe08a'); p.px(11, 9 - open - 2, '#ffe08a');
+    rigPart(p, 'face'); if (f === 2) p.line(9, 9, 13, 12, '#e2607a');
   },
   clone(p, f) {
     const c = '#2a2036', l = f === 1 ? 1 : 0;
-    p.rect(5, 15 - l, 2, 5, c); p.rect(9, 15 - (1 - l), 2, 5, c);
-    p.rect(4, 9, 8, 7, '#3a2c4a'); p.ell(8, 5, 3.5, 3.6, '#3a2c4a'); p.px(9, 5, '#b98cff'); p.px(11, 5, '#b98cff');
-    const up = f === 2 ? -4 : 0; p.line(12, 11, 15, 8 + up, '#9a8ab8'); p.line(3, 11, 2, 15, c);
+    rigOrient(p, 'front', 0.8); rigPart(p, 'leg'); p.rect(5, 15 - l, 2, 5, c); p.rect(9, 15 - (1 - l), 2, 5, c);
+    rigPart(p, 'body'); p.rect(4, 9, 8, 7, '#3a2c4a'); rigPart(p, 'head'); p.ell(8, 5, 3.5, 3.6, '#3a2c4a'); rigPart(p, 'face'); p.px(9, 5, '#b98cff'); p.px(11, 5, '#b98cff');
+    rigPart(p, 'arm'); const up = f === 2 ? -4 : 0; p.line(12, 11, 15, 8 + up, '#9a8ab8'); p.line(3, 11, 2, 15, c);
   },
 });
 Object.assign(MON_SIZE, { boneknight: [18, 21], crawler: [17, 13], banshee: [16, 21], firefly: [12, 10], toad: [20, 16], shroombrute: [27, 26], frostmage: [16, 21], mammoth: [31, 25], elemental: [16, 20], hellhound: [23, 14], mimic: [18, 17], clone: [16, 21] });
@@ -8346,11 +8404,13 @@ Object.assign(BOSS_DRAW, {
 /* ---------- small monsters for the new bosses ---------- */
 Object.assign(MON, {
   eggsac(p, f) {
+    rigOrient(p, 'front', 1);
     p.ell(8, 9, 6.5, 6, '#e8e8f0'); for (let i = 0; i < 6; i++) p.line(2 + i * 2.4, 4, 3 + i * 2, 14, '#c8c8d8');
     p.disc(6, 8, 1.4, '#8fe05c'); p.disc(10, 10, 1.2, '#8fe05c'); if (f >= 1) { p.px(8, 6, '#2e2638'); p.px(9, 7, '#2e2638'); }
   },
   spiderling(p, f) {
     const c = '#2e2638';
+    rigOrient(p, 'top', { fwd: 'right' });
     for (let i = 0; i < 3; i++) { const d = (i % 2 === f % 2) ? -1 : 1; p.line(6, 5 + i, 2, 3 + i * 2 + d, c); p.line(8, 5 + i, 12, 3 + i * 2 - d, c); }
     p.ball(7, 6, 3, 2.4, c, 0.3, -0.3); p.px(8, 5, EYE_RED); p.px(9, 6, EYE_RED);
   },
@@ -13294,19 +13354,27 @@ function adornPP(P, A, s, frame, o = {}) {
   const ws = wingSpanOf(A, s) ? Math.round(wingSpanOf(A, s) * 0.6) : 0, top = s >= 4 ? 3 + Math.round(s * 0.6) : 1;
   const W = P.w + ws * 2 + 2, H = P.h + top;
   const Q = new PP(W, H), ox = ws + 1, oy = top;
+  // when the rig paints, the body's layers come across whole and every adornment lands on a layer of its own
+  const rc = P.rigCap, tagQ = (n) => { if (rc) rigPart(Q, n); };
+  if (rc) Q.cap = { ...rc, part: 'wing', names: [], layers: Object.create(null), w: W, h: H, own: new Uint8Array(W * H), roots: rc.roots && Object.fromEntries(Object.entries(rc.roots).map(([n, L]) => [n, L.map(([x, y]) => [x + ox, y + oy])])) };
   // body bounds
   let x0 = P.w, x1 = 0, y0 = P.h;
   for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x++) if (P.on(x, y)) { x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); }
   const bx = ox + (x0 + x1) / 2, by = oy + y0 + (P.h - y0) * 0.3;
-  if (ws) { const sp2 = ws + (x1 - x0) * 0.12, hh2 = Math.min((P.h - y0) * 0.75, 10 + s * 2); paintWing(Q, A, A.wing, bx - 2, by, -1, sp2, hh2, frame, s); paintWing(Q, A, A.wing, bx + 2, by, 1, sp2, hh2, frame, s); }
-  for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x++) if (P.d[y * P.w + x] >>> 24) Q.d[(y + oy) * W + x + ox] = P.d[y * P.w + x];
+  if (ws) { const sp2 = ws + (x1 - x0) * 0.12, hh2 = Math.min((P.h - y0) * 0.75, 10 + s * 2); tagQ('wing'); paintWing(Q, A, A.wing, bx - 2, by, -1, sp2, hh2, frame, s); paintWing(Q, A, A.wing, bx + 2, by, 1, sp2, hh2, frame, s); }
+  if (rc) for (const n of rc.names) { tagQ(n); const L = rc.layers[n]; for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x++) if (L[y * P.w + x] >>> 24) crigPut(Q, x + ox, y + oy, L[y * P.w + x]); }
+  else for (let y = 0; y < P.h; y++) for (let x = 0; x < P.w; x++) if (P.d[y * P.w + x] >>> 24) Q.d[(y + oy) * W + x + ox] = P.d[y * P.w + x];
+  tagQ('auto');
   // markings in the aspect colour along the back
   const rng = new RNG(hashStr(A.id + s + (o.key || '')));
   if (s >= 2) for (let x = x0 + 1; x < x1; x += 2) { const ty = contourTop(P, x); if (ty < 0) continue; if (rng.chance(0.55)) Q.px(x + ox, ty + oy + 1, A.c1); if (s >= 6 && rng.chance(0.4)) Q.px(x + ox, ty + oy + 2, A.c2); }
   if (s >= 3) for (let k = 0; k < s * 2; k++) { const x = Math.round(x0 + rng.next() * (x1 - x0)), ty = contourTop(P, x); if (ty < 0) continue; const y = ty + 2 + Math.floor(rng.next() * Math.max(1, (P.h - ty) * 0.5)); if (P.on(x, y) && P.on(x + 1, y)) Q.px(x + ox, y + oy, k % 3 ? shade(A.c1, -0.1) : A.glow); }
   // spikes or crystals along the top contour
+  tagQ('spike');
   if (s >= 3) { const n = 2 + Math.floor(s / 3); for (let k = 0; k < n; k++) { const x = Math.round(x0 + (x1 - x0) * (0.25 + (k / Math.max(1, n - 1)) * 0.5)), ty = contourTop(P, x); if (ty < 0) continue; const hgt = 1 + Math.round(s * 0.25) + (k % 2); for (let j = 1; j <= hgt; j++) Q.px(x + ox, ty + oy - j, j === hgt ? A.c2 : A.c1); } }
+  tagQ('headgear');
   if (s >= 4) { const cxp = Math.round(ox + x0 + (x1 - x0) * (o.headAt ?? 0.72)), ty = contourTop(P, cxp - ox); paintCrown(Q, A, A.crown, cxp, Math.max(1, ty + oy - 1), cxp - 3, ty + oy + 1, 6, s, frame); }
+  tagQ('auto');
   if (s >= 5) {
     const lit = [];
     for (let y = 0; y < H; y++) for (let x = 1; x < W - 1; x++) if (Q.on(x, y) && !Q.on(x + 1, y) && x > bx) lit.push([x, y]);
@@ -13315,17 +13383,21 @@ function adornPP(P, A, s, frame, o = {}) {
   Q.outline();
   const sp = Q.sprite(Math.round(ox + P.w / 2), H - 1);
   sp.handY = Math.round((P.h - y0) * 0.5); sp.handR = (x1 - x0) / 2; sp.top = Math.max(0, oy + y0 - top); sp.u = 1 + s * 0.07;
+  if (rc) { sp.rigCap = Q.cap; Q.cap = null; }
   return sp;
 }
 function ascBeastFrames(formId, aspId, s) {
   return spr(`ascb:${formId}:${aspId}:${s}`, () => {
     const F = FORMS[formId], [w, hgt] = FORM_SIZE[formId], A = ASPECT[aspId], k = 1 + s * 0.075;
-    return [0, 1, 2, 3].map((f) => {
-      const p = new PP(w, hgt);
-      BEAST_ART[F.fam](p, F, f);
+    const make = (f, rig) => {
+      const p = new PP(w, hgt), rc = rig ? crigCapture({ w, h: hgt, paint: (q) => BEAST_ART[F.fam](q, F, f) }, f) : null;
+      if (rc) { for (const n of rc.names) { const L = rc.layers[n]; for (let i = 0; i < L.length; i++) if (L[i] >>> 24) p.d[i] = L[i]; } } else BEAST_ART[F.fam](p, F, f);
       const big = k > 1.02 ? resamplePP(p, k) : p;
+      if (rc) big.rigCap = crigResample(rc, k);
       return adornPP(big, A, s, f === 3 ? 0 : f, { key: formId, headAt: 0.78 });
-    });
+    };
+    const fr = [0, 1, 2, 3].map((f) => make(f));
+    return crigAttach(fr, { w: fr[0].w, h: fr[0].h, ax: fr[0].ax, ay: fr[0].ay, atkF: 3, stepF: 1, capture: (f) => make(f, true).rigCap });
   });
 }
 function ascSheetFrame(base, aspId, s) {
@@ -13353,7 +13425,8 @@ const _heroFrameAsc = heroFrame;
 heroFrame = function (p) {
   if (!p || !p.asc || !p.asc.length || !ASPECT[ascAspect(p)]) return _heroFrameAsc(p);
   if (p.beast) {
-    const fr = ascBeastFrames(p.form, ascAspect(p), ascStage(p));
+    const fr = ascBeastFrames(p.form, ascAspect(p), ascStage(p)), rs = crigBeastFrame(p, fr);
+    if (rs) return rs;
     if (p.atkPose > 0 || p.leapT > 0 || p.bashT > 0) return fr[3];
     if (p.moving && p.dashT <= 0) return fr[1 + (Math.floor(p.anim) % 2)];
     return fr[0];
@@ -13803,7 +13876,7 @@ UI.heroView = function (back) {
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
     h('h2', {}, ascTitle(p) || playerName(p)),
     h('div', { class: 'turntable' }, main, h('div', { class: 'tt-side' }, label, strip,
-      h('p', { class: 'tt-note' }, p.beast || p.sheet ? 'Beasts and drawn heroes turn by mirroring.' : CD.settings.turn8 === false ? 'Rigged heroes are off in Settings.' : 'A walking skeleton carries your painted body. Five turns are baked from your front and back; the other three are their mirrors.'))),
+      h('p', { class: 'tt-note' }, p.sheet ? 'Drawn heroes turn by mirroring.' : p.beast ? (CD.settings.rigWorld === false ? 'The rigged world is off in Settings.' : 'Your beast is rebuilt from its painting: legs, tail and head on a skeleton, five turns baked, the other three their mirrors.') : CD.settings.turn8 === false ? 'Rigged heroes are off in Settings.' : 'A walking skeleton carries your painted body. Five turns are baked from your front and back; the other three are their mirrors.'))),
     h('div', { class: 'row' }, btn('◀', () => turnBy(1), 'small', { 'aria-label': 'Turn left' }), btn('▶', () => turnBy(-1), 'small', { 'aria-label': 'Turn right' }), spinBtn, walkBtn),
     h('div', { class: 'row' }, btn('Close', close, 'primary', { 'data-autofocus': true }))));
   // the hero as it looks facing one of the eight ways
@@ -15003,8 +15076,11 @@ function paintCreature(P, def, f) {
   const eye = (x, y, c = c3, white) => { if (white && s >= 1.6) D(x, y, 0.9, '#ffffff'); D(x, y, s >= 2 ? 0.55 : 0.45, c); if (s >= 2.2) P.px(X(x) - 1, Y(y) - 1, '#ffffff'); };
   const step = f === 1 ? 1 : 0, atk = f === 2;
   const v = def.v;
+  // rig tags: which part is being painted, and where a limb that splays out joins the body
+  const T = (n) => rigPart(P, n), RT = (x, y) => rigRoot(P, X(x), Y(y));
   switch (def.fam) {
     case 'slime': {
+      rigOrient(P, 'front', 1.4);
       const sq = f === 1 ? 0.8 : 0;
       B(8, 8.5 + sq, 6.6 + sq * 0.5, 5 - sq, c1, 0.42, -0.3);
       Rr(2, 13, 12, 1, shade(c1, -0.35));
@@ -15012,11 +15088,12 @@ function paintCreature(P, def, f) {
       if (v === 'crystal') { for (const [x, h] of [[5, 4], [8, 6], [11, 4]]) Poly([[x - 1.2, 5 + sq], [x + 1.2, 5 + sq], [x, 5 + sq - h]], c3); }
       if (v === 'magma') for (let i = 0; i < 4; i++) D(4 + i * 2.5, 9 + (i % 2), 0.7, c3);
       if (v === 'bog') { D(5, 5 + sq, 1, shade(c1, 0.25)); D(11, 7 + sq, 0.8, shade(c1, 0.25)); }
-      eye(6, 8 + sq, '#1a1214', true); eye(10, 8 + sq, '#1a1214', true);
+      T('face'); eye(6, 8 + sq, '#1a1214', true); eye(10, 8 + sq, '#1a1214', true);
       if (atk) Rr(6.5, 11, 3, 1, '#1a1214');
       break;
     }
     case 'quad': {
+      rigOrient(P, 'side');
       const isLow = v === 'lizard' || v === 'croc' || v === 'salamander', heavy = v === 'bear' || v === 'mammoth' || v === 'boar';
       const bwid = VAR_SIZE[v] ? VAR_SIZE[v][0] : 22, bhei = VAR_SIZE[v] ? VAR_SIZE[v][1] : 16;
       const tall = v === 'stag' || v === 'elk' || v === 'horse';
@@ -15024,7 +15101,7 @@ function paintCreature(P, def, f) {
       const bodyY = isLow ? bhei - 5 : heavy ? foot - bodyRy - (v === 'mammoth' ? 5 : 3.4) : bhei - 7 - (tall ? 3 : 0);
       const cx = bwid * 0.46, legTop = bodyY + bodyRy * (heavy ? 0.3 : 0.6);
       // tail
-      if (isLow) Poly([[cx - bodyRx + 1, bodyY - 1], [cx - bodyRx + 1, bodyY + 1.5], [1, bodyY + 1.5 + step * 0.5]], shade(c1, -0.1));
+      T('tail'); if (isLow) Poly([[cx - bodyRx + 1, bodyY - 1], [cx - bodyRx + 1, bodyY + 1.5], [1, bodyY + 1.5 + step * 0.5]], shade(c1, -0.1));
       else if (v === 'fox' || v === 'wolf' || v === 'hound' || v === 'hyena' || v === 'tanuki') { L(cx - bodyRx + 1, bodyY - 1, cx - bodyRx - 3, bodyY - 3 + step, c1, 2.2); if (v === 'fox') D(cx - bodyRx - 3, bodyY - 3 + step, 1.2, '#ffffff'); if (v === 'tanuki') for (let i = 0; i < 2; i++) D(cx - bodyRx - 1 - i * 1.4, bodyY - 1.8 - i * 0.8, 0.7, c2); }
       else if (v === 'lion' || v === 'cat') { L(cx - bodyRx + 1, bodyY, cx - bodyRx - 4, bodyY - 4 + step * 2, c1, 1); if (v === 'lion') D(cx - bodyRx - 4, bodyY - 4, 1, c2); }
       else if (v === 'bonehound') L(cx - bodyRx + 1, bodyY - 1, cx - bodyRx - 3, bodyY - 2, c1, 1);
@@ -15032,9 +15109,9 @@ function paintCreature(P, def, f) {
       // legs: back pair darker
       const legs = isLow ? [[cx - bodyRx * 0.6, 0], [cx + bodyRx * 0.55, 1]] : [[cx - bodyRx * 0.6, 0], [cx - bodyRx * 0.35, 1], [cx + bodyRx * 0.4, 0], [cx + bodyRx * 0.65, 1]];
       const lw = v === 'mammoth' ? 3.4 : heavy ? 2.6 : v === 'stag' || v === 'elk' || v === 'cat' ? 1.2 : v === 'horse' ? 1.5 : 1.6;
-      legs.forEach(([lx, ph], i) => { const off = (ph === step ? -1 : 0.5) * (atk ? 0 : 1); L(lx, legTop, lx + off * 0.6, foot - (ph === step ? 0.6 : 0), i % 2 ? c1 : shade(c1, -0.25), lw); Rr(lx + off * 0.6 - lw / 2, foot, lw + 0.4, 1, shade(c2, -0.2)); });
+      legs.forEach(([lx, ph], i) => { const off = (ph === step ? -1 : 0.5) * (atk ? 0 : 1); T(i % 2 ? 'leg:n' : 'leg:f'); L(lx, legTop, lx + off * 0.6, foot - (ph === step ? 0.6 : 0), i % 2 ? c1 : shade(c1, -0.25), lw); Rr(lx + off * 0.6 - lw / 2, foot, lw + 0.4, 1, shade(c2, -0.2)); });
       // body
-      B(cx, bodyY, bodyRx, bodyRy, c1);
+      T('body'); B(cx, bodyY, bodyRx, bodyRy, c1);
       if (heavy) {
         // a shoulder hump, a darker belly and a coat of fur
         if (v !== 'boar') B(cx + bodyRx * 0.32, bodyY - bodyRy * 0.5, bodyRx * 0.5, bodyRy * 0.7, c1, 0.38, -0.2);
@@ -15048,7 +15125,7 @@ function paintCreature(P, def, f) {
       if (v === 'boar') for (let i = 0; i < 5; i++) L(cx - 3 + i * 1.6, bodyY - bodyRy, cx - 3.6 + i * 1.6, bodyY - bodyRy - 1.4, c2, 0.8);
       if (v === 'salamander') for (let i = 0; i < 4; i++) D(cx - 4 + i * 2.6, bodyY - 0.8, 0.6, c3);
       // head
-      const hx = cx + bodyRx * 0.9 + (v === 'bear' ? 1.4 : 0) + (atk ? 1.2 : 0), hy = isLow ? bodyY - 0.4 : (v === 'bear' ? bodyY - bodyRy * 0.3 : v === 'boar' ? bodyY + bodyRy * 0.05 : bodyY - bodyRy * 0.9) + (atk ? 1.2 : 0);
+      T('head'); const hx = cx + bodyRx * 0.9 + (v === 'bear' ? 1.4 : 0) + (atk ? 1.2 : 0), hy = isLow ? bodyY - 0.4 : (v === 'bear' ? bodyY - bodyRy * 0.3 : v === 'boar' ? bodyY + bodyRy * 0.05 : bodyY - bodyRy * 0.9) + (atk ? 1.2 : 0);
       if (v === 'lion') B(hx - 0.5, hy, 4.2, 4, c2);
       if (v === 'mammoth') { B(hx, hy, 4.4, 4, c1); L(hx + 3, hy + 1, hx + 4.5, foot - 3, shade(c1, -0.15), 2); L(hx + 2, hy + 2, hx + 6, hy + 4 - (atk ? 2 : 0), c3, 1.2); }
       else if (isLow) { B(hx, hy, 3.4, 2.2, c1); Poly([[hx + 1, hy - 1.2], [hx + (v === 'croc' ? 7.5 : 4.5), hy - 0.2], [hx + (v === 'croc' ? 7.5 : 4.5), hy + (atk ? 2.4 : 1)], [hx + 1, hy + 1.6]], c1); if (v === 'croc') for (let i = 0; i < 3; i++) P.px(X(hx + 2.4 + i * 1.6), Y(hy + 0.6), '#f4ead0'); }
@@ -15063,10 +15140,10 @@ function paintCreature(P, def, f) {
         if (v === 'bear') { D(hx + 1 + sn + 0.8, hy + 0.7, 1.2, shade(c1, 0.25)); D(hx + 1 + sn + 1.4, hy + 0.3, 0.6, '#1a1214'); }
       }
       // ears, horns, antlers
-      if (v === 'wolf' || v === 'fox' || v === 'hound' || v === 'bonehound' || v === 'hyena' || v === 'cat') { Poly([[hx - 1.6, hy - 1.8], [hx - 0.2, hy - 1.8], [hx - 1, hy - 4.2]], c1); Poly([[hx + 0.2, hy - 2], [hx + 1.4, hy - 1.8], [hx + 0.8, hy - 4]], shade(c1, -0.15)); }
-      if (v === 'bear' || v === 'tanuki' || v === 'lion') { D(hx - 1.6, hy - 2.4, 1, c1); D(hx + 1, hy - 2.6, 1, shade(c1, -0.1)); }
-      if (v === 'stag' || v === 'elk') { const A = v === 'elk' ? 1.3 : 1; L(hx - 0.5, hy - 2, hx - 2.5 * A, hy - 7 * A, c3, 0.9); L(hx - 1.6 * A, hy - 4.4 * A, hx - 4 * A, hy - 5.4 * A, c3, 0.8); L(hx + 0.6, hy - 2, hx + 2.6 * A, hy - 7.4 * A, c3, 0.9); L(hx + 1.8 * A, hy - 5 * A, hx + 4.2 * A, hy - 5.6 * A, c3, 0.8); }
-      if (v === 'ram') { L(hx - 1, hy - 1.6, hx - 3, hy - 2.6, c3, 1.4); L(hx - 3, hy - 2.6, hx - 3.4, hy - 0.4, c3, 1.4); L(hx - 3.4, hy - 0.4, hx - 2, hy + 0.6, c3, 1.2); }
+      if (v === 'wolf' || v === 'fox' || v === 'hound' || v === 'bonehound' || v === 'hyena' || v === 'cat') { T('head:n'); Poly([[hx - 1.6, hy - 1.8], [hx - 0.2, hy - 1.8], [hx - 1, hy - 4.2]], c1); T('head:f'); Poly([[hx + 0.2, hy - 2], [hx + 1.4, hy - 1.8], [hx + 0.8, hy - 4]], shade(c1, -0.15)); }
+      if (v === 'bear' || v === 'tanuki' || v === 'lion') { T('head:n'); D(hx - 1.6, hy - 2.4, 1, c1); T('head:f'); D(hx + 1, hy - 2.6, 1, shade(c1, -0.1)); }
+      if (v === 'stag' || v === 'elk') { const A = v === 'elk' ? 1.3 : 1; T('head:f'); L(hx - 0.5, hy - 2, hx - 2.5 * A, hy - 7 * A, c3, 0.9); L(hx - 1.6 * A, hy - 4.4 * A, hx - 4 * A, hy - 5.4 * A, c3, 0.8); T('head:n'); L(hx + 0.6, hy - 2, hx + 2.6 * A, hy - 7.4 * A, c3, 0.9); L(hx + 1.8 * A, hy - 5 * A, hx + 4.2 * A, hy - 5.6 * A, c3, 0.8); }
+      T('head'); if (v === 'ram') { L(hx - 1, hy - 1.6, hx - 3, hy - 2.6, c3, 1.4); L(hx - 3, hy - 2.6, hx - 3.4, hy - 0.4, c3, 1.4); L(hx - 3.4, hy - 0.4, hx - 2, hy + 0.6, c3, 1.2); }
       if (v === 'tanuki') E(hx + 0.4, hy, 1.8, 0.9, c2);
       if (v === 'horse') { for (let i = 0; i < 5; i++) D(hx - 1.6 - i * 0.9, hy - 1.6 + i * 1.1, 1.1, c2); Poly([[hx - 1.4, hy - 1.8], [hx - 0.2, hy - 1.8], [hx - 0.8, hy - 3.6]], c1); }
       if (v === 'bonehound') { Rr(hx - 1, hy - 0.5, 1, 1, '#2a2228'); }
@@ -15076,15 +15153,16 @@ function paintCreature(P, def, f) {
       break;
     }
     case 'biped': {
+      rigOrient(P, 'front', 0.85);
       const big = v === 'troll' || v === 'yeti' || v === 'giant' || v === 'ape' || v === 'oni';
       const lean = v === 'troll' || v === 'ghoul' || v === 'hag' || v === 'ape' ? 1 : 0;
       const skin = c1, cloth = c2;
       const legC = v === 'skeleton' ? c1 : v === 'satyr' ? '#6a4a3a' : v === 'scarecrow' ? '#6a4a2a' : shade(cloth, -0.25);
       // legs
-      for (const d of [-1, 1]) { const up = step && d < 0 ? 1 : 0, lx = 8 + d * 2 - (d < 0 ? 1.6 : 0); if (v === 'skeleton') L(lx + 0.8, 14, lx + 0.8, 19 - up, legC, 0.9); else Rr(lx, 14 - up, big ? 2.6 : 2, 5, legC); Rr(lx - 0.2, 19 - up, big ? 3 : 2.4, 2, v === 'skeleton' ? c1 : v === 'satyr' ? '#2a1a14' : '#2e211c'); }
-      if (v === 'lizard' || v === 'fish') L(5, 15, 1.4, 19 - step, shade(skin, -0.1), 1.6);
+      T('leg'); for (const d of [-1, 1]) { const up = step && d < 0 ? 1 : 0, lx = 8 + d * 2 - (d < 0 ? 1.6 : 0); if (v === 'skeleton') L(lx + 0.8, 14, lx + 0.8, 19 - up, legC, 0.9); else Rr(lx, 14 - up, big ? 2.6 : 2, 5, legC); Rr(lx - 0.2, 19 - up, big ? 3 : 2.4, 2, v === 'skeleton' ? c1 : v === 'satyr' ? '#2a1a14' : '#2e211c'); }
+      T('tail'); if (v === 'lizard' || v === 'fish') L(5, 15, 1.4, 19 - step, shade(skin, -0.1), 1.6);
       // body
-      const bodyC = v === 'skeleton' ? 'none' : v === 'mummy' ? c1 : v === 'scarecrow' ? '#8a6a3a' : v === 'yeti' || v === 'ape' ? c1 : cloth;
+      T('body'); const bodyC = v === 'skeleton' ? 'none' : v === 'mummy' ? c1 : v === 'scarecrow' ? '#8a6a3a' : v === 'yeti' || v === 'ape' ? c1 : cloth;
       if (bodyC !== 'none') { B(8, 11.5 + lean * 0.5, big ? 5.4 : 4.2, 3.8, bodyC); Rr(4.4, 13.4, 7.2, 1, shade(bodyC, -0.3)); }
       else { L(8, 9, 8, 14, c1, 0.9); for (let i = 0; i < 3; i++) L(5.6, 10 + i * 1.4, 10.4, 10 + i * 1.4, c1, 0.8); }
       if (v === 'mummy') for (let i = 0; i < 4; i++) L(4.5, 9.5 + i * 1.5, 11.5, 10.2 + i * 1.5, shade(c1, -0.2), 0.6);
@@ -15094,10 +15172,10 @@ function paintCreature(P, def, f) {
       if (v === 'human' || v === 'gnoll' || v === 'goblin') Rr(4.4, 12.8, 7.2, 0.9, '#5a3a22');
       // arms
       const armC = v === 'skeleton' ? c1 : v === 'mummy' || v === 'yeti' || v === 'ape' ? c1 : v === 'thistle' || v === 'knight' ? '#9aa4b4' : skin;
-      const raise = atk ? -4 : 0;
+      T('arm'); const raise = atk ? -4 : 0;
       for (const d of [-1, 1]) { const sw2 = step ? d : 0; L(8 + d * 4.4, 9.6, 8 + d * (big ? 6.4 : 5.4), 14 + sw2 + (d > 0 ? raise : 0), armC, big ? 1.8 : 1.2); D(8 + d * (big ? 6.4 : 5.4), 14.4 + sw2 + (d > 0 ? raise : 0), big ? 1.2 : 0.8, v === 'skeleton' || v === 'mummy' ? c1 : skin); }
       // head
-      const hx = 8 + lean * 0.8, hy = 5.4 + lean * 1.4;
+      T('head'); const hx = 8 + lean * 0.8, hy = 5.4 + lean * 1.4;
       const headC = v === 'skeleton' ? c1 : v === 'mummy' ? c1 : v === 'scarecrow' ? '#d8c088' : v === 'thistle' || v === 'knight' ? '#9aa4b4' : skin;
       B(hx, hy, big ? 3.6 : 3.2, 3.2, headC);
       if (v === 'goblin' || v === 'imp') { Poly([[hx - 2.6, hy - 0.6], [hx - 5.6, hy - 2.4], [hx - 2.2, hy + 1]], skin); Poly([[hx + 2.6, hy - 0.6], [hx + 5.6, hy - 2.4], [hx + 2.2, hy + 1]], skin); }
@@ -15116,13 +15194,13 @@ function paintCreature(P, def, f) {
       if (v === 'thistle' || v === 'knight') { Rr(hx - 2.6, hy - 0.2, 5.2, 0.8, '#1a1214'); for (let i = 0; i < 3; i++) D(hx - 1.6 + i * 1.6, hy - 3.6 - (i === 1 ? 1 : 0), 1, i === 1 ? c2 : '#5a8a6a'); }
       if (v === 'mummy') { L(hx - 3, hy - 1, hx + 3, hy + 0.4, shade(c1, -0.2), 0.6); L(hx - 3, hy + 1.4, hx + 3, hy + 1, shade(c1, -0.2), 0.6); }
       if (v === 'ghoul') { Rr(hx - 1.4, hy + 1.6, 2.8, 0.8, '#2a1a1a'); }
-      const ey = hy - 0.2, ec = v === 'skeleton' || v === 'mummy' || v === 'ghoul' || v === 'thistle' || v === 'knight' ? c3 : '#1a1214';
+      T('face'); const ey = hy - 0.2, ec = v === 'skeleton' || v === 'mummy' || v === 'ghoul' || v === 'thistle' || v === 'knight' ? c3 : '#1a1214';
       if (v === 'skeleton') { Rr(hx - 2, ey - 0.8, 1.6, 1.6, '#2a0a10'); Rr(hx + 0.6, ey - 0.8, 1.6, 1.6, '#2a0a10'); }
       if (v !== 'thistle' && v !== 'knight' && v !== 'scarecrow') { eye(hx - 1.2, ey, ec); eye(hx + 1.2, ey, ec); }
       else if (v === 'scarecrow') { Rr(hx - 1.8, ey - 0.4, 1.2, 1.2, '#1a1214'); Rr(hx + 0.8, ey - 0.4, 1.2, 1.2, '#1a1214'); L(hx - 1.6, hy + 1.6, hx + 1.6, hy + 1.6, '#1a1214', 0.6); }
       else { P.px(X(hx - 1.2), Y(ey), ec); P.px(X(hx + 1.2), Y(ey), ec); }
       // gear in the right hand
-      const gx = 8 + (big ? 6.4 : 5.4), gy = 14.4 + raise + (step ? 1 : 0), gear = def.gear;
+      T('gear'); const gx = 8 + (big ? 6.4 : 5.4), gy = 14.4 + raise + (step ? 1 : 0), gear = def.gear;
       if (gear === 'spear') { L(gx, gy + 2, gx + 1.2, gy - 9, '#8a6a42', 0.7); Poly([[gx + 0.6, gy - 9], [gx + 2, gy - 9], [gx + 1.4, gy - 12]], '#dde3ec'); }
       else if (gear === 'sword' || gear === 'katana') { L(gx, gy, gx + 0.6, gy - (gear === 'katana' ? 9 : 7), '#dde3ec', 0.9); Rr(gx - 1, gy - 0.4, 2.4, 0.8, '#c8901c'); }
       else if (gear === 'axe') { L(gx, gy + 1, gx + 0.4, gy - 7, '#8a6a42', 0.8); Poly([[gx + 0.4, gy - 7], [gx + 3.6, gy - 8], [gx + 3.6, gy - 3.8], [gx + 0.4, gy - 4.6]], '#9aa4b4'); }
@@ -15132,44 +15210,46 @@ function paintCreature(P, def, f) {
       else if (gear === 'bow') { for (let i = 0; i <= 8; i++) P.px(X(gx + 1 + Math.sin((i / 8) * Math.PI) * 1.6), Y(gy - 4 + i), '#9a6436'); L(gx + 1, gy - 4, gx + 1, gy + 4, '#e8e0cc', 0.5); }
       else if (gear === 'sling') { L(gx, gy, gx + 2, gy + 2, '#8a6a42', 0.6); D(gx + 2, gy + 2, 0.8, '#8a8a8a'); }
       else if (gear === 'gun') { Rr(gx - 0.4, gy - 1.2, 3.6, 1.2, '#4a4a52'); Rr(gx - 0.4, gy - 0.2, 1.2, 1.6, '#6a4a2a'); }
-      if (v === 'imp') { Poly([[5, 10], [1, 7], [2, 11]], shade(c1, -0.2)); Poly([[11, 10], [15, 7], [14, 11]], shade(c1, -0.2)); }
+      T('wing'); if (v === 'imp') { Poly([[5, 10], [1, 7], [2, 11]], shade(c1, -0.2)); Poly([[11, 10], [15, 7], [14, 11]], shade(c1, -0.2)); }
       break;
     }
     case 'insect': {
+      rigOrient(P, 'side');
       if (v === 'bee' || v === 'fly' || v === 'moth') {
         const wing = f === 1 ? -1.6 : 0;
         const wc = v === 'moth' ? c1 : '#e8f4ff', wa = v === 'moth' ? 255 : 170;
-        E(6, 4 + wing, v === 'moth' ? 5 : 3.4, v === 'moth' ? 4 : 2.4, wc, wa); E(12, 4 + wing, v === 'moth' ? 5 : 3.4, v === 'moth' ? 4 : 2.4, shade(wc, -0.08), wa);
+        T('wing:f'); E(6, 4 + wing, v === 'moth' ? 5 : 3.4, v === 'moth' ? 4 : 2.4, wc, wa); T('wing:n'); E(12, 4 + wing, v === 'moth' ? 5 : 3.4, v === 'moth' ? 4 : 2.4, shade(wc, -0.08), wa);
         if (v === 'moth') { D(5, 4 + wing, 1.2, c2); D(13, 4 + wing, 1.2, c2); }
-        B(9, 8, v === 'fly' ? 4 : 3.6, 3, v === 'bee' ? c1 : c2);
+        T('body'); B(9, 8, v === 'fly' ? 4 : 3.6, 3, v === 'bee' ? c1 : c2);
         if (v === 'bee') for (let i = 0; i < 3; i++) Rr(7 + i * 1.8, 5.4, 0.8, 5.2, c2);
         if (v === 'fly') E(9, 9, 3, 2, c1, 220);
-        B(13.6, 7.2, 2, 1.8, v === 'bee' ? c2 : shade(c2, -0.2)); eye(14.4, 6.8, c3);
-        if (v === 'bee') Poly([[4.6, 8.4], [5.4, 9.2], [2.4, 9.6]], '#2a2228');
-        if (v === 'moth') { L(14, 6, 15.6, 3, c2, 0.5); L(14.6, 6, 16.6, 4, c2, 0.5); }
+        T('head'); B(13.6, 7.2, 2, 1.8, v === 'bee' ? c2 : shade(c2, -0.2)); eye(14.4, 6.8, c3);
+        T('tail'); if (v === 'bee') Poly([[4.6, 8.4], [5.4, 9.2], [2.4, 9.6]], '#2a2228');
+        T('head'); if (v === 'moth') { L(14, 6, 15.6, 3, c2, 0.5); L(14.6, 6, 16.6, 4, c2, 0.5); }
       } else {
         const legC = shade(c2, -0.1);
         if (v === 'scorpion') {
-          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) L(8 + i * 2.4, 9, 7 + i * 2.4 + d * 1.6, 13 - (step && i % 2 ? 1 : 0), legC, 0.7);
-          B(10, 8.6, 5.2, 2.8, c1);
+          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) { T('leg' + i + (d < 0 ? ':f' : ':n')); L(8 + i * 2.4, 9, 7 + i * 2.4 + d * 1.6, 13 - (step && i % 2 ? 1 : 0), legC, 0.7); }
+          T('body'); B(10, 8.6, 5.2, 2.8, c1);
           const tl = atk ? 1 : 0;
-          L(5, 8, 2.4, 4, c1, 1.6); L(2.4, 4, 4.6, 1 + tl * 2, c1, 1.4); Poly([[4.6, 1 + tl * 2], [7.4, 2 + tl * 3], [5, 3.4 + tl * 2]], c3);
-          L(15, 8, 18.6, 6.6 - tl, c1, 1.2); L(15, 9, 18.6, 10.4 + tl, c1, 1.2); E(19.6, 6.4 - tl, 1.4, 1, c1); E(19.6, 10.6 + tl, 1.4, 1, c1);
+          T('tail'); L(5, 8, 2.4, 4, c1, 1.6); L(2.4, 4, 4.6, 1 + tl * 2, c1, 1.4); Poly([[4.6, 1 + tl * 2], [7.4, 2 + tl * 3], [5, 3.4 + tl * 2]], c3);
+          T('head'); L(15, 8, 18.6, 6.6 - tl, c1, 1.2); L(15, 9, 18.6, 10.4 + tl, c1, 1.2); E(19.6, 6.4 - tl, 1.4, 1, c1); E(19.6, 10.6 + tl, 1.4, 1, c1);
           eye(14.2, 7.6, c3);
         } else if (v === 'strider') {
-          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) { const ph = (i + (d > 0 ? 1 : 0) + step) % 2; L(11, 9, 11 + (i - 1) * 4 + d * 1.2, 3 + ph * 1.4, legC, 0.7); L(11 + (i - 1) * 4 + d * 1.2, 3 + ph * 1.4, 11 + (i - 1) * 6 + d * 2, 17, legC, 0.7); }
-          B(11, 9, 4.2, 2.2, c1); B(15.6, 8.4, 1.8, 1.6, c1); eye(16.2, 8, c3);
+          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) { T('leg' + i + (d < 0 ? ':f' : ':n')); RT(11, 9); const ph = (i + (d > 0 ? 1 : 0) + step) % 2; L(11, 9, 11 + (i - 1) * 4 + d * 1.2, 3 + ph * 1.4, legC, 0.7); L(11 + (i - 1) * 4 + d * 1.2, 3 + ph * 1.4, 11 + (i - 1) * 6 + d * 2, 17, legC, 0.7); }
+          T('body'); B(11, 9, 4.2, 2.2, c1); B(15.6, 8.4, 1.8, 1.6, c1); eye(16.2, 8, c3);
         } else {
-          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) L(6 + i * 3, 8, 5 + i * 3 + d * 1.4, 12 - (step && i % 2 ? 1 : 0), legC, 0.7);
-          B(9, 7.4, 6.4, 4, c1); L(9, 3.6, 9, 11, shade(c1, -0.25), 0.6); B(15.6, 7.4, 2.4, 2.2, c2); Poly([[16.6, 6], [19, 3], [18, 6.4]], c3); eye(16.4, 6.8, '#ffffff');
+          for (let i = 0; i < 3; i++) for (const d of [-1, 1]) { T('leg' + i + (d < 0 ? ':f' : ':n')); L(6 + i * 3, 8, 5 + i * 3 + d * 1.4, 12 - (step && i % 2 ? 1 : 0), legC, 0.7); }
+          T('body'); B(9, 7.4, 6.4, 4, c1); L(9, 3.6, 9, 11, shade(c1, -0.25), 0.6); T('head'); B(15.6, 7.4, 2.4, 2.2, c2); Poly([[16.6, 6], [19, 3], [18, 6.4]], c3); eye(16.4, 6.8, '#ffffff');
         }
       }
       break;
     }
     case 'spider': {
+      rigOrient(P, 'side');
       const legC = shade(c1, -0.2);
-      for (let i = 0; i < 4; i++) for (const d of [-1, 1]) { const ph = (i + step) % 2, bx = 9 + (i - 1.5) * 1.6; L(bx, 7.6, bx + d * (4 + i * 0.6), 4 + ph, legC, 0.8); L(bx + d * (4 + i * 0.6), 4 + ph, bx + d * (5.4 + i * 0.9), 12.6, legC, 0.8); }
-      B(7.4, 8, 5, 4, c1); B(12.4, 8.4, 2.8, 2.4, shade(c1, 0.08));
+      for (let i = 0; i < 4; i++) for (const d of [-1, 1]) { T('leg' + i + (d < 0 ? ':f' : ':n')); const ph = (i + step) % 2, bx = 9 + (i - 1.5) * 1.6; RT(bx, 7.6); L(bx, 7.6, bx + d * (4 + i * 0.6), 4 + ph, legC, 0.8); L(bx + d * (4 + i * 0.6), 4 + ph, bx + d * (5.4 + i * 0.9), 12.6, legC, 0.8); }
+      T('body'); B(7.4, 8, 5, 4, c1); B(12.4, 8.4, 2.8, 2.4, shade(c1, 0.08));
       if (v === 'glow' || v === 'crystal') { D(6, 6.6, 1.2, c2); D(8.6, 7.4, 1, c2); if (v === 'crystal') Poly([[6, 5], [7.4, 5], [6.6, 1.6]], c2); }
       else if (v === 'big') for (let i = 0; i < 3; i++) Rr(5 + i * 1.8, 6, 0.9, 3.6, c2);
       else D(7, 7, 1, c2);
@@ -15178,37 +15258,40 @@ function paintCreature(P, def, f) {
       break;
     }
     case 'bird': {
+      rigOrient(P, 'front', 0.9);
       const up = f === 1, harpy = v === 'harpy';
       const wingC = shade(c1, -0.1);
-      if (up) { Poly([[8, 7], [1, 1], [3, 7.4]], wingC); Poly([[10, 7], [17, 1], [15, 7.4]], shade(wingC, -0.1)); }
+      T('wing'); if (up) { Poly([[8, 7], [1, 1], [3, 7.4]], wingC); Poly([[10, 7], [17, 1], [15, 7.4]], shade(wingC, -0.1)); }
       else { Poly([[8, 7], [1, 11], [3, 6.4]], wingC); Poly([[10, 7], [17, 11], [15, 6.4]], shade(wingC, -0.1)); }
-      B(9, 8, 3.6, 3, c1); E(9, 9.4, 2, 1.6, c2);
-      if (harpy) { B(9, 4.6, 2.4, 2.6, '#e8c8a8'); Rr(7, 2.4, 4.4, 3.6, c2); eye(8.4, 4.6, '#1a1214'); eye(9.8, 4.6, '#1a1214'); }
+      T('body'); B(9, 8, 3.6, 3, c1); E(9, 9.4, 2, 1.6, c2);
+      T('head'); if (harpy) { B(9, 4.6, 2.4, 2.6, '#e8c8a8'); Rr(7, 2.4, 4.4, 3.6, c2); eye(8.4, 4.6, '#1a1214'); eye(9.8, 4.6, '#1a1214'); }
       else { B(11.6, 5, 2.4, 2.2, v === 'vulture' ? '#e8c0b0' : c1); Poly([[13.6, 4.6], [16.6, 5.4 + (atk ? 1 : 0)], [13.6, 6]], c3); eye(12.2, 4.6, v === 'owl' ? '#ffd35c' : '#1a1214'); if (v === 'owl') eye(10.8, 4.6, '#ffd35c'); }
-      if (v === 'vulture') E(10.6, 6.8, 2.2, 0.9, '#f4ead8');
+      T('body'); if (v === 'vulture') E(10.6, 6.8, 2.2, 0.9, '#f4ead8');
       if (v === 'hawk' && def.c[1] === '#fff27a') L(9, 7, 6, 10, c2, 0.6);
-      L(7, 11, 6.4, 13, c3, 0.6); L(10, 11, 10.6, 13, c3, 0.6);
+      T('leg'); L(7, 11, 6.4, 13, c3, 0.6); L(10, 11, 10.6, 13, c3, 0.6);
       break;
     }
     case 'bat': {
+      rigOrient(P, 'front', 0.8);
       const up = f === 1;
-      if (!up) { Poly([[7, 6], [1, 1], [0, 5], [3, 8]], c1); Poly([[9, 6], [15, 1], [16, 5], [13, 8]], c1); }
+      T('wing'); if (!up) { Poly([[7, 6], [1, 1], [0, 5], [3, 8]], c1); Poly([[9, 6], [15, 1], [16, 5], [13, 8]], c1); }
       else { Poly([[7, 6], [1, 10], [2, 6], [4, 5]], c1); Poly([[9, 6], [15, 10], [14, 6], [12, 5]], c1); }
-      B(8, 6.4, 2.8, 2.6, c2); Poly([[6.4, 4.4], [7.2, 4.4], [6.8, 2.6]], c2); Poly([[8.8, 4.4], [9.6, 4.4], [9.2, 2.6]], c2);
-      eye(7.2, 6.2, c3); eye(8.8, 6.2, c3); P.px(X(8), Y(8.4), '#ffffff');
+      T('body'); B(8, 6.4, 2.8, 2.6, c2); Poly([[6.4, 4.4], [7.2, 4.4], [6.8, 2.6]], c2); Poly([[8.8, 4.4], [9.6, 4.4], [9.2, 2.6]], c2);
+      T('face'); eye(7.2, 6.2, c3); eye(8.8, 6.2, c3); P.px(X(8), Y(8.4), '#ffffff');
       break;
     }
     case 'serpent': {
+      rigOrient(P, 'side', { slither: true });
       if (v === 'worm') {
         for (let i = 0; i < 6; i++) B(4 + i * 2.6, 18 - i * 2.6 + Math.sin(i + step) * 0.6, 3.4 - i * 0.12, 3.2, i % 2 ? c1 : shade(c1, -0.08));
-        const hx = 18, hy = 5;
+        T('head'); const hx = 18, hy = 5;
         B(hx, hy, 4, 3.6, c1);
         E(hx + 1.6, hy + 0.6, 2.6, atk ? 3 : 2, '#2a0a0a'); for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; P.px(X(hx + 1.6 + Math.cos(a) * 2.2), Y(hy + 0.6 + Math.sin(a) * (atk ? 2.6 : 1.8)), '#f4ead0'); }
         D(hx - 1.6, hy - 2, 0.6, c3);
       } else {
-        const n = 7;
+        T('body'); const n = 7;
         for (let i = 0; i < n; i++) { const x = 2.6 + i * 2.8, y = 9 + Math.sin(i * 1.1 + step * 1.6) * 1.8; B(x, y, 2.4 - (i === 0 ? 0.8 : 0), 2.2 - (i === 0 ? 0.6 : 0), i % 2 ? c1 : shade(c1, -0.1)); if (i % 2 && i < n - 1) D(x, y - 0.8, 0.6, c2); }
-        const hx = 22, hy = 7 + (atk ? -1.4 : 0);
+        T('head'); const hx = 22, hy = 7 + (atk ? -1.4 : 0);
         B(hx, hy, 3, 2.4, c1); eye(hx + 0.6, hy - 0.8, c3);
         if (atk) { Rr(hx + 1.4, hy + 0.8, 1.6, 0.8, '#5a1018'); P.px(X(hx + 2.6), Y(hy + 1.6), '#f4ead0'); }
         if (v === 'eel') { Poly([[hx - 2, hy - 2], [hx, hy - 2.4], [hx - 3.6, hy - 4.6]], c2); for (let i = 1; i < n - 1; i += 2) Poly([[2.6 + i * 2.8 - 1, 7], [2.6 + i * 2.8 + 1, 7], [2.6 + i * 2.8, 4.6]], c2); }
@@ -15216,122 +15299,130 @@ function paintCreature(P, def, f) {
       break;
     }
     case 'plant': {
+      rigOrient(P, 'front', 0.9);
       if (v === 'vine') {
         for (let i = 0; i < 3; i++) L(8 + (i - 1) * 3, 21, 8 + (i - 1) * 2 + Math.sin(i + step) * 1.4, 10, i % 2 ? c1 : c2, 1.6);
-        B(8, 8, 5, 4.6 + (atk ? 0.6 : 0), c1);
+        T('head'); B(8, 8, 5, 4.6 + (atk ? 0.6 : 0), c1);
         for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; Poly([[8 + Math.cos(a) * 4, 8 + Math.sin(a) * 4], [8 + Math.cos(a + 0.3) * 4, 8 + Math.sin(a + 0.3) * 4], [8 + Math.cos(a + 0.15) * 6.8, 8 + Math.sin(a + 0.15) * 6.8]], c3); }
-        D(8, 8, 2.2, atk ? '#5a1018' : shade(c3, -0.3)); eye(7, 7, '#ffd35c'); eye(9, 7, '#ffd35c');
+        T('face'); D(8, 8, 2.2, atk ? '#5a1018' : shade(c3, -0.3)); eye(7, 7, '#ffd35c'); eye(9, 7, '#ffd35c');
       } else if (v === 'tentacle') {
-        for (let i = 0; i < 22; i++) { const t = i / 22, x = 7 + Math.sin(t * 5 + step + (atk ? 1 : 0)) * 3 * t; Rr(x - (1 - t) * 3, 23 - i, Math.max(0.8, (1 - t) * 6), 1, i % 4 === 0 ? c2 : c1); }
-        D(7 + Math.sin(5 + step) * 3, 2, 1.4, '#f4eef4'); D(7 + Math.sin(5 + step) * 3, 2, 0.7, c3);
+        T('body'); for (let i = 0; i < 22; i++) { const t = i / 22, x = 7 + Math.sin(t * 5 + step + (atk ? 1 : 0)) * 3 * t; Rr(x - (1 - t) * 3, 23 - i, Math.max(0.8, (1 - t) * 6), 1, i % 4 === 0 ? c2 : c1); }
+        T('head'); D(7 + Math.sin(5 + step) * 3, 2, 1.4, '#f4eef4'); D(7 + Math.sin(5 + step) * 3, 2, 0.7, c3);
       } else {
         // walking tree
-        for (const d of [-1, 1]) { const up = step && d < 0 ? 1.4 : 0; L(9 + d * 2.4, 17, 9 + d * 3.6, 23 - up, shade(c2, -0.1), 1.8); }
-        Rr(5.6, 9, 6.8, 9, c2); L(7, 10, 7, 17, shade(c2, -0.25), 0.6); L(10.4, 11, 10.6, 16, shade(c2, 0.15), 0.6);
-        L(6, 11, 1.4, 8 + (atk ? -3 : 0), c2, 1.4); L(12, 11, 16.6, 8 + (atk ? -3 : 0), c2, 1.4);
-        B(9, 6, 7.4, 5.6, c1); for (let i = 0; i < 5; i++) B(4 + i * 2.6, 4 + (i % 2) * 2, 2.6, 2.4, shade(c1, i % 2 ? 0.1 : -0.06));
-        eye(7.6, 12, c3); eye(10.4, 12, c3); Rr(7.8, 14.4, 2.6, 0.8, '#1a1214');
+        T('leg'); for (const d of [-1, 1]) { const up = step && d < 0 ? 1.4 : 0; L(9 + d * 2.4, 17, 9 + d * 3.6, 23 - up, shade(c2, -0.1), 1.8); }
+        T('body'); Rr(5.6, 9, 6.8, 9, c2); L(7, 10, 7, 17, shade(c2, -0.25), 0.6); L(10.4, 11, 10.6, 16, shade(c2, 0.15), 0.6);
+        T('arm'); RT(6, 11); RT(12, 11); L(6, 11, 1.4, 8 + (atk ? -3 : 0), c2, 1.4); L(12, 11, 16.6, 8 + (atk ? -3 : 0), c2, 1.4);
+        T('head'); B(9, 6, 7.4, 5.6, c1); for (let i = 0; i < 5; i++) B(4 + i * 2.6, 4 + (i % 2) * 2, 2.6, 2.4, shade(c1, i % 2 ? 0.1 : -0.06));
+        T('face'); eye(7.6, 12, c3); eye(10.4, 12, c3); Rr(7.8, 14.4, 2.6, 0.8, '#1a1214');
       }
       break;
     }
     case 'fungus': {
+      rigOrient(P, 'front', 1);
       const brute = v === 'brute';
       const sq = step ? 0.8 : 0;
-      for (const d of [-1, 1]) Rr(8 + d * (brute ? 3.6 : 2) - 1, (brute ? 20 : 14.6) - (step && d < 0 ? 1 : 0), brute ? 2.6 : 1.8, brute ? 4 : 3, shade(c2, -0.2));
-      B(brute ? 11 : 8, brute ? 15 : 11 + sq * 0.4, brute ? 6.4 : 3.8, brute ? 5.4 : 3.6, c2);
-      if (brute) { L(4.6, 13, 1, 19 + (atk ? -6 : 0), c2, 2); L(17.4, 13, 21, 19 + (atk ? -6 : 0), c2, 2); }
-      B(brute ? 11 : 8, brute ? 7.4 : 6.6 + sq, brute ? 10 : 7, brute ? 6 : 4.6 - sq * 0.5, c1);
+      T('leg'); for (const d of [-1, 1]) Rr(8 + d * (brute ? 3.6 : 2) - 1, (brute ? 20 : 14.6) - (step && d < 0 ? 1 : 0), brute ? 2.6 : 1.8, brute ? 4 : 3, shade(c2, -0.2));
+      T('body'); B(brute ? 11 : 8, brute ? 15 : 11 + sq * 0.4, brute ? 6.4 : 3.8, brute ? 5.4 : 3.6, c2);
+      T('arm'); if (brute) { L(4.6, 13, 1, 19 + (atk ? -6 : 0), c2, 2); L(17.4, 13, 21, 19 + (atk ? -6 : 0), c2, 2); }
+      T('head'); B(brute ? 11 : 8, brute ? 7.4 : 6.6 + sq, brute ? 10 : 7, brute ? 6 : 4.6 - sq * 0.5, c1);
       for (let i = 0; i < (brute ? 6 : 4); i++) D((brute ? 3 : 3.4) + i * (brute ? 3.2 : 3), (brute ? 5 : 5.4) + (i % 2) * 1.6 + sq, brute ? 1.3 : 0.9, '#f4ead8');
-      eye(brute ? 9.4 : 6.8, brute ? 15 : 11.4, '#1a1214'); eye(brute ? 12.6 : 9.2, brute ? 15 : 11.4, '#1a1214');
-      if (atk) for (let i = 0; i < 5; i++) D(3 + i * 3, 1 + (i % 2), 0.7, c3);
+      T('face'); eye(brute ? 9.4 : 6.8, brute ? 15 : 11.4, '#1a1214'); eye(brute ? 12.6 : 9.2, brute ? 15 : 11.4, '#1a1214');
+      T('head'); if (atk) for (let i = 0; i < 5; i++) D(3 + i * 3, 1 + (i % 2), 0.7, c3);
       break;
     }
     case 'wisp': {
+      rigOrient(P, 'front', { depth: 0.9, float: true });
       const bob = step ? -0.8 : 0;
       if (v === 'jelly') {
         for (let i = 0; i < 5; i++) L(4 + i * 1.6, 9 + bob, 3.6 + i * 1.6 + Math.sin(i + step * 2) * 0.8, 17, i % 2 ? c1 : c3, 0.6);
-        E(7, 7 + bob, 6, 5, c1, 200); E(7, 5.6 + bob, 4.4, 3, c2, 200); eye(5.4, 7 + bob, '#1a1214'); eye(8.6, 7 + bob, '#1a1214');
+        T('body'); E(7, 7 + bob, 6, 5, c1, 200); E(7, 5.6 + bob, 4.4, 3, c2, 200); T('face'); eye(5.4, 7 + bob, '#1a1214'); eye(8.6, 7 + bob, '#1a1214');
       } else if (v === 'pixie') {
-        E(3, 4 + bob - step, 2.6, 2, '#ffffff', 180); E(9, 4 + bob - step, 2.6, 2, '#ffffff', 180);
-        B(6, 6.6 + bob, 2.4, 2.8, c1); D(6, 3.8 + bob, 1.8, '#f0d0c0'); eye(5.4, 3.8 + bob, '#1a1214'); eye(6.6, 3.8 + bob, '#1a1214'); D(6, 2.4 + bob, 1.6, c3);
+        T('wing'); E(3, 4 + bob - step, 2.6, 2, '#ffffff', 180); E(9, 4 + bob - step, 2.6, 2, '#ffffff', 180);
+        T('body'); B(6, 6.6 + bob, 2.4, 2.8, c1); T('head'); D(6, 3.8 + bob, 1.8, '#f0d0c0'); T('face'); eye(5.4, 3.8 + bob, '#1a1214'); eye(6.6, 3.8 + bob, '#1a1214'); T('head'); D(6, 2.4 + bob, 1.6, c3);
       } else if (v === 'elemental' || v === 'sand' || v === 'fire') {
         const bodyC = c1;
         for (let i = 0; i < 5; i++) { const a = (i / 5) * TAU + f * 0.7; Poly([[8 + Math.cos(a) * 2, 12 + Math.sin(a) * 2 + bob], [8 + Math.cos(a + 0.4) * 2, 12 + Math.sin(a + 0.4) * 2 + bob], [8 + Math.cos(a + 0.2) * 7, 12 + Math.sin(a + 0.2) * 4 - 3 + bob]], i % 2 ? c2 : c3); }
-        B(8, 10 + bob, 5, 6, bodyC, 0.45, -0.25); Poly([[4, 6 + bob], [12, 6 + bob], [8, -1 + bob - (atk ? 1 : 0)]], bodyC);
-        D(8, 9 + bob, 2.2, c2); eye(6.6, 9 + bob, '#1a1214'); eye(9.4, 9 + bob, '#1a1214');
-        if (v === 'sand') for (let i = 0; i < 4; i++) L(3 + i * 3, 16, 5 + i * 3, 19, shade(c1, -0.2), 0.6);
+        T('body'); B(8, 10 + bob, 5, 6, bodyC, 0.45, -0.25); Poly([[4, 6 + bob], [12, 6 + bob], [8, -1 + bob - (atk ? 1 : 0)]], bodyC);
+        T('face'); D(8, 9 + bob, 2.2, c2); eye(6.6, 9 + bob, '#1a1214'); eye(9.4, 9 + bob, '#1a1214');
+        T('body'); if (v === 'sand') for (let i = 0; i < 4; i++) L(3 + i * 3, 16, 5 + i * 3, 19, shade(c1, -0.2), 0.6);
       } else if (v === 'prism') {
         Poly([[7, 1 + bob], [12.6, 7 + bob], [7, 14 + bob], [1.4, 7 + bob]], c1); Poly([[7, 1 + bob], [12.6, 7 + bob], [7, 7 + bob]], c2); Poly([[7, 7 + bob], [7, 14 + bob], [1.4, 7 + bob]], c3);
-        eye(7, 7 + bob, '#1a1214', true);
+        T('face'); eye(7, 7 + bob, '#1a1214', true);
       } else {
-        B(7, 8 + bob, 4.6, 4.6, c1, 0.5, -0.2); D(7, 7 + bob, 2.4, c2);
+        T('body'); B(7, 8 + bob, 4.6, 4.6, c1, 0.5, -0.2); D(7, 7 + bob, 2.4, c2);
         for (let i = 0; i < 4; i++) D(3 + i * 2.6, 13.6 + ((i + f) % 2) + bob, 0.8, c3);
         if (v === 'spark') for (let i = 0; i < 4; i++) { const a = (i / 4) * TAU + f; L(7 + Math.cos(a) * 4, 8 + Math.sin(a) * 4 + bob, 7 + Math.cos(a) * 6.4, 8 + Math.sin(a) * 6.4 + bob, c2, 0.5); }
-        eye(5.8, 8 + bob, '#1a1214'); eye(8.2, 8 + bob, '#1a1214');
+        T('face'); eye(5.8, 8 + bob, '#1a1214'); eye(8.2, 8 + bob, '#1a1214');
       }
       break;
     }
     case 'golem': {
+      rigOrient(P, 'front', 1.1);
       const [b1, b2] = [c1, c2];
       const crystal = v === 'crystal' || v === 'ice' || v === 'salt', bone = v === 'bone';
-      for (const d of [-1, 1]) { const up = step && d < 0 ? 1 : 0; Rr(10 + d * 3.4 - 2, 15 - up, 4, 7, shade(b1, -0.15)); }
-      B(10, 11.6, 7.4, 5.6, b1, 0.25, -0.35);
+      T('leg'); for (const d of [-1, 1]) { const up = step && d < 0 ? 1 : 0; Rr(10 + d * 3.4 - 2, 15 - up, 4, 7, shade(b1, -0.15)); }
+      T('body'); B(10, 11.6, 7.4, 5.6, b1, 0.25, -0.35);
       if (v === 'leaf') for (let i = 0; i < 8; i++) D(4 + (i % 4) * 4, 8 + Math.floor(i / 4) * 5, 2, i % 2 ? b2 : shade(b1, 0.12));
       if (v === 'pumpkin') { for (const x of [6, 10, 14]) L(x, 7, x, 16, shade(b1, -0.22), 0.8); Rr(9, 4.6, 2, 2, '#5a8a2a'); }
       if (v === 'coral') for (let i = 0; i < 4; i++) { L(4 + i * 4, 8, 3.6 + i * 4, 3.6, i % 2 ? b2 : c3, 1); }
       if (crystal) for (let i = 0; i < 3; i++) Poly([[6 + i * 4, 8], [8 + i * 4, 8], [7 + i * 4, 2.4 - (i === 1 ? 1.4 : 0)]], i % 2 ? c3 : b2);
       if (v === 'obsidian' || v === 'stone') for (let i = 0; i < 3; i++) L(5 + i * 5, 9 + (i % 2), 7 + i * 5, 14, c3, 0.6);
       if (bone) { for (let i = 0; i < 4; i++) L(5, 9 + i * 2, 15, 9 + i * 2, shade(b1, -0.3), 0.6); }
-      const raise = atk ? -4 : 0;
+      T('arm'); const raise = atk ? -4 : 0;
       for (const d of [-1, 1]) { L(10 + d * 6.6, 9, 10 + d * 8.4, 15 + raise, b1, 2.6); B(10 + d * 8.4, 15.6 + raise, 2.2, 2, shade(b1, -0.1)); }
-      B(10, 5.6, 3.6, 3, shade(b1, 0.06));
-      eye(8.8, 5.6, c3); eye(11.2, 5.6, c3);
+      T('head'); B(10, 5.6, 3.6, 3, shade(b1, 0.06));
+      T('face'); eye(8.8, 5.6, c3); eye(11.2, 5.6, c3);
       break;
     }
     case 'ghost': {
+      rigOrient(P, 'front', { depth: 0.8, float: true });
       const a = 205, base = c1, bob = step ? -0.6 : 0;
       P.disc(X(8), Y(6 + bob), 5 * s, base, a); P.rect(Math.round(X(3)), Math.round(Y(6 + bob)), Math.round(10 * sx), Math.round(8 * sy), base, a);
       for (let x = 3; x <= 12; x++) { const yy = 14 + ((x + f) % 3 === 0 ? 1.4 : 0); P.rect(Math.round(X(x)), Math.round(Y(13 + bob)), Math.max(1, Math.round(sx)), Math.max(1, Math.round((yy - 13) * sy)), base, a); }
       if (v === 'wraith') { for (let i = 0; i < 3; i++) Poly([[4 + i * 3, 2 + bob], [5.4 + i * 3, 2 + bob], [4.8 + i * 3, -0.6 + bob]], c2); }
       if (v === 'shade') { E(8, 6 + bob, 5, 5, shade(c1, -0.3), 180); }
-      Rr(5, 5 + bob, 2, 3, '#1a1420'); Rr(9, 5 + bob, 2, 3, '#1a1420'); P.px(X(6), Y(6 + bob), c3); P.px(X(10), Y(6 + bob), c3);
+      T('face'); Rr(5, 5 + bob, 2, 3, '#1a1420'); Rr(9, 5 + bob, 2, 3, '#1a1420'); P.px(X(6), Y(6 + bob), c3); P.px(X(10), Y(6 + bob), c3);
       if (atk) E(8, 10 + bob, 1.6, 1.8, '#1a1420');
       break;
     }
     case 'crab': {
-      if (v === 'hermit') { B(9, 7, 7, 6, c2, 0.4, -0.3); for (let i = 0; i < 3; i++) L(4 + i * 3, 4 + i, 9 + i * 2, 12, shade(c2, -0.2), 0.6); }
+      rigOrient(P, 'front', 0.9);
+      if (v === 'hermit') { T('shell:f'); B(9, 7, 7, 6, c2, 0.4, -0.3); for (let i = 0; i < 3; i++) L(4 + i * 3, 4 + i, 9 + i * 2, 12, shade(c2, -0.2), 0.6); }
       const by = v === 'hermit' ? 13 : 8;
-      for (let i = 0; i < 3; i++) for (const d of [-1, 1]) L(10 + d * (2 + i * 1.6), by, 10 + d * (4 + i * 2), by + 4 - ((step + i) % 2), shade(c1, -0.2), 0.7);
-      B(10, by - 1, 6.4, 3.4, c1);
+      T('leg'); for (let i = 0; i < 3; i++) for (const d of [-1, 1]) L(10 + d * (2 + i * 1.6), by, 10 + d * (4 + i * 2), by + 4 - ((step + i) % 2), shade(c1, -0.2), 0.7);
+      T('body'); B(10, by - 1, 6.4, 3.4, c1);
       const op = atk ? 1 : 0;
-      for (const d of [-1, 1]) { L(10 + d * 5, by - 2, 10 + d * 8, by - 5 - op, c1, 1.2); B(10 + d * 8.6, by - 6 - op, 2.2, 1.6, c1); Rr(10 + d * 8.6 - 0.4, by - 6 - op, 0.8, 1.6 + op, '#1a1214'); }
-      L(8, by - 4, 8, by - 6.4, c1, 0.5); L(12, by - 4, 12, by - 6.4, c1, 0.5); D(8, by - 6.6, 0.8, '#1a1214'); D(12, by - 6.6, 0.8, '#1a1214');
+      T('arm'); RT(10 - 5, by - 2); RT(10 + 5, by - 2); for (const d of [-1, 1]) { L(10 + d * 5, by - 2, 10 + d * 8, by - 5 - op, c1, 1.2); B(10 + d * 8.6, by - 6 - op, 2.2, 1.6, c1); Rr(10 + d * 8.6 - 0.4, by - 6 - op, 0.8, 1.6 + op, '#1a1214'); }
+      T('head'); L(8, by - 4, 8, by - 6.4, c1, 0.5); L(12, by - 4, 12, by - 6.4, c1, 0.5); D(8, by - 6.6, 0.8, '#1a1214'); D(12, by - 6.6, 0.8, '#1a1214');
       break;
     }
     case 'toad': {
+      rigOrient(P, 'front', 1.1);
       const frog = v === 'frog', sq = step ? 0.8 : 0;
       for (const d of [-1, 1]) { E(10 + d * 6, 13.6, 3, 1.6, shade(c1, -0.15)); }
       B(10, 9.4 + sq, frog ? 6 : 8, frog ? 4.2 : 5.6 - sq, c1, 0.35, -0.3);
-      E(10, 11.4 + sq, frog ? 4 : 6, 2.6, c2);
+      T('face'); E(10, 11.4 + sq, frog ? 4 : 6, 2.6, c2); T('body');
       if (frog) for (let i = 0; i < 4; i++) D(6 + i * 2.6, 7.6 + (i % 2) + sq, 0.9, '#1a1a2a');
       else for (let i = 0; i < 5; i++) D(5 + i * 2.6, 6.6 + (i % 2) + sq, 0.8, shade(c1, -0.2));
-      B(6.6, 5 + sq, 1.8, 1.8, c1); B(13.4, 5 + sq, 1.8, 1.8, c1); eye(6.6, 4.8 + sq, '#1a1214', true); eye(13.4, 4.8 + sq, '#1a1214', true);
-      Rr(6, 9.4 + sq, 8, 0.8, shade(c1, -0.35));
+      T('head'); B(6.6, 5 + sq, 1.8, 1.8, c1); B(13.4, 5 + sq, 1.8, 1.8, c1); T('face'); eye(6.6, 4.8 + sq, '#1a1214', true); eye(13.4, 4.8 + sq, '#1a1214', true);
+      T('face'); Rr(6, 9.4 + sq, 8, 0.8, shade(c1, -0.35));
       if (atk) L(13, 9.4, 19, 9, '#ff6a8a', 0.8);
       break;
     }
     case 'horror': {
+      rigOrient(P, 'front', { depth: 1, float: v === 'eye' });
       if (v === 'eye') {
         const bob = step ? -0.8 : 0;
         for (let i = 0; i < 5; i++) { const x0 = 5 + i * 2; for (let j = 0; j < 8; j++) P.px(X(x0 + Math.sin(j * 0.8 + i + f) * 1.2), Y(12 + j + bob), j % 3 ? c1 : c2); }
-        B(9, 7.6 + bob, 7, 6.4, c1, 0.3, -0.35);
-        E(9, 7.6 + bob, 5, 4.4, '#f4eef4'); D(9 + (atk ? 0 : 0.8), 7.6 + bob, 2.6, c2); D(9 + (atk ? 0 : 0.8), 7.6 + bob, 1.3, '#1a0a1a'); P.px(X(8), Y(6.4 + bob), '#ffffff');
-        for (let i = 0; i < 3; i++) { const a = -2.4 + i * 0.6; D(9 + Math.cos(a) * 7.6, 7.6 + Math.sin(a) * 6.6 + bob, 1, c3); }
+        T('body'); B(9, 7.6 + bob, 7, 6.4, c1, 0.3, -0.35);
+        T('face'); E(9, 7.6 + bob, 5, 4.4, '#f4eef4'); D(9 + (atk ? 0 : 0.8), 7.6 + bob, 2.6, c2); D(9 + (atk ? 0 : 0.8), 7.6 + bob, 1.3, '#1a0a1a'); P.px(X(8), Y(6.4 + bob), '#ffffff');
+        T('body'); for (let i = 0; i < 3; i++) { const a = -2.4 + i * 0.6; D(9 + Math.cos(a) * 7.6, 7.6 + Math.sin(a) * 6.6 + bob, 1, c3); }
       } else {
         const sq = step ? 0.8 : 0;
-        for (let i = 0; i < 4; i++) L(4 + i * 3.4, 12, 3 + i * 3.6 + Math.sin(i + f) * 1.4, 16, c1, 1.2);
-        B(9, 9 + sq, 7.4, 6 - sq, c1, 0.35, -0.3);
-        for (const [x, y, r] of [[6, 7, 1.4], [11, 6.4, 1.8], [8.6, 10.6, 1.1], [13, 10, 1]]) { D(x, y + sq, r, '#f4eef4'); D(x + 0.3, y + sq, r * 0.5, (x * 7) % 2 ? c2 : c3); }
+        T('leg'); for (let i = 0; i < 4; i++) L(4 + i * 3.4, 12, 3 + i * 3.6 + Math.sin(i + f) * 1.4, 16, c1, 1.2);
+        T('body'); B(9, 9 + sq, 7.4, 6 - sq, c1, 0.35, -0.3);
+        T('face'); for (const [x, y, r] of [[6, 7, 1.4], [11, 6.4, 1.8], [8.6, 10.6, 1.1], [13, 10, 1]]) { D(x, y + sq, r, '#f4eef4'); D(x + 0.3, y + sq, r * 0.5, (x * 7) % 2 ? c2 : c3); }
         if (atk) E(9, 13 + sq, 3, 1.4, '#1a0a1a');
       }
       break;
@@ -15354,11 +15445,14 @@ function bossFrames(id) {
     const A0 = typeof ASPECT !== 'undefined' && ASPECT[BOSS_ASPECT[B.zone]];
     const A = A0 ? { ...A0, wing: B.fly ? A0.wing : null } : null;
     const headAt = B.fam === 'quad' || B.fam === 'serpent' || B.fam === 'toad' ? 0.78 : 0.5;
-    return [0, 1, 2].map((f) => {
-      const p = new PP(w, h); paintCreature(p, d, f);
+    const make = (f, rig) => {
+      const p = new PP(w, h), rc = rig ? crigCapture({ w, h, paint: (q) => paintCreature(q, d, f) }, f) : null;
+      if (rc) { for (const n of rc.names) { const L = rc.layers[n]; for (let i = 0; i < L.length; i++) if (L[i] >>> 24) p.d[i] = L[i]; } p.rigCap = rc; } else paintCreature(p, d, f);
       if (A && typeof adornPP === 'function') { try { return adornPP(p, A, 6, f, { key: id, headAt }); } catch (e) { /* fall back to the plain beast */ } }
-      p.outline(); return p.sprite(Math.floor(w / 2), h - 1);
-    });
+      p.outline(); const sp = p.sprite(Math.floor(w / 2), h - 1); if (rc) sp.rigCap = rc; return sp;
+    };
+    const fr = [0, 1, 2].map((f) => make(f));
+    return crigAttach(fr, { w: fr[0].w, h: fr[0].h, ax: fr[0].ax, ay: fr[0].ay, atkF: 2, capture: (f) => make(f, true).rigCap });
   });
 }
 
@@ -15972,7 +16066,7 @@ bossDefeated = function (e) {
 HOOKS.realmBoss = [];
 for (const id in W_BOSS_DEF) BOSS_DRAW[id] = (g, e, x, y, a, white) => {
   const fr = e.frames, moving = Math.hypot(e.vx || 0, e.vy || 0) > 5;
-  const sp = e.pose === 2 ? fr[2] : fr[moving ? Math.floor(e.anim * 5) % 2 : Math.floor(e.anim * 1.5) % 2];
+  const sp = crigEntFrame(e) || (e.pose === 2 ? fr[2] : fr[moving ? Math.floor(e.anim * 5) % 2 : Math.floor(e.anim * 1.5) % 2]);
   const bob = e.fly ? Math.sin(G.t * 3) * 3 - 8 : 0;
   drawSprite(g, sp, x, y + bob, e.face < 0, { alpha: a, white, outline: e.bphase >= 3 ? '#ff4a3a' : e.bphase >= 2 ? '#ffb35e' : null });
 };
@@ -16443,8 +16537,8 @@ function drawMount(g, p, cx, cy) {
 }
 function mountFrames() {
   return spr('mount', () => {
-    const d = { fam: 'quad', v: 'horse', c: ['#8a5a3a', '#2e1e14', '#e8d8b0'], size: 1.15, ghostly: false };
-    return [0, 1, 2].map((f) => { const [w, h] = creatureSize('quad', 'horse', 1.15), p = new PP(w, h); paintCreature(p, d, f); p.outline(); return p.sprite(Math.floor(w / 2), h - 1); });
+    const d = { fam: 'quad', v: 'horse', c: ['#8a5a3a', '#2e1e14', '#e8d8b0'], size: 1.15, ghostly: false }, [w, h] = creatureSize('quad', 'horse', 1.15);
+    return crigAttach([0, 1, 2].map((f) => { const p = new PP(w, h); paintCreature(p, d, f); p.outline(); return p.sprite(Math.floor(w / 2), h - 1); }), { w, h, ax: Math.floor(w / 2), ay: h - 1, atkF: 2, paint: (p, f) => paintCreature(p, d, f) });
   });
 }
 // names over bosses and champions, and townsfolk speech
@@ -17438,6 +17532,538 @@ function buffChips() {
   if (p.restedT > 0) out.push(`<span style="color:#7de08a">Rested ${mmss(p.restedT)}</span>`);
   return out.join('');
 }
+
+/* ============================================================
+   Cinderdeep — the rigged world. Monsters, Realm creatures,
+   playable beasts and the mount are rebuilt from their paintings
+   the way heroes are. Painters name the parts they paint; bodies,
+   heads and tails are inflated from the flat picture into rounded
+   solids, legs and arms become textures carried on bones, wings
+   flap about their roots and tails wag about theirs. Five baked
+   turns, mirrored, cover eight directions, and each turn bakes its
+   clips a few at a time so a crowded room never stalls.
+   ============================================================ */
+const crigOn = () => CD.settings.rigWorld !== false;
+// painters say how they were drawn: from the front (the default), side on facing right, or from above;
+// how deep the body is for its width, whether it floats rather than walks, and which way a creature painted from above faces
+function rigOrient(P, o, opt = {}) {
+  const c = P && P.cap;
+  if (!c) return;
+  if (typeof opt === 'number') opt = { depth: opt };
+  c.orient = o; c.depth = opt.depth || 1; c.float = !!opt.float; c.slither = !!opt.slither; c.fwd = opt.fwd === 'right' ? Math.PI / 2 : 0;
+}
+// where a limb joins the body, for limbs that splay out before they come down
+function rigRoot(P, x, y) { const c = P && P.cap; if (c) (c.roots || (c.roots = {}))[c.part] = ((c.roots || {})[c.part] || []).concat([[x, y]]); }
+function crigCapture(def, f) {
+  if (def.capture) return def.capture(f);
+  const P = new PP(def.w, def.h);
+  const c = { part: 'body', names: [], layers: Object.create(null), w: P.w, h: P.h, own: new Uint8Array(P.w * P.h), orient: def.orient || 'front' };
+  P.cap = c;
+  try { def.paint(P, f); } finally { P.cap = null; }
+  return c;
+}
+
+// a pixel written straight onto the layer being painted
+function crigPut(Q, x, y, v) {
+  const c = Q.cap, i = y * Q.w + x;
+  Q.d[i] = v;
+  let k = c.names.indexOf(c.part);
+  if (k < 0) { k = c.names.push(c.part) - 1; c.layers[c.part] = new Uint32Array(Q.w * Q.h); }
+  c.layers[c.part][i] = v; c.own[i] = k + 1;
+}
+// a captured body grown the way resamplePP grows a picture, one layer at a time
+function crigResample(c, k) {
+  if (k <= 1.02) return c;
+  const out = { ...c, layers: Object.create(null), roots: c.roots && Object.fromEntries(Object.entries(c.roots).map(([n, L]) => [n, L.map(([x, y]) => [x * k, y * k])])) };
+  for (const n of c.names) { const P = new PP(c.w, c.h); P.d.set(c.layers[n]); const Q = resamplePP(P, k); out.layers[n] = Q.d; out.w = Q.w; out.h = Q.h; }
+  out.own = new Uint8Array(out.w * out.h);
+  out.names.forEach((n, k2) => { const L = out.layers[n]; for (let i = 0; i < L.length; i++) if (L[i] >>> 24) out.own[i] = k2 + 1; });
+  return out;
+}
+
+/* ---------- a little 3D: affine matrices over (u across the picture, y down it, z out of it) ---------- */
+const CRIG_DOWN = [0, 1, 0];
+const CRIG_AX = { side: { F: [1, 0, 0], L: [0, 0, 1] }, front: { F: [0, 0, 1], L: [1, 0, 0] } };
+const mI = () => [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0];
+function mMul(A, B) {
+  const o = new Array(12);
+  for (let r = 0; r < 3; r++) {
+    for (let c = 0; c < 3; c++) o[r * 4 + c] = A[r * 4] * B[c] + A[r * 4 + 1] * B[4 + c] + A[r * 4 + 2] * B[8 + c];
+    o[r * 4 + 3] = A[r * 4] * B[3] + A[r * 4 + 1] * B[7] + A[r * 4 + 2] * B[11] + A[r * 4 + 3];
+  }
+  return o;
+}
+const mApply = (m, p) => [m[0] * p[0] + m[1] * p[1] + m[2] * p[2] + m[3], m[4] * p[0] + m[5] * p[1] + m[6] * p[2] + m[7], m[8] * p[0] + m[9] * p[1] + m[10] * p[2] + m[11]];
+const mMove = (x, y, z) => [1, 0, 0, x, 0, 1, 0, y, 0, 0, 1, z];
+// turn b toward a by th, about the point c
+function mTurn(a, b, th, c) {
+  if (!th) return mI();
+  const cs = Math.cos(th) - 1, sn = Math.sin(th), m = mI();
+  for (let r = 0; r < 3; r++) for (let k = 0; k < 3; k++) m[r * 4 + k] += cs * (a[r] * a[k] + b[r] * b[k]) + sn * (a[r] * b[k] - b[r] * a[k]);
+  return c ? mMul(mMove(c[0], c[1], c[2]), mMul(m, mMove(-c[0], -c[1], -c[2]))) : m;
+}
+function mScale(sx, sy, sz, c) { return mMul(mMove(c[0], c[1], c[2]), mMul([sx, 0, 0, 0, 0, sy, 0, 0, 0, 0, sz, 0], mMove(-c[0], -c[1], -c[2]))); }
+
+/* ---------- inflating a flat part: thick in its middle, thin at its edges ---------- */
+function crigDist(A, W, H) {
+  const D = new Float32Array(W * H), r2 = Math.SQRT2;
+  for (let i = 0; i < W * H; i++) D[i] = A[i] >>> 24 ? 1e6 : 0;
+  const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : D[y * W + x]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; if (D[i]) D[i] = Math.min(D[i], at(x - 1, y) + 1, at(x, y - 1) + 1, at(x - 1, y - 1) + r2, at(x + 1, y - 1) + r2); }
+  for (let y = H - 1; y >= 0; y--) for (let x = W - 1; x >= 0; x--) { const i = y * W + x; if (D[i]) D[i] = Math.min(D[i], at(x + 1, y) + 1, at(x, y + 1) + 1, at(x + 1, y + 1) + r2, at(x - 1, y + 1) + r2); }
+  return D;
+}
+function crigThick(A, W, H, k) {
+  const D = crigDist(A, W, H), R = new Float32Array(W * H), T = new Float32Array(W * H);
+  // the local radius: the biggest circle that fits inside and covers the pixel, so an ear on a head stays thin and a belly stays round
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const r = D[y * W + x];
+    if (!r) continue;
+    let inner = false;
+    for (let dy = -1; dy <= 1 && !inner; dy++) for (let dx = -1; dx <= 1; dx++) { const xx = x + dx, yy = y + dy; if ((dx || dy) && xx >= 0 && yy >= 0 && xx < W && yy < H && D[yy * W + xx] >= r + 0.95) { inner = true; break; } }
+    if (inner) continue;
+    const n = Math.floor(r);
+    for (let dy = -n; dy <= n; dy++) for (let dx = -n; dx <= n; dx++) {
+      const xx = x + dx, yy = y + dy;
+      if (xx < 0 || yy < 0 || xx >= W || yy >= H || dx * dx + dy * dy > r * r) continue;
+      const j = yy * W + xx;
+      if (D[j] && r > R[j]) R[j] = r;
+    }
+  }
+  for (let i = 0; i < W * H; i++) {
+    if (!D[i]) continue;
+    const d = D[i] - 0.5, r = Math.max(R[i], D[i]) - 0.5;
+    T[i] = k * Math.sqrt(Math.max(0.25, d * (2 * r - d)));
+  }
+  return T;
+}
+function crigComps(A, W, H) {
+  const seen = new Uint8Array(W * H), out = [];
+  for (let i = 0; i < W * H; i++) {
+    if (seen[i] || !(A[i] >>> 24)) continue;
+    const st = [i], comp = [];
+    seen[i] = 1;
+    while (st.length) {
+      const j = st.pop(), x = j % W, y = (j / W) | 0;
+      comp.push(j);
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const xx = x + dx, yy = y + dy;
+        if (xx < 0 || yy < 0 || xx >= W || yy >= H) continue;
+        const k = yy * W + xx;
+        if (!seen[k] && A[k] >>> 24) { seen[k] = 1; st.push(k); }
+      }
+    }
+    out.push(comp);
+  }
+  // crumbs join the nearest piece
+  const big = out.filter((c) => c.length > 2);
+  if (!big.length) return out;
+  for (const c of out) if (c.length <= 2) {
+    let best = big[0], bd = 1e9;
+    for (const b of big) for (const j of b) { const d = Math.hypot((j % W) - (c[0] % W), ((j / W) | 0) - ((c[0] / W) | 0)); if (d < bd) { bd = d; best = b; } }
+    best.push(...c);
+  }
+  return big;
+}
+
+/* ---------- the model: solid pieces and limbs, from one painted frame ---------- */
+const CRIG_K = { side: { body: 1.15, head: 1, tail: 0.6, wing: 0.16, def: 0.8 }, front: { body: 0.75, head: 0.85, tail: 0.6, wing: 0.16, def: 0.65 } };
+const crigJoint = (b) => (b === 'body' ? 'body' : b.startsWith('head') ? 'head' : b.startsWith('tail') ? 'tail' : b.startsWith('wing') ? 'wing' : b.startsWith('gear') ? 'gear' : 'body');
+function crigModel(def, f) {
+  const c = crigCapture(def, f), W = c.w, H = c.h, ax = def.ax, side = c.orient === 'side';
+  if (c.orient === 'top') return { orient: 'top', fwd: c.fwd, W, H, ax, ay: def.ay, pieces: [], limbs: [], stride: 10, s: 1 };
+  const AXS = CRIG_AX[side ? 'side' : 'front'], K = CRIG_K[side ? 'side' : 'front'];
+  const M = { W, H, ax, ay: def.ay, orient: side ? 'side' : 'front', F: AXS.F, L: AXS.L, pieces: [], limbs: [], gy: def.ay + 1 };
+  const parts = c.names.map((n, ord) => { const [base, sd] = n.split(':'); return { n, base, sd, ord, A: c.layers[n] }; });
+  // solids first; the body's thickness sets how far apart near and far parts sit
+  let hmax = 0;
+  for (const q of parts) if (!/^(leg|arm|face)/.test(q.base)) {
+    q.T = crigThick(q.A, W, H, (K[q.base] ?? K[crigJoint(q.base)] ?? K.def) * (q.base === 'body' ? c.depth || 1 : 1));
+    if (q.base === 'body') for (const v of q.T) hmax = Math.max(hmax, v);
+  }
+  if (!hmax) for (const q of parts) if (q.T) for (const v of q.T) hmax = Math.max(hmax, v);
+  let hh = 0;
+  for (const q of parts) if (q.base === 'head' && q.T) for (const v of q.T) hh = Math.max(hh, v);
+  const zs = Math.max(1, hmax * 0.9), zh = Math.max(1, (hh || hmax) * 0.8);
+  const zOf = (sd, base) => { const z = base && crigJoint(base) === 'head' ? zh : zs; return sd === 'n' ? z : sd === 'f' ? -z : 0; };
+  M.zs = zs;
+  // the middle of the body, where roots are measured from
+  let bu = 0, by = 0, bn = 0;
+  const bodyQ = parts.find((q) => q.base === 'body');
+  for (const q of bodyQ ? [bodyQ] : parts.filter((r) => r.T)) for (let i = 0; i < W * H; i++) if (q.A[i] >>> 24) { bu += (i % W) + 0.5 - ax; by += ((i / W) | 0) + 0.5; bn++; }
+  M.bc = bn ? [bu / bn, by / bn, 0] : [0, H / 2, 0];
+  M.hip = [M.bc[0], M.bc[1], 0];
+  const nearest = (idx) => { let best = idx[0], bd = 1e9; for (const j of idx) { const d = Math.hypot((j % W) + 0.5 - ax - M.bc[0], ((j / W) | 0) + 0.5 - M.bc[1]); if (d < bd) { bd = d; best = j; } } return [(best % W) + 0.5 - ax, ((best / W) | 0) + 0.5, 0]; };
+  // the pieces; wings and tails come apart into one piece each
+  for (const q of parts) {
+    if (!q.T) continue;
+    const joint = crigJoint(q.base), zo = zOf(q.sd, q.base);
+    const groups = joint === 'wing' || joint === 'tail' ? crigComps(q.A, W, H) : [[...Array(W * H).keys()].filter((i) => q.A[i] >>> 24)];
+    for (const idx of groups) {
+      if (!idx.length) continue;
+      const pts = [], cols = [];
+      for (const i of idx) {
+        const x = i % W, y = (i / W) | 0, v = q.A[i], h = q.T[i], u = x + 0.5 - ax;
+        const hn = Math.min(x > 0 && q.A[i - 1] >>> 24 ? q.T[i - 1] : 0, x < W - 1 && q.A[i + 1] >>> 24 ? q.T[i + 1] : 0);
+        if (h < 0.7) { pts.push(u, y + 0.5, zo); cols.push(v); continue; }
+        // only the skin: whatever the neighbours already cover cannot be seen from any side
+        const n = Math.ceil((2 * h) / 0.7), lim = Math.min(hn, h) - 0.8;
+        for (let k = 0; k <= n; k++) { const z = -h + (2 * h * k) / n; if (Math.abs(z) >= lim) { pts.push(u, y + 0.5, zo + z); cols.push(v); } }
+      }
+      const root = joint === 'body' ? M.hip : nearest(idx);
+      let cu = 0;
+      for (const i of idx) cu += (i % W) + 0.5 - ax;
+      const lat = side ? (zo > 0 ? 1 : zo < 0 ? -1 : 1) : Math.sign(cu / idx.length - M.bc[0]) || 1;
+      M.pieces.push({ n: q.n, joint, ord: q.ord, pts, cols, root, lat, zo });
+    }
+  }
+  // faces sit on the skin of whatever they were painted on; seen from behind they are not there
+  for (const q of parts) {
+    if (q.base !== 'face') continue;
+    for (let i = 0; i < W * H; i++) {
+      const v = q.A[i];
+      if (!(v >>> 24)) continue;
+      const u = (i % W) + 0.5 - ax, y = ((i / W) | 0) + 0.5;
+      let pc = null;
+      for (const r of parts) if (r.T && r.ord < q.ord && r.A[i] >>> 24) pc = r;
+      // the piece it belongs to; a wing or a tail split in two goes to the half whose root is closer
+      let under = null, ud = 1e9;
+      for (const m of M.pieces) if (pc ? m.n === pc.n : m.joint === 'body') { const d = Math.hypot(m.root[0] - u, m.root[1] - y); if (d < ud) { ud = d; under = m; } }
+      if (!under) under = M.pieces[0];
+      if (!under) continue;
+      const h = pc ? pc.T[i] : 0.5;
+      under.pts.push(u, y, under.zo + h + 0.35); under.cols.push(v);
+      if (side) { under.pts.push(u, y, under.zo - h - 0.35); under.cols.push(v); }
+    }
+  }
+  for (const pc of M.pieces) { pc.pts = Float32Array.from(pc.pts); pc.cols = Uint32Array.from(pc.cols); }
+  const neck = M.pieces.find((m) => m.n === 'head');
+  if (neck) for (const pc of M.pieces) if (pc.joint === 'head') pc.root = neck.root;
+  // limbs: one texture each, straightened along the bones they hang on
+  for (const q of parts) {
+    if (!/^(leg|arm)/.test(q.base)) continue;
+    const kind = q.base.startsWith('arm') ? 'arm' : 'leg', hints = (c.roots && c.roots[q.n]) || [];
+    for (const idx of crigComps(q.A, W, H)) {
+      const inC = new Set(idx), P = idx.map((i) => [(i % W) + 0.5, ((i / W) | 0) + 0.5]);
+      let root = null, hd = 3.5;
+      for (const [hx, hy] of hints) for (const [x, y] of P) { const d = Math.hypot(x - hx - 0.5, y - hy - 0.5); if (d < hd) { hd = d; root = [hx + 0.5, hy + 0.5]; } }
+      if (!root) { let top = 1e9; for (const [, y] of P) top = Math.min(top, y); const row = P.filter(([, y]) => y === top); root = [row.reduce((s, [x]) => s + x, 0) / row.length, top - 0.5]; }
+      // the foot is the middle of the lowest row, unless the limb reaches further sideways than down
+      let foot = root, fd = -1, low = -1e9;
+      for (const [, y] of P) low = Math.max(low, y);
+      const bottom = P.filter(([, y]) => y === low), bx = bottom.reduce((s, [x]) => s + x, 0) / bottom.length;
+      for (const p of P) { const d = Math.hypot(p[0] - root[0], p[1] - root[1]); if (d > fd) { fd = d; foot = p; } }
+      if (low - root[1] >= Math.abs(foot[0] - root[0]) * 0.6) { foot = [bx, low]; fd = Math.hypot(foot[0] - root[0], foot[1] - root[1]); }
+      // a limb a pixel long is too short to bend: it stays with the body
+      if (fd < 1) { const b = M.pieces.find((m) => m.joint === 'body') || M.pieces[0]; if (b) for (const i of idx) { b.pts = Float32Array.from([...b.pts, (i % W) + 0.5 - ax, ((i / W) | 0) + 0.5, 0]); b.cols = Uint32Array.from([...b.cols, q.A[i]]); } continue; }
+      const len0 = fd, dx = (foot[0] - root[0]) / len0, dy = (foot[1] - root[1]) / len0;
+      // the bone runs to the far edge of the last pixel, not its middle
+      foot = [foot[0] + dx * 0.5, foot[1] + dy * 0.5];
+      // a knee only where the limb bends further than it is wide
+      let knee = [(root[0] + foot[0]) / 2, (root[1] + foot[1]) / 2], kd = Math.max(1.5, P.length / Math.max(1, fd) / 2 + 1.2);
+      for (const p of P) { const d = Math.abs((p[0] - root[0]) * dy - (p[1] - root[1]) * dx); if (d > kd) { kd = d; knee = p; } }
+      const segs = [[root, knee], [knee, foot]].map(([a, b]) => { const l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1e-6; return { a, ux: (b[0] - a[0]) / l, uy: (b[1] - a[1]) / l, l }; });
+      const total = segs[0].l + segs[1].l;
+      let wide = 0;
+      for (const p of P) { let best = 1e9; for (const s of segs) { const t = clamp((p[0] - s.a[0]) * s.ux + (p[1] - s.a[1]) * s.uy, 0, s.l); best = Math.min(best, Math.hypot(p[0] - s.a[0] - s.ux * t, p[1] - s.a[1] - s.uy * t)); } wide = Math.max(wide, best); }
+      const tw = clamp(Math.round(wide * 2 + 1), 1, 9), th = Math.max(2, Math.round(total)), px = new Uint32Array(tw * th);
+      for (let r = 0; r < th; r++) {
+        let s = ((r + 0.5) / th) * total, sg = segs[0];
+        if (s > sg.l) { s -= sg.l; sg = segs[1]; }
+        const X = sg.a[0] + sg.ux * s, Y = sg.a[1] + sg.uy * s;
+        for (let j = 0; j < tw; j++) {
+          const off = j + 0.5 - tw / 2, sx = Math.floor(X + sg.uy * off), sy = Math.floor(Y - sg.ux * off), k = sy * W + sx;
+          if (sx >= 0 && sy >= 0 && sx < W && sy < H && inC.has(k)) px[r * tw + j] = q.A[k];
+        }
+      }
+      const z = side ? zOf(q.sd || 'n') : 0, m = (p) => [p[0] - ax, p[1], z];
+      M.limbs.push({ kind, sd: q.sd, ord: q.ord, pts: [m(root), m(knee), m(foot)], tex: { w: tw, h: th, px }, len: total });
+    }
+  }
+  // gaits: legs alternate front to back and side to side, so diagonal pairs move together; arms swing against the legs
+  const byU = (a, b) => a.pts[0][0] - b.pts[0][0];
+  const legs = M.limbs.filter((l) => l.kind === 'leg'), arms = M.limbs.filter((l) => l.kind === 'arm');
+  if (side) for (const sd of ['n', 'f']) { const g = legs.filter((l) => (l.sd || 'n') === sd).sort((a, b) => b.pts[0][0] - a.pts[0][0]); g.forEach((l, i) => { l.phase = Math.PI * ((i + (sd === 'f' ? 1 : 0)) % 2); }); }
+  else legs.sort(byU).forEach((l, i) => { l.phase = Math.PI * (i % 2); });
+  arms.sort(byU).forEach((l, i) => { l.phase = Math.PI * ((i + 1) % 2); });
+  for (const l of M.limbs) if (l.phase == null) l.phase = 0;
+  // gear rides the hand nearest to it
+  for (const pc of M.pieces) if (pc.joint === 'gear' && arms.length) {
+    let best = null, bd = 1e9;
+    for (const l of arms) { const d = Math.hypot(l.pts[2][0] - pc.root[0], l.pts[2][1] - pc.root[1]); if (d < bd) { bd = d; best = l; } }
+    pc.arm = best;
+  }
+  M.legless = !legs.length;
+  M.flyer = M.pieces.some((p) => p.joint === 'wing');
+  M.float = !!c.float;
+  M.slither = !!c.slither;
+  const ll = legs.length ? legs.reduce((s, l) => s + l.len, 0) / legs.length : 4;
+  M.stride = Math.max(8, ll * 2.6);
+  M.s = clamp(H / 18, 0.7, 2.4);
+  return M;
+}
+
+/* ---------- clips: where every joint is, a moment at a time ---------- */
+const CRIG_CLIPS = { idle: 4, walk: 8, run: 8, fly: 6, atk: 2, hurt: 1 };
+function crigPose(M, clip, t, painted) {
+  const ph = t * TAU, s = M.s;
+  const P = { fwd: 0, bob: 0, lean: 0, sq: 0, head: 0, tail: 0, tailUp: 0, wing: 0, legs: M.limbs.map(() => [0, 0]), planted: true };
+  if (clip === 'idle') {
+    P.bob = -0.5 * s * (0.5 + 0.5 * Math.sin(ph)); P.head = 0.06 * Math.sin(ph + 1); P.tail = 0.22 * Math.sin(ph);
+    if (M.flyer) P.wing = 0.18 * Math.sin(ph);
+    if (M.float) P.bob = -1.2 * s * (0.5 + 0.5 * Math.sin(ph));
+    else if (M.slither) { P.wave = ph; P.waveA = 0.6; }
+    else if (M.legless) P.sq = 0.06 * Math.sin(ph);
+    M.limbs.forEach((l, i) => { if (l.kind === 'arm') P.legs[i] = [0.05 * Math.sin(ph + l.phase), 0.1]; });
+  } else if (clip === 'walk' || clip === 'run') {
+    const run = clip === 'run', A = run ? 0.72 : 0.45, B = run ? 1.15 : 0.75;
+    M.limbs.forEach((l, i) => {
+      const p = ph + l.phase;
+      P.legs[i] = l.kind === 'arm' ? [(run ? 0.7 : 0.4) * Math.sin(p), 0.25 + 0.25 * Math.max(0, Math.sin(p))] : [A * Math.sin(p), B * Math.max(0, Math.sin(p - 0.9))];
+    });
+    P.bob = -(run ? 1.1 : 0.55) * s * Math.abs(Math.sin(ph));
+    P.lean = run ? 0.1 : 0.02; P.head = (run ? 0.08 : 0.05) * Math.sin(2 * ph); P.tail = (run ? 0.18 : 0.32) * Math.sin(ph); P.tailUp = run ? 0.2 : 0;
+    if (M.flyer) P.wing = 0.55 * Math.sin(2 * ph);
+    // floaters glide, leaning into it; serpents send a wave down their length; anything else with no legs hops, squashing as it lands
+    if (M.slither) { P.wave = ph; P.waveA = run ? 2.2 : 1.6; }
+    else if (M.float) { P.bob = -1.2 * s * (0.5 + 0.5 * Math.sin(ph)); P.lean = run ? 0.2 : 0.12; }
+    else if (M.legless && !M.flyer) { const hop = Math.max(0, Math.sin(ph)); P.bob = -2 * s * hop * (run ? 1.3 : 1); P.sq = hop > 0.05 ? -0.08 * hop : 0.12 * Math.max(0, -Math.sin(ph)); }
+  } else if (clip === 'fly') {
+    P.wing = 0.8 * Math.sin(ph); P.bob = -1.2 * s * Math.sin(ph + 0.7); P.tail = 0.2 * Math.sin(ph); P.planted = false;
+    M.limbs.forEach((l, i) => { P.legs[i] = l.kind === 'arm' ? [0.15 * Math.sin(ph), 0.3] : [-0.35, 0.6]; });
+  } else if (clip === 'atk') {
+    const strike = t >= 0.5;
+    P.fwd = (strike ? 2 : -1) * s; P.lean = strike ? 0.12 : -0.1; P.head = strike ? 0.12 : -0.18;
+    // the strike is the painter's own attack frame, so its arms stay where they were painted
+    M.limbs.forEach((l, i) => { P.legs[i] = l.kind === 'arm' ? (painted ? [0, 0] : strike ? [0.9, 0.1] : [-0.7, 0.5]) : [strike ? 0.25 : -0.15, 0]; });
+    if (M.flyer) P.wing = strike ? -0.4 : 0.6;
+  } else if (clip === 'hurt') {
+    P.fwd = -1.5 * s; P.lean = -0.14; P.head = -0.22; P.sq = 0.08;
+    M.limbs.forEach((l, i) => { P.legs[i] = l.kind === 'arm' ? [-0.5, 0.8] : [0.2, 0.3]; });
+    if (M.flyer) P.wing = 0.5;
+  }
+  return P;
+}
+function crigBodyXf(M, P) {
+  const { F } = M;
+  let m = mI();
+  if (P.sq) m = mScale(1 + P.sq * 0.6, 1 - P.sq, 1 + P.sq * 0.6, [0, M.gy, 0]);
+  if (P.lean) m = mMul(mTurn(F, CRIG_DOWN, -P.lean, M.hip), m);
+  return mMul(mMove(F[0] * P.fwd, P.bob, F[2] * P.fwd), m);
+}
+// where each limb's root, knee and foot are, and how its lower bone turned (for whatever it holds)
+function crigLimbPose(M, l, a, k) {
+  const [R, K, Fo] = l.pts, m1 = mTurn(M.F, CRIG_DOWN, a, R), K1 = mApply(m1, K), m2 = mTurn(M.F, CRIG_DOWN, -k, K1);
+  return { R, K: K1, F: mApply(m2, mApply(m1, Fo)), lower: mMul(m2, m1) };
+}
+
+/* ---------- drawing a pose seen from one direction ---------- */
+// the camera looks down a little: what turns toward you sinks on the screen, what turns away rises. The picture
+// as painted stays exactly as painted; only turning, and limbs reaching toward you, lean on the tilt
+const CRIG_TILT = 0.42;
+const crigTilt = (u, dz, cp, sp) => CRIG_TILT * (-u * sp + dz * cp);
+function crigDraw(M, phi, P) {
+  const pad = Math.ceil(Math.max(M.W, M.H) * 0.3) + 3, OW = M.W + pad * 2, OH = M.H + pad * 2;
+  const out = new PP(OW, OH), Z = new Float32Array(OW * OH).fill(-1e9), part = new Uint8Array(OW * OH);
+  const cp = Math.cos(phi), sp = Math.sin(phi), ox = M.ax + pad, oy = pad;
+  const put = (x, y, v, d, kind) => { if (x < 0 || y < 0 || x >= OW || y >= OH) return; const i = y * OW + x; if (d > Z[i]) { Z[i] = d; out.d[i] = v; part[i] = kind; } };
+  const body = crigBodyXf(M, P), L = M.L, F = M.F;
+  const lp = M.limbs.map((l, i) => crigLimbPose(M, l, P.legs[i][0], P.legs[i][1]));
+  for (const pc of M.pieces) {
+    let j = mI();
+    if (pc.joint === 'head') j = mTurn(F, CRIG_DOWN, -P.head, pc.root);
+    else if (pc.joint === 'tail') j = mMul(mTurn(L, F, P.tail, pc.root), mTurn(F, CRIG_DOWN, -P.tailUp, pc.root));
+    else if (pc.joint === 'wing') j = mTurn(L, CRIG_DOWN, P.wing * pc.lat, pc.root);
+    else if (pc.joint === 'gear' && pc.arm) j = lp[M.limbs.indexOf(pc.arm)].lower;
+    const m = mMul(body, j), pts = pc.pts, bias = pc.ord * 0.8 * cp, wa = P.waveA || 0;
+    for (let i = 0, n = 0; i < pts.length; i += 3, n++) {
+      const x = pts[i], y = pts[i + 1], z = pts[i + 2];
+      const u2 = m[0] * x + m[1] * y + m[2] * z + m[3], y2 = m[4] * x + m[5] * y + m[6] * z + m[7] + (wa ? wa * 0.25 * Math.cos(x * 0.45 - P.wave) : 0);
+      const z2 = m[8] * x + m[9] * y + m[10] * z + m[11] + (wa ? wa * Math.sin(x * 0.45 - P.wave) * clamp((M.W - M.ax - x) / M.W, 0.3, 1) : 0);
+      put(Math.floor(u2 * cp + z2 * sp + ox), Math.floor(y2 + oy + crigTilt(u2, z2 - z, cp, sp)), pc.cols[n], -u2 * sp + z2 * cp + bias, 1);
+    }
+  }
+  // close the pinholes a turn leaves in a solid
+  for (let y = 0; y < OH; y++) for (let x = 1; x < OW - 1; x++) {
+    const i = y * OW + x;
+    if (part[i] || part[i - 1] !== 1 || part[i + 1] !== 1) continue;
+    out.d[i] = Z[i - 1] >= Z[i + 1] ? out.d[i - 1] : out.d[i + 1]; Z[i] = Math.min(Z[i - 1], Z[i + 1]); part[i] = 2;
+  }
+  // limbs, on their bones
+  M.limbs.forEach((l, i) => {
+    const q = lp[i], bias = l.ord * 0.8 * cp;
+    const R = mApply(body, q.R), K = mApply(body, q.K), Fo = P.planted && l.kind === 'leg' ? [q.F[0] + F[0] * P.fwd, q.F[1], q.F[2] + F[2] * P.fwd] : mApply(body, q.F);
+    const proj = (p, rest) => [p[0] * cp + p[2] * sp + ox, p[1] + oy + crigTilt(p[0], p[2] - rest[2], cp, sp), -p[0] * sp + p[2] * cp];
+    crigLimbDraw(l.tex, [proj(R, l.pts[0]), proj(K, l.pts[1]), proj(Fo, l.pts[2])], (x, y, v, d) => put(x, y, v, d + bias, 3));
+  });
+  out.outline();
+  // trimmed to what was drawn, keeping the anchor
+  let x0 = OW, x1 = -1, y0 = OH, y1 = -1;
+  for (let y = 0; y < OH; y++) for (let x = 0; x < OW; x++) if (out.d[y * OW + x] >>> 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  if (x1 < 0) return null;
+  const T = new PP(x1 - x0 + 1, y1 - y0 + 1);
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) T.d[(y - y0) * T.w + x - x0] = out.d[y * OW + x];
+  return T.sprite(ox - x0, M.ay + oy - y0);
+}
+// a texture laid along bones, with depth for every sample
+function crigLimbDraw(tex, pts, put) {
+  const segs = [];
+  let total = 0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const dx = pts[i + 1][0] - pts[i][0], dy = pts[i + 1][1] - pts[i][1], l = Math.hypot(dx, dy);
+    if (l > 1e-6) { segs.push([pts[i], pts[i + 1], dx / l, dy / l, l]); total += l; }
+  }
+  if (!segs.length) return;
+  const { w, h, px } = tex;
+  let si = 0, acc = 0;
+  for (let s = 0; s < total; s += 0.5) {
+    while (si < segs.length - 1 && s >= acc + segs[si][4]) { acc += segs[si][4]; si++; }
+    const [o, e, ux, uy, l] = segs[si], u = s - acc, X = o[0] + ux * u, Y = o[1] + uy * u, D = o[2] + ((e[2] - o[2]) * u) / l, row = Math.min(h - 1, Math.floor((s / total) * h));
+    for (let j = 0; j < 2 * w; j++) {
+      const v = px[row * w + (j >> 1)];
+      if (!(v >>> 24)) continue;
+      const off = (j + 0.5) / 2 - w / 2;
+      put(Math.floor(X + uy * off), Math.floor(Y - ux * off), v, D);
+    }
+  }
+}
+
+/* ---------- creatures painted from above turn in the plane they lie in ---------- */
+function crigEpx(d, W, H) {
+  const o = new Uint32Array(W * H * 4), W2 = W * 2, at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H ? 0 : d[y * W + x]);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const P = d[y * W + x], A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+    o[2 * y * W2 + 2 * x] = C === A && C !== D && A !== B ? A : P;
+    o[2 * y * W2 + 2 * x + 1] = A === B && A !== C && B !== D ? B : P;
+    o[(2 * y + 1) * W2 + 2 * x] = D === C && D !== B && C !== A ? C : P;
+    o[(2 * y + 1) * W2 + 2 * x + 1] = B === D && B !== A && D !== C ? D : P;
+  }
+  return o;
+}
+function crigSpin(P, ang, def) {
+  // smoothed up four times, turned, then sampled back down: diagonals stay clean
+  const W = P.w, H = P.h, big = crigEpx(crigEpx(P.d, W, H), W * 2, H * 2), W4 = W * 4, H4 = H * 4;
+  const S = Math.ceil(Math.hypot(W, H)) + 2, out = new PP(S, S), cs = Math.cos(ang), sn = Math.sin(ang), cx = W / 2, cy = H / 2;
+  for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+    const rx = x + 0.5 - S / 2, ry = y + 0.5 - S / 2, sx = rx * cs + ry * sn + cx, sy = -rx * sn + ry * cs + cy;
+    const bx = Math.floor(sx * 4), by = Math.floor(sy * 4);
+    if (bx >= 0 && by >= 0 && bx < W4 && by < H4) out.d[y * S + x] = big[by * W4 + bx];
+  }
+  out.outline();
+  return out.sprite(S / 2 - W / 2 + def.ax, S / 2 - H / 2 + def.ay);
+}
+
+/* ---------- baking: one clip in one direction at a time, within the frame's budget ---------- */
+function crigAttach(fr, def) { if (!fr.crig) Object.defineProperty(fr, 'crig', { value: { def, models: {}, clips: new Map(), failed: false, orient: null }, enumerable: false }); return fr; }
+function crigModelOf(S, f) { return S.models[f] || (S.models[f] = crigModel(S.def, f)); }
+function crigBake(S, t, clip) {
+  const def = S.def, n = CRIG_CLIPS[clip];
+  const M = crigModelOf(S, 0);
+  if (M.orient === 'top') {
+    const ang = ((4 - t) * Math.PI) / 4 - (M.fwd || 0), src = (f) => { const P = new PP(def.w, def.h); def.paint(P, f); return P; };
+    const pick = (i) => (clip === 'atk' && i === 1 ? def.atkF : clip === 'walk' || clip === 'run' || clip === 'fly' ? (i % 2 ? def.stepF ?? 1 : 0) : 0);
+    const cache = {};
+    return Array.from({ length: n }, (_, i) => { const f = pick(i); return cache[f] || (cache[f] = crigSpin(src(f), ang, def)); });
+  }
+  const phi = ((M.orient === 'side' ? t * 45 - 90 : t * 45) * Math.PI) / 180;
+  return Array.from({ length: n }, (_, i) => {
+    const painted = clip === 'atk' && i === 1 && def.atkF != null, Mi = painted ? crigModelOf(S, def.atkF) : M;
+    return crigDraw(Mi, phi, crigPose(Mi, clip, i / n, painted));
+  });
+}
+function crigFrame(fr, t, clip, i, lazy) {
+  const S = fr && fr.crig;
+  if (!S || S.failed || !crigOn()) return null;
+  const key = t + clip;
+  let arr = S.clips.get(key);
+  if (!arr) {
+    if (!rigBudgetOk(lazy)) return null;
+    const now = performance.now();
+    try { arr = crigBake(S, t, clip); } catch (e) { console.error(e); S.failed = true; return null; }
+    S.clips.set(key, arr);
+    RIG_BUDGET.spent += performance.now() - now;
+  }
+  return arr[((i % arr.length) + arr.length) % arr.length] || null;
+}
+
+/* ---------- monsters and Realm creatures: which way they look, what they are doing ---------- */
+// how fast each one really moves, measured from where it was last frame, and how far it has walked
+hook('update', (dt) => {
+  if (!dt) return;
+  const k = 1 - Math.exp(-dt * 10);
+  for (const e of G.ents) {
+    if (e._rx != null) {
+      const dx = e.x - e._rx, dy = e.y - e._ry, d = Math.hypot(dx, dy);
+      if (d < 40) { e.rigVx = lerp(e.rigVx || 0, dx / dt, k); e.rigVy = lerp(e.rigVy || 0, dy / dt, k); e.rigDist = (e.rigDist || 0) + d; }
+    }
+    e._rx = e.x; e._ry = e.y;
+  }
+});
+// moving, it looks where it goes; standing, a foe watches you
+function crigEntTurn(e) {
+  const p = G.p, v = Math.hypot(e.rigVx || 0, e.rigVy || 0);
+  let lx = null, ly = 0;
+  if (v > 8) { lx = e.rigVx; ly = e.rigVy; }
+  else if (p && !p.dead && e.type !== 'ally' && (!e.world || e.aggro)) { lx = p.x - e.x; ly = p.y - e.y; }
+  if (lx != null && (Math.abs(lx) > 0.5 || Math.abs(ly) > 0.5)) e.rigT = pickTurn(e.rigT, lx, ly);
+  return e.rigT ?? 2;
+}
+function crigEntClip(e, S) {
+  const M = S.models[0];
+  if (e.pose === 2) return ['atk', 1];
+  if (e.pose === 1 || e.st === 'windup' || e.st === 'aim' || e.st === 'crouch' || e.st === 'raise' || e.st === 'swell') return ['atk', 0];
+  if (e.freezeT > 0) return ['idle', 0];
+  if (e.flash > 0 || e.stunT > 0) return ['hurt', 0];
+  const v = Math.hypot(e.rigVx || 0, e.rigVy || 0);
+  if (e.fly && (!M || M.flyer)) return ['fly', Math.floor(G.t * 10 + (e.anim || 0) * 6)];
+  if (v > 6) return [v > 70 ? 'run' : 'walk', Math.floor(((e.rigDist || 0) / (M ? M.stride : 10)) * 8)];
+  return ['idle', Math.floor(G.t * 2.2 + e.x * 0.05)];
+}
+function crigEntFrame(e) {
+  if (!crigOn() || !e.frames || !e.frames.crig) return null;
+  const [clip, i] = crigEntClip(e, e.frames.crig);
+  return crigFrame(e.frames, crigEntTurn(e), clip, i, true);
+}
+
+/* ---------- playable beasts, yours and everyone else's ---------- */
+function crigBeastFrame(p, fr) {
+  if (!crigOn() || !fr || !fr.crig) return null;
+  const t = Number.isFinite(p.turn) ? clamp(Math.round(p.turn), 0, 4) : 2, M = fr.crig.models[0], F = FORMS[p.form] || {};
+  let clip = 'idle', i = Math.floor((G.t || 0) * 2.2 + (p.x || 0) * 0.05);
+  if (p.dead) { clip = 'hurt'; i = 0; }
+  else if (p.atkPose > 0 || p.leapT > 0 || p.bashT > 0) { clip = 'atk'; i = 1; }
+  else if (p.dashT > 0) { clip = 'run'; i = 2; }
+  else if (p.hurtT > 0.1) { clip = 'hurt'; i = 0; }
+  else if (F.fly && (!M || M.flyer)) { clip = 'fly'; i = Math.floor((G.t || 0) * 10); }
+  else if (p.moving) { const run = W.on && !W.inInst && (p.realmSpd || 1) > 1.15; clip = run ? 'run' : 'walk'; i = Math.floor((p.anim || 0) * (run ? 2.2 : 2.7)); }
+  return crigFrame(fr, t, clip, i, !!p.rigLazy);
+}
+// the flinch a creature dies in, turned the way it was looking
+function crigCorpse(e) {
+  if (!crigOn() || !e.frames || !e.frames.crig || e.boss) return null;
+  return crigFrame(e.frames, crigEntTurn(e), 'hurt', 0, false);
+}
+// your beast's clips bake while nothing is happening, the way you face first
+let crigWarmT = 0;
+hook('update', (dt) => {
+  const p = G.p;
+  if (!p || !p.beast || p.dead || !crigOn() || (crigWarmT -= dt) > 0) return;
+  crigWarmT = 0.2;
+  const fr = p.asc && p.asc.length && ASPECT[ascAspect(p)] ? ascBeastFrames(p.form, ascAspect(p), ascStage(p)) : beastFrames(p.form), S = fr.crig;
+  if (!S || S.failed) return;
+  for (const t of [Number.isFinite(p.turn) ? clamp(Math.round(p.turn), 0, 4) : 2, 0, 1, 2, 3, 4]) for (const clip in CRIG_CLIPS) if (!S.clips.has(t + clip)) { crigFrame(fr, t, clip, 0, false); return; }
+});
+const _beastFrameRig = beastFrame;
+beastFrame = function (p) { return crigBeastFrame(p, beastFrames(p.form)) || _beastFrameRig(p); };
+
+/* ---------- the mount gallops under you ---------- */
+const _drawMountRig = drawMount;
+drawMount = function (g, p, cx, cy) {
+  const fr = mountFrames(), t = Number.isFinite(p.turn) ? clamp(Math.round(p.turn), 0, 4) : 2;
+  const sp = crigFrame(fr, t, p.moving ? 'run' : 'idle', p.moving ? Math.floor((p.anim || 0) * 2.2) : Math.floor(G.t * 2.2), false);
+  if (!sp) return _drawMountRig(g, p, cx, cy);
+  drawSprite(g, sp, p.x - cx, p.y - cy + 2, p.face < 0, {});
+};
 
 /* ============================================================
    Cinderdeep — main loop, modes and boot
