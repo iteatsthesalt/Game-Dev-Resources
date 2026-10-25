@@ -7004,6 +7004,8 @@ function sheetDrop(onDone) {
    per-person store when it is there, plus run checkpoints
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
+// the release shown on the title screen; saves keep their own key above
+const VERSION = '3.0';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -11565,6 +11567,7 @@ UI.title = function () {
     nem ? h('p', { class: 'nem-note' }, nem) : null,
     h('p', { class: 'foot' }, `${save.stats.runs || 0} descents · ${save.stats.wins || 0} victories · deepest floor ${save.stats.bestFloor || 0} · ${feats} of ${FEATS.length} feats`),
     h('p', { class: 'foot', id: 'save-note' }, saveNote()),
+    h('p', { class: 'foot' }, `Version ${VERSION}`),
   ));
   UI.open(el, {});
 };
