@@ -1394,25 +1394,30 @@ function paintHero(look, view, frame) {
   const step = frame === 1 ? 1 : frame === 2 ? 2 : 0, bob = step ? 1 : 0;
   const skin = L.skin, main = L.main, dark = L.dark, cloth = L.cloth;
   // legs and boots
+  rigPart(p, 'legs');
   const legL = step === 1 ? -1 : 0, legR = step === 2 ? -1 : 0;
   p.rect(5, 15 + oy + legL, 2, 3, shade(cloth, -0.35)); p.rect(9, 15 + oy + legR, 2, 3, shade(cloth, -0.35));
   p.rect(5, 18 + oy + legL, 2, 2, C.boot); p.rect(9, 18 + oy + legR, 2, 2, C.boot);
   const by = bob; // upper body bob
   // cape (back view, or a hint at the sides)
+  rigPart(p, 'cape');
   if (view === 'back' && L.head !== 'horns') p.rect(4, 9 + oy + by, 8, 8, shade(cloth, -0.15));
   // torso
+  rigPart(p, 'torso');
   p.rect(4, 9 + oy + by, 8, 6, main);
   p.rect(4, 9 + oy + by, 1, 6, shade(main, 0.18)); p.rect(11, 9 + oy + by, 1, 6, shade(main, -0.25));
   p.rect(4, 13 + oy + by, 8, 1, view === 'back' ? shade(main, -0.2) : L.trim);
   if (view === 'front') { p.rect(7, 10 + oy + by, 2, 3, shade(main, -0.12)); }
   if (L.head === 'wizard' || L.head === 'skullhood' || L.head === 'cowl') { p.rect(4, 14 + oy + by, 8, 2, main); p.rect(5, 16 + oy, 6, 1, shade(main, -0.2)); }
   // arms
+  rigPart(p, 'arms');
   const armC = L.bare ? skin : shade(main, -0.08);
   const swing = step === 1 ? -1 : step === 2 ? 1 : 0;
   p.rect(3, 10 + oy + by + swing, 1, 4, armC); p.rect(12, 10 + oy + by - swing, 1, 4, armC);
   p.px(3, 14 + oy + by + swing, skin); p.px(12, 14 + oy + by - swing, skin);
   if (L.head === 'horns') { p.rect(3, 9 + oy + by, 2, 1, '#e8d8b0'); p.rect(11, 9 + oy + by, 2, 1, '#e8d8b0'); }
   // head
+  rigPart(p, 'head');
   const hy = 3 + oy + by;
   p.rect(5, hy, 6, 6, skin);
   p.rect(5, hy + 5, 6, 1, shade(skin, -0.15));
@@ -1462,10 +1467,10 @@ function paintHero(look, view, frame) {
   return p.sprite(8, 20);
 }
 function heroSprites(look, key) {
-  return spr('hero:' + key, () => ({
+  return spr('hero:' + key, () => rigSet({
     front: [0, 1, 2].map((f) => paintHero(look, 'front', f)),
     back: [0, 1, 2].map((f) => paintHero(look, 'back', f)),
-  }));
+  }, (view, f) => paintHero(look, view, f)));
 }
 
 /* ---------- held weapons (pointing right, pivot at the grip) ---------- */
@@ -3746,7 +3751,8 @@ function updatePlayer(dt) {
   // facing and view
   const ca = Math.cos(p.aim), sa = Math.sin(p.aim);
   if (Math.abs(ca) > 0.15) p.face = ca >= 0 ? 1 : -1;
-  p.view = sa < -0.55 ? 'back' : 'front';
+  p.turn = pickTurn(p.turn, ca, sa);
+  p.view = p.turn >= 3 ? 'back' : 'front';
 
   // dash
   if (A.dash && p.dashCharges > 0 && p.dashT <= 0 && p.leapT <= 0 && p.bashT <= 0) {
@@ -5773,7 +5779,7 @@ function heroFrame(p) {
   const fi = p.moving && p.dashT <= 0 ? 1 + (Math.floor(p.anim) % 2) : 0;
   if (p.sheet) return sheetFrame(p.sheet, p, fi);
   const set = heroSprites(p.look, p.cls + (p.dyeKey ? ":" + p.dyeKey : ""));
-  return set[p.view][fi];
+  return turnFrames(set, heroTurn(p), p.rigLazy)[fi];
 }
 function drawPlayer(g, p, cx, cy) {
   if (p.dead) {
@@ -6591,6 +6597,7 @@ UI.settings = function (back) {
     h('label', { class: 'set-row' }, 'Camera', zoom),
     check('set-bright', 'Brighter dungeon', 'bright'),
     check('set-lowfx', 'Fewer effects (faster)', 'lowFx'),
+    check('set-turn8', 'Heroes turn in eight directions', 'turn8'),
     check('set-autofire', 'Gamepad: right stick also attacks', 'padAutoFire'),
     h('div', { class: 'row' }, btn('Done', () => back ? back() : UI.close(), 'primary', { 'data-autofocus': true }), reset)));
   UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: () => (back ? back() : UI.close()) });
@@ -6918,7 +6925,7 @@ function sheetDrop(onDone) {
    per-person store when it is there, plus run checkpoints
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
-const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true };
+const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true };
 function defaultSave() {
   return {
     v: 1, embers: 0, meta: {}, unlocks: { classes: ['knight', 'ranger', 'pyro', 'emberpup'], weapons: [], abilities: [] }, feats: {}, fs: {},
@@ -13127,10 +13134,11 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
   const metal = kit === 'plate' || kit === 'lacquer';
   const armC = L.bare ? L.skin : shade(L.main, -0.08);
   const wingY = torsoTop + 2, wingH = Math.round(g.torsoH * 1.15 + s * 0.6);
-  const wing = () => { if (!ws) return; paintWing(P, A, A.wing, cx - g.shW / 2 + 2, wingY, -1, ws + 1, wingH, frame, s); paintWing(P, A, A.wing, cx + g.shW / 2 - 2, wingY, 1, ws + 1, wingH, frame, s); };
+  const wing = () => { if (!ws) return; rigPart(P, 'wing'); paintWing(P, A, A.wing, cx - g.shW / 2 + 2, wingY, -1, ws + 1, wingH, frame, s); paintWing(P, A, A.wing, cx + g.shW / 2 - 2, wingY, 1, ws + 1, wingH, frame, s); };
   const capeLen = s >= 2 ? g.torsoH + Math.round(g.legH * (0.55 + s * 0.03)) : 0;
   const cape = (full) => {
     if (!capeLen) return;
+    rigPart(P, 'cape');
     const y0 = torsoTop + 1, y1 = Math.min(H - 2, y0 + capeLen), sway = step === 1 ? 1 : step === 2 ? -1 : 0;
     for (let y = y0; y <= y1; y++) {
       const t = (y - y0) / Math.max(1, y1 - y0), half = g.shW / 2 + 1 + t * g.flare, x0 = Math.round(cx - half + sway * t), x1 = Math.round(cx + half + sway * t);
@@ -13142,6 +13150,7 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
   // 1. behind the body
   if (face) { wing(); cape(false); }
   // 2. legs
+  rigPart(P, 'legs');
   const legC = shade(L.cloth, -0.35), bootC = metal && s >= 3 ? C.steel2 : C.boot;
   for (const d of [-1, 1]) {
     const up = (step === 1 && d < 0) || (step === 2 && d > 0) ? lift : 0;
@@ -13152,12 +13161,14 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
     if (s >= 7) P.px(lx + Math.floor(g.legW / 2), H - g.bootH - up, A.c1);
   }
   // 3. robes and skirts
+  rigPart(P, 'skirt');
   if (kit === 'robe' || kit === 'gi') {
     const y0 = legTop - 1 + bob, y1 = kit === 'robe' ? H - g.bootH + (s >= 4 ? 0 : 0) : legTop + Math.round(g.legH * 0.45);
     for (let y = y0; y < y1; y++) { const t = (y - y0) / Math.max(1, y1 - y0), half = g.waistW / 2 + t * (1 + s * 0.35); cyl(cx - half, y, half * 2, 1, kit === 'robe' ? L.main : L.cloth, { bottom: false }); }
     if (kit === 'robe') { R(cx - 1, y0, 2, y1 - y0, shade(L.main, -0.22)); R(Math.round(cx - g.waistW / 2 - (s * 0.35 + 1)), y1 - 1, Math.round(g.waistW + 2 * (s * 0.35 + 1)), 1, s >= 3 ? A.c1 : L.trim); }
   }
   // 4. torso
+  rigPart(P, 'torso');
   const torsoC = L.bare && kit === 'fur' ? L.skin : L.main;
   for (let y = torsoTop; y < legTop + bob; y++) {
     const t = (y - torsoTop) / Math.max(1, g.torsoH - 1), w = ev2(lerp(g.shW, g.waistW, Math.pow(t, 0.9)));
@@ -13187,6 +13198,7 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
     if (s >= 6) bits(EMBLEM3[A.sym], Math.round(cx - 1.5), beltY + beltH + Math.round(th * 0.3), A.c2);
   }
   // 6. arms
+  rigPart(P, 'arms');
   for (const d of [-1, 1]) {
     const ax = d < 0 ? cx - g.shW / 2 - g.armW : cx + g.shW / 2, sy = (step === 1 ? -sw : step === 2 ? sw : 0) * d;
     cyl(ax, torsoTop + 1 + sy * 0.5, g.armW, g.armL, armC, { bottom: false });
@@ -13195,8 +13207,10 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
     if (s >= 3 && !L.bare) R(ax, torsoTop + 1 + g.armL - 1 + sy * 0.5, g.armW, 1, L.trim);
   }
   // 7. pauldrons
+  rigPart(P, 'paul');
   if (g.paul) for (const d of [-1, 1]) paintPauldron(P, A, A.paul, cx + d * (g.shW / 2 + g.armW / 2 - 0.5), torsoTop + 1, g.paul, d, s, L);
   // 8. head
+  rigPart(P, 'head');
   if (g.neck) R(cx - 2, torsoTop - g.neck, 4, g.neck, shade(L.skin, -0.2));
   cyl(hx, hy, hw, hh, L.skin, { bottom: true });
   if (s >= 2) { P.px(hx, hy, '#00000000'); P.px(hx + hw - 1, hy, '#00000000'); }
@@ -13212,10 +13226,12 @@ function paintAscended(look, cls, aspId, secId, s, view, frame) {
   // the true top of the head, for crowns
   let scan = hy - 1;
   for (let y = 0; y < hy; y++) { let found = false; for (let x = Math.floor(hx) - 2; x < hx + hw + 2; x++) if (P.on(x, y)) { found = true; break; } if (found) { scan = y; break; } }
+  rigPart(P, 'crown');
   if (s >= 4) { const floaty = A.crown === 'halo' || A.crown === 'rune' || A.crown === 'eye'; paintCrown(P, A, A.crown, cx, Math.max(1, floaty ? Math.min(scan, topY) : crownY), Math.round(hx), hy, hw, s, frame); }
   // 9. in front when seen from behind
   if (back) { cape(true); wing(); }
   // 10. glowing seams on the strongest forms
+  rigPart(P, 'auto');
   if (s >= 8) {
     const rng = new RNG(hashStr(cls + aspId + s));
     for (let k = 0; k < 2 + (s - 8) * 2; k++) {
@@ -13319,10 +13335,10 @@ function ascFramesFor(p) {
   if (p.beast && p.form) { const fr = ascBeastFrames(p.form, id, st); return { front: [fr[0], fr[1], fr[2]], back: [fr[0], fr[1], fr[2]], atk: fr[3] }; }
   const sec = ascSecond(p) || '';
   const look = p.look || CLASS[p.cls].look;
-  return spr(`asch:${p.cls}:${id}:${sec}:${st}:${p.dyeKey || ""}`, () => ({
+  return spr(`asch:${p.cls}:${id}:${sec}:${st}:${p.dyeKey || ""}`, () => rigSet({
     front: [0, 1, 2].map((f) => paintAscended(look, p.cls, id, sec || null, st, 'front', f)),
     back: [0, 1, 2].map((f) => paintAscended(look, p.cls, id, sec || null, st, 'back', f)),
-  }));
+  }, (view, f) => paintAscended(look, p.cls, id, sec || null, st, view, f)));
 }
 const _heroFrameAsc = heroFrame;
 heroFrame = function (p) {
@@ -13335,7 +13351,7 @@ heroFrame = function (p) {
   }
   if (p.sheet) return ascSheetFrame(_heroFrameAsc(p), ascAspect(p), ascStage(p));
   const fi = p.moving && p.dashT <= 0 ? 1 + (Math.floor(p.anim) % 2) : 0;
-  return ascFramesFor(p)[p.view === 'back' ? 'back' : 'front'][fi];
+  return turnFrames(ascFramesFor(p), heroTurn(p), p.rigLazy)[fi];
 };
 // held weapons and hands follow the bigger body
 drawHeld = function (g, p, x, y) {
@@ -13368,6 +13384,207 @@ handPos = function (p, ang = p.aim) {
   return { x: p.x + Math.cos(ang) * r, y: p.y - handY * (p.sizeMul || 1) + Math.sin(ang) * 4 };
 };
 hook('loadRun', (c, run, p) => { setAscBody(p); });
+
+/* ============================================================
+   Cinderdeep — heroes that turn. Bodies are painted from the
+   front and from behind, and while they are painted every part
+   lands on a layer of its own. A turned view rebuilds the body
+   the way a sprite rig does: heads and torsos wrap round like
+   lathed shapes (the face slides toward where you look and the
+   far side tucks away), arms and legs swing round the middle,
+   capes and wings hang behind. Five baked turns, mirrored,
+   cover eight directions.
+   ============================================================ */
+const RIG_YAW = [0, 45, 90, 135, 180];
+// lathed parts: [how deep for their width, how flat the face reads]
+const RIG_LATHE = { skirt: [0.74, 0.6], torso: [0.62, 0.55], head: [1, 0.6] };
+const RIG_LIMB = ['paul', 'arms', 'legs'];
+function rigClaim(P) {
+  if (P.cap !== undefined) return P.cap;
+  const c = rigPart.arm;
+  if (!c) return null;
+  rigPart.arm = null;
+  c.w = P.w; c.h = P.h; c.own = new Uint8Array(P.w * P.h);
+  P.cap = c;
+  return c;
+}
+// painters name the part they are about to paint; outside a capture this does nothing
+function rigPart(P, part) { const c = rigClaim(P); if (c) c.part = part; }
+const _pxRig = PP.prototype.px;
+PP.prototype.px = function (x, y, hex, a = 255) {
+  const c = this.cap;
+  if (!c) return _pxRig.call(this, x, y, hex, a);
+  x = Math.round(x); y = Math.round(y);
+  if (x < 0 || y < 0 || x >= this.w || y >= this.h || !hex) return;
+  const i = y * this.w + x, v = hex === '#00000000' ? 0 : PP.pack(hex, a);
+  this.d[i] = v;
+  // touch-ups (rim light, seams) belong to whatever part is already there
+  let n = c.part;
+  if (n === 'auto') { const o = c.own[i]; if (!o) return; n = c.names[o - 1]; }
+  let k = c.names.indexOf(n);
+  if (k < 0) { k = c.names.push(n) - 1; c.layers[n] = new Uint32Array(this.w * this.h); }
+  c.layers[n][i] = v;
+  if (v) c.own[i] = k + 1;
+};
+function rigCapture(fn) {
+  const c = { part: 'body', names: [], layers: Object.create(null) };
+  rigPart.arm = c;
+  try { fn(); } catch (e) { return null; } finally { rigPart.arm = null; }
+  return c.own ? c : null;
+}
+// a set of front and back frames learns how to paint itself again for turning
+function rigSet(set, paint) { Object.defineProperty(set, 'paint', { value: paint, enumerable: false }); return set; }
+// townsfolk and other heroes bake their turns a few at a time, so a crowded square never stalls a frame
+const RIG_BUDGET = { at: 0, spent: 0 };
+function turnFrames(set, t, lazy) {
+  if (t >= 4) return set.back;
+  if (t <= 0 || !set.paint) return set.front;
+  if (!set.turns) {
+    const now = performance.now();
+    if (lazy) {
+      if (now - RIG_BUDGET.at > 30) { RIG_BUDGET.at = now; RIG_BUDGET.spent = 0; }
+      if (RIG_BUDGET.spent > 4) return t >= 3 ? set.back : set.front;
+    }
+    let turns = null;
+    try { turns = rigBake(set); } catch (e) { console.error(e); }
+    Object.defineProperty(set, 'turns', { value: turns || [], enumerable: false });
+    RIG_BUDGET.spent += performance.now() - now;
+  }
+  return set.turns[t] || (t >= 3 ? set.back : set.front);
+}
+// your own hero's turns are baked while nothing is happening, not on the first swing
+let rigWarmT = 0;
+hook('update', (dt) => {
+  const p = G.p;
+  if (!p || p.beast || p.sheet || p.dead || CD.settings.turn8 === false || (rigWarmT -= dt) > 0) return;
+  rigWarmT = 0.5;
+  const t = p.turn;
+  p.turn = 2; heroFrame(p); p.turn = t;
+});
+function rigBake(set) {
+  const caps = [0, 1, 2].map((f) => ({ F: rigCapture(() => set.paint('front', f)), B: rigCapture(() => set.paint('back', f)) }));
+  const out = [];
+  for (const t of [1, 2, 3]) out[t] = caps.map((cp, f) => (cp.F && cp.B ? rigCompose(cp.F, cp.B, RIG_YAW[t], f, set.front[f]) : (t >= 3 ? set.back : set.front)[f]));
+  return out;
+}
+// 0 faces the camera, 2 is side on, 4 faces away; a little stickiness stops flicker at the edges
+function pickTurn(cur, dx, dy) {
+  const th = Math.atan2(Math.abs(dx), dy) / (Math.PI / 4);
+  if (cur != null && Math.abs(th - cur) < 0.65) return cur;
+  return clamp(Math.round(th), 0, 4);
+}
+function heroTurn(p) {
+  const t = p.turn;
+  if (CD.settings.turn8 === false || typeof t !== 'number' || !Number.isFinite(t)) return p.view === 'back' ? 4 : 0;
+  return clamp(Math.round(t), 0, 4);
+}
+// one turned frame, facing right (the game mirrors it for the left)
+function rigCompose(F, B, phi, frame, base) {
+  const W = F.w, H = F.h, cx = base.ax, out = new PP(W, H);
+  const back = phi > 90, S = back ? B : F, O = back ? F : B;
+  const yaw = ((back ? phi - 180 : phi) * Math.PI) / 180, cs = Math.cos(yaw), sn = Math.sin(yaw), asn = Math.abs(sn);
+  const put = (x, y, v) => { if (v >>> 24 && x >= 0 && y >= 0 && x < W && y < H) out.d[y * W + x] = v; };
+  const side = (x) => (x + 0.5 < cx ? -1 : 1);
+  // how far the torso reaches, for where capes and wings hang
+  let tr = 0;
+  for (const C of [S, O]) { const T = C.layers.torso; if (T) for (let i = 0; i < T.length; i++) if (T[i] >>> 24) tr = Math.max(tr, Math.abs((i % W) + 0.5 - cx)); }
+  if (!tr) tr = W / 4;
+  // arms and legs move whole, round the middle; in a stride the lifted leg reaches forward and its arm swings back
+  const lifted = frame === 1 ? -1 : frame === 2 ? 1 : 0, reach = Math.round(Math.max(1, Math.round((base.u || 1) * 1.1)) * asn);
+  const limbs = [];
+  for (const n of RIG_LIMB) {
+    const A = S.layers[n];
+    if (!A) continue;
+    for (const sd of [-1, 1]) {
+      let x0 = W, x1 = -1;
+      for (let i = 0; i < A.length; i++) if (A[i] >>> 24) { const x = i % W; if (side(x) !== sd) continue; if (x < x0) x0 = x; if (x > x1) x1 = x; }
+      if (x1 < 0) continue;
+      const d = (x0 + x1 + 1) / 2 - cx;
+      let dx = Math.round(d * cs - d);
+      if (lifted) dx += (n === 'legs' ? 1 : -1) * (sd === lifted ? 1 : -1) * reach;
+      limbs.push({ A, sd, dx, z: -d * sn, leg: n === 'legs' });
+    }
+  }
+  limbs.sort((a, b) => a.z - b.z);
+  const limb = (l) => { for (let i = 0; i < l.A.length; i++) { const v = l.A[i]; if (v >>> 24 && side(i % W) === l.sd) put((i % W) + l.dx, (i / W) | 0, v); } };
+  // a lathed part: every row turns round the middle; front pixels come from the front painting, the far side from the back one
+  const lathe = (n, depth, flat) => {
+    const As = S.layers[n], Ao = O.layers[n];
+    if (!As && !Ao) return;
+    const pr = new Float32Array(W), col = new Uint32Array(W);
+    const span = (A, y) => { let x0 = W, x1 = -1; if (A) for (let x = 0; x < W; x++) if (A[y * W + x] >>> 24) { if (x < x0) x0 = x; if (x > x1) x1 = x; } return [x0, x1]; };
+    for (let y = 0; y < H; y++) {
+      // the radius comes from the nearer painting, and from its narrower side, so a ribbon or a feather does not stretch the whole head
+      let [x0, x1] = span(As, y);
+      if (x1 < 0) [x0, x1] = span(Ao, y);
+      if (x1 < 0) continue;
+      const lo = cx - x0, hi = x1 + 1 - cx, rx = Math.max(1, Math.min(lo, hi) >= 1 ? Math.min(lo, hi) : Math.max(lo, hi));
+      const del = Math.atan2(rx * flat * sn, rx * cs), ws = Math.hypot(rx * cs, rx * depth * sn);
+      pr.fill(-1);
+      // whatever sticks out past the radius swings round whole, in front of the row or behind it
+      const under = [], over = [];
+      const emit = (A, far) => {
+        if (!A) return;
+        for (let x = 0; x < W; x++) {
+          const v = A[y * W + x];
+          if (!(v >>> 24)) continue;
+          const d = x + 0.5 - cx;
+          if (Math.abs(d) > rx + 0.01) { const z = far ? d * sn : -d * sn; (z > 0 ? over : under).push([Math.floor(cx + (far ? -d : d) * cs), v]); continue; }
+          const u0 = clamp((x - cx) / rx, -1, 1), u1 = clamp((x + 1 - cx) / rx, -1, 1);
+          let b0 = (far ? Math.PI : 0) + Math.asin(u0) + del, b1 = (far ? Math.PI : 0) + Math.asin(u1) + del;
+          if ((b0 + b1) / 2 > Math.PI) { b0 -= TAU; b1 -= TAU; }
+          b0 = Math.max(b0, -Math.PI / 2); b1 = Math.min(b1, Math.PI / 2);
+          if (b1 <= b0) continue;
+          const c = Math.cos((b0 + b1) / 2);
+          if (c <= 0.04) continue;
+          const p0 = cx + ws * Math.sin(b0), p1 = cx + ws * Math.sin(b1);
+          for (let ox = Math.ceil(p0 - 0.5); ox + 0.5 < p1; ox++) if (ox >= 0 && ox < W && c > pr[ox]) { pr[ox] = c; col[ox] = v; }
+        }
+      };
+      emit(As, false); emit(Ao, true);
+      for (let x = 1; x < W - 1; x++) if (pr[x] < 0 && pr[x - 1] >= 0 && pr[x + 1] >= 0) { pr[x] = 0; col[x] = col[pr[x - 1] >= pr[x + 1] ? x - 1 : x + 1]; }
+      for (const [x, v] of under) put(x, y, v);
+      for (let x = 0; x < W; x++) if (pr[x] >= 0) put(x, y, col[x]);
+      for (const [x, v] of over) put(x, y, v);
+    }
+  };
+  // capes and wings hang behind: narrower side on, and toward the back
+  const hang = (A) => {
+    if (!A) return;
+    const k = 0.55 + 0.45 * Math.abs(cs), sh = -Math.round(tr * 0.8 * asn);
+    for (let i = 0; i < A.length; i++) {
+      const v = A[i];
+      if (!(v >>> 24)) continue;
+      const x = i % W, y = (i / W) | 0, p0 = cx + (x - cx) * k + sh, p1 = cx + (x + 1 - cx) * k + sh;
+      for (let ox = Math.ceil(p0 - 0.5); ox + 0.5 < p1; ox++) put(ox, y, v);
+    }
+  };
+  const body = () => {
+    for (const n in RIG_LATHE) lathe(n, RIG_LATHE[n][0], RIG_LATHE[n][1]);
+    for (const n of ['body', 'crown']) { const A = S.layers[n]; if (A) for (let i = 0; i < A.length; i++) put(i % W, (i / W) | 0, A[i]); }
+  };
+  const far = limbs.filter((l) => l.z < -0.01), near = limbs.filter((l) => l.z >= -0.01);
+  if (!back) {
+    hang(S.layers.wing);
+    hang((phi >= 67 ? B : F).layers.cape);
+    far.forEach(limb); near.filter((l) => l.leg).forEach(limb);
+    body();
+    near.filter((l) => !l.leg).forEach(limb);
+  } else {
+    // seen from behind, a cape painted under the torso stays under it; one painted over it stays over
+    const capeOver = S.names.indexOf('cape') > S.names.indexOf('torso');
+    far.forEach(limb); near.filter((l) => l.leg).forEach(limb);
+    if (!capeOver) hang(S.layers.cape);
+    body();
+    if (capeOver) hang(S.layers.cape);
+    near.filter((l) => !l.leg).forEach(limb);
+    hang(S.layers.wing);
+  }
+  out.outline();
+  const sp = out.sprite(base.ax, base.ay);
+  for (const k of ['handY', 'handR', 'top', 'u']) if (base[k] != null) sp[k] = base[k];
+  return sp;
+}
 
 /* ============================================================
    Cinderdeep — the Realm: 25 biome zones on a 5×5 map. Each zone
@@ -15501,8 +15718,9 @@ function updateNpcs(dt) {
     n.t += dt;
     const d = Math.hypot(n.x - p.x, n.y - p.y);
     if (d > 700) continue;
-    if (n.still || n.role !== 'folk') { n.moving = false; n.face = p.x < n.x ? -1 : 1; n.view = 'front'; continue; }
-    if (d < 26) { n.moving = false; n.face = p.x < n.x ? -1 : 1; continue; }
+    // people who stand still turn to watch you go by
+    if (n.still || n.role !== 'folk') { n.moving = false; n.face = p.x < n.x ? -1 : 1; n.turn = d < 150 ? pickTurn(n.turn, p.x - n.x, p.y - n.y) : 0; n.view = n.turn >= 3 ? 'back' : 'front'; continue; }
+    if (d < 26) { n.moving = false; n.face = p.x < n.x ? -1 : 1; n.turn = pickTurn(n.turn, p.x - n.x, p.y - n.y); continue; }
     if (Math.hypot(n.tx - n.x, n.ty - n.y) < 4 || n.t > 9) {
       n.t = 0;
       if (Math.random() < 0.4) { n.tx = n.x; n.ty = n.y; }
@@ -15514,7 +15732,7 @@ function updateNpcs(dt) {
       moveEnt(n, (dx / l) * sp * dt, (dy / l) * sp * dt);
       n.moving = Math.hypot(n.x - ox, n.y - oy) > 0.05;
       if (!n.moving) n.t = 99;
-      n.anim += dt * 3; n.face = dx < 0 ? -1 : 1; n.view = dy < -Math.abs(dx) ? 'back' : 'front';
+      n.anim += dt * 3; n.face = dx < 0 ? -1 : 1; n.turn = pickTurn(n.turn, dx, dy); n.view = n.turn >= 3 ? 'back' : 'front';
     } else n.moving = false;
   }
   if (W.say && (W.say.t -= dt) <= 0) W.say = null;
@@ -15665,6 +15883,7 @@ update = function (dt) {
   if (W.on && W.campFromRealm) return; // the camp altar is open
   if (W.on && G.fl && G.fl.realm) { if (W.inInst) return; return updateRealm(dt); }
   if (W.on && W.inInst && !W.inst) return; // between a dungeon and the world
+  if (!G.fl || !G.fl.tiles) return; // a fade is still building the next place
   return _updateMain(dt);
 };
 const _camTargetRealm = camTarget;
@@ -15944,7 +16163,7 @@ function drawRealmObj(g, o, sp, cx, cy, faded) {
 }
 function drawNpc(g, n, cx, cy) {
   const set = npcSprites(n), fi = n.moving ? 1 + (Math.floor(n.anim) % 2) : 0;
-  const sp = set[n.view === 'back' ? 'back' : 'front'][fi];
+  const sp = turnFrames(set, heroTurn(n), true)[fi];
   shadow(g, n.x - cx, n.y - cy, 5);
   drawSprite(g, sp, n.x - cx, n.y - cy, n.face < 0, {});
   if (n.role !== 'folk' && n.role !== 'guard') {
@@ -16654,7 +16873,7 @@ hook('update', (dt) => {
   if (now - MMO.lastSent < 110) return;
   MMO.lastSent = now;
   const pres = {
-    z: MMO.zone, x: Math.round(p.x), y: Math.round(p.y), c: p.cls, fm: p.form || null, a: ascAspect(p) || null, s: ascStage(p), lv: p.level, f: p.face < 0 ? -1 : 1, v: p.view === 'back' ? 1 : 0,
+    z: MMO.zone, x: Math.round(p.x), y: Math.round(p.y), c: p.cls, fm: p.form || null, a: ascAspect(p) || null, s: ascStage(p), lv: p.level, f: p.face < 0 ? -1 : 1, v: p.view === 'back' ? 1 : 0, t: heroTurn(p),
     m: p.mounted ? 1 : 0, inst: W.inInst ? 1 : 0, dead: p.dead ? 1 : 0, dy: W.ch && W.ch.dye ? W.ch.dye.main : null, uid: MMO.uid || null,
   };
   const s = JSON.stringify(pres);
@@ -16669,7 +16888,7 @@ hook('realmZone', (Z) => { if (!MMO.tried) mmoInit(); else mmoJoinZone(Z.id); })
 function ghostBody(q) {
   const pr = q.pres, cls = own(CLASS, pr.c) ? pr.c : 'knight', st = clamp(finite(pr.s) | 0, 0, ASC_MAX), a = own(ASPECT, pr.a) ? pr.a : null;
   const dyeLook = typeof pr.dy === 'string' ? (DYE_LIST.find((d) => d.main === pr.dy) || null) : null;
-  const fake = { cls, look: dyeLook ? { ...CLASS[cls].look, ...dyeLook } : CLASS[cls].look, beast: !!CLASS[cls].beast, form: own(FORMS, pr.fm) ? pr.fm : CLASS[cls].beast ? cls : null, asc: a ? Array(st).fill(a) : [], ascAtt: [], view: pr.v ? 'back' : 'front', face: pr.f || 1, moving: q.moving, anim: q.anim, dashT: 0, atkPose: 0, leapT: 0, bashT: 0, aim: 0, dyeKey: pr.dy || '' };
+  const fake = { cls, look: dyeLook ? { ...CLASS[cls].look, ...dyeLook } : CLASS[cls].look, beast: !!CLASS[cls].beast, form: own(FORMS, pr.fm) ? pr.fm : CLASS[cls].beast ? cls : null, asc: a ? Array(st).fill(a) : [], ascAtt: [], view: pr.v ? 'back' : 'front', turn: Number.isInteger(pr.t) && pr.t >= 0 && pr.t <= 4 ? pr.t : pr.v ? 4 : 0, rigLazy: true, face: pr.f || 1, moving: q.moving, anim: q.anim, dashT: 0, atkPose: 0, leapT: 0, bashT: 0, aim: 0, dyeKey: pr.dy || '' };
   return heroFrame(fake);
 }
 let DYE_LIST = [];
