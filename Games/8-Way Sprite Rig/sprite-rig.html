@@ -1,10 +1,11 @@
 <!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
 <title>8-Way Sprite Rig</title>
+<meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
 <style>
-/* Layout: a workbench — stage + top-down map on the left, rig controls and live readout on the right, baked atlas and code below. */
+/* Layout: a workbench. Stage (turntable or playground) and top-down map on the left, rig controls and live readout on the right; the baked atlas with its export below, then the runtime code and notes. */
 :root {
   --bg: #eef0f4;
   --surface: #ffffff;
@@ -16,6 +17,10 @@
   --hot: #d9601f;
   --stage: #dde2ea;
   --ground: #c5ccd8;
+  --tile-a: #cfd5df;
+  --tile-b: #c3cad6;
+  --stone: #9aa3b2;
+  --stone-top: #b9c1cd;
   --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
   --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
   --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
@@ -24,30 +29,39 @@
   :root:not([data-theme="light"]) {
     --bg: #0f131b; --surface: #161b26; --ink: #e5e8ef; --muted: #959eb1; --line: #283043;
     --accent: #7f9dff; --accent-soft: rgba(127, 157, 255, 0.16); --hot: #ff8b4d;
-    --stage: #0a0e15; --ground: #1b2230; color-scheme: dark;
+    --stage: #0a0e15; --ground: #1b2230; --tile-a: #151b27; --tile-b: #111621; --stone: #3a4356; --stone-top: #4c566b; color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg: #0f131b; --surface: #161b26; --ink: #e5e8ef; --muted: #959eb1; --line: #283043;
   --accent: #7f9dff; --accent-soft: rgba(127, 157, 255, 0.16); --hot: #ff8b4d;
-  --stage: #0a0e15; --ground: #1b2230; color-scheme: dark;
+  --stage: #0a0e15; --ground: #1b2230; --tile-a: #151b27; --tile-b: #111621; --stone: #3a4356; --stone-top: #4c566b; color-scheme: dark;
 }
 * { box-sizing: border-box; }
 body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
-.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 22px; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(20px, env(safe-area-inset-left, 0px)); padding-right: max(20px, env(safe-area-inset-right, 0px)); padding-block: 28px 56px; display: grid; gap: 22px; }
 header h1 { font-family: var(--display); font-weight: 600; font-size: clamp(1.7rem, 4vw, 2.4rem); letter-spacing: 0.01em; margin: 0; text-wrap: balance; }
-header p { margin: 6px 0 0; color: var(--muted); max-width: 68ch; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 70ch; }
 .top { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
 @media (max-width: 880px) { .top { grid-template-columns: minmax(0, 1fr); } }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
 .label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
-.views { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; }
+.panel-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 10px; }
+.panel-head .label { margin: 0; }
+.views { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; margin: 0; }
 @media (max-width: 560px) { .views { grid-template-columns: minmax(0, 1fr); } }
 canvas { display: block; max-width: 100%; }
-#stage { width: 100%; aspect-ratio: 4 / 3.3; border-radius: 6px; }
+#stage { width: 100%; aspect-ratio: 4 / 3.3; border-radius: 6px; touch-action: none; }
+#stage:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 #map { width: 210px; height: 210px; border-radius: 6px; margin-inline: auto; }
 .views figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.playbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }
+.playbar .hint { font-size: 12.5px; color: var(--muted); }
+kbd { font-family: var(--mono); font-size: 11px; padding: 0 5px; border: 1px solid var(--line); border-radius: 4px; background: var(--bg); }
 .controls { display: grid; gap: 14px; }
+.group { display: grid; gap: 8px; }
+.group + .group { padding-top: 14px; border-top: 1px solid var(--line); }
+.group .label { margin: 0; }
 .ctl { display: grid; gap: 4px; }
 .ctl .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; }
 .ctl output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); }
@@ -57,8 +71,20 @@ input[type="range"] { width: 100%; accent-color: var(--accent); }
 input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
 button { font: 500 13px var(--body); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
 button:hover { border-color: var(--accent); color: var(--accent); }
-button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+button:disabled { opacity: 0.5; cursor: default; }
+button:disabled:hover { border-color: var(--line); color: var(--ink); }
+button:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.seg { display: flex; flex-wrap: wrap; gap: 6px; }
+.seg button[aria-pressed="true"], .seg button[aria-selected="true"] { background: var(--accent-soft); border-color: var(--accent); color: var(--accent); }
+.chips button { display: inline-flex; align-items: center; gap: 7px; }
+.chips i { width: 10px; height: 10px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25); }
+.fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.fields label { display: grid; gap: 3px; font-size: 12.5px; color: var(--muted); min-width: 0; }
+select { font: 13px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 6px; padding: 5px 8px; width: 100%; }
+.swatches { display: flex; flex-wrap: wrap; gap: 8px 12px; }
+.swatches label { display: grid; justify-items: center; gap: 2px; font-size: 11.5px; color: var(--muted); }
+input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); cursor: pointer; }
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; margin: 0; padding-top: 14px; border-top: 1px solid var(--line); }
 .readout dt { color: var(--muted); }
 .readout dd { margin: 0; text-align: right; }
 .readout dd.big { color: var(--accent); font-weight: 500; }
@@ -66,7 +92,9 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .pill.off { background: transparent; color: var(--muted); border: 1px solid var(--line); }
 .atlas-scroll { overflow-x: auto; }
 #atlas { image-rendering: pixelated; max-width: none; }
-.atlas-note { font-size: 13px; color: var(--muted); margin: 10px 0 0; max-width: 72ch; }
+.atlas-note { font-size: 13px; color: var(--muted); margin: 10px 0 0; max-width: 74ch; }
+.export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.export small { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
 @media (max-width: 880px) { .bottom { grid-template-columns: minmax(0, 1fr); } }
 pre { margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
@@ -75,69 +103,112 @@ pre { margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; 
 ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; max-width: 64ch; }
 ol.steps b { font-weight: 600; }
 code { font-family: var(--mono); font-size: 0.9em; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
 </style>
 
 <div class="wrap">
   <header>
     <h1>8-Way Sprite Rig</h1>
-    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Attachments ride on projected 3D bones.</p>
+    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Gear is baked into the atlas; anything held in a hand rides on a projected 3D bone. Walk the result around the playground, then take the atlas with you.</p>
   </header>
 
   <section class="top">
     <div class="panel">
-      <p class="label">Game view &amp; top-down</p>
-      <figure class="views" style="margin:0">
+      <div class="panel-head">
+        <p class="label">Game view &amp; top-down</p>
+        <div class="seg" role="tablist" aria-label="Stage mode">
+          <button id="modeTurn" type="button" role="tab" aria-selected="true">Turntable</button>
+          <button id="modePlay" type="button" role="tab" aria-selected="false">Playground</button>
+        </div>
+      </div>
+      <figure class="views">
         <div>
-          <canvas id="stage" aria-label="Game camera view of the sprite"></canvas>
-          <figcaption>Sprite from the baked atlas. The torch is attached to the 3D right-hand bone, not baked in.</figcaption>
+          <canvas id="stage" tabindex="0" aria-label="Game camera view of the sprite"></canvas>
+          <figcaption id="stageCap">Sprite from the baked atlas. Hand props attach to the 3D hand bones, not the pixels.</figcaption>
+          <div class="playbar" id="playbar" hidden>
+            <button id="orbitL" type="button" aria-label="Orbit camera left">⟲ Orbit</button>
+            <button id="orbitR" type="button" aria-label="Orbit camera right">Orbit ⟳</button>
+            <button id="attackBtn" type="button">Attack</button>
+            <span class="hint"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> attack · <kbd>Q</kbd><kbd>E</kbd> orbit · or drag on the stage</span>
+          </div>
         </div>
         <div>
           <canvas id="map" width="210" height="210" aria-label="Top-down map of character and camera"></canvas>
-          <figcaption>Wedges are the 8 sectors, measured from the camera. The lit one is in use.</figcaption>
+          <figcaption>Wedges are the direction sectors, measured from the camera. The lit one is in use.</figcaption>
         </div>
       </figure>
     </div>
 
     <div class="panel controls">
-      <p class="label">Rig controls</p>
-      <div class="ctl">
-        <div class="row"><label for="cam">Camera orbit (yaw)</label><output id="camOut">0°</output></div>
-        <input id="cam" type="range" min="0" max="359" value="200">
+      <div class="group">
+        <p class="label">Clip</p>
+        <div class="seg" id="clipSeg" aria-label="Animation clip"></div>
       </div>
-      <div class="ctl">
-        <div class="row"><label for="face">Character facing (yaw)</label><output id="faceOut">0°</output></div>
-        <input id="face" type="range" min="0" max="359" value="20">
+      <div class="group">
+        <p class="label">Character</p>
+        <div class="seg chips" id="presetSeg" aria-label="Character preset"></div>
+        <div class="swatches" id="swatches"></div>
+        <div class="fields">
+          <label for="gHead">Head<select id="gHead"><option value="none">Goggles</option><option value="helmet">Helmet</option><option value="hood">Hood</option><option value="hat">Wizard hat</option></select></label>
+          <label for="gBack">Back<select id="gBack"><option value="pack">Backpack</option><option value="cape">Cape</option><option value="none">Nothing</option></select></label>
+          <label for="gRight">Right hand<select id="gRight"><option value="torch">Torch</option><option value="sword">Sword</option><option value="staff">Staff</option><option value="lantern">Lantern</option><option value="none">Empty</option></select></label>
+          <label for="gLeft">Left hand<select id="gLeft"><option value="none">Empty</option><option value="shield">Shield</option><option value="lantern">Lantern</option></select></label>
+        </div>
       </div>
-      <div class="ctl">
-        <div class="row"><label for="speed">Walk cycles per second</label><output id="speedOut">1.0</output></div>
-        <input id="speed" type="range" min="0" max="2.5" step="0.1" value="1">
+      <div class="group">
+        <p class="label">Rig</p>
+        <div class="ctl">
+          <div class="row"><label for="cam">Camera orbit (yaw)</label><output id="camOut">0°</output></div>
+          <input id="cam" type="range" min="0" max="359" value="200">
+        </div>
+        <div class="ctl" id="faceCtl">
+          <div class="row"><label for="face">Character facing (yaw)</label><output id="faceOut">0°</output></div>
+          <input id="face" type="range" min="0" max="359" value="20">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="speed">Clip speed</label><output id="speedOut">1.0×</output></div>
+          <input id="speed" type="range" min="0" max="2.5" step="0.1" value="1">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="hyst">Hysteresis margin</label><output id="hystOut">6°</output></div>
+          <input id="hyst" type="range" min="0" max="20" value="6">
+        </div>
+        <div class="fields">
+          <label for="dirs">Directions<select id="dirs"><option value="4">4</option><option value="8" selected>8</option><option value="16">16</option></select></label>
+          <label for="frames">Frames per clip<select id="frames"><option value="6">6</option><option value="8" selected>8</option><option value="12">12</option></select></label>
+        </div>
+        <div class="checks">
+          <label><input id="turn" type="checkbox" checked> Auto-turn</label>
+          <label><input id="mirror" type="checkbox" checked> Mirror the far side</label>
+          <label><input id="skel" type="checkbox"> Overlay true 3D skeleton</label>
+        </div>
+        <div><button id="play" type="button">Pause</button></div>
       </div>
-      <div class="ctl">
-        <div class="row"><label for="hyst">Hysteresis margin</label><output id="hystOut">6°</output></div>
-        <input id="hyst" type="range" min="0" max="20" value="6">
-      </div>
-      <div class="checks">
-        <label><input id="turn" type="checkbox" checked> Auto-turn</label>
-        <label><input id="mirror" type="checkbox" checked> Mirror 3 directions</label>
-        <label><input id="skel" type="checkbox"> Overlay true 3D skeleton</label>
-      </div>
-      <div><button id="play" type="button">Pause</button></div>
 
       <dl class="readout">
+        <dt>clip</dt><dd id="rClip">–</dd>
         <dt>relative angle</dt><dd id="rRel">–</dd>
-        <dt>direction (row)</dt><dd id="rDir" class="big">–</dd>
+        <dt>direction</dt><dd id="rDir" class="big">–</dd>
         <dt>atlas row used</dt><dd id="rRow">–</dd>
         <dt>clip time</dt><dd id="rT">–</dd>
         <dt>frame (column)</dt><dd id="rFrame" class="big">–</dd>
-        <dt>art directions</dt><dd id="rArt">–</dd>
+        <dt>rows baked</dt><dd id="rArt">–</dd>
       </dl>
     </div>
   </section>
 
   <section class="panel">
-    <p class="label">Baked atlas · 8 directions × 8 walk frames · 32×48 px cells</p>
-    <div class="atlas-scroll"><canvas id="atlas" aria-label="Baked sprite atlas"></canvas></div>
-    <p class="atlas-note">Every cell was rendered from the same skeleton and walk cycle by a virtual camera at that row's angle, then pixel-thresholded and outlined. With mirroring on, rows 225°–315° are never sampled: the runtime flips rows 135°–45° instead and shifts the frame by half a cycle so the stride stays on the correct leg.</p>
+    <div class="panel-head">
+      <p class="label" id="atlasLabel">Baked atlas</p>
+      <div class="export">
+        <button id="savePng" type="button" hidden>Save atlas PNG</button>
+        <button id="saveJson" type="button" hidden>Save atlas JSON</button>
+        <button id="copyJson" type="button">Copy JSON</button>
+        <small id="exportSize"></small>
+      </div>
+    </div>
+    <div class="atlas-scroll"><canvas id="atlas" aria-label="Baked sprite atlas for the current clip"></canvas></div>
+    <p class="atlas-note" id="atlasNote"></p>
   </section>
 
   <section class="bottom">
@@ -145,36 +216,41 @@ code { font-family: var(--mono); font-size: 0.9em; }
       <div class="code-head"><p class="label">Runtime wiring</p><button id="copy" type="button">Copy</button></div>
 <pre id="code">// Runs every frame, after the 3D skeleton has animated.
 function spriteFor(skel, camYaw, state) {
-  const rel = wrap360(skel.facingYaw - camYaw); // 0° = we see its back
-  state.dir = pickDir(rel, state.dir, HYST);    // 0..7, sticky near edges
-  let frame = Math.floor(skel.clipTime * FRAMES); // clipTime is 0..1
+  const rel = wrap360(skel.facingYaw - camYaw);     // 0° = we see its back
+  state.dir = pickDir(rel, state.dir, HYST, DIRS);  // sticky near sector edges
+  const clip = CLIPS[skel.clip];
+  let col = Math.floor(skel.clipTime * FRAMES);     // clipTime is 0..1
   let row = state.dir, flip = false;
-  if (MIRROR &amp;&amp; row > 4) {                      // 5,6,7 reuse 3,2,1
-    row = 8 - row; flip = true;
-    frame = (frame + FRAMES / 2) % FRAMES;      // swap the leading leg
+  if (MIRROR &amp;&amp; clip.symmetric &amp;&amp; row > DIRS / 2) {
+    row = DIRS - row; flip = true;                  // reuse the row facing the other way
+    col = (col + clip.mirrorShift) % FRAMES;        // walk: half a cycle swaps the leading leg
   }
-  return { row, frame, flip };
+  return { sheet: clip.sheet, row, col, flip };
 }
 
-function pickDir(rel, cur, hyst) {
-  const snap = Math.floor((rel + 22.5) / 45) % 8;
+function pickDir(rel, cur, hyst, dirs) {
+  const step = 360 / dirs;
+  const snap = Math.floor((rel + step / 2) / step) % dirs;
   if (cur == null) return snap;
-  const off = Math.abs(wrap180(rel - cur * 45));
-  return off &lt;= 22.5 + hyst ? cur : snap;     // only leave past the margin
+  return Math.abs(wrap180(rel - cur * step)) &lt;= step / 2 + hyst ? cur : snap;
 }
 
-// Attachments: project the 3D bone with the SNAPPED angle and frame,
-// so the prop sticks to the drawn hand instead of drifting.
-const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pre>
+// Props: project the hand bone with the SNAPPED angle and frame, so the prop
+// sticks to the drawn hand; draw it behind the sprite when the hand is farther
+// from the camera than the chest.
+const snapped = skel.poseAt(col / FRAMES);
+const hand = project(snapped["hand.R"], state.dir * (360 / DIRS));
+const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).depth;</pre>
     </div>
     <div class="panel">
       <p class="label">How the pieces connect</p>
       <ol class="steps">
         <li><b>The skeleton is the truth.</b> Movement, animation state, hitboxes and bone positions all live on the 3D rig. The sprite never drives gameplay.</li>
-        <li><b>Row from angle.</b> Subtract the camera's yaw from the character's yaw, then quantize to 45° sectors. Hysteresis keeps the row from flickering when the angle sits on a sector edge.</li>
-        <li><b>Column from clip time.</b> The atlas columns are the same clip baked at even steps, so <code>floor(t × frames)</code> keeps sprite and skeleton in lockstep through blends and speed changes.</li>
-        <li><b>Props from bones.</b> Project the hand bone to screen and draw the prop there. Compare its depth to the chest to decide whether it draws behind or in front of the sprite.</li>
-        <li><b>Mirroring is free art.</b> A left-right flip of a walk is the same walk half a cycle later, so 5 baked rows cover all 8.</li>
+        <li><b>Row from angle.</b> Subtract the camera's yaw from the character's yaw, then quantize to sectors. Hysteresis keeps the row from flickering when the angle sits on a sector edge.</li>
+        <li><b>Column from clip time.</b> Each clip is baked at even steps, so <code>floor(t × frames)</code> keeps sprite and skeleton in lockstep through blends and speed changes.</li>
+        <li><b>Gear is baked, props are attached.</b> Helmets, hoods, capes and packs move with the body, so they go into the atlas. A sword or a torch changes during play, so it is drawn from the projected hand bone and sorted against the chest.</li>
+        <li><b>Mirroring is free art, sometimes.</b> A flipped walk is the same walk half a cycle later, so fewer than half the rows need baking. An attack swings one arm: flipped, it swings the other, so asymmetric clips bake every row.</li>
+        <li><b>Export the contract.</b> The JSON lists each clip's rows, which directions flip, and where the hands are in every cell, so a game engine can attach props without the skeleton.</li>
       </ol>
     </div>
   </section>
@@ -182,84 +258,173 @@ const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pr
 
 <script>
 (() => {
-  const CW = 32, CH = 48, OX = 16, OY = 44, FR = 8, ELEV = 28 * Math.PI / 180;
-  const D2R = Math.PI / 180;
-  const wrap360 = a => ((a % 360) + 360) % 360;
-  const wrap180 = a => { a = wrap360(a); return a > 180 ? a - 360 : a; };
+  const CW = 32, CH = 48, OX = 16, OY = 44, ELEV = 28 * Math.PI / 180, D2R = Math.PI / 180, TAU = Math.PI * 2;
+  const wrap360 = (a) => ((a % 360) + 360) % 360;
+  const wrap180 = (a) => { a = wrap360(a); return a > 180 ? a - 360 : a; };
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const mul = (a, k) => [a[0] * k, a[1] * k, a[2] * k];
+  const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]) || 1; return mul(a, 1 / l); };
   const limb = (ang, len) => [0, -len * Math.cos(ang), len * Math.sin(ang)];
+  const lerp = (a, b, k) => a + (b - a) * k;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const ease = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
 
-  // ---------- 3D skeleton: walk cycle as a function of clip time t (0..1) ----------
-  function pose(t) {
-    const ph = t * Math.PI * 2, j = {};
-    const hy = 20 + 0.8 * Math.cos(2 * ph);
-    j.hip = [0, hy, 0]; j.chest = [0, hy + 11, 1]; j.neck = [0, hy + 14, 1.2]; j.head = [0, hy + 18, 1.4];
-    j.pack0 = [0, hy + 4, -2.4]; j.pack1 = [0, hy + 10, -2.0];
-    j.visor = [0, hy + 18.4, 4.3];
-    for (const [s, sx, off] of [["L", -1, 0], ["R", 1, Math.PI]]) {
-      const p = ph + off;
-      const a = 0.55 * Math.sin(p), k = 0.85 * Math.max(0, Math.sin(p - 0.9));
+  // ---------- clips: symmetric ones can mirror (with a frame shift); the attack swings one arm and cannot ----------
+  const CLIPS = {
+    idle: { name: "Idle", rate: 0.35, sym: true, shift: 0 },
+    walk: { name: "Walk", rate: 1, sym: true, shift: 0.5 },
+    run: { name: "Run", rate: 1.6, sym: true, shift: 0.5 },
+    attack: { name: "Attack", rate: 1.1, sym: false, shift: 0 },
+  };
+
+  // ---------- 3D skeleton: every clip is a pose as a function of clip time t (0..1) ----------
+  function pose(clip, t) {
+    const ph = t * TAU, j = {}, Lg = {}, Ar = {};
+    let hy = 20, lean = 0, twist = 0, breath = 0, capeZ = -3.2, capeY = 0;
+    if (clip === "idle") {
+      hy = 20 + 0.2 * Math.sin(ph); breath = 0.35 * Math.sin(ph);
+      for (const s of ["L", "R"]) { Lg[s] = [0.02, 0.06]; Ar[s] = [0.08 + 0.03 * Math.sin(ph), 0.2 + 0.05 * Math.sin(ph)]; }
+      capeZ = -2.6 - 0.2 * Math.sin(ph);
+    } else if (clip === "walk" || clip === "run") {
+      const run = clip === "run";
+      hy = run ? 18.6 + 1.3 * Math.cos(2 * ph) : 20 + 0.8 * Math.cos(2 * ph);
+      lean = run ? 2.4 : 0.3;
+      for (const [s, off] of [["L", 0], ["R", Math.PI]]) {
+        const p = ph + off;
+        Lg[s] = run ? [0.95 * Math.sin(p), 1.45 * Math.max(0, Math.sin(p - 0.7)) + 0.2] : [0.55 * Math.sin(p), 0.85 * Math.max(0, Math.sin(p - 0.9))];
+        Ar[s] = run ? [-0.95 * Math.sin(p), 1.35 + 0.25 * Math.max(0, Math.sin(p))] : [-0.5 * Math.sin(p), 0.45 + 0.3 * Math.max(0, Math.sin(p))];
+      }
+      capeZ = run ? -6.5 - 0.8 * Math.sin(2 * ph) : -3.4 - 0.6 * Math.sin(2 * ph);
+      capeY = run ? 3 : 0.5;
+    } else {
+      // wind up overhead, chop, follow through, recover
+      const seg = (a, b) => ease((t - a) / (b - a));
+      let sw, fe;
+      if (t < 0.38) { const k = seg(0, 0.38); sw = lerp(0.2, -2.55, k); fe = lerp(0.45, 1.3, k); twist = lerp(0, 0.35, k); lean = lerp(0, -0.8, k); }
+      else if (t < 0.56) { const k = seg(0.38, 0.56); sw = lerp(-2.55, 1.35, k); fe = lerp(1.3, 0.1, k); twist = lerp(0.35, -0.3, k); lean = lerp(-0.8, 2.2, k); hy -= 1.2 * k; }
+      else if (t < 0.78) { const k = seg(0.56, 0.78); sw = lerp(1.35, 1.05, k); fe = lerp(0.1, 0.25, k); twist = -0.3; lean = 2.2; hy -= 1.2; }
+      else { const k = seg(0.78, 1); sw = lerp(1.05, 0.2, k); fe = lerp(0.25, 0.45, k); twist = lerp(-0.3, 0, k); lean = lerp(2.2, 0, k); hy -= lerp(1.2, 0, k); }
+      Ar.R = [sw, fe]; Ar.L = [0.75, 1.25];
+      Lg.L = [0.32, 0.35]; Lg.R = [-0.3, 0.12];
+      capeZ = -3 - lean * 0.6; capeY = 0.4;
+    }
+    const b = breath;
+    j.hip = [0, hy, 0];
+    j.chest = [0, hy + 11 + b, 1]; j.neck = [0, hy + 14 + b, 1.2]; j.head = [0, hy + 18 + b, 1.4]; j.visor = [0, hy + 18.4 + b, 4.3];
+    j.pack0 = [0, hy + 4, -2.4]; j.pack1 = [0, hy + 10 + b, -2.0];
+    j.capeTL = [-4, hy + 10.6 + b, -1.5]; j.capeTR = [4, hy + 10.6 + b, -1.5];
+    j.capeBL = [-5.4, hy - 6.5 + capeY, capeZ]; j.capeBR = [5.4, hy - 6.5 + capeY, capeZ];
+    j.crest0 = [0, hy + 22.3 + b, 1.4]; j.crest1 = [0, hy + 21.3 + b, -2.8];
+    j.hood0 = [0, hy + 20.2 + b, -1.6]; j.hood1 = [0, hy + 17.4 + b, -4.8];
+    j.hat0 = [0, hy + 21.4 + b, 1.2]; j.hat1 = [0, hy + 25 + b, 0.2]; j.hat2 = [0, hy + 28.6 + b, -1.8];
+    for (const [s, sx] of [["L", -1], ["R", 1]]) {
+      const [a, k] = Lg[s], [sw, fe] = Ar[s];
       const hp = [sx * 3, hy, 0], kn = add(hp, limb(a, 10)), ft = add(kn, limb(a - k, 10));
-      const sw = -0.5 * Math.sin(p), e = 0.45 + 0.3 * Math.max(0, Math.sin(p));
-      const sh = [sx * 5, hy + 10, 1], el = add(sh, limb(sw, 7)), ha = add(el, limb(sw + e, 7));
+      const sh = [sx * 5, hy + 10 + b, 1], el = add(sh, limb(sw, 7)), ha = add(el, limb(sw + fe, 7));
       Object.assign(j, { ["hp" + s]: hp, ["kn" + s]: kn, ["ft" + s]: ft, ["sh" + s]: sh, ["el" + s]: el, ["ha" + s]: ha });
+    }
+    // twist the shoulders round the spine, then lean the upper body over the hips
+    if (twist) {
+      const c = Math.cos(twist), sn = Math.sin(twist), cz = j.chest[2];
+      for (const k of ["shL", "elL", "haL", "shR", "elR", "haR"]) { const [x, y, z] = j[k]; j[k] = [x * c + (z - cz) * sn, y, -x * sn + (z - cz) * c + cz]; }
+    }
+    if (lean) for (const k in j) {
+      if (/^(hip|hp|kn|ft|capeB)/.test(k)) continue;
+      const f = clamp((j[k][1] - hy) / 18, 0, 1);
+      j[k] = [j[k][0], j[k][1], j[k][2] + lean * f];
     }
     return j;
   }
 
-  // Camera looks along +z of the rotated frame, tilted down by ELEV. Screen right = +x.
+  // Camera looks along +z of the rotated frame, tilted down by ELEV. Screen right = +x; larger d = farther away.
   function project(p, rel) {
     const c = Math.cos(rel), s = Math.sin(rel);
     const x = p[0] * c + p[2] * s, z = -p[0] * s + p[2] * c;
     return { x, y: p[1] * Math.cos(ELEV) + z * Math.sin(ELEV), d: z * Math.cos(ELEV) - p[1] * Math.sin(ELEV) };
   }
 
-  const PAL = { shirt: "#d9822b", pants: "#3b4a6b", skin: "#f0c79c", pack: "#6b5136", visor: "#1b2232", hair: "#2a1f1a" };
+  // ---------- characters: colours and gear are baked; hand props are attached at runtime ----------
+  const PRESETS = {
+    scout: { name: "Scout", pal: { shirt: "#d9822b", pants: "#3b4a6b", skin: "#f0c79c", hair: "#2a1f1a", gear: "#6b5136" }, head: "none", back: "pack", right: "torch", left: "none" },
+    knight: { name: "Knight", pal: { shirt: "#8d99ae", pants: "#454b59", skin: "#e8b48c", hair: "#5a3a22", gear: "#a8322d" }, head: "helmet", back: "cape", right: "sword", left: "shield" },
+    ranger: { name: "Ranger", pal: { shirt: "#4f7a3a", pants: "#5a4632", skin: "#c99272", hair: "#c4501f", gear: "#2f4d24" }, head: "hood", back: "cape", right: "lantern", left: "none" },
+    mage: { name: "Mage", pal: { shirt: "#5a3e8a", pants: "#2c2440", skin: "#f0c09a", hair: "#e8e0d0", gear: "#3a2a5a" }, head: "hat", back: "cape", right: "staff", left: "none" },
+  };
+  const PAL_NAMES = { shirt: "Tunic", pants: "Legs", skin: "Skin", hair: "Hair", gear: "Gear" };
+  const STEEL = "#aab3c2", CREST = "#c8372d", VISOR = "#1b2232";
+  const cloneLook = (l) => JSON.parse(JSON.stringify(l));
+  // a look read back from storage keeps only known gear and real colours
+  const OPTS = { head: ["none", "helmet", "hood", "hat"], back: ["pack", "cape", "none"], right: ["torch", "sword", "staff", "lantern", "none"], left: ["none", "shield", "lantern"] };
+  function sanitizeLook(l) {
+    const out = cloneLook(PRESETS.scout);
+    for (const k in OPTS) if (OPTS[k].includes(l[k])) out[k] = l[k];
+    for (const k in out.pal) if (l.pal && typeof l.pal[k] === "string" && /^#[0-9a-f]{6}$/i.test(l.pal[k])) out.pal[k] = l.pal[k];
+    return out;
+  }
   const shade = (hex, f) => {
     const n = parseInt(hex.slice(1), 16);
     const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
-    return `rgb(${r},${g},${b})`;
+    return `rgb(${Math.min(255, r)},${Math.min(255, g)},${Math.min(255, b)})`;
   };
-  const BONES = [
-    ["hpL", "knL", 3.4, "pants", "L"], ["knL", "ftL", 3, "pants", "L"],
-    ["hpR", "knR", 3.4, "pants", "R"], ["knR", "ftR", 3, "pants", "R"],
-    ["hip", "chest", 6, "shirt", ""], ["chest", "neck", 3, "skin", ""],
-    ["pack0", "pack1", 4.4, "pack", ""],
-    ["shL", "elL", 2.8, "shirt", "L"], ["elL", "haL", 2.4, "skin", "L"],
-    ["shR", "elR", 2.8, "shirt", "R"], ["elR", "haR", 2.4, "skin", "R"],
-  ];
 
-  // Draws the figure at origin (ox, oy) in screen space, scale sc.
-  function drawFigure(ctx, j, rel, ox, oy, sc, mono) {
+  // Draws the figure at origin (ox, oy) in screen space, scale sc. `mono` draws a flat silhouette of the true skeleton.
+  function drawFigure(ctx, j, rel, ox, oy, sc, look, mono) {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
-    const farSide = P.shL.d > P.shR.d ? "L" : "R";
-    const items = BONES.map(([a, b, w, col, side]) => ({
-      d: (P[a].d + P[b].d) / 2, draw: () => {
-        ctx.strokeStyle = mono || (side === farSide ? shade(PAL[col], 0.72) : PAL[col]);
-        ctx.lineWidth = w * sc; ctx.lineCap = "round";
-        ctx.beginPath(); ctx.moveTo(ox + P[a].x * sc, oy - P[a].y * sc); ctx.lineTo(ox + P[b].x * sc, oy - P[b].y * sc); ctx.stroke();
-      }
-    }));
+    const pal = look.pal, farSide = P.shL.d > P.shR.d ? "L" : "R", back = P.visor.d > P.head.d;
+    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
+    const items = [];
+    const disc = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
+    const bone = (a, b, w, col, side) => items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
+      ctx.strokeStyle = mono || (side && side === farSide ? shade(col, 0.72) : col);
+      ctx.lineWidth = w * sc; ctx.lineCap = "round";
+      ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke();
+    } });
+    for (const s of ["L", "R"]) {
+      bone("hp" + s, "kn" + s, 3.4, pal.pants, s); bone("kn" + s, "ft" + s, 3, pal.pants, s);
+      bone("sh" + s, "el" + s, 2.8, pal.shirt, s); bone("el" + s, "ha" + s, 2.4, pal.skin, s);
+    }
+    bone("hip", "chest", 6, pal.shirt); bone("chest", "neck", 3, pal.skin);
+    if (!mono && look.back === "pack") bone("pack0", "pack1", 4.4, pal.gear);
+    if (!mono && look.back === "cape") items.push({ d: (P.capeTL.d + P.capeTR.d + P.capeBL.d + P.capeBR.d) / 4, draw: () => {
+      ctx.fillStyle = back ? pal.gear : shade(pal.gear, 0.62);
+      ctx.beginPath(); for (const k of ["capeTL", "capeTR", "capeBR", "capeBL"]) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill();
+    } });
     items.push({ d: P.head.d, draw: () => {
-      ctx.fillStyle = mono || PAL.skin; ctx.beginPath(); ctx.arc(ox + P.head.x * sc, oy - P.head.y * sc, 3.7 * sc, 0, Math.PI * 2); ctx.fill();
-      if (!mono) { const back = P.visor.d > P.head.d; ctx.fillStyle = PAL.hair; ctx.beginPath();
-        ctx.arc(ox + P.head.x * sc, oy - (P.head.y + 0.6) * sc, 3.7 * sc, Math.PI * (back ? 0 : 1.05), Math.PI * (back ? 2 : 1.95)); ctx.fill(); }
+      const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc, dx = X(P.visor) - hx, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
+      if (mono) return disc(hx, hy, r, mono);
+      if (look.head === "helmet") {
+        disc(hx, hy, r * 1.06, STEEL);
+        if (!back) { const w = Math.max(1.1 * sc, 4.8 * sc * front), x0 = clamp(hx + dx * 0.62, hx - r, hx + r); ctx.fillStyle = VISOR; ctx.fillRect(x0 - w / 2, hy - 0.6 * sc, w, 1.2 * sc); }
+      } else if (look.head === "hood") {
+        disc(hx, hy, r * 1.1, pal.gear);
+        if (!back) { disc(hx + dx * 0.45, hy + 0.5 * sc, r * 0.62, pal.skin); disc(lerp(hx, X(P.visor), 0.72), hy, 0.65 * sc, VISOR); }
+      } else {
+        disc(hx, hy, r, pal.skin);
+        ctx.fillStyle = pal.hair; ctx.beginPath();
+        ctx.arc(hx, hy - 0.6 * sc, r, Math.PI * (back ? 0 : 1.05), Math.PI * (back ? 2 : 1.95)); ctx.fill();
+        if (look.head === "none" && !back) disc(X(P.visor), Y(P.visor), 1.3 * sc, VISOR);
+      }
     } });
-    if (!mono) items.push({ d: P.visor.d, draw: () => {
-      ctx.fillStyle = PAL.visor; ctx.beginPath(); ctx.arc(ox + P.visor.x * sc, oy - P.visor.y * sc, 1.3 * sc, 0, Math.PI * 2); ctx.fill();
-    } });
-    items.sort((a, b) => b.d - a.d).forEach(i => i.draw());
+    if (!mono && look.head === "helmet") bone("crest0", "crest1", 1.8, CREST);
+    if (!mono && look.head === "hood") bone("hood0", "hood1", 2.6, pal.gear);
+    if (!mono && look.head === "hat") {
+      items.push({ d: P.hat0.d, draw: () => {
+        ctx.fillStyle = shade(pal.gear, 0.8); ctx.beginPath(); ctx.ellipse(X(P.hat0), Y(P.hat0), 6.4 * sc, 6.4 * Math.sin(ELEV) * sc, 0, 0, TAU); ctx.fill();
+      } });
+      bone("hat0", "hat1", 5.2, pal.gear); bone("hat1", "hat2", 2.4, pal.gear);
+    }
+    items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
     return P;
   }
 
-  // ---------- Bake: render 8 dirs × 8 frames, then pixel-threshold and outline ----------
-  const atlasSrc = document.createElement("canvas");
-  atlasSrc.width = CW * FR; atlasSrc.height = CH * 8;
-  (function bake() {
-    const c = atlasSrc.getContext("2d");
-    for (let d = 0; d < 8; d++) for (let f = 0; f < FR; f++)
-      drawFigure(c, pose(f / FR), d * 45 * D2R, f * CW + OX, d * CH + OY, 1);
-    const img = c.getImageData(0, 0, atlasSrc.width, atlasSrc.height), px = img.data, W = atlasSrc.width, H = atlasSrc.height;
+  // ---------- bake: every direction × frame of one clip, then pixel-threshold and outline ----------
+  function bakeClip(look, clip, N, FR) {
+    const cv = document.createElement("canvas");
+    cv.width = CW * FR; cv.height = CH * N;
+    const c = cv.getContext("2d");
+    for (let d = 0; d < N; d++) for (let f = 0; f < FR; f++) drawFigure(c, pose(clip, f / FR), (d * 360 / N) * D2R, f * CW + OX, d * CH + OY, 1, look);
+    const img = c.getImageData(0, 0, cv.width, cv.height), px = img.data, W = cv.width, H = cv.height;
     const solid = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) { solid[i] = px[i * 4 + 3] > 100 ? 1 : 0; px[i * 4 + 3] = solid[i] ? 255 : 0; }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
@@ -268,22 +433,95 @@ const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pr
       if (n && (x % CW) !== 0 && (x % CW) !== CW - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
     }
     c.putImageData(img, 0, 0);
-  })();
-
-  // ---------- Runtime ----------
-  const $ = id => document.getElementById(id);
-  const ui = { cam: $("cam"), face: $("face"), speed: $("speed"), hyst: $("hyst"), turn: $("turn"), mirror: $("mirror"), skel: $("skel") };
-  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  let playing = !reduce, t = 0.1, dir = null, last = performance.now();
-  if (reduce) { ui.turn.checked = false; $("play").textContent = "Play"; }
-
-  function pickDir(rel, cur, hyst) {
-    const snap = Math.floor((rel + 22.5) / 45) % 8;
-    if (cur == null) return snap;
-    return Math.abs(wrap180(rel - cur * 45)) <= 22.5 + hyst ? cur : snap;
+    return cv;
   }
 
-  const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  // ---------- hand props, drawn from the projected bones ----------
+  // returns [{ d, draw }] for one hand; the caller sorts each against the chest
+  function propsFor(look, j, rq, ox, oy, S, ctx) {
+    const scr = (p) => { const q = project(p, rq); return [ox + q.x * S, oy - q.y * S, q.d]; };
+    const out = [];
+    const glow = (x, y, r, rgb, a) => { const g = ctx.createRadialGradient(x, y, 0, x, y, r); g.addColorStop(0, `rgba(${rgb},${a})`); g.addColorStop(1, `rgba(${rgb},0)`); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
+    const line = (a, b, w, col, cap = "butt") => { ctx.strokeStyle = col; ctx.lineWidth = w; ctx.lineCap = cap; ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke(); };
+    for (const [side, kind] of [["R", look.right], ["L", look.left]]) {
+      if (!kind || kind === "none") continue;
+      const ha = j["ha" + side], el = j["el" + side], H = scr(ha);
+      if (kind === "torch") {
+        const T = scr(add(ha, [0, 7, 1.6]));
+        out.push({ d: H[2], hand: H, draw: () => {
+          line(H, T, 1.6 * S, "#5a3d24");
+          glow(T[0], T[1], 9 * S, "255,160,60", 0.55);
+          ctx.fillStyle = "#ffcf6b"; ctx.fillRect(Math.round(T[0] - S), Math.round(T[1] - 2.5 * S), 2 * S, 3 * S);
+          ctx.fillStyle = "#ff7a2e"; ctx.fillRect(Math.round(T[0] - S), Math.round(T[1] - 0.5 * S), 2 * S, S);
+        } });
+      } else if (kind === "sword") {
+        const dir = norm(sub(ha, el)), tip = scr(add(ha, mul(dir, 14))), grip = scr(add(ha, mul(dir, -2.2)));
+        const g0 = scr(add(add(ha, mul(dir, 1.4)), [-2.4, 0, 0])), g1 = scr(add(add(ha, mul(dir, 1.4)), [2.4, 0, 0]));
+        out.push({ d: H[2], hand: H, draw: () => {
+          line(grip, H, 1.6 * S, "#5a3d24");
+          line(H, tip, 1.5 * S, "#c9d1dc", "round"); line(H, tip, 0.5 * S, "#ffffff", "round");
+          line(g0, g1, 1.3 * S, "#d4a63a", "round");
+        } });
+      } else if (kind === "staff") {
+        const lo = scr(add(ha, [0, -9, -0.2])), hi = scr(add(ha, [0, 15, 0.8]));
+        out.push({ d: H[2], hand: H, draw: () => {
+          line(lo, hi, 1.5 * S, "#6b4a2a", "round");
+          glow(hi[0], hi[1], 8 * S, "170,140,255", 0.5);
+          ctx.fillStyle = "#b9a6ff"; ctx.beginPath(); ctx.arc(hi[0], hi[1], 2.1 * S, 0, TAU); ctx.fill();
+          ctx.fillStyle = "#ffffff"; ctx.fillRect(Math.round(hi[0] - 0.8 * S), Math.round(hi[1] - 0.9 * S), Math.max(1, S * 0.7), Math.max(1, S * 0.7));
+        } });
+      } else if (kind === "lantern") {
+        const B = scr(add(ha, [0, -5, 0.4])), K = scr(add(ha, [0, -2.6, 0.4]));
+        out.push({ d: H[2], hand: H, draw: () => {
+          line(H, K, 0.8 * S, "#3a3a42");
+          glow(B[0], B[1], 10 * S, "255,190,90", 0.45);
+          ctx.fillStyle = "#3a3a42"; ctx.fillRect(Math.round(B[0] - 1.8 * S), Math.round(B[1] - 2.3 * S), 3.6 * S, 4.6 * S);
+          ctx.fillStyle = "#ffd890"; ctx.fillRect(Math.round(B[0] - 1.1 * S), Math.round(B[1] - 1.5 * S), 2.2 * S, 3 * S);
+        } });
+      } else if (kind === "shield") {
+        const C = scr(add(ha, [-1.4, 1.2, 1.6])), n = norm([-0.45, 0, 0.89]);
+        const nz = -n[0] * Math.sin(rq) + n[2] * Math.cos(rq), facing = nz < 0, r = 5.4 * S, rx = r * Math.max(0.22, Math.abs(nz));
+        out.push({ d: C[2], hand: H, draw: () => {
+          ctx.fillStyle = "#5c6573"; ctx.beginPath(); ctx.ellipse(C[0], C[1], rx + 0.8 * S, r + 0.8 * S, 0, 0, TAU); ctx.fill();
+          ctx.fillStyle = facing ? look.pal.gear : "#7a5634"; ctx.beginPath(); ctx.ellipse(C[0], C[1], rx, r, 0, 0, TAU); ctx.fill();
+          if (facing && rx > 2 * S) { ctx.fillStyle = "#d4a63a"; ctx.beginPath(); ctx.ellipse(C[0], C[1], Math.max(S * 0.6, rx * 0.3), r * 0.3, 0, 0, TAU); ctx.fill(); }
+        } });
+      }
+    }
+    return out;
+  }
+
+  // ---------- runtime state ----------
+  const $ = (id) => document.getElementById(id);
+  const ui = { cam: $("cam"), face: $("face"), speed: $("speed"), hyst: $("hyst"), turn: $("turn"), mirror: $("mirror"), skel: $("skel"), dirs: $("dirs"), frames: $("frames"), head: $("gHead"), back: $("gBack"), right: $("gRight"), left: $("gLeft") };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const st = { look: cloneLook(PRESETS.scout), preset: "scout", clip: "walk", N: 8, FR: 8, mode: "turn" };
+  try {
+    const saved = JSON.parse(localStorage.getItem("spriteRig.v2") || "null");
+    if (saved && saved.look && saved.look.pal) { st.look = sanitizeLook(saved.look); st.preset = PRESETS[saved.preset] ? saved.preset : "custom"; }
+    if (saved && CLIPS[saved.clip]) st.clip = saved.clip;
+    if (saved && [4, 8, 16].includes(saved.N)) st.N = saved.N;
+    if (saved && [6, 8, 12].includes(saved.FR)) st.FR = saved.FR;
+  } catch (e) { /* no storage here */ }
+  const remember = () => { try { localStorage.setItem("spriteRig.v2", JSON.stringify({ look: st.look, preset: st.preset, clip: st.clip, N: st.N, FR: st.FR })); } catch (e) { /* no storage here */ } };
+  let playing = !reduce, t = 0.1, dir = null, last = performance.now(), faceVal = +ui.face.value, camVal = +ui.cam.value;
+  if (reduce) { ui.turn.checked = false; $("play").textContent = "Play"; }
+  let atlas = {};
+
+  function pickDir(rel, cur, hyst, N) {
+    const step = 360 / N, snap = Math.floor((rel + step / 2) / step) % N;
+    if (cur == null || cur >= N) return snap;
+    return Math.abs(wrap180(rel - cur * step)) <= step / 2 + hyst ? cur : snap;
+  }
+  // which baked cell a direction and frame land on
+  function cellFor(clip, d, frame) {
+    const c = CLIPS[clip], N = st.N, mirror = ui.mirror.checked && c.sym;
+    if (mirror && d > N / 2) return { row: N - d, col: (frame + Math.round(c.shift * st.FR)) % st.FR, flip: true, mirror };
+    return { row: d, col: frame, flip: false, mirror };
+  }
+  const rowsBaked = (clip) => (ui.mirror.checked && CLIPS[clip].sym ? st.N / 2 + 1 : st.N);
+
+  const tok = (n) => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   function fit(cv) {
     const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
     const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
@@ -291,80 +529,191 @@ const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pr
     const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     return { ctx, w: r.width, h: r.height };
   }
+  function blitCell(ctx, sheet, cell, x, y, S) {
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.translate(Math.round(x), Math.round(y - OY * S));
+    if (cell.flip) ctx.scale(-1, 1);
+    ctx.drawImage(sheet, cell.col * CW, cell.row * CH, CW, CH, -OX * S, 0, CW * S, CH * S);
+    ctx.restore();
+  }
+  // a sprite plus its props, each prop behind or in front by the hand's depth against the chest
+  function drawCharacter(ctx, look, sheet, clip, d, frame, cell, x, y, S) {
+    const j = pose(clip, frame / st.FR), rq = (d * 360 / st.N) * D2R, chest = project(j.chest, rq);
+    const props = propsFor(look, j, rq, x, y, S, ctx);
+    for (const p of props) if (p.d > chest.d) p.draw();
+    blitCell(ctx, sheet, cell, x, y, S);
+    for (const p of props) if (p.d <= chest.d) p.draw();
+    return { j, rq, props };
+  }
 
-  function drawStage(s) {
+  // ---------- the turntable ----------
+  function drawTurntable(s) {
     const { ctx, w, h } = fit($("stage"));
     ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
-    const S = Math.max(3, Math.floor(Math.min(w / 44, h / 58)));
+    const S = Math.max(3, Math.floor(Math.min(w / 44, h / 64)));
     const cx = w / 2, cy = h * 0.86;
     // ground grid in camera space so it visibly turns with the camera
     ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 1;
+    const camR = -s.cam * D2R;
     for (let i = -6; i <= 6; i++) for (const axis of [0, 1]) {
-      const a = [], b = [];
-      const camR = -s.cam * D2R;
-      for (const k of [-6, 6]) {
-        const p = axis ? [i * 8, 0, k * 8] : [k * 8, 0, i * 8];
-        const q = project(p, camR); (a.length ? b : a).push(cx + q.x * S, cy - q.y * S);
-      }
-      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+      const a = project(axis ? [i * 8, 0, -48] : [-48, 0, i * 8], camR), b = project(axis ? [i * 8, 0, 48] : [48, 0, i * 8], camR);
+      ctx.beginPath(); ctx.moveTo(cx + a.x * S, cy - a.y * S); ctx.lineTo(cx + b.x * S, cy - b.y * S); ctx.stroke();
     }
-    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(cx, cy, 9 * S, 2.6 * S, 0, 0, Math.PI * 2); ctx.fill();
-
-    // socket: snapped angle + snapped frame → matches the drawn pixels
-    const jq = pose(s.frame / FR), rq = s.dir * 45 * D2R;
-    const H = project(jq.haR, rq), C = project(jq.chest, rq);
-    const tipP = project(add(jq.haR, [0, 7, 1.6]), rq);
-    const torch = () => {
-      const hx = cx + H.x * S, hy = cy - H.y * S, tx = cx + tipP.x * S, ty = cy - tipP.y * S;
-      ctx.strokeStyle = "#5a3d24"; ctx.lineWidth = 1.6 * S; ctx.lineCap = "butt";
-      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
-      const g = ctx.createRadialGradient(tx, ty, 0, tx, ty, 9 * S);
-      g.addColorStop(0, "rgba(255,170,70,0.55)"); g.addColorStop(1, "rgba(255,140,40,0)");
-      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(tx, ty, 9 * S, 0, Math.PI * 2); ctx.fill();
-      ctx.fillStyle = "#ffcf6b"; ctx.fillRect(Math.round(tx - S), Math.round(ty - 2.5 * S), 2 * S, 3 * S);
-      ctx.fillStyle = "#ff7a2e"; ctx.fillRect(Math.round(tx - S), Math.round(ty - 0.5 * S), 2 * S, S);
-    };
-    const behind = H.d > C.d;
-    if (behind) torch();
-
-    ctx.imageSmoothingEnabled = false;
-    ctx.save();
-    ctx.translate(Math.round(cx), Math.round(cy - OY * S));
-    if (s.flip) ctx.scale(-1, 1);
-    ctx.drawImage(atlasSrc, s.col * CW, s.row * CH, CW, CH, -OX * S, 0, CW * S, CH * S);
-    ctx.restore();
-    if (!behind) torch();
-
+    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(cx, cy, 9 * S, 2.6 * S, 0, 0, TAU); ctx.fill();
+    const { props } = drawCharacter(ctx, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx, cy, S);
     if (ui.skel.checked) {
       ctx.globalAlpha = 0.85;
-      drawFigure(ctx, pose(t), s.rel * D2R, cx, cy, S * 0.999, tok("--accent"));
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 1;
+      drawFigure(ctx, pose(st.clip, t), s.rel * D2R, cx, cy, S * 0.999, st.look, tok("--accent"));
+      ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
-    // socket marker
+    // socket markers on the hands that hold something
     ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.arc(cx + H.x * S, cy - H.y * S, 2.2 * S, 0, Math.PI * 2); ctx.stroke();
-
-    ctx.fillStyle = tok("--muted"); ctx.font = `500 12px ${tok("--mono")}`;
+    for (const p of props) { ctx.beginPath(); ctx.arc(p.hand[0], p.hand[1], 2.2 * S, 0, TAU); ctx.stroke(); }
+    ctx.fillStyle = tok("--muted"); ctx.font = `500 12px ${tok("--mono")}`; ctx.textAlign = "left";
     ctx.fillText(`row ${s.row}${s.flip ? " (flipped)" : ""} · col ${s.col}`, 12, 20);
-    ctx.fillStyle = tok("--hot"); ctx.fillText("○ hand.R socket", 12, 38);
+    if (props.length) { ctx.fillStyle = tok("--hot"); ctx.fillText("○ hand socket", 12, 38); }
   }
 
+  // ---------- the playground: a courtyard with the camera orbiting the player ----------
+  const ARENA = 56, PILLARS = [[-34, -30], [34, -30], [-34, 34], [34, 34]], CRATES = [[14, -40], [-44, 4]];
+  const world = { p: { x: 0, z: 0, yaw: 20, t: 0, dir: null, atk: 0, moving: false, run: false }, npcs: [], keys: new Set(), joy: null, focused: false, orbit: 0, camX: 0, camZ: 0 };
+  const npcAtlas = {};
+  function setupNpcs() {
+    const keys = Object.keys(PRESETS).filter((k) => k !== st.preset).slice(0, 3);
+    world.npcs = keys.map((k, i) => ({ key: k, look: PRESETS[k], x: [-26, 30, 4][i], z: [18, 12, -24][i], yaw: [90, 250, 10][i], t: Math.random(), dir: null, moving: false, tx: 0, tz: 0, wait: 1 + i, atk: 0 }));
+  }
+  function bakeNpcs() { for (const n of world.npcs) npcAtlas[n.key] = { idle: bakeClip(n.look, "idle", st.N, st.FR), walk: bakeClip(n.look, "walk", st.N, st.FR), attack: bakeClip(n.look, "attack", st.N, st.FR) }; }
+  const blocked = (x, z, r) => Math.abs(x) > ARENA - r || Math.abs(z) > ARENA - r || PILLARS.some(([px, pz]) => Math.hypot(px - x, pz - z) < 6 + r) || CRATES.some(([cx, cz]) => Math.abs(cx - x) < 5 + r && Math.abs(cz - z) < 5 + r);
+  function moveBody(o, dx, dz) { if (!blocked(o.x + dx, o.z, 3)) o.x += dx; if (!blocked(o.x, o.z + dz, 3)) o.z += dz; }
+  const turnToward = (cur, want, maxStep) => cur + clamp(wrap180(want - cur), -maxStep, maxStep);
+  function clipOf(o) { return o.atk > 0 ? "attack" : o.moving ? (o.run ? "run" : "walk") : "idle"; }
+  function updatePlay(dt) {
+    const p = world.p, k = world.keys;
+    // camera orbit from Q/E or the buttons
+    const orbit = (k.has("q") ? 1 : 0) - (k.has("e") ? 1 : 0) + world.orbit;
+    if (orbit) { camVal = wrap360(camVal + orbit * 90 * dt); ui.cam.value = Math.round(camVal) % 360; }
+    // input in screen space, turned into the world by the camera's yaw
+    let ix = (k.has("d") || k.has("arrowright") ? 1 : 0) - (k.has("a") || k.has("arrowleft") ? 1 : 0);
+    let iy = (k.has("s") || k.has("arrowdown") ? 1 : 0) - (k.has("w") || k.has("arrowup") ? 1 : 0);
+    let run = k.has("shift");
+    if (world.joy && world.joy.active) { const jx = world.joy.x - world.joy.x0, jy = world.joy.y - world.joy.y0, l = Math.hypot(jx, jy); if (l > 10) { ix = jx / l; iy = jy / l; run = l > 70; } }
+    const l = Math.hypot(ix, iy);
+    p.moving = l > 0.1 && p.atk <= 0; p.run = run;
+    if (p.moving) {
+      const c = camVal * D2R, fx = Math.sin(c), fz = Math.cos(c), rx = Math.cos(c), rz = -Math.sin(c);
+      const mx = (ix * rx - iy * fx) / l, mz = (ix * rz - iy * fz) / l, spd = run ? 52 : 28;
+      moveBody(p, mx * spd * dt, mz * spd * dt);
+      p.yaw = wrap360(turnToward(p.yaw, Math.atan2(mx, mz) / D2R, 600 * dt));
+    }
+    if (p.atk > 0) p.atk -= dt;
+    const clip = clipOf(p);
+    const rate = clip === "attack" ? 0 : CLIPS[clip].rate * (clip === "walk" ? 1.1 : 1) * +ui.speed.value;
+    p.t = clip === "attack" ? clamp(1 - p.atk / 0.75, 0, 0.999) : (p.t + dt * rate) % 1;
+    // wanderers: pick a spot, walk there, wait
+    for (const n of world.npcs) {
+      if (n.atk > 0) { n.atk -= dt; n.t = clamp(1 - n.atk / 0.75, 0, 0.999); continue; }
+      if (n.moving) {
+        const dx = n.tx - n.x, dz = n.tz - n.z, d = Math.hypot(dx, dz);
+        if (d < 2) { n.moving = false; n.wait = 1.5 + Math.random() * 3; }
+        else { const ox = n.x, oz = n.z; moveBody(n, (dx / d) * 22 * dt, (dz / d) * 22 * dt); n.yaw = wrap360(turnToward(n.yaw, Math.atan2(dx, dz) / D2R, 300 * dt)); if (Math.hypot(n.x - ox, n.z - oz) < 0.01) n.moving = false; }
+      } else if ((n.wait -= dt) <= 0) {
+        // now and then they turn to face you and swing, so the asymmetric clip shows up from every side
+        if (Math.random() < 0.25 && Math.hypot(p.x - n.x, p.z - n.z) < 40) { n.yaw = Math.atan2(p.x - n.x, p.z - n.z) / D2R; n.atk = 0.75; n.wait = 2; }
+        else { let tries = 0; do { n.tx = (Math.random() * 2 - 1) * (ARENA - 8); n.tz = (Math.random() * 2 - 1) * (ARENA - 8); } while (blocked(n.tx, n.tz, 3) && ++tries < 20); n.moving = true; }
+      }
+      if (n.atk <= 0) n.t = (n.t + dt * CLIPS[n.moving ? "walk" : "idle"].rate * 1.1) % 1;
+    }
+    // the camera trails the player
+    const kf = 1 - Math.exp(-6 * dt);
+    world.camX += (p.x - world.camX) * kf; world.camZ += (p.z - world.camZ) * kf;
+  }
+  function drawPlayground(dt) {
+    const { ctx, w, h } = fit($("stage"));
+    ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
+    const S = clamp(Math.floor(Math.min(w / 118, h / 92)), 2, 4), cx = w / 2, cy = h * 0.64, camR = -camVal * D2R;
+    const scr = (x, y, z) => { const q = project([x - world.camX, y, z - world.camZ], camR); return [cx + q.x * S, cy - q.y * S, q.d]; };
+    // floor tiles
+    const T = 16, n = Math.round((ARENA * 2) / T);
+    for (let a = 0; a < n; a++) for (let b = 0; b < n; b++) {
+      const x0 = -ARENA + a * T, z0 = -ARENA + b * T, q = [scr(x0, 0, z0), scr(x0 + T, 0, z0), scr(x0 + T, 0, z0 + T), scr(x0, 0, z0 + T)];
+      ctx.fillStyle = (a + b) % 2 ? tok("--tile-a") : tok("--tile-b");
+      ctx.beginPath(); q.forEach((v) => ctx.lineTo(v[0], v[1])); ctx.closePath(); ctx.fill();
+    }
+    ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 2;
+    ctx.beginPath(); [[-1, -1], [1, -1], [1, 1], [-1, 1]].forEach(([u, v]) => { const q = scr(u * ARENA, 0, v * ARENA); ctx.lineTo(q[0], q[1]); }); ctx.closePath(); ctx.stroke();
+    // everything standing, sorted far to near
+    const list = [];
+    const stone = tok("--stone"), stoneTop = tok("--stone-top");
+    for (const [px, pz] of PILLARS) {
+      const B = scr(px, 0, pz), Tp = scr(px, 30, pz);
+      list.push({ d: B[2], draw: () => {
+        ctx.fillStyle = "rgba(0,0,0,0.18)"; ctx.beginPath(); ctx.ellipse(B[0], B[1], 6.5 * S, 6.5 * Math.sin(ELEV) * S, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = stone; ctx.fillRect(B[0] - 5 * S, Tp[1], 10 * S, B[1] - Tp[1]);
+        ctx.fillStyle = "rgba(0,0,0,0.14)"; ctx.fillRect(B[0] + 1.5 * S, Tp[1], 3.5 * S, B[1] - Tp[1]);
+        ctx.fillStyle = stoneTop; ctx.beginPath(); ctx.ellipse(Tp[0], Tp[1], 5 * S, 5 * Math.sin(ELEV) * S, 0, 0, TAU); ctx.fill();
+      } });
+    }
+    for (const [bx, bz] of CRATES) {
+      const c0 = [[-5, -5], [5, -5], [5, 5], [-5, 5]].map(([u, v]) => scr(bx + u, 0, bz + v)), c1 = [[-5, -5], [5, -5], [5, 5], [-5, 5]].map(([u, v]) => scr(bx + u, 9, bz + v));
+      list.push({ d: scr(bx, 0, bz)[2], draw: () => {
+        // the faces that turn toward the camera, then the lid
+        for (let i = 0; i < 4; i++) {
+          const a = c0[i], b = c0[(i + 1) % 4], a1 = c1[i], b1 = c1[(i + 1) % 4];
+          if ((b[0] - a[0]) * 1 <= 0) continue;
+          ctx.fillStyle = i % 2 ? "#8a6236" : "#9c7140"; ctx.beginPath(); [a, b, b1, a1].forEach((v) => ctx.lineTo(v[0], v[1])); ctx.closePath(); ctx.fill();
+        }
+        ctx.fillStyle = "#b58a52"; ctx.beginPath(); c1.forEach((v) => ctx.lineTo(v[0], v[1])); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = "rgba(60,36,16,0.6)"; ctx.lineWidth = 1; ctx.beginPath(); c1.forEach((v) => ctx.lineTo(v[0], v[1])); ctx.closePath(); ctx.stroke();
+      } });
+    }
+    const actors = [{ o: world.p, look: st.look, sheets: atlas, me: true }, ...world.npcs.map((n) => ({ o: n, look: n.look, sheets: npcAtlas[n.key] }))];
+    let mine = null;
+    for (const a of actors) {
+      const o = a.o, F = scr(o.x, 0, o.z), clip = a.me ? clipOf(o) : o.atk > 0 ? "attack" : o.moving ? "walk" : "idle";
+      const rel = wrap360(o.yaw - camVal);
+      o.dir = pickDir(rel, o.dir, +ui.hyst.value, st.N);
+      const frame = Math.floor(o.t * st.FR) % st.FR, cell = cellFor(clip, o.dir, frame);
+      if (a.me) mine = { cam: camVal, face: o.yaw, rel, dir: o.dir, frame, clip, t: o.t, ...cell };
+      list.push({ d: F[2], draw: () => {
+        ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(F[0], F[1], 8 * S, 2.4 * S, 0, 0, TAU); ctx.fill();
+        if (a.sheets && a.sheets[clip]) drawCharacter(ctx, a.look, a.sheets[clip], clip, o.dir, frame, cell, F[0], F[1], S);
+        if (a.me) { ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.moveTo(F[0], F[1] - (CH + 4) * S); ctx.lineTo(F[0] - 3 * S, F[1] - (CH + 8) * S); ctx.lineTo(F[0] + 3 * S, F[1] - (CH + 8) * S); ctx.closePath(); ctx.fill(); }
+      } });
+    }
+    list.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
+    // the touch stick
+    if (world.joy && world.joy.active) {
+      ctx.strokeStyle = tok("--accent"); ctx.lineWidth = 2; ctx.globalAlpha = 0.7;
+      ctx.beginPath(); ctx.arc(world.joy.x0, world.joy.y0, 34, 0, TAU); ctx.stroke();
+      const jx = world.joy.x - world.joy.x0, jy = world.joy.y - world.joy.y0, l = Math.hypot(jx, jy), k = l > 34 ? 34 / l : 1;
+      ctx.fillStyle = tok("--accent"); ctx.beginPath(); ctx.arc(world.joy.x0 + jx * k, world.joy.y0 + jy * k, 10, 0, TAU); ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.font = `500 12px ${tok("--mono")}`; ctx.textAlign = "left";
+    if (!world.focused) { ctx.fillStyle = tok("--muted"); ctx.fillText("Click the stage, then WASD · or drag to walk", 12, 20); }
+    else if (mine) { ctx.fillStyle = tok("--muted"); ctx.fillText(`${CLIPS[mine.clip].name.toLowerCase()} · row ${mine.row}${mine.flip ? " (flipped)" : ""} · col ${mine.col}`, 12, 20); }
+    return mine;
+  }
+
+  // ---------- the top-down map ----------
   function drawMap(s) {
     const { ctx, w, h } = fit($("map"));
-    const cx = w / 2, cy = h / 2, R = 78;
+    const cx = w / 2, cy = h / 2, R = 78, N = st.N, step = 360 / N;
     ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
-    const ang = yaw => yaw * D2R - Math.PI / 2; // canvas angle for a world yaw
-    for (let k = 0; k < 8; k++) {
-      const a0 = ang(s.cam + k * 45 - 22.5), a1 = ang(s.cam + k * 45 + 22.5);
+    const ang = (yaw) => yaw * D2R - Math.PI / 2; // canvas angle for a world yaw
+    for (let k = 0; k < N; k++) {
+      const a0 = ang(s.cam + k * step - step / 2), a1 = ang(s.cam + k * step + step / 2);
       ctx.fillStyle = k === s.dir ? tok("--accent-soft") : "transparent";
       ctx.strokeStyle = tok("--line");
       ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 52, a0, a1); ctx.closePath(); ctx.fill(); ctx.stroke();
-      const m = ang(s.cam + k * 45);
+      if (N > 8 && k % 2 && k !== s.dir) continue;
+      const m = ang(s.cam + k * step);
       ctx.fillStyle = k === s.dir ? tok("--accent") : tok("--muted");
       ctx.font = `500 10px ${tok("--mono")}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
       ctx.fillText(k, cx + Math.cos(m) * 42, cy + Math.sin(m) * 42);
     }
+    ctx.textBaseline = "alphabetic";
     // camera, opposite its forward vector
     const ca = ang(s.cam), px = cx - Math.cos(ca) * R, py = cy - Math.sin(ca) * R;
     ctx.fillStyle = tok("--accent-soft");
@@ -375,67 +724,237 @@ const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pr
     const fa = ang(s.face);
     ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2.5; ctx.lineCap = "round";
     ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(fa) * 28, cy + Math.sin(fa) * 28); ctx.stroke();
-    ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.arc(cx, cy, 6, 0, TAU); ctx.fill();
   }
 
-  // Atlas display (static image, re-drawn only to move the highlight)
-  const atlasCv = $("atlas"), AS = 2, GUT = 58;
+  // ---------- the atlas of the current clip ----------
+  const atlasCv = $("atlas"), GUT = 58;
   function drawAtlas(s) {
-    const dpr = window.devicePixelRatio || 1, W = GUT + CW * FR * AS, H = CH * 8 * AS;
-    if (atlasCv.width !== W * dpr) { atlasCv.width = W * dpr; atlasCv.height = H * dpr; atlasCv.style.width = W + "px"; atlasCv.style.height = H + "px"; }
+    const N = st.N, FR = st.FR, AS = N > 8 ? 1 : 2, dpr = window.devicePixelRatio || 1, W = GUT + CW * FR * AS, H = CH * N * AS;
+    if (atlasCv.width !== Math.round(W * dpr) || atlasCv.height !== Math.round(H * dpr)) { atlasCv.width = Math.round(W * dpr); atlasCv.height = Math.round(H * dpr); atlasCv.style.width = W + "px"; atlasCv.style.height = H + "px"; }
     const ctx = atlasCv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.fillStyle = tok("--surface"); ctx.fillRect(0, 0, W, H);
     ctx.fillStyle = tok("--stage"); ctx.fillRect(GUT, 0, W - GUT, H);
     ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(atlasSrc, GUT, 0, CW * FR * AS, CH * 8 * AS);
+    ctx.drawImage(atlas[s.clip], GUT, 0, CW * FR * AS, CH * N * AS);
     ctx.font = `500 11px ${tok("--mono")}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
-    for (let d = 0; d < 8; d++) {
-      const unused = ui.mirror.checked && d > 4;
-      if (unused) { ctx.fillStyle = tok("--surface"); ctx.globalAlpha = 0.72; ctx.fillRect(GUT, d * CH * AS, W - GUT, CH * AS); ctx.globalAlpha = 1; }
+    const mirror = ui.mirror.checked && CLIPS[s.clip].sym, step = 360 / N;
+    for (let d = 0; d < N; d++) {
+      const unused = mirror && d > N / 2, y = d * CH * AS;
+      if (unused) { ctx.fillStyle = tok("--surface"); ctx.globalAlpha = 0.72; ctx.fillRect(GUT, y, W - GUT, CH * AS); ctx.globalAlpha = 1; }
       ctx.fillStyle = d === s.dir ? tok("--accent") : tok("--muted");
-      ctx.fillText(`${d * 45}°`, 6, d * CH * AS + CH * AS / 2 - 7);
-      ctx.fillText(unused ? `=${8 - d}⇋` : `row ${d}`, 6, d * CH * AS + CH * AS / 2 + 8);
-      ctx.strokeStyle = tok("--line"); ctx.beginPath(); ctx.moveTo(GUT, d * CH * AS + 0.5); ctx.lineTo(W, d * CH * AS + 0.5); ctx.stroke();
+      ctx.fillText(`${+(d * step).toFixed(1)}°`, 6, y + CH * AS / 2 - 7);
+      ctx.fillText(unused ? `=${N - d}⇋` : `row ${d}`, 6, y + CH * AS / 2 + 8);
+      ctx.strokeStyle = tok("--line"); ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(GUT, y + 0.5); ctx.lineTo(W, y + 0.5); ctx.stroke();
     }
+    ctx.textBaseline = "alphabetic";
     ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2;
     ctx.strokeRect(GUT + s.col * CW * AS + 1, s.row * CH * AS + 1, CW * AS - 2, CH * AS - 2);
   }
+  let shownClip = null;
+  function describeAtlas(clip = shownClip || st.clip) {
+    shownClip = clip;
+    const c = CLIPS[clip], mirror = ui.mirror.checked && c.sym, N = st.N;
+    $("atlasLabel").textContent = `Baked atlas · ${c.name} · ${N} directions × ${st.FR} frames · ${CW}×${CH} px cells`;
+    $("atlasNote").textContent = mirror
+      ? `Every cell was rendered from the same skeleton by a virtual camera at that row's angle, then pixel-thresholded and outlined. With mirroring on, rows past ${180}° are never sampled: the runtime flips the row on the other side${c.shift ? " and shifts the frame by half a cycle so the stride stays on the correct leg" : ""}.`
+      : c.sym ? "Mirroring is off, so every row is sampled as baked."
+      : `${c.name} swings the right arm. Flipped, it would swing the left, so this clip bakes and uses all ${N} rows even with mirroring on.`;
+    const ex = exportPlan();
+    $("exportSize").textContent = `${ex.rows} rows · ${CW * st.FR}×${ex.rows * CH} px`;
+  }
 
+  // ---------- export: every clip in one sheet, with the rows, flips and hand sockets a game needs ----------
+  function exportPlan() {
+    const blocks = Object.keys(CLIPS).map((c) => ({ c, rows: rowsBaked(c) }));
+    return { blocks, rows: blocks.reduce((a, b) => a + b.rows, 0) };
+  }
+  function buildExport() {
+    const N = st.N, FR = st.FR, step = 360 / N, mirror = ui.mirror.checked, plan = exportPlan();
+    const cv = document.createElement("canvas"); cv.width = FR * CW; cv.height = plan.rows * CH;
+    const g = cv.getContext("2d");
+    const clips = {}, frames = [];
+    let r0 = 0;
+    for (const { c, rows } of plan.blocks) {
+      g.drawImage(atlas[c], 0, 0, FR * CW, rows * CH, 0, r0 * CH, FR * CW, rows * CH);
+      const mir = mirror && CLIPS[c].sym, shift = mir ? Math.round(CLIPS[c].shift * FR) : 0;
+      clips[c] = {
+        firstRow: r0, rows, frames: FR, fps: +(CLIPS[c].rate * FR).toFixed(2), loop: c !== "attack", mirrored: mir, mirrorShiftFrames: shift,
+        directions: Array.from({ length: N }, (_, d) => { const m = mir && d > N / 2; return { dir: d, deg: +(d * step).toFixed(2), row: r0 + (m ? N - d : d), flip: m }; }),
+      };
+      for (let r = 0; r < rows; r++) for (let f = 0; f < FR; f++) {
+        const j = pose(c, f / FR), rq = r * step * D2R, ch = project(j.chest, rq);
+        const sock = (k) => { const q = project(j[k], rq); return { x: +(OX + q.x).toFixed(1), y: +(OY - q.y).toFixed(1), behind: q.d > ch.d }; };
+        frames.push({ clip: c, dir: r, deg: +(r * step).toFixed(2), frame: f, x: f * CW, y: (r0 + r) * CH, w: CW, h: CH, sockets: { "hand.R": sock("haR"), "hand.L": sock("haL"), head: sock("head") } });
+      }
+      r0 += rows;
+    }
+    const meta = {
+      app: "8-Way Sprite Rig", image: "sprite-rig-atlas.png", size: { w: cv.width, h: cv.height }, cell: { w: CW, h: CH }, anchor: { x: OX, y: OY },
+      directions: N, degreesPerDirection: step, zeroDegrees: "facing away from the camera", cameraElevationDeg: 28, framesPerClip: FR, mirror,
+      character: { colors: st.look.pal, head: st.look.head, back: st.look.back, props: { "hand.R": st.look.right, "hand.L": st.look.left } },
+    };
+    return { cv, json: JSON.stringify({ meta, clips, frames }, null, 1) };
+  }
+  let downloads = null;
+  (async () => {
+    try { downloads = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null; } catch (e) { downloads = null; }
+    $("savePng").hidden = $("saveJson").hidden = !downloads;
+  })();
+  const flash = (btn, text) => { const t0 = btn.dataset.label || (btn.dataset.label = btn.textContent); btn.textContent = text; setTimeout(() => (btn.textContent = t0), 1600); };
+  async function save(btn, filename, data) {
+    if (!downloads) return;
+    try { await downloads.save({ filename, data }); flash(btn, "Saved"); }
+    catch (e) { flash(btn, e && e.code === "declined" ? "Not saved" : e && e.code === "rate_limited" ? "One moment…" : "Could not save"); }
+  }
+  $("savePng").addEventListener("click", (e) => { const btn = e.currentTarget; buildExport().cv.toBlob((b) => b && save(btn, "sprite-rig-atlas.png", b), "image/png"); });
+  $("saveJson").addEventListener("click", (e) => save(e.currentTarget, "sprite-rig-atlas.json", buildExport().json));
+  async function copyText(btn, text, fallbackEl) {
+    try { await navigator.clipboard.writeText(text); flash(btn, "Copied"); }
+    catch (e) {
+      if (fallbackEl) { const r = document.createRange(); r.selectNodeContents(fallbackEl); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); flash(btn, "Selected"); }
+      else flash(btn, "Copy blocked");
+    }
+  }
+  $("copyJson").addEventListener("click", (e) => copyText(e.currentTarget, buildExport().json));
+  $("copy").addEventListener("click", (e) => copyText(e.currentTarget, $("code").textContent, $("code")));
+
+  // ---------- controls ----------
+  function rebake() {
+    atlas = {};
+    for (const c in CLIPS) atlas[c] = bakeClip(st.look, c, st.N, st.FR);
+    bakeNpcs();
+    dir = null; world.p.dir = null; for (const n of world.npcs) n.dir = null;
+    describeAtlas(); remember();
+  }
+  const clipSeg = $("clipSeg");
+  for (const c in CLIPS) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = CLIPS[c].name; b.dataset.clip = c;
+    b.addEventListener("click", () => { st.clip = c; syncControls(); remember(); });
+    clipSeg.append(b);
+  }
+  const presetSeg = $("presetSeg");
+  for (const k in PRESETS) {
+    const b = document.createElement("button"); b.type = "button"; b.dataset.preset = k;
+    const dot = document.createElement("i"); dot.style.background = PRESETS[k].pal.gear;
+    b.append(dot, PRESETS[k].name);
+    b.addEventListener("click", () => { st.look = cloneLook(PRESETS[k]); st.preset = k; setupNpcs(); syncControls(); rebake(); });
+    presetSeg.append(b);
+  }
+  const sw = $("swatches"), swIn = {};
+  for (const k in PAL_NAMES) {
+    const id = "c-" + k, lab = document.createElement("label"), inp = document.createElement("input");
+    inp.type = "color"; inp.id = id; lab.htmlFor = id;
+    inp.addEventListener("input", () => { st.look.pal[k] = inp.value; st.preset = "custom"; syncControls(); rebakeSoon(); });
+    lab.append(inp, PAL_NAMES[k]); sw.append(lab); swIn[k] = inp;
+  }
+  let rebakeT = 0;
+  const rebakeSoon = () => { clearTimeout(rebakeT); rebakeT = setTimeout(rebake, 60); };
+  for (const [key, el] of [["head", ui.head], ["back", ui.back], ["right", ui.right], ["left", ui.left]]) el.addEventListener("change", () => { st.look[key] = el.value; st.preset = "custom"; syncControls(); key === "right" || key === "left" ? remember() : rebake(); });
+  ui.dirs.addEventListener("change", () => { st.N = +ui.dirs.value; rebake(); });
+  ui.frames.addEventListener("change", () => { st.FR = +ui.frames.value; rebake(); });
+  ui.mirror.addEventListener("change", () => describeAtlas());
+  function syncControls() {
+    for (const b of clipSeg.children) b.setAttribute("aria-pressed", String(b.dataset.clip === st.clip));
+    for (const b of presetSeg.children) b.setAttribute("aria-pressed", String(b.dataset.preset === st.preset));
+    for (const k in swIn) swIn[k].value = st.look.pal[k];
+    ui.head.value = st.look.head; ui.back.value = st.look.back; ui.right.value = st.look.right; ui.left.value = st.look.left;
+    ui.dirs.value = String(st.N); ui.frames.value = String(st.FR);
+  }
+
+  // stage modes
+  const stage = $("stage");
+  function setMode(m) {
+    st.mode = m;
+    $("modeTurn").setAttribute("aria-selected", String(m === "turn")); $("modePlay").setAttribute("aria-selected", String(m === "play"));
+    $("playbar").hidden = m !== "play"; $("faceCtl").hidden = m === "play";
+    // in the playground your input picks the clip
+    for (const b of clipSeg.children) { b.disabled = m === "play"; b.title = m === "play" ? "In the playground the clip follows what you do" : ""; }
+    $("play").disabled = m === "play";
+    $("stageCap").textContent = m === "play" ? "The same atlas in a game: every character picks its row from its own facing against the orbiting camera." : "Sprite from the baked atlas. Hand props attach to the 3D hand bones, not the pixels.";
+    stage.setAttribute("aria-label", m === "play" ? "Playground: walk the character around a courtyard" : "Game camera view of the sprite");
+    if (m === "play") { camVal = +ui.cam.value; world.camX = world.p.x; world.camZ = world.p.z; }
+  }
+  $("modeTurn").addEventListener("click", () => setMode("turn"));
+  $("modePlay").addEventListener("click", () => { setMode("play"); stage.focus({ preventScroll: true }); });
+  const GAME_KEYS = new Set(["w", "a", "s", "d", "q", "e", "arrowup", "arrowdown", "arrowleft", "arrowright", "shift", " "]);
+  stage.addEventListener("keydown", (e) => {
+    if (st.mode !== "play") return;
+    const k = e.key.toLowerCase();
+    if (!GAME_KEYS.has(k)) return;
+    e.preventDefault();
+    if (k === " ") { if (!e.repeat && world.p.atk <= 0) world.p.atk = 0.75; return; }
+    world.keys.add(k);
+  });
+  stage.addEventListener("keyup", (e) => world.keys.delete(e.key.toLowerCase()));
+  stage.addEventListener("focus", () => { world.focused = true; });
+  stage.addEventListener("blur", () => { world.focused = false; world.keys.clear(); });
+  stage.addEventListener("pointerdown", (e) => {
+    if (st.mode !== "play") return;
+    stage.focus({ preventScroll: true });
+    const r = stage.getBoundingClientRect();
+    world.joy = { active: true, id: e.pointerId, x0: e.clientX - r.left, y0: e.clientY - r.top, x: e.clientX - r.left, y: e.clientY - r.top, at: performance.now() };
+    stage.setPointerCapture(e.pointerId);
+  });
+  stage.addEventListener("pointermove", (e) => { const j = world.joy; if (!j || !j.active || e.pointerId !== j.id) return; const r = stage.getBoundingClientRect(); j.x = e.clientX - r.left; j.y = e.clientY - r.top; });
+  const endJoy = (e) => {
+    const j = world.joy; if (!j || e.pointerId !== j.id) return;
+    // a quick tap swings
+    if (Math.hypot(j.x - j.x0, j.y - j.y0) < 8 && performance.now() - j.at < 250 && world.p.atk <= 0) world.p.atk = 0.75;
+    world.joy = null;
+  };
+  stage.addEventListener("pointerup", endJoy); stage.addEventListener("pointercancel", endJoy);
+  const hold = (btn, v) => {
+    btn.addEventListener("pointerdown", (e) => { world.orbit = v; btn.setPointerCapture(e.pointerId); });
+    for (const ev of ["pointerup", "pointercancel", "lostpointercapture"]) btn.addEventListener(ev, () => { world.orbit = 0; });
+    btn.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); camVal = wrap360(camVal + v * 15); ui.cam.value = Math.round(camVal) % 360; } });
+  };
+  hold($("orbitL"), 1); hold($("orbitR"), -1);
+  $("attackBtn").addEventListener("click", () => { if (world.p.atk <= 0) world.p.atk = 0.75; });
+
+  // ---------- the loop ----------
   function step(now) {
     const dt = Math.min(0.05, (now - last) / 1000); last = now;
-    if (playing) {
-      t = (t + dt * +ui.speed.value) % 1;
-      if (ui.turn.checked) { faceVal = wrap360(faceVal + dt * 30); ui.face.value = Math.floor(faceVal); }
+    let s;
+    if (st.mode === "play") {
+      updatePlay(dt);
+      s = drawPlayground(dt);
+    } else {
+      if (playing) {
+        t = (t + dt * CLIPS[st.clip].rate * +ui.speed.value) % 1;
+        if (ui.turn.checked) { faceVal = wrap360(faceVal + dt * 30); ui.face.value = Math.floor(faceVal); }
+      }
+      camVal = +ui.cam.value;
+      const rel = wrap360(faceVal - camVal);
+      dir = pickDir(rel, dir, +ui.hyst.value, st.N);
+      const frame = Math.floor(t * st.FR) % st.FR;
+      s = { cam: camVal, face: faceVal, rel, dir, frame, clip: st.clip, t, ...cellFor(st.clip, dir, frame) };
+      drawTurntable(s);
     }
-    const cam = +ui.cam.value, face = faceVal, hyst = +ui.hyst.value;
-    const rel = wrap360(face - cam);
-    dir = pickDir(rel, dir, hyst);
-    let frame = Math.floor(t * FR), row = dir, col = frame, flip = false;
-    if (ui.mirror.checked && row > 4) { row = 8 - row; flip = true; col = (frame + FR / 2) % FR; }
-    const s = { cam, face, rel, dir, row, col, flip, frame };
-
-    $("camOut").textContent = cam + "°"; $("faceOut").textContent = Math.round(face) + "°";
-    $("speedOut").textContent = (+ui.speed.value).toFixed(1); $("hystOut").textContent = hyst + "°";
-    $("rRel").textContent = rel.toFixed(1) + "°";
-    $("rDir").textContent = `${dir}  (${dir * 45}°)`;
-    $("rRow").innerHTML = flip ? `${row} <span class="pill">flipped</span>` : `${row} <span class="pill off">as baked</span>`;
-    $("rT").textContent = t.toFixed(3);
-    $("rFrame").textContent = flip ? `${frame} → ${col}` : `${col}`;
-    $("rArt").textContent = ui.mirror.checked ? "5 rows" : "8 rows";
-
-    drawStage(s); drawMap(s); drawAtlas(s);
+    if (s) {
+      const N = st.N, stepDeg = 360 / N;
+      $("camOut").textContent = Math.round(s.cam) + "°"; $("faceOut").textContent = Math.round(s.face) + "°";
+      $("speedOut").textContent = (+ui.speed.value).toFixed(1) + "×"; $("hystOut").textContent = ui.hyst.value + "°";
+      $("rClip").textContent = CLIPS[s.clip].name;
+      $("rRel").textContent = s.rel.toFixed(1) + "°";
+      $("rDir").textContent = `${s.dir}  (${+(s.dir * stepDeg).toFixed(1)}°)`;
+      $("rRow").innerHTML = s.flip ? `${s.row} <span class="pill">flipped</span>` : s.mirror ? `${s.row} <span class="pill off">as baked</span>` : `${s.row} <span class="pill off">${CLIPS[s.clip].sym ? "as baked" : "no mirror"}</span>`;
+      $("rT").textContent = s.t.toFixed(3);
+      $("rFrame").textContent = s.flip && s.col !== s.frame ? `${s.frame} → ${s.col}` : `${s.col}`;
+      $("rArt").textContent = `${rowsBaked(s.clip)} of ${N}`;
+      if (s.clip !== shownClip) describeAtlas(s.clip);
+      drawMap(s); drawAtlas(s);
+    }
     requestAnimationFrame(step);
   }
 
-  let faceVal = +ui.face.value;
-  $("face").addEventListener("input", () => { ui.turn.checked = false; faceVal = +ui.face.value; });
-  $("play").addEventListener("click", e => { playing = !playing; e.currentTarget.textContent = playing ? "Pause" : "Play"; });
-  $("copy").addEventListener("click", async e => {
-    const btn = e.currentTarget, txt = $("code").textContent;
-    try { await navigator.clipboard.writeText(txt); btn.textContent = "Copied"; }
-    catch { const r = document.createRange(); r.selectNodeContents($("code")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = "Selected"; }
-    setTimeout(() => btn.textContent = "Copy", 1500);
-  });
+  ui.face.addEventListener("input", () => { ui.turn.checked = false; faceVal = +ui.face.value; });
+  ui.cam.addEventListener("input", () => { camVal = +ui.cam.value; });
+  $("play").addEventListener("click", (e) => { playing = !playing; e.currentTarget.textContent = playing ? "Pause" : "Play"; });
+  setupNpcs();
+  syncControls();
+  rebake();
+  setMode("turn");
   requestAnimationFrame(step);
 })();
 </script>
