@@ -500,6 +500,15 @@ button { cursor: pointer; }
 }
 @media (max-width: 599px) { .combo { top: 34%; } .combo b { font-size: 30px; } .tree-title h2 { font-size: 28px; } .tree-search { width: 110px; } }
 @media (prefers-reduced-motion: reduce) { .toast div { animation-duration: 2.6s; } .banner { transition: none; } }
+
+/* ---------- the turntable ---------- */
+.turntable { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; }
+.tt-main { width: 216px; height: 216px; image-rendering: pixelated; background: radial-gradient(circle at 50% 66%, var(--soot-4), var(--soot-2) 72%); box-shadow: inset 0 0 0 2px #0b0709; clip-path: var(--notch); }
+.tt-side { display: grid; gap: 10px; min-width: 0; }
+.tt-dir { font: 400 24px/1 var(--f-ui); color: var(--ember-2); letter-spacing: 0.08em; text-transform: uppercase; }
+.tt-strip { width: 100%; max-width: 290px; image-rendering: pixelated; }
+.tt-note { margin: 0; color: var(--bone-2); font-size: 17px; }
+@media (max-width: 520px) { .turntable { grid-template-columns: 1fr; justify-items: center; text-align: center; } }
 </style>
 <div class="app" id="app">
   <canvas id="screen" aria-label="Game view"></canvas>
@@ -13586,6 +13595,71 @@ function rigCompose(F, B, phi, frame, base) {
   return sp;
 }
 
+/* ---------- the turntable: your hero in all eight directions ---------- */
+const DIR_NAMES = ['South', 'South-east', 'East', 'North-east', 'North', 'North-west', 'West', 'South-west'];
+UI.heroView = function (back) {
+  const p = G.p;
+  if (!p) return;
+  const N = 120, main = h('canvas', { width: N, height: N, class: 'tt-main', role: 'img', 'aria-label': 'Your hero, turning' });
+  const strip = h('canvas', { width: 250, height: 64, class: 'tt-strip', role: 'img', 'aria-label': 'The five painted turns' });
+  const label = h('div', { class: 'tt-dir' }, '');
+  const st = { dir: 0, spin: true, walk: true, t: 0, last: performance.now(), acc: 0 };
+  const spinBtn = btn('Stop turning', () => { st.spin = !st.spin; spinBtn.textContent = st.spin ? 'Stop turning' : 'Keep turning'; }, 'small');
+  const walkBtn = btn('Stand still', () => { st.walk = !st.walk; walkBtn.textContent = st.walk ? 'Stand still' : 'Walk'; }, 'small');
+  const turnBy = (k) => { st.dir = (st.dir + k + 8) % 8; st.acc = 0; };
+  const close = () => { UI.close(el); if (back) back(); };
+  const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
+    h('h2', {}, ascTitle(p) || playerName(p)),
+    h('div', { class: 'turntable' }, main, h('div', { class: 'tt-side' }, label, strip,
+      h('p', { class: 'tt-note' }, p.beast || p.sheet ? 'Beasts and drawn heroes turn by mirroring.' : CD.settings.turn8 === false ? 'Eight-way turning is off in Settings.' : 'Five turns are painted from your front and back; the other three are their mirrors.'))),
+    h('div', { class: 'row' }, btn('◀', () => turnBy(1), 'small', { 'aria-label': 'Turn left' }), btn('▶', () => turnBy(-1), 'small', { 'aria-label': 'Turn right' }), spinBtn, walkBtn),
+    h('div', { class: 'row' }, btn('Close', close, 'primary', { 'data-autofocus': true }))));
+  // the hero as it looks facing one of the eight ways
+  const frameFor = (k, walk) => {
+    const a = Math.PI / 2 - (k * Math.PI) / 4, dx = Math.cos(a), dy = Math.sin(a);
+    const turn = pickTurn(null, dx, dy);
+    const q = { ...p, turn, view: turn >= 3 ? 'back' : 'front', face: dx < -0.01 ? -1 : 1, moving: walk, anim: st.t * 7, dashT: 0, atkPose: 0, leapT: 0, bashT: 0, rigLazy: false };
+    return { sp: heroFrame(q), flip: q.face < 0, turn };
+  };
+  const blit = (g, sp, flip, x, y, k) => { g.save(); g.translate(Math.round(x), Math.round(y)); if (flip) g.scale(-1, 1); g.drawImage(sp.c, -sp.ax * k, -sp.ay * k, sp.w * k, sp.h * k); g.restore(); };
+  const tick = (now) => {
+    if (!el.isConnected) return;
+    const dt = Math.min(0.1, (now - st.last) / 1000);
+    st.last = now; st.t += dt;
+    if (st.spin && (st.acc += dt) > 0.9) { st.acc = 0; turnBy(-1); }
+    const { sp, flip, turn } = frameFor(st.dir, st.walk), g = main.getContext('2d');
+    g.imageSmoothingEnabled = false; g.clearRect(0, 0, N, N);
+    const k = Math.max(1, Math.floor(Math.min(96 / sp.w, 100 / sp.h))), fy = N - 12;
+    // a compass on the ground, lit where the hero looks
+    for (let i = 0; i < 8; i++) {
+      const a = Math.PI / 2 - (i * Math.PI) / 4, x = N / 2 + Math.cos(a) * 46, y = fy + Math.sin(a) * 9;
+      g.fillStyle = i === st.dir ? '#ffb35e' : 'rgba(241,229,205,0.25)'; g.fillRect(Math.round(x) - 1, Math.round(y) - 1, i === st.dir ? 3 : 2, i === st.dir ? 3 : 2);
+    }
+    g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.ellipse(N / 2, fy, Math.max(6, sp.w * k * 0.3), 4, 0, 0, TAU); g.fill();
+    blit(g, sp, flip, N / 2, fy, k);
+    label.textContent = `Facing ${DIR_NAMES[st.dir].toLowerCase()}`;
+    // the five painted turns, the one in use underlined
+    const sg = strip.getContext('2d');
+    sg.imageSmoothingEnabled = false; sg.clearRect(0, 0, 250, 64);
+    for (let t = 0; t < 5; t++) {
+      const f = frameFor(t, false).sp, k2 = Math.max(1, Math.floor(Math.min(44 / f.w, 52 / f.h)));
+      blit(sg, f, false, 25 + t * 50, 56, k2);
+      if (t === turn) { sg.fillStyle = '#ffb35e'; sg.fillRect(10 + t * 50, 61, 30, 2); }
+    }
+    requestAnimationFrame(tick);
+  };
+  UI.open(el, { modal: true, replace: false, onBack: close });
+  requestAnimationFrame(tick);
+};
+const _pauseTurn = UI.pause;
+UI.pause = function () {
+  _pauseTurn();
+  const el = UI.top(), menu = el && el.querySelector('.menu');
+  if (!menu || !G.p) return;
+  const set = [...menu.children].find((b) => b.textContent === 'Settings');
+  menu.insertBefore(btn('Your hero', () => { UI.close(el); UI.heroView(() => UI.pause()); }), set || null);
+};
+
 /* ============================================================
    Cinderdeep — the Realm: 25 biome zones on a 5×5 map. Each zone
    is its own huge map of 10×10 chunks (128×128 tiles each) and
@@ -17224,7 +17298,8 @@ function startDemo() {
 function updateDemo(dt) {
   G.t += dt;
   const p = G.p;
-  p.aim = -Math.PI / 2 + Math.sin(G.t * 0.4) * 0.6; p.view = 'back'; p.face = Math.cos(p.aim) >= 0 ? 1 : -1;
+  // the hero by the torches glances round the room
+  p.aim = -Math.PI / 2 + Math.sin(G.t * 0.4) * 1.15; p.turn = pickTurn(p.turn, Math.cos(p.aim), Math.sin(p.aim)); p.view = p.turn >= 3 ? 'back' : 'front'; p.face = Math.cos(p.aim) >= 0 ? 1 : -1;
   if (Math.random() < 0.3) { const r = G.room; burst((r.ix + Math.random() * r.iw) * TS, (r.iy + r.ih) * TS, 1, ['#ff9a3c', '#ffd08a'], { grav: -30, floor: false, smax: 12, lmin: 1.5, lmax: 3, glow: true }); }
   updateParts(dt);
   updateCamera(dt);
