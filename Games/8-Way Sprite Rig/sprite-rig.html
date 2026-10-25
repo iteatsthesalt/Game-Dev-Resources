@@ -1,0 +1,443 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#faf9f5;color:#141413}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>8-Way Sprite Rig</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600&family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a workbench — stage + top-down map on the left, rig controls and live readout on the right, baked atlas and code below. */
+:root {
+  --bg: #eef0f4;
+  --surface: #ffffff;
+  --ink: #161b26;
+  --muted: #5a6274;
+  --line: #d6dae3;
+  --accent: #2f5bd8;
+  --accent-soft: rgba(47, 91, 216, 0.12);
+  --hot: #d9601f;
+  --stage: #dde2ea;
+  --ground: #c5ccd8;
+  --display: "Chakra Petch", "Segoe UI", system-ui, sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f131b; --surface: #161b26; --ink: #e5e8ef; --muted: #959eb1; --line: #283043;
+    --accent: #7f9dff; --accent-soft: rgba(127, 157, 255, 0.16); --hot: #ff8b4d;
+    --stage: #0a0e15; --ground: #1b2230; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f131b; --surface: #161b26; --ink: #e5e8ef; --muted: #959eb1; --line: #283043;
+  --accent: #7f9dff; --accent-soft: rgba(127, 157, 255, 0.16); --hot: #ff8b4d;
+  --stage: #0a0e15; --ground: #1b2230; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 56px; display: grid; gap: 22px; }
+header h1 { font-family: var(--display); font-weight: 600; font-size: clamp(1.7rem, 4vw, 2.4rem); letter-spacing: 0.01em; margin: 0; text-wrap: balance; }
+header p { margin: 6px 0 0; color: var(--muted); max-width: 68ch; }
+.top { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+@media (max-width: 880px) { .top { grid-template-columns: minmax(0, 1fr); } }
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; min-width: 0; }
+.label { font-family: var(--mono); font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); margin: 0 0 10px; }
+.views { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; }
+@media (max-width: 560px) { .views { grid-template-columns: minmax(0, 1fr); } }
+canvas { display: block; max-width: 100%; }
+#stage { width: 100%; aspect-ratio: 4 / 3.3; border-radius: 6px; }
+#map { width: 210px; height: 210px; border-radius: 6px; margin-inline: auto; }
+.views figcaption { font-size: 12.5px; color: var(--muted); margin-top: 6px; }
+.controls { display: grid; gap: 14px; }
+.ctl { display: grid; gap: 4px; }
+.ctl .row { display: flex; justify-content: space-between; gap: 8px; font-size: 13.5px; }
+.ctl output { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--accent); }
+input[type="range"] { width: 100%; accent-color: var(--accent); }
+.checks { display: flex; flex-wrap: wrap; gap: 8px 16px; font-size: 13.5px; }
+.checks label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+input[type="checkbox"] { accent-color: var(--accent); width: 16px; height: 16px; }
+button { font: 500 13px var(--body); color: var(--ink); background: transparent; border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px; cursor: pointer; }
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.readout { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; margin-top: 4px; padding-top: 14px; border-top: 1px solid var(--line); }
+.readout dt { color: var(--muted); }
+.readout dd { margin: 0; text-align: right; }
+.readout dd.big { color: var(--accent); font-weight: 500; }
+.pill { display: inline-block; font-size: 11px; padding: 1px 7px; border-radius: 99px; background: var(--accent-soft); color: var(--accent); }
+.pill.off { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+.atlas-scroll { overflow-x: auto; }
+#atlas { image-rendering: pixelated; max-width: none; }
+.atlas-note { font-size: 13px; color: var(--muted); margin: 10px 0 0; max-width: 72ch; }
+.bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
+@media (max-width: 880px) { .bottom { grid-template-columns: minmax(0, 1fr); } }
+pre { margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
+.code-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.code-head .label { margin: 0; }
+ol.steps { margin: 0; padding-left: 20px; display: grid; gap: 10px; max-width: 64ch; }
+ol.steps b { font-weight: 600; }
+code { font-family: var(--mono); font-size: 0.9em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>8-Way Sprite Rig</h1>
+    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Attachments ride on projected 3D bones.</p>
+  </header>
+
+  <section class="top">
+    <div class="panel">
+      <p class="label">Game view &amp; top-down</p>
+      <figure class="views" style="margin:0">
+        <div>
+          <canvas id="stage" aria-label="Game camera view of the sprite"></canvas>
+          <figcaption>Sprite from the baked atlas. The torch is attached to the 3D right-hand bone, not baked in.</figcaption>
+        </div>
+        <div>
+          <canvas id="map" width="210" height="210" aria-label="Top-down map of character and camera"></canvas>
+          <figcaption>Wedges are the 8 sectors, measured from the camera. The lit one is in use.</figcaption>
+        </div>
+      </figure>
+    </div>
+
+    <div class="panel controls">
+      <p class="label">Rig controls</p>
+      <div class="ctl">
+        <div class="row"><label for="cam">Camera orbit (yaw)</label><output id="camOut">0°</output></div>
+        <input id="cam" type="range" min="0" max="359" value="200">
+      </div>
+      <div class="ctl">
+        <div class="row"><label for="face">Character facing (yaw)</label><output id="faceOut">0°</output></div>
+        <input id="face" type="range" min="0" max="359" value="20">
+      </div>
+      <div class="ctl">
+        <div class="row"><label for="speed">Walk cycles per second</label><output id="speedOut">1.0</output></div>
+        <input id="speed" type="range" min="0" max="2.5" step="0.1" value="1">
+      </div>
+      <div class="ctl">
+        <div class="row"><label for="hyst">Hysteresis margin</label><output id="hystOut">6°</output></div>
+        <input id="hyst" type="range" min="0" max="20" value="6">
+      </div>
+      <div class="checks">
+        <label><input id="turn" type="checkbox" checked> Auto-turn</label>
+        <label><input id="mirror" type="checkbox" checked> Mirror 3 directions</label>
+        <label><input id="skel" type="checkbox"> Overlay true 3D skeleton</label>
+      </div>
+      <div><button id="play" type="button">Pause</button></div>
+
+      <dl class="readout">
+        <dt>relative angle</dt><dd id="rRel">–</dd>
+        <dt>direction (row)</dt><dd id="rDir" class="big">–</dd>
+        <dt>atlas row used</dt><dd id="rRow">–</dd>
+        <dt>clip time</dt><dd id="rT">–</dd>
+        <dt>frame (column)</dt><dd id="rFrame" class="big">–</dd>
+        <dt>art directions</dt><dd id="rArt">–</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="panel">
+    <p class="label">Baked atlas · 8 directions × 8 walk frames · 32×48 px cells</p>
+    <div class="atlas-scroll"><canvas id="atlas" aria-label="Baked sprite atlas"></canvas></div>
+    <p class="atlas-note">Every cell was rendered from the same skeleton and walk cycle by a virtual camera at that row's angle, then pixel-thresholded and outlined. With mirroring on, rows 225°–315° are never sampled: the runtime flips rows 135°–45° instead and shifts the frame by half a cycle so the stride stays on the correct leg.</p>
+  </section>
+
+  <section class="bottom">
+    <div class="panel">
+      <div class="code-head"><p class="label">Runtime wiring</p><button id="copy" type="button">Copy</button></div>
+<pre id="code">// Runs every frame, after the 3D skeleton has animated.
+function spriteFor(skel, camYaw, state) {
+  const rel = wrap360(skel.facingYaw - camYaw); // 0° = we see its back
+  state.dir = pickDir(rel, state.dir, HYST);    // 0..7, sticky near edges
+  let frame = Math.floor(skel.clipTime * FRAMES); // clipTime is 0..1
+  let row = state.dir, flip = false;
+  if (MIRROR &amp;&amp; row > 4) {                      // 5,6,7 reuse 3,2,1
+    row = 8 - row; flip = true;
+    frame = (frame + FRAMES / 2) % FRAMES;      // swap the leading leg
+  }
+  return { row, frame, flip };
+}
+
+function pickDir(rel, cur, hyst) {
+  const snap = Math.floor((rel + 22.5) / 45) % 8;
+  if (cur == null) return snap;
+  const off = Math.abs(wrap180(rel - cur * 45));
+  return off &lt;= 22.5 + hyst ? cur : snap;     // only leave past the margin
+}
+
+// Attachments: project the 3D bone with the SNAPPED angle and frame,
+// so the prop sticks to the drawn hand instead of drifting.
+const hand = project(skel.boneAt("hand.R", frame / FRAMES), state.dir * 45);</pre>
+    </div>
+    <div class="panel">
+      <p class="label">How the pieces connect</p>
+      <ol class="steps">
+        <li><b>The skeleton is the truth.</b> Movement, animation state, hitboxes and bone positions all live on the 3D rig. The sprite never drives gameplay.</li>
+        <li><b>Row from angle.</b> Subtract the camera's yaw from the character's yaw, then quantize to 45° sectors. Hysteresis keeps the row from flickering when the angle sits on a sector edge.</li>
+        <li><b>Column from clip time.</b> The atlas columns are the same clip baked at even steps, so <code>floor(t × frames)</code> keeps sprite and skeleton in lockstep through blends and speed changes.</li>
+        <li><b>Props from bones.</b> Project the hand bone to screen and draw the prop there. Compare its depth to the chest to decide whether it draws behind or in front of the sprite.</li>
+        <li><b>Mirroring is free art.</b> A left-right flip of a walk is the same walk half a cycle later, so 5 baked rows cover all 8.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<script>
+(() => {
+  const CW = 32, CH = 48, OX = 16, OY = 44, FR = 8, ELEV = 28 * Math.PI / 180;
+  const D2R = Math.PI / 180;
+  const wrap360 = a => ((a % 360) + 360) % 360;
+  const wrap180 = a => { a = wrap360(a); return a > 180 ? a - 360 : a; };
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const limb = (ang, len) => [0, -len * Math.cos(ang), len * Math.sin(ang)];
+
+  // ---------- 3D skeleton: walk cycle as a function of clip time t (0..1) ----------
+  function pose(t) {
+    const ph = t * Math.PI * 2, j = {};
+    const hy = 20 + 0.8 * Math.cos(2 * ph);
+    j.hip = [0, hy, 0]; j.chest = [0, hy + 11, 1]; j.neck = [0, hy + 14, 1.2]; j.head = [0, hy + 18, 1.4];
+    j.pack0 = [0, hy + 4, -2.4]; j.pack1 = [0, hy + 10, -2.0];
+    j.visor = [0, hy + 18.4, 4.3];
+    for (const [s, sx, off] of [["L", -1, 0], ["R", 1, Math.PI]]) {
+      const p = ph + off;
+      const a = 0.55 * Math.sin(p), k = 0.85 * Math.max(0, Math.sin(p - 0.9));
+      const hp = [sx * 3, hy, 0], kn = add(hp, limb(a, 10)), ft = add(kn, limb(a - k, 10));
+      const sw = -0.5 * Math.sin(p), e = 0.45 + 0.3 * Math.max(0, Math.sin(p));
+      const sh = [sx * 5, hy + 10, 1], el = add(sh, limb(sw, 7)), ha = add(el, limb(sw + e, 7));
+      Object.assign(j, { ["hp" + s]: hp, ["kn" + s]: kn, ["ft" + s]: ft, ["sh" + s]: sh, ["el" + s]: el, ["ha" + s]: ha });
+    }
+    return j;
+  }
+
+  // Camera looks along +z of the rotated frame, tilted down by ELEV. Screen right = +x.
+  function project(p, rel) {
+    const c = Math.cos(rel), s = Math.sin(rel);
+    const x = p[0] * c + p[2] * s, z = -p[0] * s + p[2] * c;
+    return { x, y: p[1] * Math.cos(ELEV) + z * Math.sin(ELEV), d: z * Math.cos(ELEV) - p[1] * Math.sin(ELEV) };
+  }
+
+  const PAL = { shirt: "#d9822b", pants: "#3b4a6b", skin: "#f0c79c", pack: "#6b5136", visor: "#1b2232", hair: "#2a1f1a" };
+  const shade = (hex, f) => {
+    const n = parseInt(hex.slice(1), 16);
+    const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
+    return `rgb(${r},${g},${b})`;
+  };
+  const BONES = [
+    ["hpL", "knL", 3.4, "pants", "L"], ["knL", "ftL", 3, "pants", "L"],
+    ["hpR", "knR", 3.4, "pants", "R"], ["knR", "ftR", 3, "pants", "R"],
+    ["hip", "chest", 6, "shirt", ""], ["chest", "neck", 3, "skin", ""],
+    ["pack0", "pack1", 4.4, "pack", ""],
+    ["shL", "elL", 2.8, "shirt", "L"], ["elL", "haL", 2.4, "skin", "L"],
+    ["shR", "elR", 2.8, "shirt", "R"], ["elR", "haR", 2.4, "skin", "R"],
+  ];
+
+  // Draws the figure at origin (ox, oy) in screen space, scale sc.
+  function drawFigure(ctx, j, rel, ox, oy, sc, mono) {
+    const P = {}; for (const k in j) P[k] = project(j[k], rel);
+    const farSide = P.shL.d > P.shR.d ? "L" : "R";
+    const items = BONES.map(([a, b, w, col, side]) => ({
+      d: (P[a].d + P[b].d) / 2, draw: () => {
+        ctx.strokeStyle = mono || (side === farSide ? shade(PAL[col], 0.72) : PAL[col]);
+        ctx.lineWidth = w * sc; ctx.lineCap = "round";
+        ctx.beginPath(); ctx.moveTo(ox + P[a].x * sc, oy - P[a].y * sc); ctx.lineTo(ox + P[b].x * sc, oy - P[b].y * sc); ctx.stroke();
+      }
+    }));
+    items.push({ d: P.head.d, draw: () => {
+      ctx.fillStyle = mono || PAL.skin; ctx.beginPath(); ctx.arc(ox + P.head.x * sc, oy - P.head.y * sc, 3.7 * sc, 0, Math.PI * 2); ctx.fill();
+      if (!mono) { const back = P.visor.d > P.head.d; ctx.fillStyle = PAL.hair; ctx.beginPath();
+        ctx.arc(ox + P.head.x * sc, oy - (P.head.y + 0.6) * sc, 3.7 * sc, Math.PI * (back ? 0 : 1.05), Math.PI * (back ? 2 : 1.95)); ctx.fill(); }
+    } });
+    if (!mono) items.push({ d: P.visor.d, draw: () => {
+      ctx.fillStyle = PAL.visor; ctx.beginPath(); ctx.arc(ox + P.visor.x * sc, oy - P.visor.y * sc, 1.3 * sc, 0, Math.PI * 2); ctx.fill();
+    } });
+    items.sort((a, b) => b.d - a.d).forEach(i => i.draw());
+    return P;
+  }
+
+  // ---------- Bake: render 8 dirs × 8 frames, then pixel-threshold and outline ----------
+  const atlasSrc = document.createElement("canvas");
+  atlasSrc.width = CW * FR; atlasSrc.height = CH * 8;
+  (function bake() {
+    const c = atlasSrc.getContext("2d");
+    for (let d = 0; d < 8; d++) for (let f = 0; f < FR; f++)
+      drawFigure(c, pose(f / FR), d * 45 * D2R, f * CW + OX, d * CH + OY, 1);
+    const img = c.getImageData(0, 0, atlasSrc.width, atlasSrc.height), px = img.data, W = atlasSrc.width, H = atlasSrc.height;
+    const solid = new Uint8Array(W * H);
+    for (let i = 0; i < W * H; i++) { solid[i] = px[i * 4 + 3] > 100 ? 1 : 0; px[i * 4 + 3] = solid[i] ? 255 : 0; }
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x; if (solid[i]) continue;
+      const n = (x > 0 && solid[i - 1]) || (x < W - 1 && solid[i + 1]) || (y > 0 && solid[i - W]) || (y < H - 1 && solid[i + W]);
+      if (n && (x % CW) !== 0 && (x % CW) !== CW - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
+    }
+    c.putImageData(img, 0, 0);
+  })();
+
+  // ---------- Runtime ----------
+  const $ = id => document.getElementById(id);
+  const ui = { cam: $("cam"), face: $("face"), speed: $("speed"), hyst: $("hyst"), turn: $("turn"), mirror: $("mirror"), skel: $("skel") };
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let playing = !reduce, t = 0.1, dir = null, last = performance.now();
+  if (reduce) { ui.turn.checked = false; $("play").textContent = "Play"; }
+
+  function pickDir(rel, cur, hyst) {
+    const snap = Math.floor((rel + 22.5) / 45) % 8;
+    if (cur == null) return snap;
+    return Math.abs(wrap180(rel - cur * 45)) <= 22.5 + hyst ? cur : snap;
+  }
+
+  const tok = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+  function fit(cv) {
+    const r = cv.getBoundingClientRect(), dpr = window.devicePixelRatio || 1;
+    const w = Math.round(r.width * dpr), h = Math.round(r.height * dpr);
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    const ctx = cv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { ctx, w: r.width, h: r.height };
+  }
+
+  function drawStage(s) {
+    const { ctx, w, h } = fit($("stage"));
+    ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
+    const S = Math.max(3, Math.floor(Math.min(w / 44, h / 58)));
+    const cx = w / 2, cy = h * 0.86;
+    // ground grid in camera space so it visibly turns with the camera
+    ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 1;
+    for (let i = -6; i <= 6; i++) for (const axis of [0, 1]) {
+      const a = [], b = [];
+      const camR = -s.cam * D2R;
+      for (const k of [-6, 6]) {
+        const p = axis ? [i * 8, 0, k * 8] : [k * 8, 0, i * 8];
+        const q = project(p, camR); (a.length ? b : a).push(cx + q.x * S, cy - q.y * S);
+      }
+      ctx.beginPath(); ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]); ctx.stroke();
+    }
+    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(cx, cy, 9 * S, 2.6 * S, 0, 0, Math.PI * 2); ctx.fill();
+
+    // socket: snapped angle + snapped frame → matches the drawn pixels
+    const jq = pose(s.frame / FR), rq = s.dir * 45 * D2R;
+    const H = project(jq.haR, rq), C = project(jq.chest, rq);
+    const tipP = project(add(jq.haR, [0, 7, 1.6]), rq);
+    const torch = () => {
+      const hx = cx + H.x * S, hy = cy - H.y * S, tx = cx + tipP.x * S, ty = cy - tipP.y * S;
+      ctx.strokeStyle = "#5a3d24"; ctx.lineWidth = 1.6 * S; ctx.lineCap = "butt";
+      ctx.beginPath(); ctx.moveTo(hx, hy); ctx.lineTo(tx, ty); ctx.stroke();
+      const g = ctx.createRadialGradient(tx, ty, 0, tx, ty, 9 * S);
+      g.addColorStop(0, "rgba(255,170,70,0.55)"); g.addColorStop(1, "rgba(255,140,40,0)");
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(tx, ty, 9 * S, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = "#ffcf6b"; ctx.fillRect(Math.round(tx - S), Math.round(ty - 2.5 * S), 2 * S, 3 * S);
+      ctx.fillStyle = "#ff7a2e"; ctx.fillRect(Math.round(tx - S), Math.round(ty - 0.5 * S), 2 * S, S);
+    };
+    const behind = H.d > C.d;
+    if (behind) torch();
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.save();
+    ctx.translate(Math.round(cx), Math.round(cy - OY * S));
+    if (s.flip) ctx.scale(-1, 1);
+    ctx.drawImage(atlasSrc, s.col * CW, s.row * CH, CW, CH, -OX * S, 0, CW * S, CH * S);
+    ctx.restore();
+    if (!behind) torch();
+
+    if (ui.skel.checked) {
+      ctx.globalAlpha = 0.85;
+      drawFigure(ctx, pose(t), s.rel * D2R, cx, cy, S * 0.999, tok("--accent"));
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1;
+    }
+    // socket marker
+    ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(cx + H.x * S, cy - H.y * S, 2.2 * S, 0, Math.PI * 2); ctx.stroke();
+
+    ctx.fillStyle = tok("--muted"); ctx.font = `500 12px ${tok("--mono")}`;
+    ctx.fillText(`row ${s.row}${s.flip ? " (flipped)" : ""} · col ${s.col}`, 12, 20);
+    ctx.fillStyle = tok("--hot"); ctx.fillText("○ hand.R socket", 12, 38);
+  }
+
+  function drawMap(s) {
+    const { ctx, w, h } = fit($("map"));
+    const cx = w / 2, cy = h / 2, R = 78;
+    ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
+    const ang = yaw => yaw * D2R - Math.PI / 2; // canvas angle for a world yaw
+    for (let k = 0; k < 8; k++) {
+      const a0 = ang(s.cam + k * 45 - 22.5), a1 = ang(s.cam + k * 45 + 22.5);
+      ctx.fillStyle = k === s.dir ? tok("--accent-soft") : "transparent";
+      ctx.strokeStyle = tok("--line");
+      ctx.beginPath(); ctx.moveTo(cx, cy); ctx.arc(cx, cy, 52, a0, a1); ctx.closePath(); ctx.fill(); ctx.stroke();
+      const m = ang(s.cam + k * 45);
+      ctx.fillStyle = k === s.dir ? tok("--accent") : tok("--muted");
+      ctx.font = `500 10px ${tok("--mono")}`; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(k, cx + Math.cos(m) * 42, cy + Math.sin(m) * 42);
+    }
+    // camera, opposite its forward vector
+    const ca = ang(s.cam), px = cx - Math.cos(ca) * R, py = cy - Math.sin(ca) * R;
+    ctx.fillStyle = tok("--accent-soft");
+    ctx.beginPath(); ctx.moveTo(px, py); ctx.arc(px, py, R + 20, ca - 0.32, ca + 0.32); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = tok("--ink"); ctx.save(); ctx.translate(px, py); ctx.rotate(ca);
+    ctx.fillRect(-7, -5, 10, 10); ctx.beginPath(); ctx.moveTo(3, -3); ctx.lineTo(9, -6); ctx.lineTo(9, 6); ctx.lineTo(3, 3); ctx.fill(); ctx.restore();
+    // character + facing arrow
+    const fa = ang(s.face);
+    ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2.5; ctx.lineCap = "round";
+    ctx.beginPath(); ctx.moveTo(cx, cy); ctx.lineTo(cx + Math.cos(fa) * 28, cy + Math.sin(fa) * 28); ctx.stroke();
+    ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.arc(cx, cy, 6, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Atlas display (static image, re-drawn only to move the highlight)
+  const atlasCv = $("atlas"), AS = 2, GUT = 58;
+  function drawAtlas(s) {
+    const dpr = window.devicePixelRatio || 1, W = GUT + CW * FR * AS, H = CH * 8 * AS;
+    if (atlasCv.width !== W * dpr) { atlasCv.width = W * dpr; atlasCv.height = H * dpr; atlasCv.style.width = W + "px"; atlasCv.style.height = H + "px"; }
+    const ctx = atlasCv.getContext("2d"); ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = tok("--surface"); ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = tok("--stage"); ctx.fillRect(GUT, 0, W - GUT, H);
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(atlasSrc, GUT, 0, CW * FR * AS, CH * 8 * AS);
+    ctx.font = `500 11px ${tok("--mono")}`; ctx.textBaseline = "middle"; ctx.textAlign = "left";
+    for (let d = 0; d < 8; d++) {
+      const unused = ui.mirror.checked && d > 4;
+      if (unused) { ctx.fillStyle = tok("--surface"); ctx.globalAlpha = 0.72; ctx.fillRect(GUT, d * CH * AS, W - GUT, CH * AS); ctx.globalAlpha = 1; }
+      ctx.fillStyle = d === s.dir ? tok("--accent") : tok("--muted");
+      ctx.fillText(`${d * 45}°`, 6, d * CH * AS + CH * AS / 2 - 7);
+      ctx.fillText(unused ? `=${8 - d}⇋` : `row ${d}`, 6, d * CH * AS + CH * AS / 2 + 8);
+      ctx.strokeStyle = tok("--line"); ctx.beginPath(); ctx.moveTo(GUT, d * CH * AS + 0.5); ctx.lineTo(W, d * CH * AS + 0.5); ctx.stroke();
+    }
+    ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2;
+    ctx.strokeRect(GUT + s.col * CW * AS + 1, s.row * CH * AS + 1, CW * AS - 2, CH * AS - 2);
+  }
+
+  function step(now) {
+    const dt = Math.min(0.05, (now - last) / 1000); last = now;
+    if (playing) {
+      t = (t + dt * +ui.speed.value) % 1;
+      if (ui.turn.checked) { faceVal = wrap360(faceVal + dt * 30); ui.face.value = Math.floor(faceVal); }
+    }
+    const cam = +ui.cam.value, face = faceVal, hyst = +ui.hyst.value;
+    const rel = wrap360(face - cam);
+    dir = pickDir(rel, dir, hyst);
+    let frame = Math.floor(t * FR), row = dir, col = frame, flip = false;
+    if (ui.mirror.checked && row > 4) { row = 8 - row; flip = true; col = (frame + FR / 2) % FR; }
+    const s = { cam, face, rel, dir, row, col, flip, frame };
+
+    $("camOut").textContent = cam + "°"; $("faceOut").textContent = Math.round(face) + "°";
+    $("speedOut").textContent = (+ui.speed.value).toFixed(1); $("hystOut").textContent = hyst + "°";
+    $("rRel").textContent = rel.toFixed(1) + "°";
+    $("rDir").textContent = `${dir}  (${dir * 45}°)`;
+    $("rRow").innerHTML = flip ? `${row} <span class="pill">flipped</span>` : `${row} <span class="pill off">as baked</span>`;
+    $("rT").textContent = t.toFixed(3);
+    $("rFrame").textContent = flip ? `${frame} → ${col}` : `${col}`;
+    $("rArt").textContent = ui.mirror.checked ? "5 rows" : "8 rows";
+
+    drawStage(s); drawMap(s); drawAtlas(s);
+    requestAnimationFrame(step);
+  }
+
+  let faceVal = +ui.face.value;
+  $("face").addEventListener("input", () => { ui.turn.checked = false; faceVal = +ui.face.value; });
+  $("play").addEventListener("click", e => { playing = !playing; e.currentTarget.textContent = playing ? "Pause" : "Play"; });
+  $("copy").addEventListener("click", async e => {
+    const btn = e.currentTarget, txt = $("code").textContent;
+    try { await navigator.clipboard.writeText(txt); btn.textContent = "Copied"; }
+    catch { const r = document.createRange(); r.selectNodeContents($("code")); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); btn.textContent = "Selected"; }
+    setTimeout(() => btn.textContent = "Copy", 1500);
+  });
+  requestAnimationFrame(step);
+})();
+</script>
+
+</body></html>
