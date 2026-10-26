@@ -457,6 +457,9 @@ function v3PropCard(pr) {
   // a prop with no sprite of its own stays a card, and throws its shadow; a solid's card holds only its flames and sparkles
   if (!L || !L.sp) { v3Caster(v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy))); return; }
   const c = v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => { const x = pr.x - cx, y = pr.y - cy; if (L.shadow) shadow(g, x, y, L.shadow); v3PropExtras(g, pr, x, y); });
+  // a chest stands as the rig's chest model (59-rig-models.js); anything else as the solid of its sprite
+  if (pr.kind === 'chest' && rigmChest(c, pr, L.dx || 0)) { if (c.vox) c.vox.visible = false; return; }
+  c.model = null;
   v3PlaceSolid(c, v3SpriteSolid(L.sp, L.shadeK || 1), pr.x + (L.dx || 0), pr.y, false, L.up || 0);
 }
 

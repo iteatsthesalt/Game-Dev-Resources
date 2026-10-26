@@ -208,6 +208,14 @@ module.exports = [
       CD.settings.rigModels = false; render();
       T.check('with the models off, the hero is its card again', hc.mesh.visible && !hero.group.visible);
       CD.settings.rigModels = true; render();
+      // chests stand as the rig's chest, lid and all, and a mimic gives itself away no more than its sprite does
+      const box = { id: 990, kind: 'chest', x: G.p.x + 30, y: G.p.y - 20, room: G.room.id, chest: 'gold', solid: true, r: 7, _el: null };
+      G.fl.props.push(box); G.room.props.push(G.fl.props.length - 1); render();
+      const bc = V3.cards.get(box), shut = bc && bc.model && bc.model.children.filter((m) => m.visible).length;
+      T.check('a chest is the rig\'s chest model', bc && bc.model && bc.model.visible && !(bc.vox && bc.vox.visible) && shut > 20, shut);
+      box.mimic = true; render();
+      T.check('a mimic looks like a chest', bc.model.children.filter((m) => m.visible).length === shut);
+      G.room.props.pop(); G.fl.props.pop(); render();
       // loot floats over the floor as small solids that turn, never reaching in front of where it lies
       const t0 = G.t, loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
       dropPickup('gold', G.p.x + 50, G.p.y + 40, 5);

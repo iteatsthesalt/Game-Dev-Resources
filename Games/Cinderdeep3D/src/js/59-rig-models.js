@@ -5,8 +5,9 @@
    hero becomes that model: its class gives the look, its weapon
    what it holds, its state the clip and the moment in it, its
    aim the way it faces. Its card is still painted, unseen, so
-   its shadow still falls. Heroes drawn from a custom sheet,
-   heroes on a mount, and beasts stay on their cards for now.
+   its shadow still falls. Chests stand as the rig's chest. Heroes
+   drawn from a custom sheet, heroes on a mount, and beasts stay
+   on their cards for now.
    ============================================================ */
 const RIGM = { groups: new Map() };
 const rigmOn = () => CD.settings.rigModels !== false && typeof RigModels === 'object';
@@ -71,6 +72,30 @@ function rigmHero(c, p) {
   c.model = g.group;
   c.mesh.visible = false;
 }
+/* ---------- chests: the rig's chest at its real size, facing you, its lid swinging open as the game opens it ---------- */
+// the world's scale: a hero's sprite is a person, 1.8 m tall
+const rigmMetre = () => (G.p ? (heroFrame(G.p) || { ay: 20 }).ay : 20) / 1.8;
+const RIGM_CHEST = { gold: 'gold', silver: 'iron' };
+// a mimic looks like any other chest until it wakes; only the shiver its sprite has (dx) gives it away
+function rigmChest(c, pr, dx = 0) {
+  if (!rigmOn()) return false;
+  const P = RigKit.CHEST_PRESETS[RIGM_CHEST[pr.chest] || 'wood'], el = mycThingElem(pr), E = el && ELEM[el];
+  const look = { ...P, pal: E ? { wood: E.ramp[1], lid: E.ramp[2], band: E.ramp[3] } : P.pal };
+  chestSwing(pr, pr.opened);
+  // the lid rises through the first half of the open clip in the quarter second the game takes to open it
+  const t = !pr.opened ? 0 : pr.openAt == null ? 0.6 : clamp(((G.t - pr.openAt) / 0.24) * 0.55, 0, 0.6);
+  const M = RigShapes.builder(1);
+  RigModels.chest(RigKit.chestPose(pr.opened ? 'open' : 'shut', t, look), look, M);
+  const g = rigmGroup(pr), k = (0.75 * rigmMetre()) / M.bounds.h;
+  g.parts.place(M.parts);
+  g.group.scale.setScalar(k);
+  g.group.position.set(pr.x + dx, 0, pr.y);
+  g.group.rotation.y = rigmYaw(Math.PI / 2);
+  g.group.visible = true;
+  c.model = g.group;
+  return true;
+}
+
 // models whose card was not stood up this frame are put away, and dropped after a while
 function rigmTidy() {
   for (const [id, g] of RIGM.groups) {
