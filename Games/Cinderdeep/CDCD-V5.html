@@ -7006,7 +7006,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '4.0';
+const VERSION = '5.0';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -10327,7 +10327,7 @@ hook('renderTop', (g, cx, cy) => {
    level. Evolution nodes and keystones change how heroes awaken
    and how beasts evolve.
    ============================================================ */
-const TREE_VER = 2;
+const TREE_VER = 3;
 const SECTORS = [
   { id: 'might', name: 'Might', color: '#e2434f', tag: 'defense' },
   { id: 'fury', name: 'Fury', color: '#ff9a3c', tag: 'offense' },
@@ -10756,7 +10756,7 @@ UI.tree = function (cls, opts = {}) {
     else if (alloc.has(n.id)) state = treeCanRefund(cls, n.id) ? `Allocated · click again to refund (${REFUND_COST} embers)` : 'Allocated';
     else if (!path) state = 'Out of reach';
     else state = `${path.length} point${path.length === 1 ? '' : 's'} to reach${path.length > info.free ? ' · not enough points' : ' · click to allocate'}`;
-    tip.innerHTML = `<b style="color:${n.type === 'minor' ? 'var(--bone)' : S ? S.color : '#ff4ad0'}">${esc(nodeName(n))}</b><small>${esc(kind)}</small><p>${esc(nodeDesc(n))}</p><em>${esc(state)}</em>`;
+    tip.innerHTML = `<b style="color:${n.type === 'minor' ? 'var(--bone)' : n.col || (S ? S.color : '#ff4ad0')}">${esc(nodeName(n))}</b><small>${esc(kind)}</small><p>${esc(nodeDesc(n))}</p><em>${esc(state)}</em>`;
     tip.hidden = false;
     const r = el.getBoundingClientRect();
     tip.style.left = clamp(sx - r.left + 16, 8, r.width - 260) + 'px'; tip.style.top = clamp(sy - r.top + 16, 60, r.height - 140) + 'px';
@@ -10781,7 +10781,7 @@ UI.tree = function (cls, opts = {}) {
     if (pinch && dragging) {
       if (e.pointerId === pinch.other.id) { pinch.other.x = e.clientX; pinch.other.y = e.clientY; } else if (e.pointerId === dragging.id) { dragging.x2 = e.clientX; dragging.y2 = e.clientY; }
       const ax = dragging.x2 ?? dragging.x, ay = dragging.y2 ?? dragging.y, d = Math.hypot(pinch.other.x - ax, pinch.other.y - ay);
-      view.z = clamp(pinch.z * (d / Math.max(10, pinch.d)), 0.25, 2.2); return;
+      view.z = clamp(pinch.z * (d / Math.max(10, pinch.d)), 0.12, 2.2); return;
     }
     if (dragging && e.pointerId === dragging.id) {
       const dx = e.clientX - dragging.x, dy = e.clientY - dragging.y; moved = Math.max(moved, Math.hypot(dx, dy));
@@ -10802,8 +10802,8 @@ UI.tree = function (cls, opts = {}) {
     }
   };
   cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
-  cv.addEventListener('wheel', (e) => { e.preventDefault(); const w0 = toWorld(e.clientX, e.clientY); view.z = clamp(view.z * (e.deltaY > 0 ? 0.88 : 1.14), 0.25, 2.2); const w1 = toWorld(e.clientX, e.clientY); view.x += w0.x - w1.x; view.y += w0.y - w1.y; }, { passive: false });
-  const zoomBy = (k) => { view.z = clamp(view.z * k, 0.25, 2.2); };
+  cv.addEventListener('wheel', (e) => { e.preventDefault(); const w0 = toWorld(e.clientX, e.clientY); view.z = clamp(view.z * (e.deltaY > 0 ? 0.88 : 1.14), 0.12, 2.2); const w1 = toWorld(e.clientX, e.clientY); view.x += w0.x - w1.x; view.y += w0.y - w1.y; }, { passive: false });
+  const zoomBy = (k) => { view.z = clamp(view.z * k, 0.12, 2.2); };
   const resetBtn = btn('Reset', () => UI.confirm('Reset this tree?', `Every passive returns to the pool${resetCost(cls) ? ` for ${resetCost(cls)} embers` : ''}.`, 'Reset', () => { const err = treeReset(cls); if (err) toast(err); refresh(); }), 'small');
   const close = () => { UI.close(el); if (opts.onClose) opts.onClose(); };
   const el = h('div', { class: 'modal treemodal' },
@@ -10855,7 +10855,7 @@ UI.tree = function (cls, opts = {}) {
   return el;
 };
 const nodeR = (n) => (n.type === 'start' ? 24 : n.type === 'keystone' ? 18 : n.type === 'evo' ? 15 : n.type === 'notable' ? 12 : 7);
-const TREE_STARS = Array.from({ length: 260 }, (_, i) => [hashU(i, 1, 7) * 2000 - 1000, hashU(i, 2, 7) * 2000 - 1000, hashU(i, 3, 7)]);
+const TREE_STARS = Array.from({ length: 700 }, (_, i) => [hashU(i, 1, 7) * 4600 - 2300, hashU(i, 2, 7) * 4600 - 2300, hashU(i, 3, 7)]);
 function renderTree(g, W, H, dpr, view, cls, o) {
   const alloc = new Set(treeAlloc(cls)), st = treeStart(cls), t = performance.now() / 1000;
   const z = view.z * dpr, ox = W / 2 - view.x * z, oy = H / 2 - view.y * z;
@@ -10865,7 +10865,7 @@ function renderTree(g, W, H, dpr, view, cls, o) {
   g.fillStyle = gr; g.fillRect(0, 0, W, H);
   // sector glows and stars
   g.globalCompositeOperation = 'lighter';
-  SECTORS.forEach((S, s) => { const a = ((-90 + s * 60) * Math.PI) / 180, x = X(Math.cos(a) * 560), y = Y(Math.sin(a) * 560), r = 420 * z; const sg = g.createRadialGradient(x, y, 0, x, y, r); sg.addColorStop(0, rgbaStr(S.color, 0.1)); sg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = sg; g.fillRect(x - r, y - r, r * 2, r * 2); });
+  (TREE.glows || SECTORS.map((S, s) => ({ deg: -90 + s * 60, col: S.color }))).forEach((G0) => { const a = (G0.deg * Math.PI) / 180, x = X(Math.cos(a) * 1100), y = Y(Math.sin(a) * 1100), r = 520 * z; const sg = g.createRadialGradient(x, y, 0, x, y, r); sg.addColorStop(0, rgbaStr(G0.col, 0.08)); sg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = sg; g.fillRect(x - r, y - r, r * 2, r * 2); });
   for (const [sx, sy, b] of TREE_STARS) { g.fillStyle = `rgba(255,240,220,${(0.15 + b * 0.35 + Math.sin(t * 2 + b * 9) * 0.1).toFixed(3)})`; g.fillRect(X(sx), Y(sy), Math.max(1, dpr), Math.max(1, dpr)); }
   g.globalCompositeOperation = 'source-over';
   // reachable preview path
@@ -10886,7 +10886,7 @@ function renderTree(g, W, H, dpr, view, cls, o) {
   for (const n of TREE.nodes) {
     const x = X(n.x), y = Y(n.y), r = nodeR(n) * z;
     if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
-    const S = SECTORS[n.sector], col = S ? S.color : '#ff4ad0';
+    const S = SECTORS[n.sector], col = n.col || (S ? S.color : '#ff4ad0');
     const isAlloc = alloc.has(n.id) || n.id === st.id, avail = !isAlloc && n.links.some((l) => have.has(l)) && n.type !== 'start';
     const match = q && (nodeName(n) + ' ' + nodeDesc(n)).toLowerCase().includes(q);
     if (isAlloc && n.type !== 'minor') { g.globalCompositeOperation = 'lighter'; const lg = g.createRadialGradient(x, y, 0, x, y, r * 2.6); lg.addColorStop(0, rgbaStr(col, 0.5)); lg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = lg; g.fillRect(x - r * 2.6, y - r * 2.6, r * 5.2, r * 5.2); g.globalCompositeOperation = 'source-over'; }
@@ -10903,8 +10903,8 @@ function renderTree(g, W, H, dpr, view, cls, o) {
     if (n.type !== 'minor' && n.type !== 'start') { g.fillStyle = isAlloc ? '#1a1214' : rgbaStr(col, 0.9); g.beginPath(); g.arc(x, y, r * 0.32, 0, TAU); g.fill(); }
     if (n.type === 'start') {
       g.fillStyle = rgbaStr(col, 0.9); g.font = `${Math.round(12 * dpr * Math.max(0.7, view.z))}px "Jersey 15", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(S.name.toUpperCase(), x, y + r + 12 * dpr * Math.max(0.7, view.z));
-      if (n.id === st.id) { const sp = CLASS[cls].beast ? beastFrames(cls)[0] : heroSprites(CLASS[cls].look, cls).front[0]; const k = (r * 1.4) / Math.max(sp.w, sp.h); g.imageSmoothingEnabled = false; g.drawImage(sp.c, Math.round(x - (sp.w * k) / 2), Math.round(y - (sp.h * k) / 2), Math.round(sp.w * k), Math.round(sp.h * k)); }
+      g.fillText((n.cls && CLASS[n.cls] ? CLASS[n.cls].name : S ? S.name : '').toUpperCase(), x, y + r + 12 * dpr * Math.max(0.7, view.z));
+      if (n.cls && CLASS[n.cls]) { const C1 = CLASS[n.cls], sp = C1.beast ? beastFrames(n.cls)[0] : heroSprites(C1.look, n.cls).front[0]; const k = (r * 1.4) / Math.max(sp.w, sp.h); g.imageSmoothingEnabled = false; g.drawImage(sp.c, Math.round(x - (sp.w * k) / 2), Math.round(y - (sp.h * k) / 2), Math.round(sp.w * k), Math.round(sp.h * k)); }
     }
     if (match) { g.strokeStyle = `rgba(255,255,255,${(0.5 + Math.sin(t * 8) * 0.4).toFixed(2)})`; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(x, y, r + 6 * dpr, 0, TAU); g.stroke(); }
     if (n.id === o.hover || n.id === o.cursor) { g.strokeStyle = '#ffffff'; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(x, y, r + 4 * dpr, 0, TAU); g.stroke(); }
@@ -20080,6 +20080,144 @@ UI.tree = function (cls, opts = {}) {
     ctl.insertBefore(flip, ctl.firstChild.nextSibling);
   }
 };
+
+/* ============================================================
+   Cinderdeep — the talent web. The one tree has a start for
+   every hero and beast, laid round the circle by element so
+   kin stand together. From each start run four roads of its
+   own: its weapon, its ability, its nature and its element.
+   Two rings weave every road into its neighbours' roads, an
+   outer ring of attributes joins the whole web, and where kin
+   meet their element roads flow into a confluence with that
+   element's keystones. The web is grown from the list of heroes
+   and beasts, so anyone added to that list before this module
+   has a start and roads of their own.
+   ============================================================ */
+// two notables for each one's nature, written for its signature passive; anyone new gets a pair made from its numbers
+const TALENT_NATURE = {
+  knight: [N('Shieldwall', 'Take 6% less damage and +2 armor', (s) => { s.dmgTaken *= 0.94; s.armor += 2; }), N('Unyielding Oath', '+25 max health. Ignore knockback and spikes', (s) => { s.hpAdd += 25; s.sturdy = true; })],
+  ranger: [N('Hawk Sight', '+8% crit chance and +10% missile damage', (s) => { s.crit += 0.08; applyStat(s, 'rangedDmg', 0.1); }), N('Clean Through', 'Missiles pierce 2 more foes', (s) => { s.pierceBonus += 2; })],
+  pyro: [N('Long Burn', 'Burns last 40% longer and deal 15% more', (s) => { s.burnDur += 0.4; s.burnMul += 0.15; }), N('Meteor Mind', '+25% ability damage', (s) => { s.abDmg += 0.25; })],
+  rogue: [N('Throat Slitter', '+40% crit damage', (s) => { s.critMul += 0.4; }), N('Second Shadow', '+1 dash. Dashes recharge 15% faster', (s) => { s.dashMax += 1; s.dashCd *= 0.85; })],
+  berserker: [N('Red Mist', '+12% damage and +1% lifesteal', (s) => { s.dmgMul += 0.12; s.lifesteal += 0.01; }), N('Unkillable', 'Kills heal 3', (s) => { s.killHeal += 3; })],
+  storm: [N('Overcharge', '+15% shock chance', (s) => { s.shockCh += 0.15; }), N('Arc Mastery', 'Shocks jump to 2 more foes', (s) => { s.shockChain += 2; })],
+  necro: [N('Bone Choir', '+40% ally damage', (s) => { applyStat(s, 'allyDmg', 0.4); }), N('Grave Tithe', '+15% souls. Kills heal 1', (s) => { applyStat(s, 'soulGain', 0.15); s.killHeal += 1; })],
+  paladin: [N('Hallowed Ground', '+0.6 health per second and +15 max health', (s) => { s.regen += 0.6; s.hpAdd += 15; }), N('Second Aegis', 'Block one hit every 12 seconds', (s) => { s.bulwark = s.bulwark ? Math.min(s.bulwark, 12) : 12; })],
+  monk: [N('Still Water', '+8% dodge', (s) => { s.dodge += 0.08; }), N('Hundred Fists', '+12% attack speed', (s) => { s.atkSpd += 0.12; })],
+  gunslinger: [N('Fan the Hammer', '+10% attack speed and +8% missile damage', (s) => { s.atkSpd += 0.1; applyStat(s, 'rangedDmg', 0.08); }), N('Dead Eye', '+10% crit chance', (s) => { s.crit += 0.1; })],
+  witch: [N('Brewmistress', '+1 potion. Potions heal 25% more', (s) => { s.potMax += 1; s.potHeal += 0.25; }), N('Hexweaver', '+15% ability damage and +8% poison chance', (s) => { s.abDmg += 0.15; s.poisonCh += 0.08; })],
+  samurai: [N('Iaijutsu', '+30% crit damage and +4% crit chance', (s) => { s.critMul += 0.3; s.crit += 0.04; }), N('Way of the Blade', '+12% melee damage and +5% move speed', (s) => { applyStat(s, 'meleeDmg', 0.12); s.spdMul += 0.05; })],
+  bard: [N('Crescendo', 'Abilities recharge 12% faster', (s) => { s.cdMul *= 0.88; }), N('Rousing Chorus', '+10% damage and +5% move speed', (s) => { s.dmgMul += 0.1; s.spdMul += 0.05; })],
+  emberpup: [N('Cinder Coat', '+15% burn chance', (s) => { s.burnCh += 0.15; }), N('Hearth Hound', '+20 max health. Burns deal 20% more', (s) => { s.hpAdd += 20; s.burnMul += 0.2; })],
+  mossling: [N('Deep Roots', '+0.8 health per second', (s) => { s.regen += 0.8; }), N('Thorned Bark', 'Foes that touch you take 25 damage. +1 armor', (s) => { s.thorns += 25; s.armor += 1; })],
+  frostkit: [N('Winter Coat', '+12% chill chance and +10% max health', (s) => { s.chillCh += 0.12; s.hpMul += 0.1; }), N('Pack Hunter', '+10% move speed and +6% dodge', (s) => { s.spdMul += 0.1; s.dodge += 0.06; })],
+  sparkmite: [N('Capacitor', '+15% shock chance', (s) => { s.shockCh += 0.15; }), N('Hard Shell', '+2 armor and +15 max health', (s) => { s.armor += 2; s.hpAdd += 15; })],
+  pebblet: [N('Boulder Heart', '+3 armor', (s) => { s.armor += 3; }), N('Rolling Stone', '+30% knockback and +10% damage', (s) => { s.kbMul += 0.3; s.dmgMul += 0.1; })],
+  gloomling: [N('Dusk Feast', 'Kills heal 2 and +6% crit chance', (s) => { s.killHeal += 2; s.crit += 0.06; }), N('Wisp of Night', '+8% dodge and +5% move speed', (s) => { s.dodge += 0.08; s.spdMul += 0.05; })],
+};
+// what an element road's first notable truly gives (the skill tree adds the rest)
+const ROAD_TXT = { earth: '+30% knockback and +10% weapon damage', chaos: '+6% damage', luck: '+5% crit chance and +10% gold' };
+const PATH_SECTOR = { earth: 0, fire: 1, luck: 2, storm: 3, frost: 3, chaos: 4, venom: 5, shadow: 5 };
+const PATH_ATTR = { earth: 'str', fire: 'str', storm: 'dex', luck: 'dex', shadow: 'dex', frost: 'int', chaos: 'int', venom: 'int' };
+// where each element's keystones live
+const PATH_KEYS = { earth: ['unbreakable', 'giantsblood', 'ironwill'], fire: ['avatar', 'bloodrage', 'pyreofruin'], venom: ['vaalpact', 'plaguelord'], shadow: ['acrobatics', 'necropact'], chaos: ['eldritch', 'bornofchaos'], frost: ['overload'], storm: ['stormherald', 'winddancer'], luck: ['fortunesfavour', 'pointblank', 'resolute'] };
+const CONFLUENCE = {
+  fire: N('Confluence of Fire', '+20% burn chance. Burns deal 20% more', (s) => { s.burnCh += 0.2; s.burnMul += 0.2; }),
+  frost: N('Confluence of Frost', '+20% chill chance. Frozen foes take 20% more', (s) => { s.chillCh += 0.2; s.shatter += 0.2; }),
+  storm: N('Confluence of Storms', '+20% shock chance. Shocks jump to 1 more foe', (s) => { s.shockCh += 0.2; s.shockChain += 1; }),
+  venom: N('Confluence of Venom', '+20% poison chance and +0.5 health per second', (s) => { s.poisonCh += 0.2; s.regen += 0.5; }),
+  shadow: N('Confluence of Shadow', '+10% crit chance and +40% crit damage', (s) => { s.crit += 0.1; s.critMul += 0.4; }),
+  earth: N('Confluence of Stone', '+3 armor and +15% max health', (s) => { s.armor += 3; s.hpMul += 0.15; }),
+  chaos: N('Confluence of Chaos', '+15% damage', (s) => { s.dmgMul += 0.15; }),
+  luck: N('Confluence of Fortune', '+4 luck and +10% crit chance', (s) => { s.luck += 4; s.crit += 0.1; }),
+};
+function talentWeb() {
+  const nodes = [], edges = [], startOf = {}, glows = [];
+  const order = CLASSES.slice().sort((a, b) => WHEEL.indexOf(skNative(a.id)) - WHEEL.indexOf(skNative(b.id)) || CLASSES.indexOf(a) - CLASSES.indexOf(b));
+  const Nn = order.length, step = 360 / Nn;
+  const add = (r, deg, type, path, extra = {}) => { const a = (deg * Math.PI) / 180; const n = { id: nodes.length, x: Math.round(Math.cos(a) * r), y: Math.round(Math.sin(a) * r), type, sector: PATH_SECTOR[path] ?? 4, col: path ? PATH[path].col : '#ff4ad0', links: [], deg, rad: r, ...extra }; nodes.push(n); return n; };
+  const link = (a, b) => { if (!a || !b || a === b || a.links.includes(b.id)) return; a.links.push(b.id); b.links.push(a.id); edges.push([a.id, b.id]); };
+  const chain = (l) => { for (let i = 1; i < l.length; i++) link(l[i - 1], l[i]); };
+  const stat = (r, deg, path, st) => add(r, deg, 'minor', path, { stat: st });
+  const attr = (r, deg, path, a) => add(r, deg, 'minor', path, { attr: a });
+  const pathMinor = (r, deg, p) => add(r, deg, 'minor', p, { path: p, def: N(`${PATH[p].name} passive`, PATH[p].minorTxt, (s) => PATH[p].minor(s, 1)) });
+  // the heart, and the inner ring every start opens onto
+  const heart = add(0, 0, 'keystone', 'chaos', { key: 'chaosstrain', def: KEYSTONES.chaosstrain });
+  const inner = [];
+  for (let i = 0; i < Nn * 2; i++) { const c = order[Math.floor(i / 2)]; inner.push(stat(330, -90 + (i * step) / 2, skNative(c.id), ['dmgMul', 0.02, '+2% damage'])); }
+  for (let i = 0; i < inner.length; i++) link(inner[i], inner[(i + 1) % inner.length]);
+  for (let k = 0; k < 6; k++) { const m = stat(170, -90 + k * 60, 'chaos', ['dmgMul', 0.02, '+2% damage']); link(heart, m); link(m, inner[Math.round((k * inner.length) / 6) % inner.length]); }
+  const ringA = [], ringB = [], ends = [];
+  order.forEach((c, i) => {
+    const th = -90 + i * step, native = skNative(c.id), W0 = WEAPON[c.weapon] || { name: 'Weapon', kind: 'melee' }, A0 = ABILITY[c.ability] || { name: 'Ability' };
+    const melee = W0.kind !== 'ranged', tank = c.hp >= 120 || c.armor >= 1, fast = c.spd >= 1.06, seed = hashStr(c.id) >>> 0;
+    const st = add(520, th, 'start', native, { cls: c.id }); link(st, inner[2 * i]); startOf[c.id] = st;
+    glows.push({ deg: th, col: PATH[native].col });
+    const natureDefs = TALENT_NATURE[c.id] || [N(`${c.passive.name} Unbound`, tank ? '+30 max health and +1 armor' : fast ? '+8% move speed and +4% dodge' : '+15% damage', tank ? (s) => { s.hpAdd += 30; s.armor += 1; } : fast ? (s) => { s.spdMul += 0.08; s.dodge += 0.04; } : (s) => { s.dmgMul += 0.15; }), N(`Heart of the ${c.name}`, '+10% damage and +10% max health', (s) => { s.dmgMul += 0.1; s.hpMul += 0.1; })];
+    const roads = [
+      { kind: 'weapon', path: native, attr: melee ? 'str' : 'dex',
+        minors: melee ? [['meleeDmg', 0.04, '+4% melee damage'], ['atkSpd', 0.03, '+3% attack speed']] : [['rangedDmg', 0.04, '+4% missile damage'], ['atkSpd', 0.03, '+3% attack speed']],
+        n1: melee ? N(`${W0.name} Discipline`, '+15% melee damage and +5% attack speed', (s) => { applyStat(s, 'meleeDmg', 0.15); s.atkSpd += 0.05; }) : N(`${W0.name} Discipline`, '+15% missile damage and +5% attack speed', (s) => { applyStat(s, 'rangedDmg', 0.15); s.atkSpd += 0.05; }),
+        n2: [N(`${c.name}'s Edge`, '+8% crit chance and +25% crit damage', (s) => { s.crit += 0.08; s.critMul += 0.25; }), N(`${W0.name} Mastery`, '+20% weapon damage', (s) => { s.wDmg += 0.2; }), N(`Swift ${W0.name}`, '+12% attack speed', (s) => { s.atkSpd += 0.12; })][seed % 3] },
+      { kind: 'ability', path: native, attr: 'int', minors: [['abDmg', 0.05, '+5% ability damage'], ['cdMul', 0.975, 'Abilities recharge 2.5% faster']],
+        n1: N(`${A0.name} Adept`, '+20% ability damage', (s) => { s.abDmg += 0.2; }),
+        n2: [N(`Echoing ${A0.name}`, 'Abilities recharge 10% faster and may recharge at once (8%)', (s) => { s.cdMul *= 0.9; s.echoCast = (s.echoCast || 0) + 0.08; }), N(`${A0.name} Unleashed`, '+30% ability damage', (s) => { s.abDmg += 0.3; }), N(`Quick ${A0.name}`, 'Abilities recharge 15% faster', (s) => { s.cdMul *= 0.85; })][(seed >>> 3) % 3] },
+      { kind: 'nature', path: native, attr: tank ? 'str' : fast ? 'dex' : 'int',
+        minors: tank ? [['hpAdd', 8, '+8 max health'], ['armor', 1, '+1 armor']] : fast ? [['spdMul', 0.03, '+3% move speed'], ['dodge', 0.02, '+2% dodge']] : [['regen', 0.15, '+0.15 health per second'], ['crit', 0.02, '+2% crit chance']],
+        n1: natureDefs[0], n2: natureDefs[1] },
+      { kind: 'element', path: native, attr: PATH_ATTR[native], element: true,
+        n1: N(`${PATH[native].adj} ${c.name}`, ROAD_TXT[native] || PATH[native].weaponTxt, (s) => PATH[native].weapon(s)),
+        n2: N(`${c.name} of ${PATH[native].noun}`, `Three times over: ${PATH[native].minorTxt}`, (s) => PATH[native].minor(s, 3)) },
+    ];
+    roads.forEach((R, k) => {
+      const deg = th + (k - 1.5) * (step / 4.4), list = [];
+      for (let j = 0; j < 8; j++) {
+        const r = 640 + j * 92, own = { owner: c.id, road: R.kind };
+        let n;
+        if (j === 2) n = add(r, deg, 'notable', R.path, { def: R.n1, path: R.element ? R.path : undefined, ...own });
+        else if (j === 6) n = add(r, deg, 'notable', R.path, { def: R.n2, path: R.element ? R.path : undefined, ...own });
+        else if (j === 1 || j === 4 || j === 7) n = attr(r, deg, R.path, R.attr);
+        else if (R.element) n = pathMinor(r, deg, R.path);
+        else n = stat(r, deg, R.path, R.minors[j % 2]);
+        Object.assign(n, own);
+        list.push(n);
+      }
+      chain([st, ...list]);
+      ringA.push(list[3]); ringB.push(list[5]); ends.push(list[7]);
+    });
+  });
+  // the weave: every road meets its neighbours twice, its own kin's and the next one's
+  for (const L of [ringA, ringB]) for (let i = 0; i < L.length; i++) link(L[i], L[(i + 1) % L.length]);
+  // the outer ring of attributes
+  const outer = ends.map((e) => attr(1460, e.deg, null, PATH_ATTR[skNative(e.owner)] || 'str'));
+  outer.forEach((o, i) => { o.col = '#bfae94'; link(o, outer[(i + 1) % outer.length]); link(o, ends[i]); });
+  // confluences: where kin of an element stand together, their element roads flow into one place
+  const groups = [];
+  order.forEach((c, i) => { const p = skNative(c.id), last = groups[groups.length - 1]; if (last && last.path === p) last.idx.push(i); else groups.push({ path: p, idx: [i] }); });
+  groups.forEach((G0, gi) => {
+    const p = G0.path, deg = -90 + (G0.idx.reduce((a, b) => a + b, 0) / G0.idx.length) * step;
+    const center = add(1720, deg, 'notable', p, { def: CONFLUENCE[p], path: p }), wheel = [];
+    const ca = (deg * Math.PI) / 180;
+    for (let w = 0; w < 5; w++) { const wa = ca + Math.PI + (w - 2) * 0.62, m = pathMinor(0, 0, p); m.x = Math.round(center.x + Math.cos(wa) * 64); m.y = Math.round(center.y + Math.sin(wa) * 64); wheel.push(m); }
+    chain(wheel); link(wheel[0], center); link(wheel[4], center);
+    // the element roads of every kin reach it through the outer ring
+    let near = outer[0], nd = 1e9;
+    for (const o of outer) { const d = Math.abs(((o.deg - deg + 540) % 360) - 180); if (d < nd) { nd = d; near = o; } }
+    link(near, wheel[2]);
+    for (const i of G0.idx) { const el = ends[i * 4 + 3]; link(el, wheel[2]); }
+    // its keystones beyond
+    const keys = PATH_KEYS[p] || [];
+    keys.forEach((key, k) => { if (!KEYSTONES[key]) return; const kd = deg + (k - (keys.length - 1) / 2) * 7, via = pathMinor(1840, kd, p), ks = add(1960, kd, 'keystone', p, { key, def: KEYSTONES[key] }); link(center, via); link(via, ks); });
+    // and, while they last, the evolution passives
+    if (EVO_NODES[gi]) { const ev = add(1600, deg + 4, 'evo', p, { def: EVO_NODES[gi] }); link(near, ev); link(ev, center); }
+    if (APEX_NODES[gi]) { const ap = add(2100, deg, 'evo', p, { def: APEX_NODES[gi], apex: true }); const keyNodes = nodes.filter((n) => n.type === 'keystone' && n.rad === 1960 && Math.abs(n.deg - deg) < 15); const from = keyNodes.length ? keyNodes[Math.floor(keyNodes.length / 2)] : center; const via = pathMinor(2030, deg, p); link(from, via); link(via, ap); }
+  });
+  const starts = order.map((c) => startOf[c.id]);
+  TREE.nodes = nodes; TREE.edges = edges; TREE.starts = starts; TREE.startOf = startOf; TREE.glows = glows; TREE.radius = 2200;
+}
+talentWeb();
+treeStart = function (cls) { return TREE.startOf[cls] || TREE.starts[0]; };
+CD.talentWeb = () => ({ nodes: TREE.nodes.length, starts: TREE.starts.length, notables: TREE.nodes.filter((n) => n.type === 'notable').length, keystones: TREE.nodes.filter((n) => n.type === 'keystone').length, attrs: TREE.nodes.filter((n) => n.attr).length });
 
 /* ============================================================
    Cinderdeep — main loop, modes and boot
