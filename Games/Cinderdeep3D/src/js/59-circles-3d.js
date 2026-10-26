@@ -26,8 +26,8 @@ function c3Dim(css, k, base = C3_BASE) {
 function c3Gl() {
   if (C3.gl) return C3.gl;
   try {
-    const r = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: false, alpha: false });
-    r.setPixelRatio(1); r.setClearColor('#060406');
+    const r = new THREE.WebGLRenderer({ canvas: document.createElement('canvas'), antialias: false, alpha: true });
+    r.setPixelRatio(1); r.setClearColor('#060406', 1);
     C3.gl = r;
   } catch (e) { console.error('Cinderdeep could not start a second WebGL view for its circles', e); }
   return C3.gl;

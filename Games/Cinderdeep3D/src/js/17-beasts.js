@@ -38,7 +38,10 @@ function beastFrame(p) {
   return fr[0];
 }
 // a portrait canvas for menus
+// the rig's model where it has one; the beetle, plant and shade beasts keep their sprites until it does
 function formPortrait(id, size = 48, frame = 0) {
+  const model = stagePortrait(id);
+  if (model) return model;
   const sp = beastFrames(id)[frame], cv = mkCanvas(size, size), g = cv.getContext('2d');
   const k = Math.min(1, (size - 4) / Math.max(sp.w, sp.h));
   g.imageSmoothingEnabled = false;

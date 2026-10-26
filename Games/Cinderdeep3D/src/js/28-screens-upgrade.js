@@ -17,9 +17,7 @@ const chaosIcon = () => icon('m:chaos2', (p) => {
 const isBeastCls = (id) => !!(CLASS[id] && CLASS[id].beast);
 function classPortrait(id, big) {
   if (isBeastCls(id)) { const cv = formPortrait(id, 30); cv.style.width = big ? '90px' : '60px'; cv.style.height = big ? '90px' : '60px'; return cv; }
-  const c = CLASS[id], cv = mkCanvas(24, 24), sp = heroSprites(c.look, c.id).front[0];
-  cv.getContext('2d').drawImage(sp.c, 12 - sp.ax, 23 - sp.ay);
-  return cv;
+  return stagePortrait(id);
 }
 function classLvlHTML(cls) {
   const L = classLevelInfo(cls);
@@ -130,6 +128,9 @@ UI.heroes = function (st = {}) {
       tabs.append(btn(label, () => { if (tab === id) return; tab = id; sel = (list().find((c) => owned(c.id)) || list()[0]).id; draw(); }, 'small', { role: 'tab', 'aria-selected': tab === id ? 'true' : 'false' }));
     }
   };
+  // the chosen one stands on a turning stage; beasts the rig has no model for yet show their sprite on it
+  const dpr = Math.min(2, window.devicePixelRatio || 1), stage = stage3d(), fallback = {};
+  const stageCv = h('canvas', { class: 'hero-stage', 'aria-label': 'The chosen hero', width: Math.round(200 * dpr), height: Math.round(230 * dpr), style: { width: '200px', height: '230px', imageRendering: 'auto' } });
   const portrait = (id, px) => { const cv = classPortrait(id, true); cv.style.width = px + 'px'; cv.style.height = px + 'px'; return cv; };
   const draw = () => {
     drawTabs();
@@ -160,7 +161,7 @@ UI.heroes = function (st = {}) {
     }
     detail.innerHTML = '';
     detail.append(
-      h('div', { class: 'hero-head' }, portrait(sel, 120),
+      h('div', { class: 'hero-head' }, stageCv,
         h('div', {}, h('h3', {}, c.name), h('p', {}, c.blurb),
           h('div', { class: 'meta' }, `${c.hp} health · ${WEAPON[c.weapon].name} · ${ABILITY[c.ability].name}${c.beast ? ` · ${BEAST[sel].element}` : ''}`),
           h('p', {}, h('b', { style: { color: 'var(--ember-2)', fontWeight: 400 } }, `${c.passive.name}: `), c.passive.desc))),
@@ -201,6 +202,17 @@ UI.heroes = function (st = {}) {
     h('div', { class: 'stickybar' }, btn('Back', () => UI.title()), go),
   );
   UI.open(el, { onBack: () => UI.title() });
+  const t0 = performance.now(), g2 = stageCv.getContext('2d'), turn = () => {
+    if (!el.isConnected) { if (stage) stage.dispose(); return; }
+    const t = (performance.now() - t0) / 1000;
+    if (!stage || !stage.draw(g2, stageCv.width, stageCv.height, stageWho(sel), t, t * 0.7, { pad: 1.26 })) {
+      if (fallback.id !== sel) { fallback.id = sel; fallback.cv = formPortrait(sel, 30); }
+      g2.clearRect(0, 0, stageCv.width, stageCv.height); g2.imageSmoothingEnabled = false;
+      const k = Math.min(stageCv.width, stageCv.height) / fallback.cv.width; g2.drawImage(fallback.cv, 0, stageCv.height - fallback.cv.height * k, fallback.cv.width * k, fallback.cv.height * k);
+    }
+    requestAnimationFrame(turn);
+  };
+  requestAnimationFrame(turn);
 };
 
 /* ---------- camp ---------- */

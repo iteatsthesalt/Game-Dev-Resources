@@ -482,4 +482,27 @@ module.exports = [
       return T.done();
     },
   },
+  {
+    name: 'screens: heroes on a turning stage',
+    run: async () => {
+      UI.title(); await T.wait(200);
+      UI.heroes({ chaos: true });
+      await T.until(() => document.querySelector('.hero-stage'));
+      await T.wait(400);
+      const cv = document.querySelector('.hero-stage'), shot = () => { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let a = 0, sum = 0; for (let i = 3; i < d.length; i += 4 * 13) { if (d[i] > 40) { a++; sum += d[i - 3] * 3 + d[i - 2] * 5 + d[i - 1]; } } return { a, sum }; };
+      const one = shot();
+      T.check('every hero has a model portrait', CD.stage().portraits >= 13 && !CD.stage().missing.length, CD.stage());
+      T.check('the chosen hero stands on the stage', one.a > 300, one);
+      await T.wait(500);
+      const two = shot();
+      T.check('and turns', two.sum !== one.sum, { one, two });
+      // a beast the rig has no model for yet keeps its sprite, on the same stage
+      T.click(/^Beasts/); await T.wait(200); T.click(/^Mossling/); await T.wait(300);
+      T.check('beasts without a model show their sprite', CD.stage().missing.includes('mossling') && shot().a > 100, { stage: CD.stage(), shot: shot() });
+      T.click(/^Emberpup/); await T.wait(300);
+      T.check('and a hound is a model', !CD.stage().missing.includes('emberpup') && shot().a > 300, shot());
+      T.click(/^Back$/); await T.wait(300);
+      return T.done();
+    },
+  },
 ];
