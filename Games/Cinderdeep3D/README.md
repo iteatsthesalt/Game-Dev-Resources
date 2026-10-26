@@ -23,7 +23,8 @@ The same check and tests run on GitHub for every change under `Games/Cinderdeep3
 - `src/js/`: the game, one module per system, run in file-name order:
   - `00`–`15`: the core: utilities, sound, input, pixel art, content, floors, the world, the hero, monsters, loot, the painters, HUD, screens and saving.
   - `16`–`32`: the big content and art expansions, chaos, souls, talents' effects, feats, audio, controls, evolutions and turning heroes.
-  - `33`–`47`: the Realm: zones, art, creatures, play, the ground painter, people, other players, the rigged world, elementals, the Mycelium and small life.
+  - `33`–`47`: the Realm: zones, art, creatures, play, the ground painter, people, other players, the rigged world, the twenty-four elements, the Mycelium and small life.
+- **The twenty-four elements.** Eight primal (fire, frost, storm, venom, shadow, earth, chaos, luck) and sixteen fused, each a pair one or two steps apart on the skill wheel, named as the wheel names it (`44-elemental-creatures.js`). A fused element does what both its primals do. The Mycelium carries them (`45-mycelium.js`): it runs in veins of a primal, veins fuse where neighbouring primals meet, and monsters, dungeon props, trees and stones, and fallen weapons take the element of the vein under them.
   - `48`–`54`: progression: one life each, skill trees, the shared talent tree and DNA.
   - `55`–`58`: the Living Realm, the Proving Trail, effects and Steel & Chaos.
   - `59`: the 3D renderer.

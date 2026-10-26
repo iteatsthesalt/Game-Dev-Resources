@@ -6,7 +6,10 @@
    and when something dies, and what dies is carried along it
    toward the nearest DMT zone and grows back where it fell as
    caps that ripen, spore and wither. It keeps the world's time.
-   DMT zones are where you commune with it.
+   DMT zones are where you commune with it. It carries the
+   twenty-four elements: each vein runs with a primal, veins of
+   neighbouring primals fuse where they meet, and whatever lives,
+   grows or is dropped over a vein may take its element.
    ============================================================ */
 const MYC = { fl: null, key: '', nodes: [], edges: new Map(), pulses: [], blooms: [], stepT: 0, lapse: 0, cache: new Map(), fx: { sight: 0, still: 0, rot: 0, bloom: 0 }, inSite: false, elves: null };
 // how much of it shows of its own accord
@@ -179,7 +182,7 @@ hook('update', (dt) => {
   }
   for (const k in MYC.fx) if (MYC.fx[k] > 0) MYC.fx[k] -= dt;
   // footsteps: the network notices you
-  if (p.moving && !p.dead && (MYC.stepT -= dt) <= 0) { MYC.stepT = 0.85; mycSend(mycNearest(p.x, p.y, 60), 0.35, MYC_PULSE, 1); }
+  if (p.moving && !p.dead && (MYC.stepT -= dt) <= 0) { MYC.stepT = 0.85; mycSend(mycNearest(p.x, p.y, 60), 0.35, ELEM[mycElemAt(p.x, p.y)].glow, 1); }
   for (let i = MYC.pulses.length - 1; i >= 0; i--) {
     const q = MYC.pulses[i];
     q.s += q.v * dt * q.dir; q.e.lit = Math.max(q.e.lit, q.str * 0.6);
@@ -454,3 +457,52 @@ interactable({
 // the Records remember how close you have grown
 CD.mycStatus = () => ({ bond: mycBond(), edges: MYC.edges.size, pulses: MYC.pulses.length, blooms: MYC.blooms.length, fx: { ...MYC.fx }, site: mycRealm() ? W.Z.dmtSite || null : null });
 
+
+/* ---------- the elements it carries ----------
+   The network runs in veins, each a primal: the land's own one time in two, any other otherwise, fresh on every floor.
+   Near the edge of a vein, where it meets a neighbour of another primal, the two fuse if the wheel fuses them. */
+const MYC_VEIN = 360;
+function mycSeed() { return mycRealm() ? hashStr('realm:' + W.Z.b.id) : hash2((G.run && G.run.seed) | 0, ((G.fl && G.fl.idx) | 0) * 7919 + 3); }
+function mycLand() { return ELEM_LAND[mycRealm() ? W.Z.b.id : G.fl && G.fl.info && G.fl.info.act ? G.fl.info.act.id : ''] || null; }
+function mycVein(cx, cy, seed, land) {
+  if (land && hashU(seed + cx, cy, 1) < 0.5) return land;
+  return PRIMAL_IDS[Math.floor(hashU(seed + cx, cy, 2) * PRIMAL_IDS.length)];
+}
+// the element running under a place
+function mycElemAt(x, y) {
+  const seed = mycSeed(), land = mycLand(), fx = x / MYC_VEIN, fy = y / MYC_VEIN, cx = Math.floor(fx), cy = Math.floor(fy), a = mycVein(cx, cy, seed, land);
+  const ux = fx - cx, uy = fy - cy, dx = ux < 0.3 ? -1 : ux > 0.7 ? 1 : 0, dy = uy < 0.3 ? -1 : uy > 0.7 ? 1 : 0;
+  if (dx || dy) { const f = elemFuse(a, mycVein(cx + dx, cy + dy, seed, land)); if (f) return f; }
+  return a;
+}
+// whether a thing (a prop below, a tree or stone above) grew up of the element under it, once and for good
+// what keeps its own look: what people built and live in, the living world's own figures, and stairs and rugs
+const MYC_PLAIN = new Set(['building', 'tower', 'stall', 'well', 'lamp', 'fence', 'lw', 'waystone', 'stairs', 'rug']);
+function mycThingElem(o) {
+  if (o._el !== undefined) return o._el;
+  const takes = !o.npc && !MYC_PLAIN.has(o.kind) && hashU(Math.round(o.x) * 3 + 11, Math.round(o.y) * 7, 5) < 0.28;
+  return (o._el = takes ? mycElemAt(o.x, o.y) : null);
+}
+CD.myc = { elemAt: mycElemAt, thingElem: mycThingElem };
+// trees, stones and caps above wear their element's colours
+const _objSpriteMyc = objSprite;
+objSprite = function (o, b) {
+  const sp = _objSpriteMyc(o, b), el = sp && mycThingElem(o);
+  return el ? elemSprite(sp, el) : sp;
+};
+// weapons that fall where a vein runs may carry its element: its name, its colours and its primals' weapon gifts
+const _spawnItemMyc = spawnItem;
+spawnItem = function (item, x, y, o = {}) {
+  if (item && item.type === 'weapon' && item.w && !item.w.el && !o.dropped && Math.random() < 0.35) item = { ...item, w: { ...item.w, el: mycElemAt(x, y) } };
+  return _spawnItemMyc(item, x, y, o);
+};
+const _itemIconMyc = itemIcon;
+itemIcon = function (it) { const ic = _itemIconMyc(it); return it.type === 'weapon' && it.w.el ? elemSprite(ic, it.w.el) : ic; };
+const _itemTitleMyc = itemTitle;
+itemTitle = function (it) { const t = _itemTitleMyc(it); return it.type === 'weapon' && it.w.el && ELEM[it.w.el] ? `${ELEM[it.w.el].name} ${t}` : t; };
+hook('stats', (s, p) => {
+  const w = p.weapon || p.weapons[0], E = w && w.el && ELEM[w.el];
+  if (!E) return;
+  // a primal weapon gives its path's whole weapon gift; a fused one twice each primal's lesser gift
+  for (const q of E.of) if (PATH[q]) { if (E.of.length > 1) PATH[q].minor(s, 2); else PATH[q].weapon(s); }
+});

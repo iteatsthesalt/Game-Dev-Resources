@@ -1,7 +1,7 @@
 /* ============================================================
    Cinderdeep — skill trees. Every hero and beast has a tree of
    its own, built from its weapon, its ability and its nature:
-   eight paths (six elements, chaos and luck) that change how
+   eight paths, the eight primal elements, that change how
    the weapon hits, what the ability does and which accessory is
    worn, bridged where neighbouring paths meet. The paths you
    walk, here and in the talent tree, decide what you evolve

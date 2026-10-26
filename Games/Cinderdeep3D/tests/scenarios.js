@@ -245,6 +245,61 @@ module.exports = [
     },
   },
   {
+    name: 'elements: twenty-four, carried by the Mycelium',
+    run: async () => {
+      const fused = ELEM_IDS.filter((id) => ELEM[id].of.length === 2);
+      T.check('twenty-four elements: eight primal, sixteen fused', ELEM_IDS.length === 24 && PRIMAL_IDS.length === 8 && fused.length === 16, ELEM_IDS);
+      T.check('every primal is in four fusions', PRIMAL_IDS.every((q) => fused.filter((id) => ELEM[id].of.includes(q)).length === 4));
+      T.check('a fusion carries the skill wheel\'s name for its pair', fused.every((id) => HYBRIDS[hybKey(...ELEM[id].of)].name === ELEM[id].name), fused.map((id) => ELEM[id].name));
+      await T.descent('knight');
+      G.p.maxHp = G.p.hp = 99999;
+      // the veins: several elements under one floor, fused where veins meet, and the same each time it is asked
+      const seen = new Set(), xs = [];
+      for (let x = 0; x < 3000; x += 90) for (let y = 0; y < 3000; y += 90) { seen.add(mycElemAt(x, y)); xs.push(mycElemAt(x, y)); }
+      T.check('the Mycelium runs with many elements, some of them fused', seen.size >= 6 && [...seen].some((id) => ELEM[id].of.length === 2), [...seen]);
+      T.check('and they stay put', xs.every((el, i) => el === mycElemAt(Math.floor(i / 34) * 90, (i % 34) * 90)));
+      // every element: born, hitting, recoloured and dying, without a fault
+      let born = 0, painted = 0;
+      for (const el of ELEM_IDS) {
+        const e = spawnEnemy('skeleton', G.p.x + 40, G.p.y + 30, {});
+        makeElemental(e, el); render();
+        if (e.elem === el && e.maxHp > 0) born++;
+        const sp = e.frames[0]; if (sp && elemSprite(sp, el) !== sp) painted++;
+        hurtPlayer(1, { ent: e });
+        killEnemy(e); T.sim(0.2);
+      }
+      T.check('each of the twenty-four can be born, strike and die', born === 24, born);
+      T.check('each wears its own colours', painted === 24, painted);
+      const m = spawnEnemy('skeleton', G.p.x + 40, G.p.y + 30, {}), arm0 = m.armor || 0;
+      makeElemental(m, 'magma');
+      T.check('a fused element does what both its primals do', m.fireproof === true && m.armor > arm0, { fireproof: m.fireproof, armor: m.armor });
+      killEnemy(m); T.sim(0.2);
+      const rich = spawnEnemy('skeleton', G.p.x + 40, G.p.y + 30, {});
+      makeElemental(rich, 'luck'); G.p.gold = 50;
+      hurtPlayer(1, { ent: rich });
+      const picks0 = G.picks.length;
+      killEnemy(rich);
+      T.check('luck filches gold, and spills it when it dies', G.p.gold < 50 && G.picks.length >= picks0 + 3, { gold: G.p.gold, picks: G.picks.length - picks0 });
+      // props grow up of the vein under them, and stand as solids in its colours
+      const marked = G.fl.props.filter((pr) => !pr.npc && mycThingElem(pr));
+      T.check('some props carry an element', marked.length > 0 && marked.every((pr) => ELEM[pr._el]), marked.length);
+      // weapons that fall may carry one: their name, and their primals' gifts in the hand
+      let elWeapons = 0;
+      for (let i = 0; i < 40; i++) { const it = spawnItem({ type: 'weapon', w: makeWeapon('sword', 'common', G.run.rng) }, G.p.x, G.p.y + 60); if (it && it.w.el) elWeapons++; if (it) G.items.splice(G.items.indexOf(it), 1); }
+      T.check('weapons fall elemental now and then', elWeapons > 0 && elWeapons < 40, elWeapons);
+      const w0 = G.p.weapon, burn0 = G.p.stats.burnCh;
+      G.p.weapon = G.p.weapons[G.p.wi] = { ...w0, el: 'fire' }; recalcStats(G.p);
+      T.check('an elemental weapon gives its gift and its name', G.p.stats.burnCh > burn0 && itemTitle({ type: 'weapon', w: G.p.weapon }).startsWith('Ember'), { burn: G.p.stats.burnCh, title: itemTitle({ type: 'weapon', w: G.p.weapon }) });
+      G.p.weapon = G.p.weapons[G.p.wi] = w0; recalcStats(G.p);
+      // above, trees and stones carry the elements too
+      await T.realm('ranger'); T.sim(0.5); render();
+      let things = 0, grown = 0;
+      for (const list of W.Z.objs) for (const o of list) { if (o.kind !== 'tree' && o.kind !== 'boulder' && o.kind !== 'rock') continue; things++; if (mycThingElem(o)) grown++; }
+      T.check('trees and stones in the Realm carry elements', grown > 0 && grown < things, { grown, things });
+      return T.done();
+    },
+  },
+  {
     name: 'phone: HUD panels do not cover the buttons',
     viewport: { width: 390, height: 844 }, mobile: true,
     run: async () => {
