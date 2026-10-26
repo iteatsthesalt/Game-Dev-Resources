@@ -7006,7 +7006,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '3.0';
+const VERSION = '4.0';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -10739,7 +10739,7 @@ UI.tree = function (cls, opts = {}) {
   const allocSet = () => new Set(treeAlloc(cls));
   const refresh = () => {
     const info = classLevelInfo(cls);
-    lvlEl.innerHTML = `<span>${esc(C0.name)} · Class Level <b>${info.lvl}</b></span><i><em style="width:${Math.round((info.into / info.need) * 100)}%"></em></i><small>${info.lvl >= MAX_CLASS_LEVEL ? 'Mastered' : `${info.into} / ${info.need} souls to level ${info.lvl + 1}`} · bank souls at DMT zones</small>`;
+    lvlEl.innerHTML = `<span>${esc(typeof talentLabel === 'function' ? talentLabel(cls) : C0.name)} · Talent Level <b>${info.lvl}</b></span><i><em style="width:${Math.round((info.into / info.need) * 100)}%"></em></i><small>${info.lvl >= MAX_CLASS_LEVEL ? 'Mastered' : `${info.into} / ${info.need} souls to level ${info.lvl + 1}`} · bank souls at DMT zones</small>`;
     ptsEl.textContent = `${info.free} point${info.free === 1 ? '' : 's'} to spend`;
     resetBtn.textContent = resetCost(cls) ? `Reset · ${resetCost(cls)} embers` : 'Reset (free)';
     if (!sumBox.hidden) sumBox.innerHTML = treeSummaryHTML(cls);
@@ -10764,6 +10764,7 @@ UI.tree = function (cls, opts = {}) {
   const act = (n) => {
     if (!n || n.type === 'start') return;
     const alloc = allocSet();
+    if (alloc.has(n.id) && typeof talentLayer === 'function' && !treeOf(cls).alloc.includes(n.id)) { toast(talentLayer(cls) === 'own' ? 'This passive is shared: change it on the shared tree' : 'This passive is your own: change it on your tree'); Sound.play('deny'); return; }
     if (alloc.has(n.id) && n.attr && treeAttrOf(cls, n) !== ATTR_IDS[(ATTR_IDS.indexOf(n.attr) + 2) % 3]) { const a = treeCycleAttr(cls, n.id); toast(`+${ATTR_PER} ${ATTR[a].name}`, ATTR[a].col); Sound.play('ui'); }
     else if (alloc.has(n.id)) { if (n.attr) { const T = treeOf(cls); if (T.attr) delete T.attr[n.id]; } const err = treeRefund(cls, n.id); if (err) { toast(err); Sound.play('deny'); } else Sound.play('back'); }
     else if (treeAllocate(cls, n.id)) { Sound.play(n.type === 'keystone' || n.type === 'evo' ? 'ascend' : 'pickup', { p: 1.2 }); flashT = 0.4; flashN = n.id; }
@@ -10808,7 +10809,7 @@ UI.tree = function (cls, opts = {}) {
   const el = h('div', { class: 'modal treemodal' },
     cv,
     h('div', { class: 'tree-head' },
-      h('div', { class: 'tree-title' }, h('h2', {}, 'Passive Tree'), lvlEl),
+      h('div', { class: 'tree-title' }, h('h2', {}, 'Talent Tree'), lvlEl),
       h('div', { class: 'tree-ctl' }, ptsEl, search,
         btn('−', () => zoomBy(0.8), 'small', { 'aria-label': 'Zoom out' }), btn('+', () => zoomBy(1.25), 'small', { 'aria-label': 'Zoom in' }),
         btn('Home', () => { view.x = st.x * 0.6; view.y = st.y * 0.6; view.z = 0.55; }, 'small'),
@@ -10870,7 +10871,8 @@ function renderTree(g, W, H, dpr, view, cls, o) {
   // reachable preview path
   const path = o.hover >= 0 ? treePath(cls, o.hover) || [] : [];
   const pathSet = new Set(path);
-  const have = new Set([st.id, ...alloc]);
+  const have = new Set([st.id, ...alloc, ...(typeof talentLayer === 'function' && talentLayer(cls) === 'shared' ? TREE.starts.map((n) => n.id) : [])]);
+  const shared = typeof talentShared === 'function' ? new Set(talentShared().alloc) : new Set();
   // edges
   for (const [a, b] of TREE.edges) {
     const A = TREE.nodes[a], B = TREE.nodes[b];
@@ -10895,8 +10897,9 @@ function renderTree(g, W, H, dpr, view, cls, o) {
     g.fillStyle = isAlloc ? (n.type === 'minor' ? (n.attr ? ATTR[treeAttrOf(cls, n)].col : '#ffd35c') : col) : n.type === 'start' ? '#2a2024' : n.attr ? rgbaStr(ATTR[n.attr].col, 0.25) : '#1e171a';
     g.fill();
     g.lineWidth = (n.type === 'minor' ? 1.5 : 3) * dpr * Math.max(0.6, view.z);
-    g.strokeStyle = isAlloc ? '#fff3c0' : avail ? '#ffd35c' : n.type === 'minor' ? '#5a4a4e' : rgbaStr(col, 0.75);
+    g.strokeStyle = isAlloc ? (shared.has(n.id) ? '#ffc65a' : '#fff3c0') : avail ? '#ffd35c' : n.type === 'minor' ? '#5a4a4e' : rgbaStr(col, 0.75);
     g.stroke();
+    if (shared.has(n.id)) { g.strokeStyle = 'rgba(255,198,90,0.75)'; g.lineWidth = 1.5 * dpr * Math.max(0.6, view.z); g.beginPath(); g.arc(x, y, r + 3 * dpr * Math.max(0.6, view.z), 0, TAU); g.stroke(); }
     if (n.type !== 'minor' && n.type !== 'start') { g.fillStyle = isAlloc ? '#1a1214' : rgbaStr(col, 0.9); g.beginPath(); g.arc(x, y, r * 0.32, 0, TAU); g.fill(); }
     if (n.type === 'start') {
       g.fillStyle = rgbaStr(col, 0.9); g.font = `${Math.round(12 * dpr * Math.max(0.7, view.z))}px "Jersey 15", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
@@ -11591,7 +11594,7 @@ function classPortrait(id, big) {
 }
 function classLvlHTML(cls) {
   const L = classLevelInfo(cls);
-  return `Class Lv ${L.lvl}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'}` : ''}`;
+  return `Talent Lv ${L.lvl}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'}` : ''}`;
 }
 function nemesisSummary() {
   const list = CD.save.nemeses || [];
@@ -19365,9 +19368,9 @@ CD.critStatus = () => ({ crit: CRIT.list.map((c) => c.kind + ':' + c.st), prints
 /* ============================================================
    Cinderdeep — one life each. Every game begins with a new
    descent, and every descent is made by a character of its own:
-   a named hero or beast who keeps their level, gear, talents and
-   skills from one descent to the next. Death is permanent, below
-   or above. Ten descents in one run (reaching floor 11) open the
+   a named hero or beast who keeps their talents from one descent
+   to the next; levels, gear, passives and skills belong to the run.
+   Death is permanent, below or above. Ten descents in one run (reaching floor 11) open the
    world above to that character.
    ============================================================ */
 const REALM_DEPTH = 10;
@@ -19429,13 +19432,8 @@ startRun = function (o) {
   _startRunLife(o);
   if (!ch || !G.run) return;
   G.run.charId = ch.id; ch.descents = (ch.descents || 0) + 1;
-  // a character who has lived before brings everything they had
-  if (ch.snap && ch.snap.p) {
-    const p0 = G.p, p = restorePlayer(ch, G.run);
-    p.x = p0.x; p.y = p0.y; p.hp = p.maxHp; p.potions = Math.max(p.potions, p.stats.potMax);
-    G.p = p;
-    recalcStats(p);
-  }
+  // every descent starts from nothing but the character's talents: levels, gear, passives and skills are the run's
+  recalcStats(G.p); G.p.hp = G.p.maxHp;
   banner(charLabel(ch), `${CLASS[ch.cls] ? CLASS[ch.cls].name : ''} · descent ${ch.descents}`, 2.4);
   persist();
 };
@@ -19476,9 +19474,9 @@ playerDie = function () {
 };
 const _endRunLife = endRun;
 endRun = function (won) {
-  const run = G.run, p = G.p, ch = run && run.charId && !run.realm ? charById(run.charId) : null;
-  // a character who climbs out, or walks away, lives on; one who wins keeps what they found
-  if (ch && p && !p.dead && won) ch.snap = snapPlayer(p, run);
+  const run = G.run, ch = run && run.charId && !run.realm ? charById(run.charId) : null;
+  // a character who climbs out, or walks away, lives on with their talents; the run's gains stay in the run
+  if (ch && won) ch.wins = (ch.wins || 0) + 1;
   return _endRunLife(won);
 };
 // above, there is no waking at home
@@ -19497,23 +19495,23 @@ UI.realm = function () {
   const st = realmStore(), active = CD.save.run;
   const list = h('div', { class: 'rchars' });
   st.chars.forEach((ch, i) => {
-    const lvl = ch.snap && ch.snap.p ? ch.snap.p.level : 1, asc = ch.snap && ch.snap.ext && ch.snap.ext.asc ? ch.snap.ext.asc : [];
-    const cls = CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls, title = asc.length && ASPECT[asc[asc.length - 1]] ? `${ASPECT[asc[asc.length - 1]].titles[asc.length - 1]} ${cls}` : cls;
+    const tl = talentLevelOf(ch.tree && ch.tree.xp).lvl, rl = ch.snap && ch.snap.p ? ch.snap.p.level : 0;
+    const cls = CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls, title = cls;
     const inRun = active && active.charId === ch.id;
     const go = inRun ? btn('Continue descent', () => continueRun(), 'primary') : btn('Descend', () => { UI.clear(); fadeTransition(() => startRun({ cls: ch.cls, sheetId: ch.sheetId, charId: ch.id })); }, ch.realm ? '' : 'primary', { disabled: !!active && !inRun });
     const up = ch.realm ? btn('Enter the Realm', () => enterRealm(i), 'primary', { 'data-autofocus': i === st.last ? true : null, disabled: inRun }) : null;
     list.append(h('div', { class: 'rchar' }, realmCharPortrait(ch), h('div', {},
       h('b', {}, `${charLabel(ch)} · ${title}`),
-      h('small', { style: { display: 'block' } }, `Level ${lvl} · ${ch.descents || 0} descent${ch.descents === 1 ? '' : 's'} · deepest floor ${(ch.deep || 0) + 1}`),
-      h('small', { style: { display: 'block' } }, ch.realm ? `The Realm is open · ${BIOME[ch.zone] ? BIOME[ch.zone].name : 'Verdant Meadows'}` : `Reach floor ${REALM_DEPTH + 1} in one descent to open the Realm`)),
+      h('small', { style: { display: 'block' } }, `Talent Level ${tl} · ${ch.descents || 0} descent${ch.descents === 1 ? '' : 's'} · deepest floor ${(ch.deep || 0) + 1}`),
+      h('small', { style: { display: 'block' } }, ch.realm ? `The Realm is open${rl ? ` · level ${rl} above` : ''} · ${BIOME[ch.zone] ? BIOME[ch.zone].name : 'Verdant Meadows'}` : `Reach floor ${REALM_DEPTH + 1} in one descent to open the Realm`)),
       h('div', { class: 'row' }, go, up, btn('Talents', () => { CD.focusChar = ch.id; UI.tree(ch.cls, { back: () => UI.realm() }); }, 'small'),
-        typeof UI.skillTree === 'function' ? btn('Skills', () => { CD.focusChar = ch.id; UI.skillTree(ch, { back: () => UI.realm() }); }, 'small') : null)));
+        null)));
   });
   const fallen = CD.save.fallen.slice(0, 12).map((f) => h('li', {}, h('b', {}, f.name), ` ${f.title || (CLASS[f.cls] ? CLASS[f.cls].name : '')}, level ${f.level}, fell in ${f.where}`));
   const el = h('div', { class: 'screen dim' },
     h('div', { class: 'topbar' }, h('h2', {}, 'Your characters'), emberChip()),
     h('div', { class: 'panel wide' },
-      h('p', {}, `Every game begins with a new descent. Characters keep their level, gear, talents and skills from one descent to the next, and death is permanent, below and above. Reach floor ${REALM_DEPTH + 1} in a single descent and the Realm opens to that character.`),
+      h('p', {}, `Every game begins with a new descent. Each descent starts at level 1: levels, gear, passives and skills belong to the run. Talents last: your own while you live, and the shared tree for everyone, always. Death is permanent, below and above. Reach floor ${REALM_DEPTH + 1} in a single descent and the Realm opens to that character.`),
       st.chars.length ? list : h('p', {}, 'No one is alive. Begin a new descent.'),
       h('div', { class: 'row' }, btn('New descent', () => UI.heroes(), st.chars.length ? '' : 'primary', st.chars.length ? {} : { 'data-autofocus': true }))),
     fallen.length ? h('div', { class: 'panel wide' }, h('h3', {}, 'The fallen'), h('ul', { class: 'fallen' }, ...fallen)) : null,
@@ -19534,7 +19532,7 @@ UI.title = function () {
   const kids = [...menu.children], chars = kids.find((b) => /^Enter the Realm/.test(b.textContent)), desc = kids.find((b) => b.textContent === 'New descent');
   if (chars) { chars.textContent = `Your characters (${realmStore().chars.length})`; chars.classList.remove('primary'); chars.removeAttribute('data-autofocus'); if (desc) desc.after(chars); }
   // talents now belong to each character: find them on the roster
-  for (const b of kids) if (b.textContent === 'Passive trees') b.remove();
+  for (const b of kids) if (b.textContent === 'Passive trees') b.replaceWith(btn('Talent tree', () => { CD.focusChar = null; UI.tree(null, { layer: 'shared', onClose: () => UI.title() }); }));
   if (desc && !CD.save.run) { desc.classList.add('primary'); desc.setAttribute('data-autofocus', ''); }
 };
 CD.chars = () => ({ alive: realmStore().chars.map((c) => ({ id: c.id, name: c.name, cls: c.cls, realm: c.realm, deep: c.deep, descents: c.descents, lvl: c.snap && c.snap.p ? c.snap.p.level : 1 })), fallen: CD.save.fallen.length });
@@ -19974,6 +19972,114 @@ UI.skillTree = function (ch, opts = {}) {
   UI.open(el, opts.back ? { onBack: close } : { modal: true, replace: false, onBack: close });
 };
 CD.skills = { tree: skTree, take: (id) => skTake(G.p, id), form: () => skForm(G.p), scores: () => skScores(G.p) };
+
+/* ============================================================
+   Cinderdeep — one talent tree for everyone. There is a single
+   tree. Every soul any character banks feeds it twice: the
+   shared Talent Level, whose points go on passives that apply
+   to every hero and beast and are never lost; and the banking
+   character's own Talent Level, whose points go on the same tree
+   for them alone, and last as long as they live. Shared passives
+   may grow from any start; your own grow from your class's start
+   or from anything already shared. Passives picked and skills
+   learned in a descent last that descent.
+   ============================================================ */
+function talentShared() {
+  const s = CD.save;
+  if (!s.talent || typeof s.talent !== 'object') {
+    // what every class had banked before becomes everyone's
+    let xp = 0; for (const k in s.tree || {}) xp += (s.tree[k] && s.tree[k].xp) || 0;
+    s.talent = { xp, alloc: [], attr: {}, ver: TREE_VER };
+  }
+  const T = s.talent;
+  if (T.ver !== TREE_VER) { T.alloc = []; T.attr = {}; T.ver = TREE_VER; }
+  T.alloc = T.alloc || []; T.attr = T.attr || {};
+  return T;
+}
+function talentOwn(cls) {
+  const ch = curChar();
+  if (!ch || (cls && ch.cls !== cls)) return null;
+  const T = ch.tree || (ch.tree = { xp: 0, alloc: [], attr: {} });
+  if (T.ver !== TREE_VER) { T.alloc = []; T.attr = {}; T.ver = TREE_VER; }
+  T.attr = T.attr || {};
+  return T;
+}
+// the layer being looked at or spent on: your own while you live, the shared one otherwise
+const talentLayer = (cls) => (CD.treeLayer === 'shared' || !talentOwn(cls) ? 'shared' : 'own');
+const talentLevelOf = (xp) => { let x = xp || 0, lvl = 1; while (lvl < MAX_CLASS_LEVEL && x >= soulsFor(lvl)) { x -= soulsFor(lvl); lvl++; } return { lvl, into: x }; };
+treeOf = function (cls) { return talentLayer(cls) === 'own' ? talentOwn(cls) : talentShared(); };
+// what applies: everything shared, and your own
+treeAlloc = function (cls) {
+  const S = talentShared(), O = talentOwn(cls);
+  return O ? [...S.alloc, ...O.alloc.filter((id) => !S.alloc.includes(id))] : S.alloc.slice();
+};
+classLevelInfo = function (cls) {
+  const layer = talentLayer(cls), T = treeOf(cls), { lvl, into } = talentLevelOf(T.xp);
+  const points = lvl - 1 + (layer === 'shared' ? CD.save.treeBonus || 0 : 0);
+  return { lvl, into, need: soulsFor(lvl), points, spent: T.alloc.length, free: Math.max(0, points - T.alloc.length), layer };
+};
+bankSouls = function (cls, n) {
+  const S = talentShared(), O = talentOwn(cls), s0 = talentLevelOf(S.xp).lvl, o0 = O ? talentLevelOf(O.xp).lvl : s0;
+  S.xp += n; if (O) O.xp += n;
+  const fs = CD.save.fs; fs.soulsBanked = (fs.soulsBanked || 0) + n;
+  const s1 = talentLevelOf(S.xp).lvl;
+  if (s1 > s0) later(2.2, () => toast(`Shared Talent Level ${s1} · a point that everyone keeps`, '#ffd35c'), true);
+  persist();
+  return { before: o0, after: O ? talentLevelOf(O.xp).lvl : s1 };
+};
+// the roads a layer may take: shared ones from any start through shared passives; your own from your start through anything
+treePath = function (cls, target) {
+  const layer = talentLayer(cls), S = talentShared(), O = talentOwn(cls), st = treeStart(cls), all = new Set(treeAlloc(cls));
+  if (all.has(target) || target === st.id) return [];
+  const roots = layer === 'shared' ? [...TREE.starts.map((n) => n.id), ...S.alloc] : [st.id, ...all];
+  const blocked = layer === 'shared' && O ? new Set(O.alloc) : new Set();
+  const have = new Set(roots), prev = new Map(), q = [...have];
+  for (const h0 of have) prev.set(h0, -1);
+  while (q.length) {
+    const u = q.shift();
+    if (u === target) break;
+    for (const v of TREE.nodes[u].links) { if (prev.has(v) || blocked.has(v) || TREE.nodes[v].type === 'start') continue; prev.set(v, u); q.push(v); }
+  }
+  if (!prev.has(target)) return null;
+  const path = [];
+  for (let u = target; u >= 0 && !have.has(u); u = prev.get(u)) path.push(u);
+  return path.reverse();
+};
+treeCanRefund = function (cls, id) {
+  const layer = talentLayer(cls), T = treeOf(cls);
+  if (!T.alloc.includes(id)) return false;
+  const rest = T.alloc.filter((x) => x !== id), through = new Set(layer === 'shared' ? rest : [...talentShared().alloc, ...rest]);
+  const roots = layer === 'shared' ? TREE.starts.map((n) => n.id) : [treeStart(cls).id], seen = new Set(roots), q = [...roots];
+  while (q.length) { const u = q.shift(); for (const v of TREE.nodes[u].links) if (!seen.has(v) && through.has(v)) { seen.add(v); q.push(v); } }
+  return rest.every((x) => seen.has(x));
+};
+treeAttrOf = function (cls, n) {
+  const O = talentOwn(cls), S = talentShared();
+  return (O && O.alloc.includes(n.id) && O.attr[n.id]) || (S.attr[n.id]) || n.attr;
+};
+treeCycleAttr = function (cls, id) {
+  const O = talentOwn(cls), T = O && O.alloc.includes(id) ? O : talentShared(), n = TREE.nodes[id];
+  const nxt = ATTR_IDS[(ATTR_IDS.indexOf(treeAttrOf(cls, n)) + 1) % 3];
+  T.attr[id] = nxt;
+  persist(); treeChanged(cls);
+  return nxt;
+};
+const talentLabel = (cls) => (talentLayer(cls) === 'shared' ? 'Shared by everyone' : charLabel(curChar()));
+// the tree on screen opens on your own layer, and can be turned to the shared one
+const _treeUILayer = UI.tree;
+UI.tree = function (cls, opts = {}) {
+  cls = cls || (G.run ? G.run.cls : CD.save.lastClass && CLASS[CD.save.lastClass] ? CD.save.lastClass : 'knight');
+  const prev = CD.treeLayer;
+  CD.treeLayer = opts.layer || (talentOwn(cls) ? 'own' : 'shared');
+  _treeUILayer(cls, { ...opts, onClose: () => { CD.treeLayer = prev; if (opts.onClose) opts.onClose(); if (opts.back) opts.back(); } });
+  const el = UI.top(), ctl = el && el.querySelector('.tree-ctl');
+  if (!ctl) return;
+  if (talentOwn(cls)) {
+    const other = CD.treeLayer === 'shared' ? 'own' : 'shared';
+    const flip = btn(other === 'shared' ? 'Shared tree' : `${charLabel(curChar())}'s tree`, () => { UI.close(el); CD.treeLayer = prev; UI.tree(cls, { ...opts, layer: other }); }, 'small');
+    ctl.insertBefore(flip, ctl.firstChild.nextSibling);
+  }
+};
 
 /* ============================================================
    Cinderdeep — main loop, modes and boot
