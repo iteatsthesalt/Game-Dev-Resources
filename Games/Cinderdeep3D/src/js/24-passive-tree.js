@@ -237,7 +237,8 @@ UI.tree = function (cls, opts = {}) {
   const lvlEl = h('div', { class: 'tree-lvl' }), ptsEl = h('b', { class: 'tree-pts' });
   const search = h('input', { type: 'search', class: 'tree-search', placeholder: 'Search passives', autocomplete: 'off', spellcheck: 'false', oninput: () => { query = search.value.trim().toLowerCase(); } });
   const sumBox = h('div', { class: 'tree-sum', hidden: true });
-  let query = '', hover = null, sel = null, view = { x: st.x * 0.8, y: st.y * 0.8, z: 0.5 }, dragging = null, pinch = null;
+  let query = '', hover = null, sel = null, view = { x: st.x * 0.8, y: st.y * 0.8, z: 0.5, yaw: 0, tilt: TREE_TILT }, dragging = null, pinch = null, orbit = null;
+  const circle = treeCircle();
   const allocSet = () => new Set(treeAlloc(cls));
   const refresh = () => {
     const info = classLevelInfo(cls);
@@ -246,8 +247,8 @@ UI.tree = function (cls, opts = {}) {
     resetBtn.textContent = resetCost(cls) ? `Reset · ${resetCost(cls)} embers` : 'Reset (free)';
     if (!sumBox.hidden) sumBox.innerHTML = treeSummaryHTML(cls);
   };
-  const toWorld = (sx, sy) => { const r = cv.getBoundingClientRect(); return { x: (sx - r.left - r.width / 2) / view.z + view.x, y: (sy - r.top - r.height / 2) / view.z + view.y }; };
-  const pick = (sx, sy) => { const w = toWorld(sx, sy); let best = null, bd = 1e9; for (const n of TREE.nodes) { const d = Math.hypot(n.x - w.x, n.y - w.y), rr = nodeR(n) + 6 / view.z; if (d < rr && d < bd) { bd = d; best = n; } } return best; };
+  const toWorld = (sx, sy) => { const r = cv.getBoundingClientRect(); return circle.worldAt(sx - r.left, sy - r.top, view, r.width, r.height); };
+  const pick = (sx, sy) => { const r = cv.getBoundingClientRect(), i = circle.pick(sx - r.left, sy - r.top, view, r.width, r.height); return i < 0 ? null : TREE.nodes[i]; };
   const showTip = (n, sx, sy) => {
     if (!n) { tip.hidden = true; return; }
     const alloc = allocSet(), path = treePath(cls, n.id), info = classLevelInfo(cls);
@@ -277,9 +278,12 @@ UI.tree = function (cls, opts = {}) {
   cv.addEventListener('pointerdown', (e) => {
     cv.setPointerCapture(e.pointerId);
     if (dragging && dragging.id !== e.pointerId) { pinch = { d: Math.hypot(e.clientX - dragging.x, e.clientY - dragging.y), z: view.z, other: { id: e.pointerId, x: e.clientX, y: e.clientY } }; return; }
-    dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, vx: view.x, vy: view.y }; moved = 0; downAt = { x: e.clientX, y: e.clientY };
+    if (e.button === 2 || e.shiftKey) { orbit = { id: e.pointerId, x: e.clientX, y: e.clientY, yaw: view.yaw, tilt: view.tilt }; return; }
+    dragging = { id: e.pointerId, x: e.clientX, y: e.clientY, w: toWorld(e.clientX, e.clientY) }; moved = 0; downAt = { x: e.clientX, y: e.clientY };
   });
+  cv.addEventListener('contextmenu', (e) => e.preventDefault());
   cv.addEventListener('pointermove', (e) => {
+    if (orbit && e.pointerId === orbit.id) { view.yaw = orbit.yaw + (e.clientX - orbit.x) * 0.006; view.tilt = clamp(orbit.tilt + (e.clientY - orbit.y) * 0.006, 0.1, 1.3); tip.hidden = true; return; }
     if (pinch && dragging) {
       if (e.pointerId === pinch.other.id) { pinch.other.x = e.clientX; pinch.other.y = e.clientY; } else if (e.pointerId === dragging.id) { dragging.x2 = e.clientX; dragging.y2 = e.clientY; }
       const ax = dragging.x2 ?? dragging.x, ay = dragging.y2 ?? dragging.y, d = Math.hypot(pinch.other.x - ax, pinch.other.y - ay);
@@ -287,12 +291,13 @@ UI.tree = function (cls, opts = {}) {
     }
     if (dragging && e.pointerId === dragging.id) {
       const dx = e.clientX - dragging.x, dy = e.clientY - dragging.y; moved = Math.max(moved, Math.hypot(dx, dy));
-      if (moved > 6) { view.x = dragging.vx - dx / view.z; view.y = dragging.vy - dy / view.z; tip.hidden = true; }
+      if (moved > 6) { const w = toWorld(e.clientX, e.clientY); view.x += dragging.w.x - w.x; view.y += dragging.w.y - w.y; tip.hidden = true; }
       return;
     }
     hover = pick(e.clientX, e.clientY); showTip(hover, e.clientX, e.clientY);
   });
   const up = (e) => {
+    if (orbit && e.pointerId === orbit.id) { orbit = null; return; }
     if (pinch && (e.pointerId === pinch.other.id || (dragging && e.pointerId === dragging.id))) { pinch = null; dragging = null; return; }
     if (dragging && e.pointerId === dragging.id) {
       if (moved <= 6) {
@@ -314,11 +319,12 @@ UI.tree = function (cls, opts = {}) {
       h('div', { class: 'tree-title' }, h('h2', {}, 'Talent Tree'), lvlEl),
       h('div', { class: 'tree-ctl' }, ptsEl, search,
         btn('−', () => zoomBy(0.8), 'small', { 'aria-label': 'Zoom out' }), btn('+', () => zoomBy(1.25), 'small', { 'aria-label': 'Zoom in' }),
-        btn('Home', () => { view.x = st.x * 0.8; view.y = st.y * 0.8; view.z = 0.5; }, 'small'), btn('Heart', () => { view.x = 0; view.y = 0; view.z = 0.6; }, 'small'),
+        btn('Home', () => { view.x = st.x * 0.8; view.y = st.y * 0.8; view.z = 0.5; view.yaw = 0; view.tilt = TREE_TILT; }, 'small'), btn('Heart', () => { view.x = 0; view.y = 0; view.z = 0.6; }, 'small'),
+        btn('◂', () => { view.yaw -= 0.4; }, 'small', { 'aria-label': 'Turn left' }), btn('▸', () => { view.yaw += 0.4; }, 'small', { 'aria-label': 'Turn right' }), btn('Tilt', () => { view.tilt = view.tilt > 0.5 ? 0.15 : TREE_TILT; }, 'small', { 'aria-label': 'Tilt the view' }),
         btn('Totals', () => { sumBox.hidden = !sumBox.hidden; refresh(); }, 'small'),
         resetBtn, btn('Done', close, 'primary', { 'data-autofocus': true }))),
     sumBox, tip,
-    h('div', { class: 'tree-hint' }, Input.device === 'touch' ? 'Tap a node to inspect, tap again to allocate. Drag to pan, pinch to zoom.' : Input.device === 'pad' ? 'Stick moves the cursor · A allocates · X refunds · bumpers zoom · B closes' : 'Click a node to allocate the path to it. Drag to pan, scroll to zoom. Click an allocated node to refund it.'));
+    h('div', { class: 'tree-hint' }, Input.device === 'touch' ? 'Tap a node to inspect, tap again to allocate. Drag to pan, pinch to zoom, ◂ ▸ and Tilt to turn the view.' : Input.device === 'pad' ? 'Stick moves the cursor · A allocates · X refunds · bumpers zoom · B closes' : 'Click a node to allocate the path to it. Drag to pan, scroll to zoom, right-drag to turn the view. Click an allocated node to refund it.'));
   // gamepad and keyboard: a cursor that hops between nodes
   let cursor = treeAlloc(cls).length ? TREE.nodes[treeAlloc(cls)[treeAlloc(cls).length - 1]] : st;
   el._customNav = (A) => {
@@ -329,7 +335,7 @@ UI.tree = function (cls, opts = {}) {
     if (dx || dy) {
       let best = null, bs = 1e9;
       for (const n of TREE.nodes) { if (n === cursor) continue; const vx = n.x - cursor.x, vy = n.y - cursor.y, d = Math.hypot(vx, vy); if (d < 1 || d > 260) continue; const dot = (vx * dx + vy * dy) / d; if (dot < 0.55) continue; const sc = d * (2 - dot); if (sc < bs) { bs = sc; best = n; } }
-      if (best) { cursor = best; hover = best; Sound.play('ui', { v: 0.4 }); const r = cv.getBoundingClientRect(); showTip(best, r.left + r.width / 2 + (best.x - view.x) * view.z, r.top + r.height / 2 + (best.y - view.y) * view.z); }
+      if (best) { cursor = best; hover = best; Sound.play('ui', { v: 0.4 }); const r = cv.getBoundingClientRect(), p = circle.client(best.id, view, r.width, r.height); showTip(best, r.left + p.x, r.top + p.y); }
       return true;
     }
     if (A.confirm && document.activeElement && document.activeElement.tagName === 'BUTTON' && !el._padMode) return false;
@@ -339,7 +345,7 @@ UI.tree = function (cls, opts = {}) {
     return false;
   };
   const draw = () => {
-    if (!el.isConnected) return;
+    if (!el.isConnected) { circle.dispose(); return; }
     const now = performance.now(), dt = Math.min(0.05, (now - last) / 1000); last = now;
     if (flashT > 0) flashT -= dt;
     const dpr = Math.min(2, window.devicePixelRatio || 1), W = cv.clientWidth, H = cv.clientHeight;
@@ -348,7 +354,7 @@ UI.tree = function (cls, opts = {}) {
     const A = Input.act;
     if (Input.device === 'pad') { const P = Input.pad; view.x += P.rx * 600 * dt / view.z; view.y += P.ry * 600 * dt / view.z; if (cursor) { view.x = lerp(view.x, cursor.x, 0.06); view.y = lerp(view.y, cursor.y, 0.06); } }
     else if (Input.device === 'kbm' && document.activeElement !== search && (A.mx || A.my) && !A.navLeft && !A.navRight && !A.navUp && !A.navDown) { view.x += A.mx * 500 * dt / view.z; view.y += A.my * 500 * dt / view.z; }
-    renderTree(cv.getContext('2d'), cv.width, cv.height, dpr, view, cls, { hover: hover ? hover.id : -1, cursor: Input.device !== 'kbm' && Input.device !== 'touch' ? cursor.id : -1, query, flashN: flashT > 0 ? flashN : -1, flashT });
+    renderTree(circle, cv.getContext('2d'), cv.width, cv.height, dpr, view, cls, { hover: hover ? hover.id : -1, cursor: Input.device !== 'kbm' && Input.device !== 'touch' ? cursor.id : -1, query, flashN: flashT > 0 ? flashN : -1, flashT });
     requestAnimationFrame(draw);
   };
   UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: close });
@@ -356,89 +362,8 @@ UI.tree = function (cls, opts = {}) {
   requestAnimationFrame(draw);
   return el;
 };
+const TREE_TILT = 0.9; // how far the tree leans back from straight down, in radians
 const nodeR = (n) => (n.type === 'start' ? 24 : n.type === 'keystone' ? 18 : n.type === 'evo' ? 15 : n.type === 'notable' ? 12 : 7);
-const TREE_STARS = Array.from({ length: 700 }, (_, i) => [hashU(i, 1, 7) * 4600 - 2300, hashU(i, 2, 7) * 4600 - 2300, hashU(i, 3, 7)]);
-function renderTree(g, W, H, dpr, view, cls, o) {
-  const alloc = new Set(treeAlloc(cls)), st = treeStart(cls), t = performance.now() / 1000;
-  const z = view.z * dpr, ox = W / 2 - view.x * z, oy = H / 2 - view.y * z;
-  const X = (x) => ox + x * z, Y = (y) => oy + y * z;
-  const gr = g.createRadialGradient(W / 2, H / 2, 0, W / 2, H / 2, Math.max(W, H) * 0.7);
-  gr.addColorStop(0, '#1c1418'); gr.addColorStop(1, '#060406');
-  g.fillStyle = gr; g.fillRect(0, 0, W, H);
-  // sector glows and stars
-  g.globalCompositeOperation = 'lighter';
-  (TREE.glows || SECTORS.map((S, s) => ({ deg: -90 + s * 60, col: S.color }))).forEach((G0) => { const a = (G0.deg * Math.PI) / 180, x = X(Math.cos(a) * 1100), y = Y(Math.sin(a) * 1100), r = 520 * z; const sg = g.createRadialGradient(x, y, 0, x, y, r); sg.addColorStop(0, rgbaStr(G0.col, 0.08)); sg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = sg; g.fillRect(x - r, y - r, r * 2, r * 2); });
-  for (const [sx, sy, b] of TREE_STARS) { g.fillStyle = `rgba(255,240,220,${(0.15 + b * 0.35 + Math.sin(t * 2 + b * 9) * 0.1).toFixed(3)})`; g.fillRect(X(sx), Y(sy), Math.max(1, dpr), Math.max(1, dpr)); }
-  g.globalCompositeOperation = 'source-over';
-  // the chaos at the heart: a slow swirl, and the seals the Chaos Level opens
-  if (typeof chaosLevel === 'function') {
-    const cx = X(0), cy = Y(0), R0 = 660 * z, CL = chaosLevel();
-    g.globalCompositeOperation = 'lighter';
-    const hg = g.createRadialGradient(cx, cy, 0, cx, cy, R0); hg.addColorStop(0, `rgba(255,74,208,${0.16 + 0.02 * Math.min(CL, 6)})`); hg.addColorStop(0.55, 'rgba(127,232,255,0.05)'); hg.addColorStop(1, 'rgba(0,0,0,0)');
-    g.fillStyle = hg; g.fillRect(cx - R0, cy - R0, R0 * 2, R0 * 2);
-    g.lineWidth = 1.5 * dpr;
-    for (let k = 0; k < 5; k++) { g.strokeStyle = rgbaStr(CHAOS_HUES[k], 0.14); g.beginPath(); for (let i = 0; i <= 48; i++) { const u = i / 48, a = t * 0.12 + (k * TAU) / 5 + u * 4.4, r = u * 630 * z; if (i) g.lineTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); else g.moveTo(cx + Math.cos(a) * r, cy + Math.sin(a) * r); } g.stroke(); }
-    g.globalCompositeOperation = 'source-over';
-    for (const B of [...CHAOS_BANDS.filter((b) => b.seal > 0), { r1: 70, seal: CHAOS_HEART_SEAL }]) {
-      if (CL >= B.seal) continue;
-      g.setLineDash([6 * dpr, 6 * dpr]); g.strokeStyle = 'rgba(255,74,208,0.55)'; g.lineWidth = 2 * dpr;
-      g.beginPath(); g.arc(cx, cy, (B.r1 + 22) * z, 0, TAU); g.stroke(); g.setLineDash([]);
-      if (view.z > 0.25) { g.fillStyle = 'rgba(255,190,235,0.85)'; g.font = `${Math.round(11 * dpr * Math.max(0.8, view.z))}px "Jersey 15", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'bottom'; g.fillText(`SEALED · CHAOS LEVEL ${B.seal}`, cx, cy - (B.r1 + 26) * z); }
-    }
-  }
-  // reachable preview path
-  const path = o.hover >= 0 ? treePath(cls, o.hover) || [] : [];
-  const pathSet = new Set(path);
-  const have = new Set([st.id, ...alloc, ...(typeof talentLayer === 'function' && talentLayer(cls) === 'shared' ? TREE.starts.map((n) => n.id) : [])]);
-  // who placed each passive: everyone's points ring gold, yours white, the living blue, the fallen violet
-  const owners = typeof talentOwners === 'function' ? talentOwners() : new Map(), trails = typeof talentShared === 'function' ? talentShared().trails || {} : {};
-  const me = typeof talentLayer === 'function' && talentLayer(cls) === 'own' && curChar() ? curChar().id : null;
-  const ringOf = (id) => { if (!owners.has(id)) return null; const k = owners.get(id); return k == null ? '#ffc65a' : k === me ? '#ffffff' : trails[k] && trails[k].fell ? '#9a86c8' : '#7fe8ff'; };
-  const lit = (id) => alloc.has(id) || TREE.nodes[id].type === 'start';
-  // edges: hyphae of the network, with light running along what has grown
-  TREE.edges.forEach(([a, b], ei) => {
-    const A = TREE.nodes[a], B = TREE.nodes[b], x1 = X(A.x), y1 = Y(A.y), x2 = X(B.x), y2 = Y(B.y);
-    if ((x1 < -60 && x2 < -60) || (y1 < -60 && y2 < -60) || (x1 > W + 60 && x2 > W + 60) || (y1 > H + 60 && y2 > H + 60)) return;
-    const on = lit(a) && lit(b) && (alloc.has(a) || alloc.has(b)), prev = (pathSet.has(a) || have.has(a)) && (pathSet.has(b) || have.has(b)) && (pathSet.has(a) || pathSet.has(b));
-    const ch = A.chaos || B.chaos, col = on ? (ch ? CHAOS_HUES[(ei + Math.floor(t * 3)) % CHAOS_HUES.length] : '#ffc65a') : prev ? '#7fe8ff' : (have.has(a) || have.has(b)) ? '#6a5a4e' : ch ? '#3e2440' : '#33292c';
-    mycHypha(g, x1, y1, x2, y2, ei * 2654435761, { lit: on || prev, col, dimCol: col, t, width: (on ? 4 : prev ? 3 : 2) * dpr * Math.max(0.6, view.z) });
-  });
-  // nodes
-  const q = o.query;
-  for (const n of TREE.nodes) {
-    const x = X(n.x), y = Y(n.y), r = nodeR(n) * z;
-    if (x < -40 || y < -40 || x > W + 40 || y > H + 40) continue;
-    const S = SECTORS[n.sector], col = n.chaos ? CHAOS_HUES[(n.id + Math.floor(t * 2)) % CHAOS_HUES.length] : n.col || (S ? S.color : '#ff4ad0'), ringCol = ringOf(n.id);
-    g.globalAlpha = typeof talentSealed === 'function' && talentSealed(n) ? 0.35 : 1;
-    const isAlloc = alloc.has(n.id) || n.id === st.id, avail = !isAlloc && n.links.some((l) => have.has(l)) && n.type !== 'start';
-    const match = q && (nodeName(n) + ' ' + nodeDesc(n)).toLowerCase().includes(q);
-    if (isAlloc && n.type !== 'minor') { g.globalCompositeOperation = 'lighter'; const lg = g.createRadialGradient(x, y, 0, x, y, r * 2.6); lg.addColorStop(0, rgbaStr(col, 0.5)); lg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = lg; g.fillRect(x - r * 2.6, y - r * 2.6, r * 5.2, r * 5.2); g.globalCompositeOperation = 'source-over'; }
-    g.beginPath();
-    if (n.type === 'evo') { g.moveTo(x, y - r); g.lineTo(x + r, y); g.lineTo(x, y + r); g.lineTo(x - r, y); g.closePath(); }
-    else if (n.type === 'keystone') { for (let i = 0; i < 8; i++) { const a = (i / 8) * TAU + Math.PI / 8; const px = x + Math.cos(a) * r, py = y + Math.sin(a) * r; if (i) g.lineTo(px, py); else g.moveTo(px, py); } g.closePath(); }
-    else g.arc(x, y, r, 0, TAU);
-    g.fillStyle = isAlloc ? (n.type === 'minor' ? (n.attr ? ATTR[treeAttrOf(cls, n)].col : '#ffd35c') : col) : n.type === 'start' ? '#2a2024' : n.attr ? rgbaStr(ATTR[n.attr].col, 0.25) : '#1e171a';
-    g.fill();
-    g.lineWidth = (n.type === 'minor' ? 1.5 : 3) * dpr * Math.max(0.6, view.z);
-    g.strokeStyle = isAlloc ? ringCol || '#fff3c0' : avail ? '#ffd35c' : n.type === 'minor' ? '#5a4a4e' : rgbaStr(col, 0.75);
-    g.stroke();
-    if (ringCol) { g.strokeStyle = rgbaStr(ringCol, 0.75); g.lineWidth = 1.5 * dpr * Math.max(0.6, view.z); g.beginPath(); g.arc(x, y, r + 3 * dpr * Math.max(0.6, view.z), 0, TAU); g.stroke(); }
-    if (n.type !== 'minor' && n.type !== 'start') { g.fillStyle = isAlloc ? '#1a1214' : rgbaStr(col, 0.9); g.beginPath(); g.arc(x, y, r * 0.32, 0, TAU); g.fill(); }
-    if (n.type === 'start') {
-      g.fillStyle = rgbaStr(col, 0.9); g.font = `${Math.round(12 * dpr * Math.max(0.7, view.z))}px "Jersey 15", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText((n.cls && CLASS[n.cls] ? CLASS[n.cls].name : S ? S.name : '').toUpperCase(), x, y + r + 12 * dpr * Math.max(0.7, view.z));
-      if (n.cls && CLASS[n.cls]) { const C1 = CLASS[n.cls], sp = C1.beast ? beastFrames(n.cls)[0] : heroSprites(C1.look, n.cls).front[0]; const k = (r * 1.4) / Math.max(sp.w, sp.h); g.imageSmoothingEnabled = false; g.drawImage(sp.c, Math.round(x - (sp.w * k) / 2), Math.round(y - (sp.h * k) / 2), Math.round(sp.w * k), Math.round(sp.h * k)); }
-    }
-    if (match) { g.strokeStyle = `rgba(255,255,255,${(0.5 + Math.sin(t * 8) * 0.4).toFixed(2)})`; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(x, y, r + 6 * dpr, 0, TAU); g.stroke(); }
-    if (n.id === o.hover || n.id === o.cursor) { g.strokeStyle = '#ffffff'; g.lineWidth = 2 * dpr; g.beginPath(); g.arc(x, y, r + 4 * dpr, 0, TAU); g.stroke(); }
-    if (n.id === o.flashN) { g.strokeStyle = rgbaStr('#ffffff', o.flashT * 2); g.lineWidth = 3 * dpr; g.beginPath(); g.arc(x, y, r + (0.4 - o.flashT) * 60 * dpr, 0, TAU); g.stroke(); }
-    if ((n.type === 'keystone' || n.type === 'evo' || (n.type === 'notable' && view.z > 0.9)) && view.z > 0.45) {
-      g.fillStyle = isAlloc ? '#fff3c0' : n.type === 'notable' ? '#bfae94' : col; g.font = `${Math.round((n.type === 'notable' ? 11 : 13) * dpr * Math.max(0.8, view.z))}px "Jersey 15", sans-serif`; g.textAlign = 'center'; g.textBaseline = 'top';
-      g.fillText(nodeName(n), x, y + r + 4 * dpr);
-    }
-  }
-  g.globalAlpha = 1;
-}
 function treeSummaryHTML(cls) {
   const tot = {}, names = [];
   for (const id of treeAlloc(cls)) { const n = TREE.nodes[id]; if (!n) continue; if (n.stat) { const [k, v, d] = n.stat; const key = d.replace(/[+\-]?[\d.]+%?/, '#'); tot[key] = tot[key] || { v: 0, d, mult: MULT_KEYS.has(k), k }; tot[key].v += MULT_KEYS.has(k) ? 0 : v; tot[key].n = (tot[key].n || 0) + 1; } else if (n.def) names.push(n.def.name); }

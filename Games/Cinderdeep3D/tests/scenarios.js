@@ -393,4 +393,39 @@ module.exports = [
       return T.done();
     },
   },
+  {
+    name: 'screens: the Talent Tree in 3D',
+    run: async () => {
+      UI.title(); await T.wait(200);
+      UI.tree('knight', {});
+      await T.until(() => CD.circles().live === 1 && document.querySelector('.tree-cv'));
+      await T.wait(300);
+      const cv = document.querySelector('.tree-cv'), C = C3.last, st = treeStart('knight');
+      T.check('the tree stands in its own 3D scene', CD.circles().nodes === TREE.nodes.length && CD.circles().edges === TREE.edges.length, CD.circles());
+      const px = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let lit = 0; for (let i = 0; i < px.length; i += 4 * 97) if (px[i] + px[i + 1] + px[i + 2] > 90) lit++;
+      T.check('and is painted into the screen', lit > 40, lit);
+      T.check('the game behind it is not drawn', !!C3.live);
+      // a point on the glass and the node under it agree, and the ground under the middle is the point looked at
+      const p = C.project(st.id), back = C.pick(p.x, p.y);
+      T.check('a node found on the glass is picked from there', back === st.id, { back, want: st.id });
+      const mid = C.worldAt(C.cssW / 2, C.cssH / 2);
+      T.check('the middle of the glass is the point looked at', Math.hypot(mid.x - C.view.x, mid.y - C.view.y) < 4, { mid, view: [C.view.x, C.view.y] });
+      // clicking a node beside the start grows the road to it
+      bankSouls('knight', 400);
+      const next = TREE.nodes[st.links.find((l) => TREE.nodes[l].type !== 'start' && !talentSealed(TREE.nodes[l]))], q = C.project(next.id), r = cv.getBoundingClientRect();
+      cv.setPointerCapture = () => {};
+      const at = { pointerId: 7, pointerType: 'mouse', button: 0, bubbles: true, clientX: r.left + q.x, clientY: r.top + q.y };
+      cv.dispatchEvent(new PointerEvent('pointerdown', at)); cv.dispatchEvent(new PointerEvent('pointerup', at));
+      T.check('clicking a node on the glass allocates it', treeAlloc('knight').includes(next.id), { next: next.id, alloc: treeAlloc('knight') });
+      // turning the view moves the picture but not the ground it stands on
+      const before = C.project(next.id);
+      C.view.yaw += 0.5; await T.wait(200);
+      const after = C.project(next.id);
+      T.check('turning the view moves the nodes on the glass', Math.hypot(after.x - before.x, after.y - before.y) > 20, { before, after });
+      T.click(/^Done$/); await T.wait(300);
+      T.check('closing the tree puts its scene away', CD.circles().live === 0, CD.circles());
+      return T.done();
+    },
+  },
 ];
