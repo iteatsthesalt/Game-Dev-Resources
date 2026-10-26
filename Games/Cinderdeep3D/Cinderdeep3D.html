@@ -10893,7 +10893,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '9.3';
+const VERSION = '9.4';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -26101,7 +26101,7 @@ function v3DeepCards(vis) {
   return v3PaintCards(() => {
     for (const r of vis) for (const pid of r.props) {
       const pr = fl.props[pid];
-      if (!pr.decal && pr.kind !== 'stairs' && pr.kind !== 'spikes' && !pr.broken) v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy));
+      if (!pr.decal && pr.kind !== 'stairs' && pr.kind !== 'spikes' && !pr.broken) v3PropCard(pr);
     }
     for (const e of G.ents) if (!e.dead && (e.room === rid || e.boss)) v3EntCard(e);
     for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
@@ -26128,7 +26128,7 @@ const V3_SOLID_MAT = [false, true].map((faded) => {
   return m;
 });
 const v3Lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
-function v3SolidGeo(cv, w, hgt, below) {
+function v3SolidGeo(cv, w, hgt, below, ax = w / 2, shadeK = 1) {
   const d = cv.getContext('2d').getImageData(0, 0, w, hgt).data, n = w * hgt, solid = new Uint8Array(n), dist = new Uint8Array(n);
   for (let i = 0; i < n; i++) { solid[i] = d[i * 4 + 3] > 24 ? 1 : 0; dist[i] = solid[i] ? 255 : 0; }
   // how far each pixel is from the edge, then a few depth steps from that
@@ -26139,7 +26139,7 @@ function v3SolidGeo(cv, w, hgt, below) {
   const quad = (a, b, c, e, nx, ny, nz, r, g, bl) => {
     for (const v of [a, b, c, a, c, e]) { pos.push(v[0], v[1], v[2]); nor.push(nx, ny, nz); col.push(r, g, bl); }
   };
-  const rgb = (i) => [v3Lin(d[i * 4]), v3Lin(d[i * 4 + 1]), v3Lin(d[i * 4 + 2])];
+  const rgb = (i) => [v3Lin(d[i * 4]) * shadeK, v3Lin(d[i * 4 + 1]) * shadeK, v3Lin(d[i * 4 + 2]) * shadeK];
   for (let y = 0; y < hgt; y++) {
     const u0 = top - y, u1 = top - y - 1;
     // faces front and back, merged along runs of one colour and depth
@@ -26148,7 +26148,7 @@ function v3SolidGeo(cv, w, hgt, below) {
       if (!solid[i]) { x++; continue; }
       let e = x + 1;
       while (e < w && solid[i + e - x] && half(i + e - x) === half(i) && d[(i + e - x) * 4] === d[i * 4] && d[(i + e - x) * 4 + 1] === d[i * 4 + 1] && d[(i + e - x) * 4 + 2] === d[i * 4 + 2]) e++;
-      const z = half(i), [r, g, b] = rgb(i), x0 = x - w / 2, x1 = e - w / 2;
+      const z = half(i), [r, g, b] = rgb(i), x0 = x - ax, x1 = e - ax;
       quad([x0, u1, z], [x1, u1, z], [x1, u0, z], [x0, u0, z], 0, 0, 1, r, g, b);
       quad([x1, u1, -z], [x0, u1, -z], [x0, u0, -z], [x1, u0, -z], 0, 0, -1, r, g, b);
       x = e;
@@ -26157,7 +26157,7 @@ function v3SolidGeo(cv, w, hgt, below) {
     for (let x = 0; x < w; x++) {
       const i = y * w + x;
       if (!solid[i]) continue;
-      const z = half(i), [r, g, b] = rgb(i), x0 = x - w / 2, x1 = x0 + 1;
+      const z = half(i), [r, g, b] = rgb(i), x0 = x - ax, x1 = x0 + 1;
       const side = (nz, mk) => { if (nz >= z) return; mk(nz, z); mk(-z, -nz); };
       side(x ? half(i - 1) : 0, (a, b2) => quad([x0, u1, a], [x0, u1, b2], [x0, u0, b2], [x0, u0, a], -1, 0, 0, r, g, b));
       side(x < w - 1 ? half(i + 1) : 0, (a, b2) => quad([x1, u1, b2], [x1, u1, a], [x1, u0, a], [x1, u0, b2], 1, 0, 0, r, g, b));
@@ -26174,19 +26174,63 @@ function v3SolidGeo(cv, w, hgt, below) {
   geo.computeBoundingSphere();
   return geo;
 }
-// a card whose picture is still is shown as its solid instead
-function v3Solid(c, key, faded) {
+function v3SolidFor(key, build) {
   let geo = V3_SOLIDS.get(key);
   if (!geo) {
     if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) k.vox.geometry = null; }
-    geo = v3SolidGeo(c.cv, c.w, c.hgt, c.below); V3_SOLIDS.set(key, geo);
+    geo = build(); V3_SOLIDS.set(key, geo);
   }
+  return geo;
+}
+// give a card its solid, pushed back by its deepest point so it never reaches in front of whatever stands where it stands
+function v3PlaceSolid(c, geo, x, y, faded, up = 0) {
   if (!c.vox) { c.vox = new THREE.Mesh(geo, V3_SOLID_MAT[0]); V3.scene.add(c.vox); }
   c.vox.geometry = geo; c.vox.material = V3_SOLID_MAT[faded ? 1 : 0];
-  // pushed back by its deepest point, so it never reaches in front of whatever stands where it stands
-  c.vox.position.set(c.mesh.position.x, 0, c.mesh.position.z - V3_SOLID_DEPTH);
-  c.vox.visible = true; c.mesh.visible = false;
+  c.vox.position.set(x, up, y - V3_SOLID_DEPTH);
+  c.vox.visible = true;
   return c;
+}
+// a card whose picture is still is shown as its solid instead
+function v3Solid(c, key, faded) {
+  v3PlaceSolid(c, v3SolidFor(key, () => v3SolidGeo(c.cv, c.w, c.hgt, c.below)), c.mesh.position.x, c.mesh.position.z, faded);
+  c.mesh.visible = false;
+  return c;
+}
+// a sprite as a solid, standing on its anchor
+const V3_SPRITE_CV = mkCanvas(8, 8);
+function v3SpriteSolid(sp, shadeK = 1) {
+  return v3SolidFor(`sp${v3SpriteId(sp)}:${shadeK}`, () => {
+    const cv = V3_SPRITE_CV;
+    cv.width = sp.w; cv.height = sp.h;
+    const g = cv.getContext('2d'); g.clearRect(0, 0, sp.w, sp.h); g.drawImage(sp.c, 0, 0);
+    return v3SolidGeo(cv, sp.w, sp.h, sp.h - sp.ay, sp.ax, shadeK);
+  });
+}
+/* ---------- dungeon props: the thing itself solid, what moves on it (flames, sparkles, drips, runes) on a card ---------- */
+function v3PropLook(pr) {
+  if (pr.npc) return null;
+  if (pr.kind === 'chest') {
+    const st = chestSwing(pr, pr.opened);
+    return { sp: st && st < 3 ? chestLidSprite(pr.chest, st) : chestSprite(pr.chest, pr.opened), shadow: 8, dx: pr.mimic && Math.sin(G.t * 9 + pr.x) > 0.96 ? 1 : 0, up: pr.appear != null && pr.appear < 1 ? (pr.appear += 0.05, (1 - pr.appear) * 10) : 0 };
+  }
+  if (pr.kind === 'altar' && pr.relicChoice) return { sp: propSprite('altar', G.fl.actIdx) };
+  let sp = propSprite(pr.kind, G.fl.actIdx, pr.v || 0);
+  if (crigOn() && pr.kind === 'banner') sp = waveFrames(sp, `banner:${G.fl.actIdx}`)[Math.floor(G.t * 5 + pr.x * 0.1) % 4];
+  else if (crigOn() && pr.kind === 'mushroom') sp = bendFrames(sp, `mush:${G.fl.actIdx}:${pr.v || 0}`)[clamp(Math.round(windAt(pr.x, pr.y) * 0.6), -SWAY_N, SWAY_N) + SWAY_N];
+  const big = pr.kind === 'pedestal' || pr.kind === 'altar' || pr.kind === 'anvil' || pr.kind === 'fountain' || pr.kind === 'shrine' || pr.kind === 'statue' || pr.kind === 'table' || pr.kind === 'brazier';
+  return { sp, shadow: big ? (pr.r || 6) + 1 : 0, shadeK: (pr.shrine || pr.fountain) && pr.used ? 0.7 : 1 };
+}
+function v3PropExtras(g, pr, x, y) {
+  if (pr.kind === 'chest') { if (!pr.opened && Math.sin(G.t * 3 + pr.x) > 0.85) { g.fillStyle = '#ffffff'; g.fillRect(Math.round(x + rnd(-6, 6)), Math.round(y - rnd(4, 12)), 1, 1); } return; }
+  if (pr.kind === 'altar' && pr.relicChoice) { if (!pr.used) { g.globalAlpha = 0.6 + Math.sin(G.t * 3) * 0.3; g.drawImage(miscIcon('rune').c, Math.round(x - 8), Math.round(y - 30 + Math.sin(G.t * 2) * 2)); g.globalAlpha = 1; } return; }
+  if (pr.fountain && !pr.used) { g.fillStyle = 'rgba(200,240,255,0.7)'; const k = (G.t * 6) % 6; g.fillRect(Math.round(x - 1), Math.round(y - 17 + k), 2, 2); }
+  if (pr.kind === 'brazier' || pr.kind === 'candles') drawFlame(g, x, y - (pr.kind === 'brazier' ? 9 : 7), pr.kind === 'brazier' ? 1.4 : 0.7, pr.x);
+}
+function v3PropCard(pr) {
+  const L = v3PropLook(pr);
+  if (!L || !L.sp) { v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy)); return; }
+  const c = v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => { const x = pr.x - cx, y = pr.y - cy; if (L.shadow) shadow(g, x, y, L.shadow); v3PropExtras(g, pr, x, y); });
+  v3PlaceSolid(c, v3SpriteSolid(L.sp, L.shadeK || 1), pr.x + (L.dx || 0), pr.y, false, L.up || 0);
 }
 
 // objects that look the same frame to frame; the rest (fires, glowing stones, things you can use) repaint
