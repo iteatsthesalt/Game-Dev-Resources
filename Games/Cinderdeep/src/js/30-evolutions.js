@@ -98,50 +98,6 @@ let ascTitle = (p) => {
 };
 
 /* ---------- affinity: talents and upgrades pull toward aspects ---------- */
-const TAG_ASPECT = { offense: [['fury', 1]], fire: [['inferno', 1.2]], venom: [['venom', 1.2]], frost: [['glacier', 1.2]], storm: [['tempest', 1.2]], defense: [['bastion', 1], ['radiant', 0.35]], utility: [['zephyr', 1]], ability: [['arcane', 1.2]] };
-const SECTOR_ASPECT = [[['bastion', 1], ['radiant', 0.35]], [['fury', 1], ['blood', 0.35]], [['zephyr', 1], ['shadow', 0.5]], [['tempest', 1], ['glacier', 0.4]], [['arcane', 1], ['inferno', 0.5]], [['venom', 1], ['blood', 0.4], ['chaos', 0.2]]];
-const KEY_ASPECT = { chaosstrain: [['chaos', 3]], vaalpact: [['blood', 3]], bloodrage: [['blood', 2], ['fury', 1]], acrobatics: [['shadow', 2], ['zephyr', 1]], avatar: [['inferno', 3]], unbreakable: [['bastion', 3]], resolute: [['fury', 2]], eldritch: [['arcane', 2]], overload: [['tempest', 1], ['glacier', 1], ['inferno', 1]], winddancer: [['zephyr', 2]], pointblank: [['zephyr', 1], ['shadow', 1]] };
-const CLASS_ASPECT = {
-  knight: [['bastion', 3]], paladin: [['radiant', 3], ['bastion', 1]], ranger: [['zephyr', 3]], pyro: [['inferno', 3]], rogue: [['shadow', 3]], berserker: [['fury', 2], ['blood', 1.5]],
-  storm: [['tempest', 3]], necro: [['venom', 2], ['shadow', 1]], monk: [['fury', 2], ['zephyr', 1.5]], gunslinger: [['zephyr', 2], ['fury', 1]], witch: [['arcane', 2], ['venom', 1.5]],
-  samurai: [['fury', 2], ['shadow', 1.5]], bard: [['radiant', 2], ['arcane', 1.5]],
-};
-const ELEMENT_ASPECT = { fire: [['inferno', 3]], nature: [['venom', 2], ['radiant', 1]], frost: [['glacier', 3]], storm: [['tempest', 3]], shadow: [['shadow', 2], ['blood', 1]], earth: [['bastion', 3]] };
-function ascAffinity(p) {
-  const sc = Object.fromEntries(ASPECTS.map((a) => [a.id, 0]));
-  const add = (list, k = 1) => { if (list) for (const [a, w] of list) sc[a] += w * k; };
-  if (p.beast && typeof BEAST !== 'undefined' && p.form) add(ELEMENT_ASPECT[BEAST[FORMS[p.form].line].element]);
-  else add(CLASS_ASPECT[p.cls]);
-  for (const id in p.skills || {}) { const sk = SKILL[id]; if (sk) add(TAG_ASPECT[sk.tag], 0.9 * p.skills[id]); }
-  if (typeof treeAlloc === 'function' && p.cls) {
-    for (const id of treeAlloc(p.cls)) {
-      const n = TREE.nodes[id];
-      if (!n) continue;
-      if (n.key && KEY_ASPECT[n.key]) add(KEY_ASPECT[n.key]);
-      else if (n.sector >= 0 && SECTOR_ASPECT[n.sector]) add(SECTOR_ASPECT[n.sector], n.type === 'notable' ? 0.6 : 0.3);
-    }
-  }
-  const s = p.stats || {};
-  if (s.lifesteal > 0.005) sc.blood += s.lifesteal * 150;
-  if (s.killHeal > 1) sc.blood += s.killHeal * 0.4;
-  if (s.regen > 0.4) sc.radiant += s.regen * 1.2;
-  if (s.crit > 0.12) sc.shadow += (s.crit - 0.1) * 14;
-  if (s.dodge > 0.04) sc.shadow += s.dodge * 12;
-  for (const r of p.relics || []) { if (r === 'phoenix') sc.inferno += 1.5; }
-  sc.chaos += (p.muts || []).length * 1.5 + (G.run && G.run.chaos ? 3 : 0) + Math.min(3, ((CD.save && CD.save.fs && CD.save.fs.dmtFound) || 0) * 0.3);
-  // staying on a path is easy
-  const cur = ascAspect(p);
-  if (cur) sc[cur] += 2.5;
-  return sc;
-}
-function ascOffers(p) {
-  const sc = ascAffinity(p);
-  const order = ASPECTS.map((a) => a.id).sort((a, b) => sc[b] - sc[a] || (hashStr(a + (p.cls || '')) % 7) - (hashStr(b + (p.cls || '')) % 7));
-  const attuned = order.slice(0, 3);
-  const cur = ascAspect(p);
-  if (cur && !attuned.includes(cur)) attuned[2] = cur;
-  return { attuned, order, sc };
-}
 
 /* ---------- what an evolution gives ---------- */
 hook('stats', (s, p) => {
@@ -255,57 +211,6 @@ function ascPreviewCanvas(p, id, size = 112) {
   requestAnimationFrame(draw);
   return cv;
 }
-UI.ascend = function (manual = true, busy = false) {
-  const p = G.p, opened = performance.now();
-  if (!p || ascDue(p) <= 0) { if (p) p.ascPending = false; return; }
-  if (UI.top() && UI.top()._ascend) return;
-  const st = ascStage(p) + 1;
-  const { attuned, order, sc } = ascOffers(p);
-  Sound.play('evolveStart');
-  let chosen = false, showAll = false;
-  const grid = h('div', { class: 'choices asc-choices' });
-  const card = (id, i) => {
-    const A = ASPECT[id], att = attuned.includes(id), cur = ascAspect(p) === id;
-    const perks = A.perk.filter(([lv]) => st >= lv && !(p.asc || []).some((x, j) => x === id && j + 1 >= lv));
-    const b = h('button', { class: `card asc-card${att ? ' att' : ''}`, type: 'button', style: { '--asc': A.c1, '--asc2': A.glow }, 'data-autofocus': i === 0 && !busy ? true : null, onclick: () => pick(id, att) });
-    b.append(
-      h('div', { class: 'asc-top' }, ascPreviewCanvas(p, id, 104),
-        h('div', { class: 'asc-nm' }, h('b', {}, `${A.titles[st - 1]}`), h('small', {}, `${A.name}${cur ? ' · your path' : ''}`), att ? h('span', { class: 'asc-tag' }, 'Attuned') : h('span', { class: 'asc-tag off' }, 'Half strength'))),
-      h('p', { class: 'desc' }, A.blurb),
-      h('ul', {}, h('li', {}, att ? A.pickTxt : `${A.pickTxt} (halved)`), ...perks.map(([, txt]) => h('li', { class: 'perk' }, txt))),
-      h('span', { class: 'pick' }, 'Evolve'));
-    return b;
-  };
-  const fill = () => {
-    grid.innerHTML = '';
-    const list = showAll ? [...attuned, ...order.filter((a) => !attuned.includes(a))] : attuned;
-    list.forEach((id, i) => grid.append(card(id, i)));
-    more.textContent = showAll ? 'Show attuned paths only' : `Show all ${ASPECTS.length} paths`;
-  };
-  const why = () => {
-    const top = order.slice(0, 3).map((a) => `${ASPECT[a].name} ${sc[a].toFixed(1)}`).join(' · ');
-    return `Attunement comes from your talents and the skills you picked. Strongest: ${top}.`;
-  };
-  const more = btn('', () => { showAll = !showAll; fill(); UI.focusFirst(el); }, 'small');
-  const later = btn('Decide later', () => { if (chosen) return; UI.close(el); p.ascLater = true; p.ascCalmT = 0; toast('Evolution waiting · it returns when things are quiet, or from the pause menu', '#ffd35c'); }, 'small', busy ? { 'data-autofocus': true } : {});
-  const pick = (id, att) => {
-    // a button mashed in the middle of a fight must not choose a body for you
-    if (chosen || performance.now() - opened < (CD.debug && CD.debug.fastUI ? 0 : 700)) return;
-    chosen = true;
-    UI.close(el);
-    ascCinematic(p, id, () => applyAscension(p, id, att));
-  };
-  const el = h('div', { class: 'modal asc' }, h('div', { class: 'asc-wrap' },
-    h('div', { class: 'lv-head' }, h('b', {}, `Evolution ${st} of ${ASC_MAX}`), h('small', {}, `Level ${ascLevelFor(p, st)} · choose what you become`)),
-    grid,
-    h('p', { class: 'asc-why' }, why()),
-    h('div', { class: 'row' }, more, later)));
-  el._ascend = true;
-  fill();
-  // 1, 2, 3 pick a card
-  el.addEventListener('keydown', (e) => { const n = +e.key; const cards = grid.querySelectorAll('.asc-card'); if (n >= 1 && n <= cards.length) { e.preventDefault(); cards[n - 1].click(); } });
-  UI.open(el, { modal: true, replace: false, onBack: () => later.click() });
-};
 // flashing silhouettes, then the new body bursts out
 function ascCinematic(p, id, done) {
   const A = ASPECT[id];

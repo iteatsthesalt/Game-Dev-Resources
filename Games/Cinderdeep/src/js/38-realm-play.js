@@ -701,27 +701,6 @@ playerDie = function () {
   saveRealm(true);
   later(1.8, () => { if (G.p === p) UI.realmDeath(); }, true);
 };
-function nearestWay() {
-  const p = G.p, ch = W.ch;
-  let best = null, bd = 1e9;
-  for (const w of W.Z.ways) if ((ch.ways || []).includes(w.id)) { const d = Math.hypot((w.x + 0.5) * TS - p.x, (w.y + 0.5) * TS - p.y); if (d < bd) { bd = d; best = w; } }
-  return best;
-}
-function realmRespawn(where = 'home') {
-  const p = G.p, ch = W.ch;
-  const lost = W.deathLost || 0; W.deathLost = 0;
-  ch.dead = false;
-  p.dead = false; p.hp = p.maxHp; p.iframes = 2; p.weakT = 60; p.burnT = p.poisonT = 0; p.potions = Math.max(p.potions, 1);
-  p.angelUsed = false;
-  if (W.inInst) { exitInstance(false, lost); return; }
-  const home = ch.home || { zone: 'meadows', x: null, y: null };
-  G.boss = null; $('bossbar').hidden = true;
-  const way = where === 'way' ? nearestWay() : null;
-  if (way) { const extra = Math.floor(p.gold * 0.05); p.gold -= extra; realmFade(() => { loadZone(W.Z.id, (way.x + 0.5) * TS, (way.y + 2) * TS); later(1.2, () => toast(`You lost ${lost + extra} gold. Weakened for a minute.`, '#ff8a8a')); }); return; }
-  if (home.zone !== W.Z.id) travelTo(home.zone, home.x != null ? { x: home.x, y: home.y } : null);
-  else realmFade(() => { loadZone(home.zone, home.x, home.y); });
-  W.notice = `You lost ${lost} gold. Weakened for a minute.`;
-}
 hook('stats', (s, p) => { if (p.weakT > 0) { s.dmgMul *= 0.8; s.dmgTaken *= 1.15; } if (p.blessT > 0 && p.bless && BLESSINGS[p.bless]) BLESSINGS[p.bless].apply(s); if (p.restedT > 0) s.xpMul += 0.15; });
 hook('update', (dt) => { const p = G.p; if (!p || !W.on) return; let changed = false; for (const k of ['blessT', 'restedT', 'weakT']) if (p[k] > 0) { p[k] -= dt; if (p[k] <= 0) { p[k] = 0; changed = true; } } if (changed) recalcStats(p); });
 const BLESSINGS = {
@@ -800,9 +779,6 @@ camTarget = function () {
   if (Input.device === 'touch' && R.VH > R.VW * 1.3) ty += R.VH * 0.08;
   return { x: clamp(tx, R.VW / 2, ZT * TS - R.VW / 2), y: clamp(ty, R.VH / 2, ZT * TS - R.VH / 2) };
 };
-// nobody leaves the realm by accident
-const _onBlurRealm = CD.onBlur;
-CD.onBlur = () => { if (W.on) saveRealm(true); _onBlurRealm(); };
 window.addEventListener('pagehide', () => { if (W.on) saveRealm(true); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && W.on) saveRealm(true); });
 

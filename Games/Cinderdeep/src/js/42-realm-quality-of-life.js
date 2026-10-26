@@ -127,7 +127,7 @@ UI.realmMap = function (tab = 'zone') {
     }
   }
 };
-questList = function () {
+function questList() {
   const qs = W.ch.quests || [];
   if (!qs.length) return h('p', {}, 'No quests. Quest boards in every town have work, and guilds pay for bounties.');
   const tracked = (q) => W.ch.track === q.id || (W.ch.track !== 'wp' && !qs.some((x) => x.id === W.ch.track) && qs.find((x) => questTarget(x)) === q);

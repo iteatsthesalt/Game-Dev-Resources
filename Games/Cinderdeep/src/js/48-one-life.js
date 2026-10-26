@@ -42,16 +42,6 @@ function curChar() {
 }
 
 /* ---------- talents belong to the character, not the class ---------- */
-const _treeOfLife = treeOf;
-treeOf = function (cls) {
-  const ch = curChar();
-  if (ch && ch.cls === cls) {
-    const T = ch.tree || (ch.tree = { xp: 0, alloc: [] });
-    if (T.ver !== TREE_VER) { T.alloc = []; T.attr = {}; T.ver = TREE_VER; }
-    return T;
-  }
-  return _treeOfLife(cls);
-};
 
 /* ---------- a descent made by a character ---------- */
 const _startRunLife = startRun;

@@ -377,8 +377,6 @@ function paintCreature(P, def, f) {
     }
   }
 }
-// register every realm creature as a monster painter
-const _creatureW = {};
 for (const id in WORLD_KINDS) {
   const d = WORLD_KINDS[id];
   const [w, h] = creatureSize(d.fam, d.v, d.size);

@@ -9,25 +9,6 @@
 /* ---------- class levels ---------- */
 const soulsFor = (l) => Math.round(10 + 5 * l + 0.6 * l * l);
 const MAX_CLASS_LEVEL = 100;
-function treeOf(cls) {
-  const T = (CD.save.tree = CD.save.tree || {});
-  return T[cls] || (T[cls] = { xp: 0, alloc: [] });
-}
-function classLevelInfo(cls) {
-  const T = treeOf(cls);
-  let xp = T.xp || 0, lvl = 1;
-  while (lvl < MAX_CLASS_LEVEL && xp >= soulsFor(lvl)) { xp -= soulsFor(lvl); lvl++; }
-  const points = lvl - 1 + (CD.save.treeBonus || 0);
-  return { lvl, into: xp, need: soulsFor(lvl), points, spent: T.alloc.length, free: Math.max(0, points - T.alloc.length) };
-}
-function bankSouls(cls, n) {
-  const before = classLevelInfo(cls).lvl;
-  treeOf(cls).xp += n;
-  const after = classLevelInfo(cls).lvl;
-  const fs = CD.save.fs; fs.soulsBanked = (fs.soulsBanked || 0) + n;
-  persist();
-  return { before, after };
-}
 
 /* ---------- souls in a run ---------- */
 hook('runStart', (run) => { run.souls = 0; run.soulsBanked = 0; run.nemSeen = []; });
@@ -111,7 +92,6 @@ hook('update', (dt) => {
     else if (Math.hypot(p.x - el.x, p.y - el.y) < 60 && Math.random() < dt * 0.35) { el.say = rndPick(ELF_LINES); el.sayT = 2.4; Sound.play('elf', { p: 0.9 + el.i * 0.08 }); }
   }
 });
-function dmtHue(t, x, y) { return (t * 70 + x * 9 + y * 5) % 360; }
 hook('renderFloor', (g, cx, cy, vis) => {
   for (const r of vis) {
     if (r.type !== 'dmt') continue;

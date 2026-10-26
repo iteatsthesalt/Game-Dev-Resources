@@ -1,9 +1,7 @@
 /* ============================================================
-   Cinderdeep — the Passive Tree. A permanent constellation of
-   ~270 nodes in six sectors, one per archetype. Every character
-   starts in its sector and spends talent points from its class
-   level. Evolution nodes and keystones change how heroes awaken
-   and how beasts evolve.
+   Cinderdeep — what talents do. The nodes' effects, keystones,
+   evolution and apex nodes, attributes, and the talent screen;
+   the talent web (51-talent-web.js) lays the nodes out.
    ============================================================ */
 const TREE_VER = 4;
 const SECTORS = [
@@ -18,25 +16,9 @@ const CLASS_SECTOR = { knight: 0, paladin: 0, pebblet: 0, berserker: 1, monk: 1,
 const sectorOf = (cls) => CLASS_SECTOR[cls] ?? 0;
 
 /* ---------- what nodes do ---------- */
-const MINOR_STATS = [
-  [['hpAdd', 8, '+8 max health'], ['dmgMul', 0.04, '+4% damage'], ['armor', 1, '+1 armor'], ['meleeDmg', 0.06, '+6% melee damage'], ['regen', 0.15, '+0.15 health per second'], ['kbMul', 0.1, '+10% knockback']],
-  [['atkSpd', 0.04, '+4% attack speed'], ['crit', 0.025, '+2.5% crit chance'], ['meleeDmg', 0.05, '+5% melee damage'], ['critMul', 0.08, '+8% crit damage'], ['lifesteal', 0.004, '+0.4% lifesteal'], ['dmgMul', 0.03, '+3% damage']],
-  [['spdMul', 0.03, '+3% move speed'], ['dodge', 0.02, '+2% dodge'], ['rangedDmg', 0.06, '+6% missile damage'], ['atkSpd', 0.03, '+3% attack speed'], ['crit', 0.02, '+2% crit chance'], ['goldMul', 0.05, '+5% gold']],
-  [['shockCh', 0.04, '+4% shock chance'], ['abDmg', 0.05, '+5% ability damage'], ['crit', 0.02, '+2% crit chance'], ['cdMul', 0.975, 'Abilities recharge 2.5% faster'], ['chillCh', 0.04, '+4% chill chance'], ['spdMul', 0.02, '+2% move speed']],
-  [['abDmg', 0.06, '+6% ability damage'], ['cdMul', 0.97, 'Abilities recharge 3% faster'], ['burnCh', 0.04, '+4% burn chance'], ['xpMul', 0.04, '+4% experience'], ['hpAdd', 5, '+5 max health'], ['burnMul', 0.06, '+6% burn damage']],
-  [['poisonCh', 0.04, '+4% poison chance'], ['allyDmg', 0.08, '+8% ally damage'], ['regen', 0.12, '+0.12 health per second'], ['lifesteal', 0.004, '+0.4% lifesteal'], ['soulGain', 0.04, '+4% souls'], ['dmgTaken', 0.98, '2% less damage taken']],
-];
 const MULT_KEYS = new Set(['cdMul', 'dmgTaken']);
 function applyStat(s, k, v) { if (MULT_KEYS.has(k)) s[k] = (s[k] ?? 1) * v; else s[k] = (s[k] || 0) + v; }
 const N = (name, desc, apply, extra = {}) => ({ name, desc, apply, ...extra });
-const NOTABLES = [
-  [N('Iron Constitution', '+30 max health and +2 armor', (s) => { s.hpAdd += 30; s.armor += 2; }), N("Juggernaut's Hide", 'Take 10% less damage. +1 armor', (s) => { s.dmgTaken *= 0.9; s.armor += 1; }), N('Crushing Blows', '+15% melee damage and +20% knockback', (s) => { applyStat(s, 'meleeDmg', 0.15); s.kbMul += 0.2; }), N('Undying', '+0.6 health per second. Heal 5% when a room is cleared', (s) => { s.regen += 0.6; s.clearHeal += 0.05; }), N("Titan's Grip", '+12% damage and +10% max health', (s) => { s.dmgMul += 0.12; s.hpMul += 0.1; }), N('Bulwark Stance', 'Block one hit every 15 seconds', (s) => { s.bulwark = s.bulwark ? Math.min(s.bulwark, 12) : 15; })],
-  [N('Bloodthirst', '+1% lifesteal. Kills heal 1', (s) => { s.lifesteal += 0.01; s.killHeal += 1; }), N('Whirling Steel', '+10% attack speed and +5% move speed', (s) => { s.atkSpd += 0.1; s.spdMul += 0.05; }), N('Killer Instinct', '+8% crit chance and +25% crit damage', (s) => { s.crit += 0.08; s.critMul += 0.25; }), N('Rampage', '+20% damage while your combo is 10 or more', (s) => { s.rampage = true; }), N('Feral Rush', '+1 dash. Dashes recharge 15% faster', (s) => { s.dashMax += 1; s.dashCd *= 0.85; }), N('Red Mist', '+15% attack speed below half health', (s) => { s.redMist = true; })],
-  [N('Eagle Eye', '+15% missile damage. Missiles pierce 1 more foe', (s) => { applyStat(s, 'rangedDmg', 0.15); s.pierceBonus += 1; }), N('Phantom', '+8% dodge and +5% move speed', (s) => { s.dodge += 0.08; s.spdMul += 0.05; }), N('Quick Hands', '+12% attack speed', (s) => { s.atkSpd += 0.12; }), N('Fleet', '+10% move speed and +1 dash', (s) => { s.spdMul += 0.1; s.dashMax += 1; }), N('Lucky Find', '+2 luck and +15% gold', (s) => { s.luck += 2; s.goldMul += 0.15; }), N('Volley', 'Missile weapons fire +1 projectile', (s) => { s.projBonus += 1; })],
-  [N('Static Charge', '+12% shock chance. Shocks jump to 1 more foe', (s) => { s.shockCh += 0.12; s.shockChain += 1; }), N('Frozen Touch', '+12% chill chance. Frozen foes take 20% more', (s) => { s.chillCh += 0.12; s.shatter = Math.max(s.shatter, 0) + 0.2; }), N('Spell Echo', '10% chance an ability recharges instantly', (s) => { s.echoCast = Math.max(s.echoCast, 0) + 0.1; }), N('Arcane Flow', 'Abilities recharge 10% faster and deal 10% more', (s) => { s.cdMul *= 0.9; s.abDmg += 0.1; }), N('Storm Rider', '+8% move speed. Dashing shocks foes you pass', (s) => { s.spdMul += 0.08; s.staticDash = true; }), N('Conductor', '+20% damage to stunned, frozen or chilled foes', (s) => { s.opportunist += 0.2; })],
-  [N('Pyromaniac', '+15% burn chance. Burns deal 30% more', (s) => { s.burnCh += 0.15; s.burnMul += 0.3; }), N('Archmage', '+25% ability damage', (s) => { s.abDmg += 0.25; }), N('Wellspring', '+1 potion. Potions heal 20% more', (s) => { s.potMax += 1; s.potHeal += 0.2; }), N("Scholar's Mind", '+20% experience', (s) => { s.xpMul += 0.2; }), N('Combustion Core', 'Burning foes explode when they die', (s) => { s.combust = true; }), N('Insight', '+10% crit chance and +10% ability damage', (s) => { s.crit += 0.1; s.abDmg += 0.1; })],
-  [N('Plaguebringer', '+15% poison chance. Poison spreads when foes die', (s) => { s.poisonCh += 0.15; s.plague = true; }), N('Gravecaller', '+40% ally damage. Kills raise a skeleton 6% of the time', (s) => { applyStat(s, 'allyDmg', 0.4); s.graveCall = true; }), N('Vampirism', '+2% lifesteal', (s) => { s.lifesteal += 0.02; }), N('Soul Eater', '+25% souls from foes', (s) => { applyStat(s, 'soulGain', 0.25); }), N('Withering', '+20% damage to poisoned foes', (s) => { s.withering = true; }), N('Leech Lord', 'Kills heal 2', (s) => { s.killHeal += 2; })],
-];
 const KEYSTONES = {
   unbreakable: N('Unbreakable', '+4 armor. Take 20% less damage and ignore knockback and spikes. One dash fewer and 10% slower', (s) => { s.armor += 4; s.dmgTaken *= 0.8; s.sturdy = true; s.dashMax = Math.max(1, s.dashMax - 1); s.spdMul -= 0.1; }),
   bloodrage: N('Blood Rage', '+30% damage below half health. You take 15% more damage', (s) => { s.bloodRage = true; s.dmgTaken *= 1.15; }),
@@ -52,8 +34,6 @@ const KEYSTONES = {
   ironwill: N('Iron Will', '+30% max health and double regeneration. 15% slower attacks', (s) => { s.hpMul += 0.3; s.ironWill = true; s.atkSpd -= 0.15; }),
   chaosstrain: N('Chaos Strain', 'Every evolution or awakening grows a random chaos mutation on you. You take 10% more damage', (s) => { s.chaosStrain = true; s.dmgTaken *= 1.1; }),
 };
-const SECTOR_KEY = ['unbreakable', 'bloodrage', 'acrobatics', 'overload', 'eldritch', 'vaalpact'];
-const GATE_KEY = ['resolute', 'pointblank', 'winddancer', 'avatar', 'necropact', 'ironwill'];
 // evolution nodes: they change what evolving (beasts) or awakening (heroes) does
 const EVO_NODES = [
   N('Titanic Growth', 'Once you evolve or awaken: +25% max health and +2 armor', (s) => { s.hpMul += 0.25; s.armor += 2; }, { evo: true }),
@@ -72,86 +52,12 @@ const APEX_NODES = [
   N('Apex: Chimera', 'Beasts that reach their final form also learn the other path’s ability. Heroes awaken twice as strongly', () => {}, { evo: true, flag: 'chimera', always: true }),
 ];
 
-/* ---------- the layout (deterministic: node ids never change within a version) ---------- */
-const TREE = (() => {
-  const nodes = [], edges = [];
-  const add = (r, deg, type, sector, extra = {}) => { const a = (deg * Math.PI) / 180; const n = { id: nodes.length, x: Math.round(Math.cos(a) * r), y: Math.round(Math.sin(a) * r), type, sector, links: [], ...extra }; nodes.push(n); return n; };
-  const link = (a, b) => { if (a === b || a.links.includes(b.id)) return; a.links.push(b.id); b.links.push(a.id); edges.push([a.id, b.id]); };
-  const chain = (l) => { for (let i = 1; i < l.length; i++) link(l[i - 1], l[i]); };
-  let mi = 0;
-  const minor = (r, deg, s) => { const st = MINOR_STATS[s][mi++ % 6]; return add(r, deg, 'minor', s, { stat: st }); };
-  const notable = (r, deg, s, k) => add(r, deg, 'notable', s, { def: NOTABLES[s][k % NOTABLES[s].length] });
-  // the heart: Chaos Strain, two steps from every start
-  const heart = add(0, 0, 'keystone', -1, { key: 'chaosstrain', def: KEYSTONES.chaosstrain });
-  const starts = SECTORS.map((S, s) => add(150, -90 + s * 60, 'start', s));
-  starts.forEach((st, s) => { const m = add(78, -90 + s * 60, 'minor', s, { stat: ['dmgMul', 0.02, '+2% damage'] }); link(st, m); link(m, heart); });
-  const ring = [];
-  for (let i = 0; i < 36; i++) ring.push(minor(240, -90 + i * 10, Math.floor(((i + 3) % 36) / 6)));
-  for (let i = 0; i < 36; i++) link(ring[i], ring[(i + 1) % 36]);
-  starts.forEach((st, s) => { const c = 6 * s; link(st, ring[c]); link(st, ring[(c + 35) % 36]); link(st, ring[(c + 1) % 36]); });
-  const sideNotables = [];
-  SECTORS.forEach((S, s) => {
-    const a0 = -90 + s * 60;
-    const spoke = (off, isCenter) => {
-      const base = ring[(6 * s + off / 10 + 36) % 36], deg = a0 + off;
-      const a = minor(320, deg, s), b = minor(390, deg, s);
-      chain([base, a, b]);
-      return { a, b, deg };
-    };
-    const L = spoke(-20), C = spoke(0, true), Rr = spoke(20);
-    // cross links at 390
-    for (const [p1, p2, d] of [[L.b, C.b, a0 - 10], [C.b, Rr.b, a0 + 10]]) { const m = minor(390, d, s); link(p1, m); link(m, p2); }
-    // side branches: a notable, two minors, then a wheel cluster
-    const side = (Sp, dir, k) => {
-      const nt = notable(460, Sp.deg, s, k); link(Sp.b, nt);
-      const m1 = minor(540, Sp.deg + dir * 2, s), m2 = minor(610, Sp.deg + dir * 3, s); chain([nt, m1, m2]);
-      const cdeg = Sp.deg + dir * 4, ca = (cdeg * Math.PI) / 180, cx = Math.cos(ca) * 700, cy = Math.sin(ca) * 700;
-      const center = add(0, 0, 'notable', s, { def: NOTABLES[s][(k + 2) % 6] }); center.x = Math.round(cx); center.y = Math.round(cy);
-      const wheel = [];
-      for (let i = 0; i < 5; i++) { const wa = ca + Math.PI + (i - 2) * 0.62; const w = add(0, 0, 'minor', s, { stat: MINOR_STATS[s][(mi++ + i) % 6] }); w.x = Math.round(cx + Math.cos(wa) * 52); w.y = Math.round(cy + Math.sin(wa) * 52); wheel.push(w); }
-      chain(wheel); link(m2, wheel[2]); link(wheel[0], center); link(wheel[4], center);
-      const far = add(0, 0, 'notable', s, { def: NOTABLES[s][(k + 4) % 6] }); far.x = Math.round(cx + Math.cos(ca) * 70); far.y = Math.round(cy + Math.sin(ca) * 70); link(center, far);
-      sideNotables.push({ s, dir, nt, wheel, far });
-      return { nt, m1, wheel, far };
-    };
-    const SL = side(L, -1, 0), SR = side(Rr, 1, 1);
-    // the centre spoke: evolution node, a cross link, the sector keystone, then the apex
-    const evo = add(460, a0, 'evo', s, { def: EVO_NODES[s] }); link(C.b, evo);
-    const c1 = minor(540, a0, s); link(evo, c1);
-    for (const [side2, d] of [[SL.m1, a0 - 8], [SR.m1, a0 + 8]]) { const m = minor(540, d, s); link(side2, m); link(m, c1); }
-    const key = add(630, a0, 'keystone', s, { key: SECTOR_KEY[s], def: KEYSTONES[SECTOR_KEY[s]] }); link(c1, key);
-    const c2 = minor(710, a0, s), c3 = minor(780, a0, s); chain([key, c2, c3]);
-    const apex = add(860, a0, 'evo', s, { def: APEX_NODES[s], apex: true }); link(c3, apex);
-  });
-  // bridges between neighbouring sectors: a minor at 460 and a gate keystone further out
-  SECTORS.forEach((S, s) => {
-    const t = (s + 1) % 6, a = sideNotables.find((q) => q.s === s && q.dir === 1), b = sideNotables.find((q) => q.s === t && q.dir === -1);
-    const mid = minor(460, -90 + s * 60 + 30, s); link(a.nt, mid); link(mid, b.nt);
-    const gate = add(760, -90 + s * 60 + 30, 'keystone', s, { key: GATE_KEY[s], def: KEYSTONES[GATE_KEY[s]], gate: true });
-    link(a.far, gate); link(gate, b.far);
-  });
-  return { nodes, edges, starts };
-})();
+// the nodes, links and starts; the talent web (51-talent-web.js) grows them from the heroes and beasts
+const TREE = { nodes: [], edges: [], starts: [] };
 
-/* ---------- the wider tree: attributes on every road, an outer ring, more clusters, more keystones ---------- */
+/* ---------- attributes, and the outer keystones ---------- */
 const ATTR = { str: { name: 'Strength', short: 'Str', col: '#e2434f' }, dex: { name: 'Dexterity', short: 'Dex', col: '#74d672' }, int: { name: 'Intelligence', short: 'Int', col: '#7fc8ff' } };
 const ATTR_IDS = ['str', 'dex', 'int'], ATTR_PER = 5;
-const SECTOR_ATTR = ['str', 'str', 'dex', 'dex', 'int', 'int'];
-// small passives that lean toward an element path
-const TREE_PATH_MINOR = {
-  fire: ['+4% burn chance, +6% burn damage', (s) => { s.burnCh += 0.04; s.burnMul += 0.06; }], frost: ['+4% chill chance, +3% max health', (s) => { s.chillCh += 0.04; s.hpMul += 0.03; }],
-  storm: ['+4% shock chance, +3% attack speed', (s) => { s.shockCh += 0.04; s.atkSpd += 0.03; }], venom: ['+4% poison chance, +0.1 health per second', (s) => { s.poisonCh += 0.04; s.regen += 0.1; }],
-  shadow: ['+3% crit chance, +1.5% dodge', (s) => { s.crit += 0.03; s.dodge += 0.015; }], earth: ['+1 armor, +8 max health', (s) => { s.armor += 1; s.hpAdd += 8; }],
-  chaos: ['+4% damage', (s) => { s.dmgMul += 0.04; }], luck: ['+1 luck, +6% gold', (s) => { s.luck += 1; s.goldMul += 0.06; }],
-};
-const NOTABLES2 = [
-  [['earth', N('Bedrock', '+3 armor and +10% max health', (s) => { s.armor += 3; s.hpMul += 0.1; })], ['earth', N('Living Wall', 'Take 8% less damage. +25 max health', (s) => { s.dmgTaken *= 0.92; s.hpAdd += 25; })]],
-  [['fire', N('Kindled Wrath', '+15% burn chance and +8% damage', (s) => { s.burnCh += 0.15; s.dmgMul += 0.08; })], ['fire', N('Ashen Heart', 'Burns deal 40% more. +1% lifesteal', (s) => { s.burnMul += 0.4; s.lifesteal += 0.01; })]],
-  [['luck', N("Gambler's Edge", '+3 luck and +8% crit chance', (s) => { s.luck += 3; s.crit += 0.08; })], ['shadow', N('Unseen Blade', '+8% dodge and +30% crit damage', (s) => { s.dodge += 0.08; s.critMul += 0.3; })]],
-  [['storm', N('Thunderhead', '+15% shock chance. Shocks jump to 1 more foe', (s) => { s.shockCh += 0.15; s.shockChain += 1; })], ['frost', N('Hoarfrost Mind', '+15% chill chance. Frozen foes take 20% more', (s) => { s.chillCh += 0.15; s.shatter += 0.2; })]],
-  [['chaos', N('Unstable Weave', '+20% ability damage and +6% damage', (s) => { s.abDmg += 0.2; s.dmgMul += 0.06; })], ['fire', N('Spellfire', '+15% ability damage and +10% burn chance', (s) => { s.abDmg += 0.15; s.burnCh += 0.1; })]],
-  [['venom', N('Rotblood', '+15% poison chance and +0.4 health per second', (s) => { s.poisonCh += 0.15; s.regen += 0.4; })], ['shadow', N('Grave Shade', '+6% crit chance. Kills heal 2', (s) => { s.crit += 0.06; s.killHeal += 2; })]],
-];
 Object.assign(KEYSTONES, {
   giantsblood: N("Giant's Blood", '+40% max health. 10% slower', (s) => { s.hpMul += 0.4; s.spdMul -= 0.1; }),
   pyreofruin: N('Pyre of Ruin', 'Burns deal double. Your weapon deals 20% less', (s) => { s.burnMul += 1; s.wDmg -= 0.2; }),
@@ -160,51 +66,6 @@ Object.assign(KEYSTONES, {
   bornofchaos: N('Born of Chaos', '+20% damage. You take 10% more damage', (s) => { s.dmgMul += 0.2; s.dmgTaken *= 1.1; }),
   plaguelord: N('Plague Lord', '+25% poison chance and poison spreads when foes die. 15% less max health', (s) => { s.poisonCh += 0.25; s.plague = true; s.hpMul -= 0.15; }),
 });
-const OUTER_KEY = ['giantsblood', 'pyreofruin', 'fortunesfavour', 'stormherald', 'bornofchaos', 'plaguelord'];
-(() => {
-  const nodes = TREE.nodes, edges = TREE.edges;
-  const add = (r, deg, type, sector, extra = {}) => { const a = (deg * Math.PI) / 180; const n = { id: nodes.length, x: Math.round(Math.cos(a) * r), y: Math.round(Math.sin(a) * r), type, sector, links: [], ...extra }; nodes.push(n); return n; };
-  const link = (a, b) => { if (a === b || a.links.includes(b.id)) return; a.links.push(b.id); b.links.push(a.id); edges.push([a.id, b.id]); };
-  const chain = (l) => { for (let i = 1; i < l.length; i++) link(l[i - 1], l[i]); };
-  const attr = (r, deg, s) => add(r, deg, 'minor', s, { attr: SECTOR_ATTR[s] });
-  // the outer ring: attributes all the way round, so any build can walk to any other
-  const ring = [];
-  for (let i = 0; i < 72; i++) ring.push(attr(960, -90 + i * 5, Math.floor(((i + 6) % 72) / 12)));
-  for (let i = 0; i < 72; i++) link(ring[i], ring[(i + 1) % 72]);
-  for (const n of nodes.slice(0, nodes.length - 72)) {
-    if (n.apex) link(n, ring[12 * n.sector]);
-    if (n.gate) link(n, ring[12 * n.sector + 6]);
-  }
-  SECTORS.forEach((S, s) => {
-    const a0 = -90 + s * 60;
-    // two clusters: a road of attributes out to a ring of themed passives round a notable
-    [-1, 1].forEach((dir, k) => {
-      const [path, def] = NOTABLES2[s][k], deg = a0 + dir * 20, base = ring[(12 * s + dir * 4 + 72) % 72];
-      const t1 = attr(1040, deg, s), t2 = attr(1110, deg, s); chain([base, t1, t2]);
-      const ca = (deg * Math.PI) / 180, cx = Math.round(Math.cos(ca) * 1220), cy = Math.round(Math.sin(ca) * 1220);
-      const center = add(0, 0, 'notable', s, { def, path }); center.x = cx; center.y = cy;
-      const [txt, fn] = TREE_PATH_MINOR[path], wheel = [];
-      for (let i = 0; i < 5; i++) {
-        const wa = ca + Math.PI + (i - 2) * 0.62, w = add(0, 0, 'minor', s, { path, def: N(`${path[0].toUpperCase()}${path.slice(1)} passive`, txt, fn) });
-        w.x = Math.round(cx + Math.cos(wa) * 56); w.y = Math.round(cy + Math.sin(wa) * 56); wheel.push(w);
-      }
-      chain(wheel); link(t2, wheel[2]); link(wheel[0], center); link(wheel[4], center);
-    });
-    // and a keystone at the very edge
-    const k1 = attr(1060, a0, s), k2 = attr(1160, a0, s), k3 = attr(1260, a0, s);
-    const key = add(1390, a0, 'keystone', s, { key: OUTER_KEY[s], def: KEYSTONES[OUTER_KEY[s]] });
-    chain([ring[12 * s], k1, k2, k3, key]);
-  });
-})();
-// which attribute an attribute node gives this character: its region's, unless they chose another
-function treeAttrOf(cls, n) { const T = treeOf(cls); return (T.attr && T.attr[n.id]) || n.attr; }
-function treeCycleAttr(cls, id) {
-  const T = treeOf(cls), n = TREE.nodes[id], cur = treeAttrOf(cls, n), nxt = ATTR_IDS[(ATTR_IDS.indexOf(cur) + 1) % 3];
-  T.attr = T.attr || {};
-  T.attr[id] = nxt;
-  persist(); treeChanged(cls);
-  return nxt;
-}
 function treeAttrs(cls) {
   const out = { str: 0, dex: 0, int: 0 };
   for (const id of treeAlloc(cls)) { const n = TREE.nodes[id]; if (n && n.attr) out[treeAttrOf(cls, n)] += ATTR_PER; }
@@ -225,36 +86,10 @@ const nodeDesc = (n) => { const d = nodeDesc0(n); return typeof talentSealed ===
 const nodeName = (n) => (n.attr ? `${ATTR[n.attr].name} road` : n.def ? n.def.name : n.type === 'start' ? `${SECTORS[n.sector].name}` : SECTORS[n.sector] ? `${SECTORS[n.sector].name} passive` : 'Passive');
 
 /* ---------- allocation ---------- */
-function treeAlloc(cls) {
-  if (CD.save.treeVer !== TREE_VER) { if (CD.save.tree) for (const k in CD.save.tree) CD.save.tree[k].alloc = []; CD.save.treeVer = TREE_VER; }
-  return treeOf(cls).alloc;
-}
-function treeStart(cls) { return TREE.starts[sectorOf(cls)]; }
 function treeHas(cls, nodeOrFlag) {
   const alloc = treeAlloc(cls);
   if (typeof nodeOrFlag === 'string') return alloc.some((id) => { const n = TREE.nodes[id]; return n && n.def && (n.key === nodeOrFlag || n.def.flag === nodeOrFlag); });
   return alloc.includes(nodeOrFlag);
-}
-function treeReachable(cls, set) {
-  const st = treeStart(cls), seen = new Set([st.id]), q = [st.id];
-  while (q.length) { const u = q.shift(); for (const v of TREE.nodes[u].links) if (!seen.has(v) && set.has(v)) { seen.add(v); q.push(v); } }
-  return seen;
-}
-// shortest path of unallocated nodes from what you have to the target
-function treePath(cls, target) {
-  const alloc = new Set(treeAlloc(cls)), st = treeStart(cls);
-  if (alloc.has(target) || target === st.id) return [];
-  const have = new Set([st.id, ...alloc]), prev = new Map(), q = [...have];
-  for (const h of have) prev.set(h, -1);
-  while (q.length) {
-    const u = q.shift();
-    if (u === target) break;
-    for (const v of TREE.nodes[u].links) { if (prev.has(v) || TREE.nodes[v].type === 'start') continue; prev.set(v, u); q.push(v); }
-  }
-  if (!prev.has(target)) return null;
-  const path = [];
-  for (let u = target; u >= 0 && !have.has(u); u = prev.get(u)) path.push(u);
-  return path.reverse();
 }
 function treeAllocate(cls, target) {
   const path = treePath(cls, target), info = classLevelInfo(cls);
@@ -263,12 +98,6 @@ function treeAllocate(cls, target) {
   persist();
   treeChanged(cls);
   return true;
-}
-function treeCanRefund(cls, id) {
-  const alloc = treeAlloc(cls);
-  if (!alloc.includes(id)) return false;
-  const rest = new Set(alloc.filter((x) => x !== id)), seen = treeReachable(cls, rest);
-  return alloc.every((x) => x === id || seen.has(x));
 }
 const REFUND_COST = 3;
 function treeRefund(cls, id) {
@@ -280,12 +109,6 @@ function treeRefund(cls, id) {
   return null;
 }
 const resetCost = (cls) => (classLevelInfo(cls).lvl <= 5 ? 0 : 40);
-function treeReset(cls) {
-  const c = resetCost(cls);
-  if ((CD.save.embers || 0) < c) return `A full reset costs ${c} embers`;
-  CD.save.embers -= c; treeOf(cls).alloc = []; persist(); treeChanged(cls);
-  return null;
-}
 function treeChanged(cls) { if (G.p && G.run && G.run.cls === cls && !G.demo) recalcStats(G.p); }
 
 /* ---------- effects ---------- */

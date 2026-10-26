@@ -188,7 +188,6 @@ TOP_FX.bite = (g, f, cx, cy) => {
 /* ============================================================
    Abilities
    ============================================================ */
-const inRoomPt = (x, y) => { if (!G.room) return { x, y }; return { x: clamp(x, (G.room.ix + 0.5) * TS, (G.room.ix + G.room.iw - 0.5) * TS), y: clamp(y, (G.room.iy + 0.5) * TS, (G.room.iy + G.room.ih - 0.5) * TS) }; };
 function wallStop(p, ang, d) {
   let fx = p.x, fy = p.y;
   for (let k = 1; k <= 24; k++) { const nx = p.x + (Math.cos(ang) * d * k) / 24, ny = p.y + (Math.sin(ang) * d * k) / 24; if (hitsWall(G.fl, nx, ny, p.r, p.fly)) break; fx = nx; fy = ny; }

@@ -46,7 +46,7 @@ function talentOwn(cls) {
 // which points are being spent: your own while you live, everyone's otherwise
 const talentLayer = (cls) => (CD.treeLayer === 'shared' || !talentOwn(cls) ? 'shared' : 'own');
 const talentLevelOf = (xp) => { let x = xp || 0, lvl = 1; while (lvl < MAX_CLASS_LEVEL && x >= soulsFor(lvl)) { x -= soulsFor(lvl); lvl++; } return { lvl, into: x }; };
-treeOf = function (cls) { return talentLayer(cls) === 'own' ? talentOwn(cls) : talentShared(); };
+function treeOf(cls) { return talentLayer(cls) === 'own' ? talentOwn(cls) : talentShared(); };
 // who placed what: everyone's points first, then every trail, living or fallen
 function talentOwners() {
   if (_towners && _towners.save === CD.save) return _towners.m;
@@ -57,7 +57,7 @@ function talentOwners() {
   return m;
 }
 // everything on the tree works for everyone
-treeAlloc = function () { return [...talentOwners().keys()]; };
+function treeAlloc() { return [...talentOwners().keys()]; };
 const _treeChangedT = treeChanged;
 treeChanged = function (cls) { _towners = null; _treeChangedT(cls); };
 function talentWhose(id) {
@@ -66,12 +66,12 @@ function talentWhose(id) {
   const k = m.get(id), R = k ? talentShared().trails[k] : null;
   return k == null ? "Placed with everyone's points" : R ? `Placed by ${R.name}${R.fell ? ', who has fallen' : ''}` : 'Placed long ago';
 }
-classLevelInfo = function (cls) {
+function classLevelInfo(cls) {
   const layer = talentLayer(cls), T = treeOf(cls), { lvl, into } = talentLevelOf(T.xp);
   const points = lvl - 1 + (layer === 'shared' ? CD.save.treeBonus || 0 : 0);
   return { lvl, into, need: soulsFor(lvl), points, spent: T.alloc.length, free: Math.max(0, points - T.alloc.length), layer };
 };
-bankSouls = function (cls, n) {
+function bankSouls(cls, n) {
   const S = talentShared(), O = talentOwn(cls), s0 = talentLevelOf(S.xp).lvl, o0 = O ? talentLevelOf(O.xp).lvl : s0;
   S.xp += n; if (O) O.xp += n;
   const fs = CD.save.fs; fs.soulsBanked = (fs.soulsBanked || 0) + n;
@@ -81,7 +81,7 @@ bankSouls = function (cls, n) {
   return { before: o0, after: O ? talentLevelOf(O.xp).lvl : s1 };
 };
 // your own points start from your place on the rim; everyone's from any start; both may grow from anything already placed
-treePath = function (cls, target) {
+function treePath(cls, target) {
   const layer = talentLayer(cls), all = talentOwners(), st = treeStart(cls), N0 = TREE.nodes[target];
   if (!N0) return null;
   if (all.has(target) || target === st.id) return [];
@@ -108,8 +108,8 @@ function talentConnected(without) {
   while (q.length) { const u = q.shift(); for (const v of TREE.nodes[u].links) if (!seen.has(v) && rest.has(v)) { seen.add(v); q.push(v); } }
   return [...rest].every((x) => seen.has(x));
 }
-treeCanRefund = function (cls, id) { return treeOf(cls).alloc.includes(id) && talentConnected([id]); };
-treeReset = function (cls) {
+function treeCanRefund(cls, id) { return treeOf(cls).alloc.includes(id) && talentConnected([id]); };
+function treeReset(cls) {
   const T = treeOf(cls), c = resetCost(cls);
   if (!T.alloc.length) return null;
   if (!talentConnected(T.alloc)) return "Others' passives grow from these: refund them one at a time";
@@ -117,11 +117,11 @@ treeReset = function (cls) {
   CD.save.embers -= c; T.alloc = []; T.attr = {}; persist(); treeChanged(cls);
   return null;
 };
-treeAttrOf = function (cls, n) {
+function treeAttrOf(cls, n) {
   const k = talentOwners().get(n.id), T = talentShared(), L = k == null ? T : T.trails[k];
   return (L && L.attr && L.attr[n.id]) || n.attr;
 };
-treeCycleAttr = function (cls, id) {
+function treeCycleAttr(cls, id) {
   const T = treeOf(cls), n = TREE.nodes[id];
   const nxt = ATTR_IDS[(ATTR_IDS.indexOf(treeAttrOf(cls, n)) + 1) % 3];
   T.attr[id] = nxt;

@@ -203,7 +203,7 @@ function glyphStyle() {
 }
 const padGlyph = (i) => GLYPHS[glyphStyle()].b[i] || `B${i}`;
 const keyName = (code) => ({ Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'R-Shift', ControlLeft: 'Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'Alt', Escape: 'Esc', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', Tab: 'Tab', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' }[code] || code.replace(/^Key|^Digit|^Numpad/, (m) => (m === 'Numpad' ? 'Num' : '')));
-keyLabel = function (action) {
+function keyLabel(action) {
   const d = Input.device;
   if (d === 'touch') return '';
   if (d === 'pad') { const b = PADMAP[action]; return b && b.length ? padGlyph(b[0]) : ''; }

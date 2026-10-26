@@ -138,8 +138,8 @@ function duelDeflect(d,perfect){
   s.parryUntil=-99;s.recoverUntil=G.t+.08;s.guard=true;duelAnim(perfect?'perfectParry':'parry',.35);duelVfx(perfect?'perfect':'parry',p.x,p.y,perfect?'#ffe4a5':'#c1e7f3');duelSound(perfect?'perfect':'parry');hitstop(perfect?.055:.025);
   return d.pr?HIT.REFLECT:HIT.BLOCK;
 }
-// Replace the previous precision-dodge wrapper, retaining native damage/relic hooks.
-const _hurtDuel=_hurtSG;
+// guard, parry and dodge resolve before the native damage and relic hooks
+const _hurtDuel=hurtPlayer;
 hurtPlayer=function(amount,src={}){
   if(!duelOn())return _hurtDuel(amount,src);const p=G.p,s=duelState(),d=duelSource(src);
   if(p.dead||amount<=0)return HIT.NONE;
@@ -301,8 +301,6 @@ const _deflectBossDuel=duelDeflect;
 duelDeflect=function(d,perfect){const result=_deflectBossDuel(d,perfect);if(perfect&&d.e&&(d.e.boss||d.e.sgCaptain)){const b=d.e._duelBoss;if(b&&b.beat===2){b.finalParry=true;}else if(!b&&['recover','rest','idle'].includes(d.e.st))d.e._duelFinishUntil=G.t+1.4;}return result;};
 hook('update',dt=>{
   if(!duelOn())return;
-  // The legacy momentum/precision hooks are disabled by the base flow gate.
-  SG.counterUntil=0;
   for(const e of G.ents){
     if(e._duelPosture&&G.t-(e._duelPostureAt||0)>2.8)e._duelPosture=Math.max(0,e._duelPosture-dt*14);
     const b=e._duelBoss;if(b&&b.finalParry&&b.phase==='rest'){b.t=Math.max(b.t,1.9);b.finalParry=false;e._duelFinishUntil=G.t+1.9;}

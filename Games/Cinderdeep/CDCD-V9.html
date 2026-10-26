@@ -4777,10 +4777,7 @@ const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
-const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
-const angTo = (ax, ay, bx, by) => Math.atan2(by - ay, bx - ax);
 const angDiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
-const approach = (v, t, s) => (v < t ? Math.min(t, v + s) : Math.max(t, v - s));
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
 const sign = (v) => (v < 0 ? -1 : v > 0 ? 1 : 0);
 
@@ -10089,26 +10086,6 @@ function drawPlayer(g, p, cx, cy) {
     g.save(); g.translate(Math.round(bx), Math.round(by)); g.rotate(G.t * 14); g.fillStyle = '#dde3ec'; g.fillRect(-4, -1, 8, 2); g.fillStyle = '#ffffff'; g.fillRect(-4, -1, 3, 1); g.restore();
   }
 }
-function drawHeld(g, p, x, y) {
-  const w = p.weapon, def = WEAPON[w.id], sp = heldWeapon(w.id);
-  let ang = p.aim, ox = 0;
-  const sw = p.swing;
-  if (sw && (sw.style === 'slash' || sw.style === 'stab' || sw.style === 'punch' || sw.style === 'slam')) {
-    const k = clamp(sw.t / sw.dur, 0, 1), e = easeOut(k);
-    if (sw.style === 'slash' || sw.style === 'slam') ang = sw.ang + (sw.arc / 2) * sw.dir * (e * 2 - 1);
-    else ox = Math.sin(k * Math.PI) * 6;
-  } else if (sw && sw.style === 'spin') ang = sw.ang + (sw.t / sw.dur) * TAU;
-  else if (sw && sw.style === 'thrust') ox = Math.sin(clamp(sw.t / sw.dur, 0, 1) * Math.PI) * 10;
-  if (p.recoil > 0) { ox -= p.recoil * 30; p.recoil -= 1 / 60; }
-  const hx = x + Math.cos(ang) * (4 + ox), hy = y - 8 + Math.sin(ang) * (3 + ox * 0.6);
-  g.save();
-  g.translate(Math.round(hx), Math.round(hy));
-  g.rotate(ang);
-  if (Math.cos(ang) < 0) g.scale(1, -1);
-  g.drawImage(sp.c, -sp.ax, -sp.ay);
-  if (w.rar === 'legendary' || w.rar === 'epic') { g.globalAlpha = 0.25 + Math.sin(G.t * 5) * 0.15; g.drawImage(tintOf(sp, RARITY[w.rar].color, 'gl'), -sp.ax, -sp.ay); }
-  g.restore();
-}
 function drawEnt(g, e, cx, cy) {
   if (e.dead) return;
   if (e.boss) return drawBoss(g, e, cx, cy);
@@ -10490,12 +10467,6 @@ function setText(id, v) { if (HUD.last[id] !== v) { HUD.last[id] = v; $(id).text
 function setHTML(el, key, html) { if (HUD.last[key] !== html) { HUD.last[key] = html; el.innerHTML = html; } }
 function setW(el, key, v) { const s = (v * 100).toFixed(1) + '%'; if (HUD.last[key] !== s) { HUD.last[key] = s; el.style.width = s; } }
 
-function keyLabel(action) {
-  const d = Input.device;
-  if (d === 'pad') return { attack: 'RT', dash: 'A', ab1: 'LB', ab2: 'RB', use: 'X', swap: 'Y', potion: 'B', map: 'Back', pause: 'Start' }[action];
-  if (d === 'touch') return '';
-  return { attack: 'LMB', dash: 'Space', ab1: 'Q', ab2: 'E', use: 'F', swap: 'Tab', potion: 'R', map: 'M', pause: 'Esc' }[action];
-}
 
 function updateHUD(dt) {
   const p = G.p;
@@ -10719,128 +10690,12 @@ const btn = (label, onclick, cls = '', attrs = {}) => h('button', { class: 'btn 
 const emberChip = () => h('span', { class: 'embers', title: 'Embers' }, h('img', { alt: '', src: iconURL(miscIcon('ember'), 2) }), String(CD.save.embers || 0));
 
 /* ---------- title ---------- */
-UI.title = function () {
-  setMode('title');
-  startDemo();
-  const save = CD.save, has = !!save.run;
-  const el = h('div', { class: 'screen center title' },
-    h('div', { style: { display: 'grid', gap: '6px', justifyItems: 'center', marginBottom: '6px' } },
-      h('h1', { class: 'ttl' }, 'Cinderdeep'),
-      h('p', { class: 'ttl-sub' }, 'Twelve floors down to the Cinder King')),
-    h('div', { class: 'menu' },
-      has ? btn(`Continue · ${CLASS[save.run.cls].name}, ${floorLabel(save.run.floorIdx)}`, () => continueRun(), 'primary', { 'data-autofocus': true }) : null,
-      btn('New descent', () => UI.heroes(), has ? '' : 'primary', has ? {} : { 'data-autofocus': true }),
-      btn('Camp · spend embers', () => UI.camp()),
-      btn('Records', () => UI.records()),
-      btn('Settings', () => UI.settings(() => UI.title())),
-      btn('How to play', () => UI.help(() => UI.title()))),
-    h('div', { class: 'row' }, emberChip()),
-    h('p', { class: 'foot' }, `${save.stats.runs || 0} descents · ${save.stats.wins || 0} victories · deepest floor ${save.stats.bestFloor || 0}`),
-    h('p', { class: 'foot', id: 'save-note' }, saveNote()),
-  );
-  UI.open(el, {});
-};
 
 function saveNote() { return CD.cloud ? 'Progress is saved to your account.' : CD.cloudTried ? 'Progress saves in this browser.' : ''; }
 
 /* ---------- hero select ---------- */
-UI.heroes = function () {
-  const save = CD.save;
-  let sel = save.lastClass && save.unlocks.classes.includes(save.lastClass) ? save.lastClass : 'knight';
-  let heat = Math.min(save.lastHeat || 0, save.heatUnlocked || 0);
-  let lookSheet = save.lastSheet || '';
-  const grid = h('div', { class: 'heroes' });
-  const detail = h('div', { class: 'detail' });
-  const go = btn('Begin the descent', () => begin(), 'primary');
-  const begin = () => {
-    if (!save.unlocks.classes.includes(sel)) return;
-    save.lastClass = sel; save.lastHeat = heat; save.lastSheet = lookSheet;
-    const seedIn = $('seed-in'), seed = seedIn && seedIn.value.trim() ? seedIn.value.trim() : null;
-    UI.clear();
-    fadeTransition(() => startRun({ cls: sel, heat, seed, sheetId: lookSheet || null }));
-  };
-  const draw = () => {
-    grid.innerHTML = '';
-    for (const c of CLASSES) {
-      const unlocked = save.unlocks.classes.includes(c.id);
-      const cv = mkCanvas(24, 24), g = cv.getContext('2d');
-      const sp = heroSprites(c.look, c.id).front[0];
-      g.drawImage(sp.c, 12 - sp.ax, 23 - sp.ay);
-      const card = h('button', { class: `hero ${sel === c.id ? 'sel' : ''} ${unlocked ? '' : 'locked'}`, type: 'button', 'aria-pressed': sel === c.id ? 'true' : 'false', 'data-autofocus': sel === c.id ? true : null,
-        onclick: () => { Sound.play('ui'); sel = c.id; draw(); } },
-        cv, h('b', {}, c.name), h('small', {}, c.blurb),
-        h('span', { class: 'stats' }, `${c.hp} health`, ` · ${WEAPON[c.weapon].name}`),
-        unlocked ? null : h('span', { class: 'lock' }, `Unlock in camp · ${c.cost} embers`));
-      grid.append(card);
-    }
-    const c = CLASS[sel], unlocked = save.unlocks.classes.includes(sel);
-    detail.innerHTML = '';
-    const w = makeWeapon(c.weapon, 'common', new RNG(1));
-    const pas = h('div', { class: 'card', style: { '--rc': 'var(--ember-2)' } }, h('div', { class: 'head' }, h('img', { alt: '', src: iconURL(miscIcon('heat'), 3) }), h('div', {}, h('div', { class: 'nm' }, c.passive.name), h('div', { class: 'sub' }, `${c.name} passive`))), h('p', { class: 'desc' }, c.passive.desc));
-    const wc = h('div', { html: weaponCardHTML(w) });
-    const ac = h('div', { html: abilityCardHTML(c.ability, 1) });
-    detail.append(h('div', { style: { display: 'grid', gap: '10px' } }, wc.firstElementChild, pas), ac.firstElementChild);
-    go.disabled = !unlocked;
-    go.textContent = unlocked ? `Descend as the ${c.name}` : `Locked · unlock in camp`;
-  };
-  draw();
-  const heatSel = h('select', { id: 'heat-sel', onchange: (e) => { heat = +e.target.value; } },
-    ...Array.from({ length: (save.heatUnlocked || 0) + 1 }, (_, i) => h('option', { value: i, selected: i === heat ? true : null }, i === 0 ? 'Heat 0 · normal' : `Heat ${i} · ${HEAT[i]}`)));
-  const sheets = save.sheets || [];
-  const lookSel = h('select', { id: 'look-sel', onchange: (e) => { lookSheet = e.target.value; } },
-    h('option', { value: '' }, 'The hero’s own look'), ...sheets.map((s) => h('option', { value: s.id, selected: s.id === lookSheet ? true : null }, `Sheet: ${s.name}`)));
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'Choose a hero'), emberChip()),
-    grid, detail,
-    h('div', { class: 'opts' },
-      (save.heatUnlocked || 0) > 0 ? h('label', { class: 'field' }, 'Heat', heatSel) : h('span', { class: 'foot' }, 'Win a run to unlock Heat, harder descents that pay more embers.'),
-      h('label', { class: 'field' }, 'Look', lookSel),
-      h('label', { class: 'field' }, 'Seed (optional)', h('input', { id: 'seed-in', type: 'text', maxlength: 24, placeholder: 'random', autocomplete: 'off', spellcheck: 'false' })),
-      btn('Today’s seed', () => { const d = new Date(); $('seed-in').value = `daily-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; toast('Everyone who plays today gets the same floors'); }, 'small')),
-    sheetDrop(() => UI.heroes()),
-    h('div', { class: 'row' }, btn('Back', () => UI.title()), go),
-  );
-  UI.open(el, { onBack: () => UI.title() });
-};
 
 /* ---------- camp: permanent upgrades and unlocks ---------- */
-UI.camp = function (tab = 'upgrades') {
-  const save = CD.save;
-  const tabs = [['upgrades', 'Upgrades'], ['heroes', 'Heroes'], ['armory', 'Armory'], ['library', 'Library']];
-  const body = h('div', { class: 'grid-up' });
-  const spend = (cost, fn) => { if ((save.embers || 0) < cost) { Sound.play('deny'); toast('Not enough embers'); return; } save.embers -= cost; fn(); Sound.play('buy'); persist(); UI.camp(tab); };
-  if (tab === 'upgrades') for (const m of META) {
-    const r = save.meta[m.id] || 0, max = m.costs.length, cost = m.costs[r];
-    body.append(h('div', { class: `up ${r >= max ? 'owned' : ''}` },
-      h('img', { alt: '', src: iconURL(metaIcon(m.id), 3) }),
-      h('b', {}, m.name), h('small', {}, `${m.desc}${max > 1 ? ` per rank` : ''}`),
-      h('div', { class: 'pips' }, ...Array.from({ length: max }, (_, i) => h('i', { class: i < r ? 'on' : '' }))),
-      r >= max ? h('small', {}, 'Complete') : btn(h('span', {}, 'Buy ', h('span', { class: 'cost' }, `${cost}`)), () => spend(cost, () => { save.meta[m.id] = r + 1; }), 'small', { disabled: (save.embers || 0) < cost ? true : null })));
-  }
-  if (tab === 'heroes') for (const c of CLASSES) {
-    const own = save.unlocks.classes.includes(c.id);
-    const cv = mkCanvas(24, 24), sp = heroSprites(c.look, c.id).front[0]; cv.getContext('2d').drawImage(sp.c, 12 - sp.ax, 23 - sp.ay);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, cv, h('b', {}, c.name), h('small', {}, `${c.passive.name}: ${c.passive.desc}`), h('small', {}, `Starts with ${WEAPON[c.weapon].name} and ${ABILITY[c.ability].name}`),
-      own ? h('small', {}, 'Ready') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${c.cost}`)), () => spend(c.cost, () => save.unlocks.classes.push(c.id)), 'small', { disabled: (save.embers || 0) < c.cost ? true : null })));
-  }
-  if (tab === 'armory') for (const w of WEAPONS.filter((x) => !x.start)) {
-    const own = save.unlocks.weapons.includes(w.id);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, h('img', { alt: '', src: iconURL(weaponIcon(w.id), 3) }), h('b', {}, w.name), h('small', {}, w.desc), h('small', {}, `${w.kind === 'melee' ? 'Melee' : 'Ranged'} · ${w.dmg} damage · ${w.rate}/s`),
-      own ? h('small', {}, 'In the deep now') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${w.cost}`)), () => spend(w.cost, () => save.unlocks.weapons.push(w.id)), 'small', { disabled: (save.embers || 0) < w.cost ? true : null })));
-  }
-  if (tab === 'library') for (const a of ABILITIES.filter((x) => !x.start && x.cost)) {
-    const own = save.unlocks.abilities.includes(a.id);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, h('img', { alt: '', src: iconURL(abilityIcon(a.id), 3) }), h('b', {}, a.name), h('small', {}, a.desc), h('small', {}, `${a.cd}s recharge`),
-      own ? h('small', {}, 'In the deep now') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${a.cost}`)), () => spend(a.cost, () => save.unlocks.abilities.push(a.id)), 'small', { disabled: (save.embers || 0) < a.cost ? true : null })));
-  }
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'The Camp'), emberChip()),
-    h('p', { class: 'notice' }, 'Embers you carry out of the deep buy lasting strength. Unlocked weapons and abilities start turning up in chests and shops.'),
-    h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, label]) => btn(label, () => UI.camp(id), 'small', { role: 'tab', 'aria-selected': id === tab ? 'true' : 'false', 'data-autofocus': id === tab ? true : null }))),
-    body,
-    h('div', { class: 'row' }, btn('Back', () => UI.title())));
-  UI.open(el, { onBack: () => UI.title() });
-};
 function metaIcon(id) {
   return { vigor: miscIcon('heart'), might: skillIcon('offense'), swiftness: skillIcon('utility'), flask: miscIcon('potion'), purse: miscIcon('gold'), insight: pickupIconXP(), reroll: miscIcon('swap'), keen: relicIcon('glasseye'), pull: miscIcon('ember'), keys: miscIcon('key'), map: relicIcon('lantern'), revive: relicIcon('phoenix') }[id] || miscIcon('rune');
 }
@@ -10912,29 +10767,6 @@ UI.settings = function (back) {
 };
 
 /* ---------- help ---------- */
-UI.help = function (back) {
-  const k = (keys, what) => h('div', {}, ...keys.map((x) => h('kbd', {}, x)), ' ', what);
-  const el = h('div', { class: 'modal' }, h('div', { class: 'panel wide' },
-    h('h2', {}, 'How to play'),
-    h('p', {}, 'Fight down through four regions of three floors each. Every room you enter seals until its monsters fall. Find the stairs, beat the boss on every third floor, and claim a relic from its altar. When you die, the run ends but the embers you gathered stay with you for the camp.'),
-    h('h3', {}, 'Keyboard and mouse'),
-    h('div', { class: 'keys' }, k(['W', 'A', 'S', 'D'], 'move'), k(['Mouse'], 'aim'), k(['Click'], 'attack (hold to keep swinging)'), k(['Space'], 'dash through danger'), k(['Q', 'E'], 'abilities (right click works for Q)'), k(['F'], 'pick up, open, buy, talk'), k(['Tab'], 'swap weapons (or the wheel)'), k(['R'], 'drink a potion'), k(['M'], 'map'), k(['Esc'], 'pause')),
-    h('p', {}, 'No mouse? Arrows move, J attacks, K dashes, U and I are abilities, L interacts. Your aim snaps to the nearest foe.'),
-    h('h3', {}, 'Gamepad'),
-    h('div', { class: 'keys' }, k(['L stick'], 'move'), k(['R stick'], 'aim (and attack)'), k(['RT'], 'attack'), k(['A'], 'dash'), k(['LB', 'RB'], 'abilities'), k(['X'], 'interact'), k(['Y'], 'swap weapon'), k(['B'], 'potion'), k(['Start'], 'pause'), k(['Back'], 'map')),
-    h('h3', {}, 'Touch'),
-    h('p', {}, 'Left stick moves. Hold the right stick to attack; drag it to aim or just hold it to hit the nearest foe. Buttons above it dash and cast. A USE button appears when something can be picked up.'),
-    h('h3', {}, 'Tips'),
-    h('div', { class: 'keys' },
-      h('div', {}, 'Dashing makes you untouchable for a moment.'),
-      h('div', {}, 'Melee swings cut small missiles out of the air.'),
-      h('div', {}, 'Red markers on the floor show where an attack will land.'),
-      h('div', {}, 'Ember Knights block hits from the front.'),
-      h('div', {}, 'Keys open treasure rooms and silver chests.'),
-      h('div', {}, 'Level ups wait until a room is clear.')),
-    h('div', { class: 'row' }, btn('Got it', () => back ? back() : UI.close(), 'primary', { 'data-autofocus': true }))));
-  UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: () => (back ? back() : UI.close()) });
-};
 
 /* ---------- pause, map, build ---------- */
 UI.map = function () {
@@ -11043,26 +10875,6 @@ UI.replaceAbility = function (it, onTake) {
 };
 
 /* ---------- the forge ---------- */
-UI.forge = function () {
-  const p = G.p;
-  const draw = () => {
-    const w = p.weapon;
-    const up = Math.round((45 + 35 * (w.lvl || 0) + 8 * G.fl.idx) * p.stats.shopMul), re = Math.round((30 + 10 * G.fl.idx) * p.stats.shopMul);
-    const panel = h('div', { class: 'panel' },
-      h('h2', {}, 'The Forge'), h('p', {}, 'The smith works on whatever is in your hand. Gold only, no favors.'),
-      h('div', { html: weaponCardHTML(w) }),
-      h('div', { class: 'menu', style: { width: '100%' } },
-        btn(h('span', {}, `Temper to +${(w.lvl || 0) + 1} (+12% damage) · `, h('span', { class: 'cost' }, `${up}g`)), () => { if ((w.lvl || 0) >= 5) { toast('It cannot take more'); return; } if (p.gold < up) { Sound.play('deny'); toast('Not enough gold'); return; } p.gold -= up; w.lvl = (w.lvl || 0) + 1; Sound.play('slam', { p: 1.6, v: 0.6 }); burst(p.x, p.y - 10, 12, ['#ffd08a', '#ff7a2a'], { glow: true, smax: 80 }); redraw(); }, 'primary', { 'data-autofocus': true, disabled: (w.lvl || 0) >= 5 ? true : null }),
-        w.rar !== 'common' ? btn(h('span', {}, 'Reforge its traits · ', h('span', { class: 'cost' }, `${re}g`)), () => { if (p.gold < re) { Sound.play('deny'); toast('Not enough gold'); return; } p.gold -= re; const nw = makeWeapon(w.id, w.rar, G.run.rng); w.affixes = nw.affixes; w.legend = nw.legend; recalcStats(p); Sound.play('slam', { p: 1.3, v: 0.5 }); redraw(); }) : null,
-        p.weapons[1] ? btn('Work on your other weapon', () => { swapWeapon(p); redraw(); }) : null,
-        btn('Leave', () => UI.close(el))));
-    return panel;
-  };
-  const el = h('div', { class: 'modal' });
-  const redraw = () => { el.innerHTML = ''; el.append(draw()); UI.focusFirst(el); };
-  el.append(draw());
-  UI.open(el, { modal: true, replace: false });
-};
 
 /* ---------- final stairs ---------- */
 UI.finalChoice = function () {
@@ -11076,22 +10888,6 @@ UI.finalChoice = function () {
 };
 
 /* ---------- end of run ---------- */
-UI.runSummary = function (won) {
-  const run = G.run, p = G.p;
-  setMode('menu');
-  const stat = (k, v) => h('div', {}, k, h('b', {}, String(v)));
-  const el = h('div', { class: 'screen dim center' },
-    h('div', { class: 'lv-head' }, h('b', { style: { color: won ? 'var(--gold)' : 'var(--bone)' } }, won ? 'Victory' : 'You fell'), h('small', {}, won ? `The ${CLASS[run.cls].name} climbs out of the deep` : `${CLASS[run.cls].name} · ${floorLabel(run.floorIdx)} · level ${p ? p.level : 1}`)),
-    h('div', { class: 'panel sum' },
-      h('div', { class: 'statgrid' }, stat('Time', fmtTime(run.t)), stat('Floor', run.floorIdx + 1), stat('Foes slain', run.stats.kills), stat('Bosses', run.stats.bosses), stat('Damage dealt', Math.round(run.stats.dmgDealt)), stat('Damage taken', Math.round(run.stats.dmgTaken)), stat('Gold found', run.stats.gold), stat('Rooms cleared', run.stats.cleared)),
-      h('div', { class: 'row' }, h('span', { class: 'embers' }, h('img', { alt: '', src: iconURL(miscIcon('ember'), 2) }), `+${run.emberTotal} embers`), h('span', { class: 'foot' }, `You now hold ${CD.save.embers}`)),
-      won && run.heat < MAX_HEAT ? h('p', {}, `Heat ${Math.min(MAX_HEAT, run.heat + 1)} is unlocked. Harder descents pay 10% more embers per level.`) : null),
-    h('div', { class: 'menu' },
-      btn('Descend again', () => { UI.clear(); fadeTransition(() => startRun({ cls: run.cls, heat: run.heat, sheetId: run.sheetId })); }, 'primary', { 'data-autofocus': true }),
-      btn('Camp', () => UI.camp()),
-      btn('Title', () => UI.title())));
-  UI.open(el, {});
-};
 
 /* ---------- character sheets ---------- */
 const SHEET_ORDERS = {
@@ -13032,7 +12828,6 @@ TOP_FX.bite = (g, f, cx, cy) => {
 /* ============================================================
    Abilities
    ============================================================ */
-const inRoomPt = (x, y) => { if (!G.room) return { x, y }; return { x: clamp(x, (G.room.ix + 0.5) * TS, (G.room.ix + G.room.iw - 0.5) * TS), y: clamp(y, (G.room.iy + 0.5) * TS, (G.room.iy + G.room.ih - 0.5) * TS) }; };
 function wallStop(p, ang, d) {
   let fx = p.x, fy = p.y;
   for (let k = 1; k <= 24; k++) { const nx = p.x + (Math.cos(ang) * d * k) / 24, ny = p.y + (Math.sin(ang) * d * k) / 24; if (hitsWall(G.fl, nx, ny, p.r, p.fly)) break; fx = nx; fy = ny; }
@@ -14131,25 +13926,6 @@ function crowdMul(run) { return (hasOmenFor(run, 'swarm') ? 1.6 : 1) * (run && r
 /* ---------- class levels ---------- */
 const soulsFor = (l) => Math.round(10 + 5 * l + 0.6 * l * l);
 const MAX_CLASS_LEVEL = 100;
-function treeOf(cls) {
-  const T = (CD.save.tree = CD.save.tree || {});
-  return T[cls] || (T[cls] = { xp: 0, alloc: [] });
-}
-function classLevelInfo(cls) {
-  const T = treeOf(cls);
-  let xp = T.xp || 0, lvl = 1;
-  while (lvl < MAX_CLASS_LEVEL && xp >= soulsFor(lvl)) { xp -= soulsFor(lvl); lvl++; }
-  const points = lvl - 1 + (CD.save.treeBonus || 0);
-  return { lvl, into: xp, need: soulsFor(lvl), points, spent: T.alloc.length, free: Math.max(0, points - T.alloc.length) };
-}
-function bankSouls(cls, n) {
-  const before = classLevelInfo(cls).lvl;
-  treeOf(cls).xp += n;
-  const after = classLevelInfo(cls).lvl;
-  const fs = CD.save.fs; fs.soulsBanked = (fs.soulsBanked || 0) + n;
-  persist();
-  return { before, after };
-}
 
 /* ---------- souls in a run ---------- */
 hook('runStart', (run) => { run.souls = 0; run.soulsBanked = 0; run.nemSeen = []; });
@@ -14233,7 +14009,6 @@ hook('update', (dt) => {
     else if (Math.hypot(p.x - el.x, p.y - el.y) < 60 && Math.random() < dt * 0.35) { el.say = rndPick(ELF_LINES); el.sayT = 2.4; Sound.play('elf', { p: 0.9 + el.i * 0.08 }); }
   }
 });
-function dmtHue(t, x, y) { return (t * 70 + x * 9 + y * 5) % 360; }
 hook('renderFloor', (g, cx, cy, vis) => {
   for (const r of vis) {
     if (r.type !== 'dmt') continue;
@@ -14533,11 +14308,9 @@ hook('renderTop', (g, cx, cy) => {
 });
 
 /* ============================================================
-   Cinderdeep — the Passive Tree. A permanent constellation of
-   ~270 nodes in six sectors, one per archetype. Every character
-   starts in its sector and spends talent points from its class
-   level. Evolution nodes and keystones change how heroes awaken
-   and how beasts evolve.
+   Cinderdeep — what talents do. The nodes' effects, keystones,
+   evolution and apex nodes, attributes, and the talent screen;
+   the talent web (51-talent-web.js) lays the nodes out.
    ============================================================ */
 const TREE_VER = 4;
 const SECTORS = [
@@ -14552,25 +14325,9 @@ const CLASS_SECTOR = { knight: 0, paladin: 0, pebblet: 0, berserker: 1, monk: 1,
 const sectorOf = (cls) => CLASS_SECTOR[cls] ?? 0;
 
 /* ---------- what nodes do ---------- */
-const MINOR_STATS = [
-  [['hpAdd', 8, '+8 max health'], ['dmgMul', 0.04, '+4% damage'], ['armor', 1, '+1 armor'], ['meleeDmg', 0.06, '+6% melee damage'], ['regen', 0.15, '+0.15 health per second'], ['kbMul', 0.1, '+10% knockback']],
-  [['atkSpd', 0.04, '+4% attack speed'], ['crit', 0.025, '+2.5% crit chance'], ['meleeDmg', 0.05, '+5% melee damage'], ['critMul', 0.08, '+8% crit damage'], ['lifesteal', 0.004, '+0.4% lifesteal'], ['dmgMul', 0.03, '+3% damage']],
-  [['spdMul', 0.03, '+3% move speed'], ['dodge', 0.02, '+2% dodge'], ['rangedDmg', 0.06, '+6% missile damage'], ['atkSpd', 0.03, '+3% attack speed'], ['crit', 0.02, '+2% crit chance'], ['goldMul', 0.05, '+5% gold']],
-  [['shockCh', 0.04, '+4% shock chance'], ['abDmg', 0.05, '+5% ability damage'], ['crit', 0.02, '+2% crit chance'], ['cdMul', 0.975, 'Abilities recharge 2.5% faster'], ['chillCh', 0.04, '+4% chill chance'], ['spdMul', 0.02, '+2% move speed']],
-  [['abDmg', 0.06, '+6% ability damage'], ['cdMul', 0.97, 'Abilities recharge 3% faster'], ['burnCh', 0.04, '+4% burn chance'], ['xpMul', 0.04, '+4% experience'], ['hpAdd', 5, '+5 max health'], ['burnMul', 0.06, '+6% burn damage']],
-  [['poisonCh', 0.04, '+4% poison chance'], ['allyDmg', 0.08, '+8% ally damage'], ['regen', 0.12, '+0.12 health per second'], ['lifesteal', 0.004, '+0.4% lifesteal'], ['soulGain', 0.04, '+4% souls'], ['dmgTaken', 0.98, '2% less damage taken']],
-];
 const MULT_KEYS = new Set(['cdMul', 'dmgTaken']);
 function applyStat(s, k, v) { if (MULT_KEYS.has(k)) s[k] = (s[k] ?? 1) * v; else s[k] = (s[k] || 0) + v; }
 const N = (name, desc, apply, extra = {}) => ({ name, desc, apply, ...extra });
-const NOTABLES = [
-  [N('Iron Constitution', '+30 max health and +2 armor', (s) => { s.hpAdd += 30; s.armor += 2; }), N("Juggernaut's Hide", 'Take 10% less damage. +1 armor', (s) => { s.dmgTaken *= 0.9; s.armor += 1; }), N('Crushing Blows', '+15% melee damage and +20% knockback', (s) => { applyStat(s, 'meleeDmg', 0.15); s.kbMul += 0.2; }), N('Undying', '+0.6 health per second. Heal 5% when a room is cleared', (s) => { s.regen += 0.6; s.clearHeal += 0.05; }), N("Titan's Grip", '+12% damage and +10% max health', (s) => { s.dmgMul += 0.12; s.hpMul += 0.1; }), N('Bulwark Stance', 'Block one hit every 15 seconds', (s) => { s.bulwark = s.bulwark ? Math.min(s.bulwark, 12) : 15; })],
-  [N('Bloodthirst', '+1% lifesteal. Kills heal 1', (s) => { s.lifesteal += 0.01; s.killHeal += 1; }), N('Whirling Steel', '+10% attack speed and +5% move speed', (s) => { s.atkSpd += 0.1; s.spdMul += 0.05; }), N('Killer Instinct', '+8% crit chance and +25% crit damage', (s) => { s.crit += 0.08; s.critMul += 0.25; }), N('Rampage', '+20% damage while your combo is 10 or more', (s) => { s.rampage = true; }), N('Feral Rush', '+1 dash. Dashes recharge 15% faster', (s) => { s.dashMax += 1; s.dashCd *= 0.85; }), N('Red Mist', '+15% attack speed below half health', (s) => { s.redMist = true; })],
-  [N('Eagle Eye', '+15% missile damage. Missiles pierce 1 more foe', (s) => { applyStat(s, 'rangedDmg', 0.15); s.pierceBonus += 1; }), N('Phantom', '+8% dodge and +5% move speed', (s) => { s.dodge += 0.08; s.spdMul += 0.05; }), N('Quick Hands', '+12% attack speed', (s) => { s.atkSpd += 0.12; }), N('Fleet', '+10% move speed and +1 dash', (s) => { s.spdMul += 0.1; s.dashMax += 1; }), N('Lucky Find', '+2 luck and +15% gold', (s) => { s.luck += 2; s.goldMul += 0.15; }), N('Volley', 'Missile weapons fire +1 projectile', (s) => { s.projBonus += 1; })],
-  [N('Static Charge', '+12% shock chance. Shocks jump to 1 more foe', (s) => { s.shockCh += 0.12; s.shockChain += 1; }), N('Frozen Touch', '+12% chill chance. Frozen foes take 20% more', (s) => { s.chillCh += 0.12; s.shatter = Math.max(s.shatter, 0) + 0.2; }), N('Spell Echo', '10% chance an ability recharges instantly', (s) => { s.echoCast = Math.max(s.echoCast, 0) + 0.1; }), N('Arcane Flow', 'Abilities recharge 10% faster and deal 10% more', (s) => { s.cdMul *= 0.9; s.abDmg += 0.1; }), N('Storm Rider', '+8% move speed. Dashing shocks foes you pass', (s) => { s.spdMul += 0.08; s.staticDash = true; }), N('Conductor', '+20% damage to stunned, frozen or chilled foes', (s) => { s.opportunist += 0.2; })],
-  [N('Pyromaniac', '+15% burn chance. Burns deal 30% more', (s) => { s.burnCh += 0.15; s.burnMul += 0.3; }), N('Archmage', '+25% ability damage', (s) => { s.abDmg += 0.25; }), N('Wellspring', '+1 potion. Potions heal 20% more', (s) => { s.potMax += 1; s.potHeal += 0.2; }), N("Scholar's Mind", '+20% experience', (s) => { s.xpMul += 0.2; }), N('Combustion Core', 'Burning foes explode when they die', (s) => { s.combust = true; }), N('Insight', '+10% crit chance and +10% ability damage', (s) => { s.crit += 0.1; s.abDmg += 0.1; })],
-  [N('Plaguebringer', '+15% poison chance. Poison spreads when foes die', (s) => { s.poisonCh += 0.15; s.plague = true; }), N('Gravecaller', '+40% ally damage. Kills raise a skeleton 6% of the time', (s) => { applyStat(s, 'allyDmg', 0.4); s.graveCall = true; }), N('Vampirism', '+2% lifesteal', (s) => { s.lifesteal += 0.02; }), N('Soul Eater', '+25% souls from foes', (s) => { applyStat(s, 'soulGain', 0.25); }), N('Withering', '+20% damage to poisoned foes', (s) => { s.withering = true; }), N('Leech Lord', 'Kills heal 2', (s) => { s.killHeal += 2; })],
-];
 const KEYSTONES = {
   unbreakable: N('Unbreakable', '+4 armor. Take 20% less damage and ignore knockback and spikes. One dash fewer and 10% slower', (s) => { s.armor += 4; s.dmgTaken *= 0.8; s.sturdy = true; s.dashMax = Math.max(1, s.dashMax - 1); s.spdMul -= 0.1; }),
   bloodrage: N('Blood Rage', '+30% damage below half health. You take 15% more damage', (s) => { s.bloodRage = true; s.dmgTaken *= 1.15; }),
@@ -14586,8 +14343,6 @@ const KEYSTONES = {
   ironwill: N('Iron Will', '+30% max health and double regeneration. 15% slower attacks', (s) => { s.hpMul += 0.3; s.ironWill = true; s.atkSpd -= 0.15; }),
   chaosstrain: N('Chaos Strain', 'Every evolution or awakening grows a random chaos mutation on you. You take 10% more damage', (s) => { s.chaosStrain = true; s.dmgTaken *= 1.1; }),
 };
-const SECTOR_KEY = ['unbreakable', 'bloodrage', 'acrobatics', 'overload', 'eldritch', 'vaalpact'];
-const GATE_KEY = ['resolute', 'pointblank', 'winddancer', 'avatar', 'necropact', 'ironwill'];
 // evolution nodes: they change what evolving (beasts) or awakening (heroes) does
 const EVO_NODES = [
   N('Titanic Growth', 'Once you evolve or awaken: +25% max health and +2 armor', (s) => { s.hpMul += 0.25; s.armor += 2; }, { evo: true }),
@@ -14606,86 +14361,12 @@ const APEX_NODES = [
   N('Apex: Chimera', 'Beasts that reach their final form also learn the other path’s ability. Heroes awaken twice as strongly', () => {}, { evo: true, flag: 'chimera', always: true }),
 ];
 
-/* ---------- the layout (deterministic: node ids never change within a version) ---------- */
-const TREE = (() => {
-  const nodes = [], edges = [];
-  const add = (r, deg, type, sector, extra = {}) => { const a = (deg * Math.PI) / 180; const n = { id: nodes.length, x: Math.round(Math.cos(a) * r), y: Math.round(Math.sin(a) * r), type, sector, links: [], ...extra }; nodes.push(n); return n; };
-  const link = (a, b) => { if (a === b || a.links.includes(b.id)) return; a.links.push(b.id); b.links.push(a.id); edges.push([a.id, b.id]); };
-  const chain = (l) => { for (let i = 1; i < l.length; i++) link(l[i - 1], l[i]); };
-  let mi = 0;
-  const minor = (r, deg, s) => { const st = MINOR_STATS[s][mi++ % 6]; return add(r, deg, 'minor', s, { stat: st }); };
-  const notable = (r, deg, s, k) => add(r, deg, 'notable', s, { def: NOTABLES[s][k % NOTABLES[s].length] });
-  // the heart: Chaos Strain, two steps from every start
-  const heart = add(0, 0, 'keystone', -1, { key: 'chaosstrain', def: KEYSTONES.chaosstrain });
-  const starts = SECTORS.map((S, s) => add(150, -90 + s * 60, 'start', s));
-  starts.forEach((st, s) => { const m = add(78, -90 + s * 60, 'minor', s, { stat: ['dmgMul', 0.02, '+2% damage'] }); link(st, m); link(m, heart); });
-  const ring = [];
-  for (let i = 0; i < 36; i++) ring.push(minor(240, -90 + i * 10, Math.floor(((i + 3) % 36) / 6)));
-  for (let i = 0; i < 36; i++) link(ring[i], ring[(i + 1) % 36]);
-  starts.forEach((st, s) => { const c = 6 * s; link(st, ring[c]); link(st, ring[(c + 35) % 36]); link(st, ring[(c + 1) % 36]); });
-  const sideNotables = [];
-  SECTORS.forEach((S, s) => {
-    const a0 = -90 + s * 60;
-    const spoke = (off, isCenter) => {
-      const base = ring[(6 * s + off / 10 + 36) % 36], deg = a0 + off;
-      const a = minor(320, deg, s), b = minor(390, deg, s);
-      chain([base, a, b]);
-      return { a, b, deg };
-    };
-    const L = spoke(-20), C = spoke(0, true), Rr = spoke(20);
-    // cross links at 390
-    for (const [p1, p2, d] of [[L.b, C.b, a0 - 10], [C.b, Rr.b, a0 + 10]]) { const m = minor(390, d, s); link(p1, m); link(m, p2); }
-    // side branches: a notable, two minors, then a wheel cluster
-    const side = (Sp, dir, k) => {
-      const nt = notable(460, Sp.deg, s, k); link(Sp.b, nt);
-      const m1 = minor(540, Sp.deg + dir * 2, s), m2 = minor(610, Sp.deg + dir * 3, s); chain([nt, m1, m2]);
-      const cdeg = Sp.deg + dir * 4, ca = (cdeg * Math.PI) / 180, cx = Math.cos(ca) * 700, cy = Math.sin(ca) * 700;
-      const center = add(0, 0, 'notable', s, { def: NOTABLES[s][(k + 2) % 6] }); center.x = Math.round(cx); center.y = Math.round(cy);
-      const wheel = [];
-      for (let i = 0; i < 5; i++) { const wa = ca + Math.PI + (i - 2) * 0.62; const w = add(0, 0, 'minor', s, { stat: MINOR_STATS[s][(mi++ + i) % 6] }); w.x = Math.round(cx + Math.cos(wa) * 52); w.y = Math.round(cy + Math.sin(wa) * 52); wheel.push(w); }
-      chain(wheel); link(m2, wheel[2]); link(wheel[0], center); link(wheel[4], center);
-      const far = add(0, 0, 'notable', s, { def: NOTABLES[s][(k + 4) % 6] }); far.x = Math.round(cx + Math.cos(ca) * 70); far.y = Math.round(cy + Math.sin(ca) * 70); link(center, far);
-      sideNotables.push({ s, dir, nt, wheel, far });
-      return { nt, m1, wheel, far };
-    };
-    const SL = side(L, -1, 0), SR = side(Rr, 1, 1);
-    // the centre spoke: evolution node, a cross link, the sector keystone, then the apex
-    const evo = add(460, a0, 'evo', s, { def: EVO_NODES[s] }); link(C.b, evo);
-    const c1 = minor(540, a0, s); link(evo, c1);
-    for (const [side2, d] of [[SL.m1, a0 - 8], [SR.m1, a0 + 8]]) { const m = minor(540, d, s); link(side2, m); link(m, c1); }
-    const key = add(630, a0, 'keystone', s, { key: SECTOR_KEY[s], def: KEYSTONES[SECTOR_KEY[s]] }); link(c1, key);
-    const c2 = minor(710, a0, s), c3 = minor(780, a0, s); chain([key, c2, c3]);
-    const apex = add(860, a0, 'evo', s, { def: APEX_NODES[s], apex: true }); link(c3, apex);
-  });
-  // bridges between neighbouring sectors: a minor at 460 and a gate keystone further out
-  SECTORS.forEach((S, s) => {
-    const t = (s + 1) % 6, a = sideNotables.find((q) => q.s === s && q.dir === 1), b = sideNotables.find((q) => q.s === t && q.dir === -1);
-    const mid = minor(460, -90 + s * 60 + 30, s); link(a.nt, mid); link(mid, b.nt);
-    const gate = add(760, -90 + s * 60 + 30, 'keystone', s, { key: GATE_KEY[s], def: KEYSTONES[GATE_KEY[s]], gate: true });
-    link(a.far, gate); link(gate, b.far);
-  });
-  return { nodes, edges, starts };
-})();
+// the nodes, links and starts; the talent web (51-talent-web.js) grows them from the heroes and beasts
+const TREE = { nodes: [], edges: [], starts: [] };
 
-/* ---------- the wider tree: attributes on every road, an outer ring, more clusters, more keystones ---------- */
+/* ---------- attributes, and the outer keystones ---------- */
 const ATTR = { str: { name: 'Strength', short: 'Str', col: '#e2434f' }, dex: { name: 'Dexterity', short: 'Dex', col: '#74d672' }, int: { name: 'Intelligence', short: 'Int', col: '#7fc8ff' } };
 const ATTR_IDS = ['str', 'dex', 'int'], ATTR_PER = 5;
-const SECTOR_ATTR = ['str', 'str', 'dex', 'dex', 'int', 'int'];
-// small passives that lean toward an element path
-const TREE_PATH_MINOR = {
-  fire: ['+4% burn chance, +6% burn damage', (s) => { s.burnCh += 0.04; s.burnMul += 0.06; }], frost: ['+4% chill chance, +3% max health', (s) => { s.chillCh += 0.04; s.hpMul += 0.03; }],
-  storm: ['+4% shock chance, +3% attack speed', (s) => { s.shockCh += 0.04; s.atkSpd += 0.03; }], venom: ['+4% poison chance, +0.1 health per second', (s) => { s.poisonCh += 0.04; s.regen += 0.1; }],
-  shadow: ['+3% crit chance, +1.5% dodge', (s) => { s.crit += 0.03; s.dodge += 0.015; }], earth: ['+1 armor, +8 max health', (s) => { s.armor += 1; s.hpAdd += 8; }],
-  chaos: ['+4% damage', (s) => { s.dmgMul += 0.04; }], luck: ['+1 luck, +6% gold', (s) => { s.luck += 1; s.goldMul += 0.06; }],
-};
-const NOTABLES2 = [
-  [['earth', N('Bedrock', '+3 armor and +10% max health', (s) => { s.armor += 3; s.hpMul += 0.1; })], ['earth', N('Living Wall', 'Take 8% less damage. +25 max health', (s) => { s.dmgTaken *= 0.92; s.hpAdd += 25; })]],
-  [['fire', N('Kindled Wrath', '+15% burn chance and +8% damage', (s) => { s.burnCh += 0.15; s.dmgMul += 0.08; })], ['fire', N('Ashen Heart', 'Burns deal 40% more. +1% lifesteal', (s) => { s.burnMul += 0.4; s.lifesteal += 0.01; })]],
-  [['luck', N("Gambler's Edge", '+3 luck and +8% crit chance', (s) => { s.luck += 3; s.crit += 0.08; })], ['shadow', N('Unseen Blade', '+8% dodge and +30% crit damage', (s) => { s.dodge += 0.08; s.critMul += 0.3; })]],
-  [['storm', N('Thunderhead', '+15% shock chance. Shocks jump to 1 more foe', (s) => { s.shockCh += 0.15; s.shockChain += 1; })], ['frost', N('Hoarfrost Mind', '+15% chill chance. Frozen foes take 20% more', (s) => { s.chillCh += 0.15; s.shatter += 0.2; })]],
-  [['chaos', N('Unstable Weave', '+20% ability damage and +6% damage', (s) => { s.abDmg += 0.2; s.dmgMul += 0.06; })], ['fire', N('Spellfire', '+15% ability damage and +10% burn chance', (s) => { s.abDmg += 0.15; s.burnCh += 0.1; })]],
-  [['venom', N('Rotblood', '+15% poison chance and +0.4 health per second', (s) => { s.poisonCh += 0.15; s.regen += 0.4; })], ['shadow', N('Grave Shade', '+6% crit chance. Kills heal 2', (s) => { s.crit += 0.06; s.killHeal += 2; })]],
-];
 Object.assign(KEYSTONES, {
   giantsblood: N("Giant's Blood", '+40% max health. 10% slower', (s) => { s.hpMul += 0.4; s.spdMul -= 0.1; }),
   pyreofruin: N('Pyre of Ruin', 'Burns deal double. Your weapon deals 20% less', (s) => { s.burnMul += 1; s.wDmg -= 0.2; }),
@@ -14694,51 +14375,6 @@ Object.assign(KEYSTONES, {
   bornofchaos: N('Born of Chaos', '+20% damage. You take 10% more damage', (s) => { s.dmgMul += 0.2; s.dmgTaken *= 1.1; }),
   plaguelord: N('Plague Lord', '+25% poison chance and poison spreads when foes die. 15% less max health', (s) => { s.poisonCh += 0.25; s.plague = true; s.hpMul -= 0.15; }),
 });
-const OUTER_KEY = ['giantsblood', 'pyreofruin', 'fortunesfavour', 'stormherald', 'bornofchaos', 'plaguelord'];
-(() => {
-  const nodes = TREE.nodes, edges = TREE.edges;
-  const add = (r, deg, type, sector, extra = {}) => { const a = (deg * Math.PI) / 180; const n = { id: nodes.length, x: Math.round(Math.cos(a) * r), y: Math.round(Math.sin(a) * r), type, sector, links: [], ...extra }; nodes.push(n); return n; };
-  const link = (a, b) => { if (a === b || a.links.includes(b.id)) return; a.links.push(b.id); b.links.push(a.id); edges.push([a.id, b.id]); };
-  const chain = (l) => { for (let i = 1; i < l.length; i++) link(l[i - 1], l[i]); };
-  const attr = (r, deg, s) => add(r, deg, 'minor', s, { attr: SECTOR_ATTR[s] });
-  // the outer ring: attributes all the way round, so any build can walk to any other
-  const ring = [];
-  for (let i = 0; i < 72; i++) ring.push(attr(960, -90 + i * 5, Math.floor(((i + 6) % 72) / 12)));
-  for (let i = 0; i < 72; i++) link(ring[i], ring[(i + 1) % 72]);
-  for (const n of nodes.slice(0, nodes.length - 72)) {
-    if (n.apex) link(n, ring[12 * n.sector]);
-    if (n.gate) link(n, ring[12 * n.sector + 6]);
-  }
-  SECTORS.forEach((S, s) => {
-    const a0 = -90 + s * 60;
-    // two clusters: a road of attributes out to a ring of themed passives round a notable
-    [-1, 1].forEach((dir, k) => {
-      const [path, def] = NOTABLES2[s][k], deg = a0 + dir * 20, base = ring[(12 * s + dir * 4 + 72) % 72];
-      const t1 = attr(1040, deg, s), t2 = attr(1110, deg, s); chain([base, t1, t2]);
-      const ca = (deg * Math.PI) / 180, cx = Math.round(Math.cos(ca) * 1220), cy = Math.round(Math.sin(ca) * 1220);
-      const center = add(0, 0, 'notable', s, { def, path }); center.x = cx; center.y = cy;
-      const [txt, fn] = TREE_PATH_MINOR[path], wheel = [];
-      for (let i = 0; i < 5; i++) {
-        const wa = ca + Math.PI + (i - 2) * 0.62, w = add(0, 0, 'minor', s, { path, def: N(`${path[0].toUpperCase()}${path.slice(1)} passive`, txt, fn) });
-        w.x = Math.round(cx + Math.cos(wa) * 56); w.y = Math.round(cy + Math.sin(wa) * 56); wheel.push(w);
-      }
-      chain(wheel); link(t2, wheel[2]); link(wheel[0], center); link(wheel[4], center);
-    });
-    // and a keystone at the very edge
-    const k1 = attr(1060, a0, s), k2 = attr(1160, a0, s), k3 = attr(1260, a0, s);
-    const key = add(1390, a0, 'keystone', s, { key: OUTER_KEY[s], def: KEYSTONES[OUTER_KEY[s]] });
-    chain([ring[12 * s], k1, k2, k3, key]);
-  });
-})();
-// which attribute an attribute node gives this character: its region's, unless they chose another
-function treeAttrOf(cls, n) { const T = treeOf(cls); return (T.attr && T.attr[n.id]) || n.attr; }
-function treeCycleAttr(cls, id) {
-  const T = treeOf(cls), n = TREE.nodes[id], cur = treeAttrOf(cls, n), nxt = ATTR_IDS[(ATTR_IDS.indexOf(cur) + 1) % 3];
-  T.attr = T.attr || {};
-  T.attr[id] = nxt;
-  persist(); treeChanged(cls);
-  return nxt;
-}
 function treeAttrs(cls) {
   const out = { str: 0, dex: 0, int: 0 };
   for (const id of treeAlloc(cls)) { const n = TREE.nodes[id]; if (n && n.attr) out[treeAttrOf(cls, n)] += ATTR_PER; }
@@ -14759,36 +14395,10 @@ const nodeDesc = (n) => { const d = nodeDesc0(n); return typeof talentSealed ===
 const nodeName = (n) => (n.attr ? `${ATTR[n.attr].name} road` : n.def ? n.def.name : n.type === 'start' ? `${SECTORS[n.sector].name}` : SECTORS[n.sector] ? `${SECTORS[n.sector].name} passive` : 'Passive');
 
 /* ---------- allocation ---------- */
-function treeAlloc(cls) {
-  if (CD.save.treeVer !== TREE_VER) { if (CD.save.tree) for (const k in CD.save.tree) CD.save.tree[k].alloc = []; CD.save.treeVer = TREE_VER; }
-  return treeOf(cls).alloc;
-}
-function treeStart(cls) { return TREE.starts[sectorOf(cls)]; }
 function treeHas(cls, nodeOrFlag) {
   const alloc = treeAlloc(cls);
   if (typeof nodeOrFlag === 'string') return alloc.some((id) => { const n = TREE.nodes[id]; return n && n.def && (n.key === nodeOrFlag || n.def.flag === nodeOrFlag); });
   return alloc.includes(nodeOrFlag);
-}
-function treeReachable(cls, set) {
-  const st = treeStart(cls), seen = new Set([st.id]), q = [st.id];
-  while (q.length) { const u = q.shift(); for (const v of TREE.nodes[u].links) if (!seen.has(v) && set.has(v)) { seen.add(v); q.push(v); } }
-  return seen;
-}
-// shortest path of unallocated nodes from what you have to the target
-function treePath(cls, target) {
-  const alloc = new Set(treeAlloc(cls)), st = treeStart(cls);
-  if (alloc.has(target) || target === st.id) return [];
-  const have = new Set([st.id, ...alloc]), prev = new Map(), q = [...have];
-  for (const h of have) prev.set(h, -1);
-  while (q.length) {
-    const u = q.shift();
-    if (u === target) break;
-    for (const v of TREE.nodes[u].links) { if (prev.has(v) || TREE.nodes[v].type === 'start') continue; prev.set(v, u); q.push(v); }
-  }
-  if (!prev.has(target)) return null;
-  const path = [];
-  for (let u = target; u >= 0 && !have.has(u); u = prev.get(u)) path.push(u);
-  return path.reverse();
 }
 function treeAllocate(cls, target) {
   const path = treePath(cls, target), info = classLevelInfo(cls);
@@ -14797,12 +14407,6 @@ function treeAllocate(cls, target) {
   persist();
   treeChanged(cls);
   return true;
-}
-function treeCanRefund(cls, id) {
-  const alloc = treeAlloc(cls);
-  if (!alloc.includes(id)) return false;
-  const rest = new Set(alloc.filter((x) => x !== id)), seen = treeReachable(cls, rest);
-  return alloc.every((x) => x === id || seen.has(x));
 }
 const REFUND_COST = 3;
 function treeRefund(cls, id) {
@@ -14814,12 +14418,6 @@ function treeRefund(cls, id) {
   return null;
 }
 const resetCost = (cls) => (classLevelInfo(cls).lvl <= 5 ? 0 : 40);
-function treeReset(cls) {
-  const c = resetCost(cls);
-  if ((CD.save.embers || 0) < c) return `A full reset costs ${c} embers`;
-  CD.save.embers -= c; treeOf(cls).alloc = []; persist(); treeChanged(cls);
-  return null;
-}
 function treeChanged(cls) { if (G.p && G.run && G.run.cls === cls && !G.demo) recalcStats(G.p); }
 
 /* ---------- effects ---------- */
@@ -16488,7 +16086,7 @@ function glyphStyle() {
 }
 const padGlyph = (i) => GLYPHS[glyphStyle()].b[i] || `B${i}`;
 const keyName = (code) => ({ Space: 'Space', ShiftLeft: 'Shift', ShiftRight: 'R-Shift', ControlLeft: 'Ctrl', ControlRight: 'R-Ctrl', AltLeft: 'Alt', Escape: 'Esc', ArrowUp: '↑', ArrowDown: '↓', ArrowLeft: '←', ArrowRight: '→', Enter: 'Enter', Tab: 'Tab', Backquote: '`', Minus: '-', Equal: '=', BracketLeft: '[', BracketRight: ']', Semicolon: ';', Quote: "'", Comma: ',', Period: '.', Slash: '/', Backslash: '\\' }[code] || code.replace(/^Key|^Digit|^Numpad/, (m) => (m === 'Numpad' ? 'Num' : '')));
-keyLabel = function (action) {
+function keyLabel(action) {
   const d = Input.device;
   if (d === 'touch') return '';
   if (d === 'pad') { const b = PADMAP[action]; return b && b.length ? padGlyph(b[0]) : ''; }
@@ -16913,50 +16511,6 @@ let ascTitle = (p) => {
 };
 
 /* ---------- affinity: talents and upgrades pull toward aspects ---------- */
-const TAG_ASPECT = { offense: [['fury', 1]], fire: [['inferno', 1.2]], venom: [['venom', 1.2]], frost: [['glacier', 1.2]], storm: [['tempest', 1.2]], defense: [['bastion', 1], ['radiant', 0.35]], utility: [['zephyr', 1]], ability: [['arcane', 1.2]] };
-const SECTOR_ASPECT = [[['bastion', 1], ['radiant', 0.35]], [['fury', 1], ['blood', 0.35]], [['zephyr', 1], ['shadow', 0.5]], [['tempest', 1], ['glacier', 0.4]], [['arcane', 1], ['inferno', 0.5]], [['venom', 1], ['blood', 0.4], ['chaos', 0.2]]];
-const KEY_ASPECT = { chaosstrain: [['chaos', 3]], vaalpact: [['blood', 3]], bloodrage: [['blood', 2], ['fury', 1]], acrobatics: [['shadow', 2], ['zephyr', 1]], avatar: [['inferno', 3]], unbreakable: [['bastion', 3]], resolute: [['fury', 2]], eldritch: [['arcane', 2]], overload: [['tempest', 1], ['glacier', 1], ['inferno', 1]], winddancer: [['zephyr', 2]], pointblank: [['zephyr', 1], ['shadow', 1]] };
-const CLASS_ASPECT = {
-  knight: [['bastion', 3]], paladin: [['radiant', 3], ['bastion', 1]], ranger: [['zephyr', 3]], pyro: [['inferno', 3]], rogue: [['shadow', 3]], berserker: [['fury', 2], ['blood', 1.5]],
-  storm: [['tempest', 3]], necro: [['venom', 2], ['shadow', 1]], monk: [['fury', 2], ['zephyr', 1.5]], gunslinger: [['zephyr', 2], ['fury', 1]], witch: [['arcane', 2], ['venom', 1.5]],
-  samurai: [['fury', 2], ['shadow', 1.5]], bard: [['radiant', 2], ['arcane', 1.5]],
-};
-const ELEMENT_ASPECT = { fire: [['inferno', 3]], nature: [['venom', 2], ['radiant', 1]], frost: [['glacier', 3]], storm: [['tempest', 3]], shadow: [['shadow', 2], ['blood', 1]], earth: [['bastion', 3]] };
-function ascAffinity(p) {
-  const sc = Object.fromEntries(ASPECTS.map((a) => [a.id, 0]));
-  const add = (list, k = 1) => { if (list) for (const [a, w] of list) sc[a] += w * k; };
-  if (p.beast && typeof BEAST !== 'undefined' && p.form) add(ELEMENT_ASPECT[BEAST[FORMS[p.form].line].element]);
-  else add(CLASS_ASPECT[p.cls]);
-  for (const id in p.skills || {}) { const sk = SKILL[id]; if (sk) add(TAG_ASPECT[sk.tag], 0.9 * p.skills[id]); }
-  if (typeof treeAlloc === 'function' && p.cls) {
-    for (const id of treeAlloc(p.cls)) {
-      const n = TREE.nodes[id];
-      if (!n) continue;
-      if (n.key && KEY_ASPECT[n.key]) add(KEY_ASPECT[n.key]);
-      else if (n.sector >= 0 && SECTOR_ASPECT[n.sector]) add(SECTOR_ASPECT[n.sector], n.type === 'notable' ? 0.6 : 0.3);
-    }
-  }
-  const s = p.stats || {};
-  if (s.lifesteal > 0.005) sc.blood += s.lifesteal * 150;
-  if (s.killHeal > 1) sc.blood += s.killHeal * 0.4;
-  if (s.regen > 0.4) sc.radiant += s.regen * 1.2;
-  if (s.crit > 0.12) sc.shadow += (s.crit - 0.1) * 14;
-  if (s.dodge > 0.04) sc.shadow += s.dodge * 12;
-  for (const r of p.relics || []) { if (r === 'phoenix') sc.inferno += 1.5; }
-  sc.chaos += (p.muts || []).length * 1.5 + (G.run && G.run.chaos ? 3 : 0) + Math.min(3, ((CD.save && CD.save.fs && CD.save.fs.dmtFound) || 0) * 0.3);
-  // staying on a path is easy
-  const cur = ascAspect(p);
-  if (cur) sc[cur] += 2.5;
-  return sc;
-}
-function ascOffers(p) {
-  const sc = ascAffinity(p);
-  const order = ASPECTS.map((a) => a.id).sort((a, b) => sc[b] - sc[a] || (hashStr(a + (p.cls || '')) % 7) - (hashStr(b + (p.cls || '')) % 7));
-  const attuned = order.slice(0, 3);
-  const cur = ascAspect(p);
-  if (cur && !attuned.includes(cur)) attuned[2] = cur;
-  return { attuned, order, sc };
-}
 
 /* ---------- what an evolution gives ---------- */
 hook('stats', (s, p) => {
@@ -17070,57 +16624,6 @@ function ascPreviewCanvas(p, id, size = 112) {
   requestAnimationFrame(draw);
   return cv;
 }
-UI.ascend = function (manual = true, busy = false) {
-  const p = G.p, opened = performance.now();
-  if (!p || ascDue(p) <= 0) { if (p) p.ascPending = false; return; }
-  if (UI.top() && UI.top()._ascend) return;
-  const st = ascStage(p) + 1;
-  const { attuned, order, sc } = ascOffers(p);
-  Sound.play('evolveStart');
-  let chosen = false, showAll = false;
-  const grid = h('div', { class: 'choices asc-choices' });
-  const card = (id, i) => {
-    const A = ASPECT[id], att = attuned.includes(id), cur = ascAspect(p) === id;
-    const perks = A.perk.filter(([lv]) => st >= lv && !(p.asc || []).some((x, j) => x === id && j + 1 >= lv));
-    const b = h('button', { class: `card asc-card${att ? ' att' : ''}`, type: 'button', style: { '--asc': A.c1, '--asc2': A.glow }, 'data-autofocus': i === 0 && !busy ? true : null, onclick: () => pick(id, att) });
-    b.append(
-      h('div', { class: 'asc-top' }, ascPreviewCanvas(p, id, 104),
-        h('div', { class: 'asc-nm' }, h('b', {}, `${A.titles[st - 1]}`), h('small', {}, `${A.name}${cur ? ' · your path' : ''}`), att ? h('span', { class: 'asc-tag' }, 'Attuned') : h('span', { class: 'asc-tag off' }, 'Half strength'))),
-      h('p', { class: 'desc' }, A.blurb),
-      h('ul', {}, h('li', {}, att ? A.pickTxt : `${A.pickTxt} (halved)`), ...perks.map(([, txt]) => h('li', { class: 'perk' }, txt))),
-      h('span', { class: 'pick' }, 'Evolve'));
-    return b;
-  };
-  const fill = () => {
-    grid.innerHTML = '';
-    const list = showAll ? [...attuned, ...order.filter((a) => !attuned.includes(a))] : attuned;
-    list.forEach((id, i) => grid.append(card(id, i)));
-    more.textContent = showAll ? 'Show attuned paths only' : `Show all ${ASPECTS.length} paths`;
-  };
-  const why = () => {
-    const top = order.slice(0, 3).map((a) => `${ASPECT[a].name} ${sc[a].toFixed(1)}`).join(' · ');
-    return `Attunement comes from your talents and the skills you picked. Strongest: ${top}.`;
-  };
-  const more = btn('', () => { showAll = !showAll; fill(); UI.focusFirst(el); }, 'small');
-  const later = btn('Decide later', () => { if (chosen) return; UI.close(el); p.ascLater = true; p.ascCalmT = 0; toast('Evolution waiting · it returns when things are quiet, or from the pause menu', '#ffd35c'); }, 'small', busy ? { 'data-autofocus': true } : {});
-  const pick = (id, att) => {
-    // a button mashed in the middle of a fight must not choose a body for you
-    if (chosen || performance.now() - opened < (CD.debug && CD.debug.fastUI ? 0 : 700)) return;
-    chosen = true;
-    UI.close(el);
-    ascCinematic(p, id, () => applyAscension(p, id, att));
-  };
-  const el = h('div', { class: 'modal asc' }, h('div', { class: 'asc-wrap' },
-    h('div', { class: 'lv-head' }, h('b', {}, `Evolution ${st} of ${ASC_MAX}`), h('small', {}, `Level ${ascLevelFor(p, st)} · choose what you become`)),
-    grid,
-    h('p', { class: 'asc-why' }, why()),
-    h('div', { class: 'row' }, more, later)));
-  el._ascend = true;
-  fill();
-  // 1, 2, 3 pick a card
-  el.addEventListener('keydown', (e) => { const n = +e.key; const cards = grid.querySelectorAll('.asc-card'); if (n >= 1 && n <= cards.length) { e.preventDefault(); cards[n - 1].click(); } });
-  UI.open(el, { modal: true, replace: false, onBack: () => later.click() });
-};
 // flashing silhouettes, then the new body bursts out
 function ascCinematic(p, id, done) {
   const A = ASPECT[id];
@@ -17819,7 +17322,7 @@ heroFrame = function (p) {
   return rigHeroFrame(ascFramesFor(p), p, fi);
 };
 // held weapons and hands follow the bigger body
-drawHeld = function (g, p, x, y) {
+function drawHeld(g, p, x, y) {
   const w = p.weapon, sp = heldWeapon(w.id), body = heroFrame(p);
   const u = body && body.u ? Math.min(2.2, body.u) : 1, handY = body && body.handY ? body.handY : 8, reachB = body && body.handR ? Math.max(4, body.handR * 0.7) : 4;
   let ang = p.aim, ox = 0;
@@ -18343,7 +17846,6 @@ const BIOMES = [
 ];
 const BIOME = Object.fromEntries(BIOMES.map((b, i) => { b.idx = i; return [b.id, b]; }));
 const zoneAt = (c, r) => BIOMES.find((b) => b.at[0] === c && b.at[1] === r) || null;
-const zoneMid = (b) => (b.lvl[0] + b.lvl[1]) / 2;
 
 /* ---------- settlement names ---------- */
 const TOWN_A = ['Ash', 'Bright', 'Cold', 'Deep', 'Elder', 'Fern', 'Gold', 'High', 'Iron', 'Low', 'Mill', 'North', 'Oak', 'Red', 'Salt', 'Thorn', 'Willow', 'Wolf', 'Stone', 'Raven', 'Dusk', 'Ember', 'Frost', 'Glen', 'Moss', 'Sun', 'Hollow', 'Black', 'Silver', 'Briar'];
@@ -18583,7 +18085,6 @@ for (const b of BIOMES) {
   const bo = W_BOSSES[b.id];
   if (bo) { const [id, name, fam, v, c, pattern, size, ex = {}] = bo; W_BOSS_DEF[id] = { id, name, fam, v, c, pattern, size, zone: b.id, fly: !!ex.fly, gear: ex.gear, title: `Terror of ${b.name}` }; b.boss = id; }
 }
-const WORLD_MOB_COUNT = Object.keys(WORLD_KINDS).length + Object.keys(W_BOSS_DEF).length;
 
 /* ---------- scaling by level ---------- */
 const worldHpMul = (L) => 1 + 0.07 * (L - 1) + 0.0022 * (L - 1) * (L - 1);
@@ -19820,8 +19321,6 @@ function paintCreature(P, def, f) {
     }
   }
 }
-// register every realm creature as a monster painter
-const _creatureW = {};
 for (const id in WORLD_KINDS) {
   const d = WORLD_KINDS[id];
   const [w, h] = creatureSize(d.fam, d.v, d.size);
@@ -20550,27 +20049,6 @@ playerDie = function () {
   saveRealm(true);
   later(1.8, () => { if (G.p === p) UI.realmDeath(); }, true);
 };
-function nearestWay() {
-  const p = G.p, ch = W.ch;
-  let best = null, bd = 1e9;
-  for (const w of W.Z.ways) if ((ch.ways || []).includes(w.id)) { const d = Math.hypot((w.x + 0.5) * TS - p.x, (w.y + 0.5) * TS - p.y); if (d < bd) { bd = d; best = w; } }
-  return best;
-}
-function realmRespawn(where = 'home') {
-  const p = G.p, ch = W.ch;
-  const lost = W.deathLost || 0; W.deathLost = 0;
-  ch.dead = false;
-  p.dead = false; p.hp = p.maxHp; p.iframes = 2; p.weakT = 60; p.burnT = p.poisonT = 0; p.potions = Math.max(p.potions, 1);
-  p.angelUsed = false;
-  if (W.inInst) { exitInstance(false, lost); return; }
-  const home = ch.home || { zone: 'meadows', x: null, y: null };
-  G.boss = null; $('bossbar').hidden = true;
-  const way = where === 'way' ? nearestWay() : null;
-  if (way) { const extra = Math.floor(p.gold * 0.05); p.gold -= extra; realmFade(() => { loadZone(W.Z.id, (way.x + 0.5) * TS, (way.y + 2) * TS); later(1.2, () => toast(`You lost ${lost + extra} gold. Weakened for a minute.`, '#ff8a8a')); }); return; }
-  if (home.zone !== W.Z.id) travelTo(home.zone, home.x != null ? { x: home.x, y: home.y } : null);
-  else realmFade(() => { loadZone(home.zone, home.x, home.y); });
-  W.notice = `You lost ${lost} gold. Weakened for a minute.`;
-}
 hook('stats', (s, p) => { if (p.weakT > 0) { s.dmgMul *= 0.8; s.dmgTaken *= 1.15; } if (p.blessT > 0 && p.bless && BLESSINGS[p.bless]) BLESSINGS[p.bless].apply(s); if (p.restedT > 0) s.xpMul += 0.15; });
 hook('update', (dt) => { const p = G.p; if (!p || !W.on) return; let changed = false; for (const k of ['blessT', 'restedT', 'weakT']) if (p[k] > 0) { p[k] -= dt; if (p[k] <= 0) { p[k] = 0; changed = true; } } if (changed) recalcStats(p); });
 const BLESSINGS = {
@@ -20649,9 +20127,6 @@ camTarget = function () {
   if (Input.device === 'touch' && R.VH > R.VW * 1.3) ty += R.VH * 0.08;
   return { x: clamp(tx, R.VW / 2, ZT * TS - R.VW / 2), y: clamp(ty, R.VH / 2, ZT * TS - R.VH / 2) };
 };
-// nobody leaves the realm by accident
-const _onBlurRealm = CD.onBlur;
-CD.onBlur = () => { if (W.on) saveRealm(true); _onBlurRealm(); };
 window.addEventListener('pagehide', () => { if (W.on) saveRealm(true); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && W.on) saveRealm(true); });
 
@@ -21352,16 +20827,6 @@ UI.realmTravel = function () {
 };
 
 /* ---------- the fall ---------- */
-UI.realmDeath = function () {
-  const p = G.p, home = W.ch.home ? W.ch.home.name : 'Emberhold', lost = W.deathLost || 0, way = !W.inInst ? nearestWay() : null;
-  const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
-    h('h2', {}, 'You have fallen'),
-    h('p', {}, W.inInst ? `You are dragged out of ${W.inst.name} to its mouth. You lost ${lost} gold.` : `You lost ${lost} gold and will feel weak for a minute. Banked gold is safe.`),
-    h('div', { class: 'menu', style: { width: '100%' } },
-      btn(W.inInst ? 'Get up' : `Wake in ${home}`, () => { UI.close(el); realmRespawn('home'); }, 'primary', { 'data-autofocus': true }),
-      way ? btn(`Wake at ${way.name} waystone (5% more gold)`, () => { UI.close(el); realmRespawn('way'); }) : null)));
-  UI.open(el, { modal: true, replace: false, onBack: () => {} });
-};
 
 /* ---------- maps ---------- */
 const GR_COL = (b) => ({ [GR.BASE]: b.g[0], [GR.ALT]: b.g[1], [GR.DARK]: b.g[2], [GR.ROAD]: b.road, [GR.PLAZA]: '#c8bca8', [GR.SAND]: mixHex(b.g[3], '#e8d4a0', 0.6), [GR.SHALLOW]: b.water[1], [GR.DEEP]: b.water[0], [GR.LAVA]: '#ff6a1a', [GR.ICE]: '#cfeaf6', [GR.TOXIC]: '#6aa83a', [GR.CLIFF]: b.cliff[1], [GR.BRIDGE]: '#8a6a42', [GR.FIELD]: '#6a4a2e', [GR.FLOOR]: '#c8bca8', [GR.DIRT]: b.road });
@@ -21432,11 +20897,6 @@ function realmGrid() {
   }
   return wrap;
 }
-function questList() {
-  const qs = W.ch.quests || [];
-  if (!qs.length) return h('p', {}, 'No quests. Quest boards in every town have work, and guilds pay for bounties.');
-  return h('div', { class: 'quests' }, ...qs.map((q) => h('div', { class: 'quest' }, h('b', {}, q.name), h('small', {}, `${q.desc} · ${q.have || 0}/${q.need} · ${BIOME[q.zone] ? BIOME[q.zone].name : ''}`))));
-}
 
 /* ---------- the minimap and the HUD label ---------- */
 const _drawMinimapRealm = drawMinimap;
@@ -21503,25 +20963,6 @@ UI.title = function () {
   if (!hasRun) for (const x of [...menu.children]) if (x !== b && x.classList.contains('primary')) { x.classList.remove('primary'); x.removeAttribute('data-autofocus'); }
   const sub = el.querySelector('.ttl-sub'); if (sub) sub.textContent = 'A realm of 25 lands above, the old deep below';
 };
-UI.realm = function () {
-  const st = realmStore();
-  const list = h('div', { class: 'rchars' });
-  st.chars.forEach((ch, i) => {
-    const lvl = ch.snap && ch.snap.p ? ch.snap.p.level : 1, asc = ch.snap && ch.snap.ext && ch.snap.ext.asc ? ch.snap.ext.asc : [];
-    const name = asc.length ? `${ASPECT[asc[asc.length - 1]].titles[asc.length - 1]} ${CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls}` : CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls;
-    const cv = realmCharPortrait(ch);
-    list.append(h('div', { class: 'rchar' }, cv, h('div', {}, h('b', {}, name), h('small', {}, `Level ${lvl} · ${BIOME[ch.zone] ? BIOME[ch.zone].name : 'Verdant Meadows'} · ${fmtTime(ch.play || 0)} played · ${(ch.seenZones || []).length || 1} of 25 lands`)),
-      h('div', { class: 'row' }, btn('Play', () => enterRealm(i), 'primary', { 'data-autofocus': i === st.last ? true : null }), btn('Delete', () => UI.confirm('Delete this hero?', 'Their level, gear and progress in the Realm are gone for good.', 'Delete', () => { st.chars.splice(i, 1); st.last = 0; persist(); UI.realm(); }), 'small'))));
-  });
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'The Realm'), emberChip()),
-    h('div', { class: 'panel wide' },
-      h('p', {}, '25 lands, each a world of its own. Towns, roads, monsters in the hundreds, world bosses in their lairs, and the old dungeons waiting underneath. Your hero keeps everything: levels, gear and all ten evolutions.'),
-      st.chars.length ? list : h('p', {}, 'No heroes in the Realm yet.'),
-      h('div', { class: 'row' }, st.chars.length < 6 ? btn('New hero', () => UI.realmNew(), st.chars.length ? '' : 'primary', st.chars.length ? {} : { 'data-autofocus': true }) : null)),
-    h('div', { class: 'row' }, btn('Back', () => UI.title())));
-  UI.open(el, { onBack: () => UI.title() });
-};
 function realmCharPortrait(ch) {
   const cv = mkCanvas(56, 56), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
   try {
@@ -21532,21 +20973,6 @@ function realmCharPortrait(ch) {
   cv.className = 'rportrait';
   return cv;
 }
-UI.realmNew = function () {
-  const save = CD.save, owned = save.unlocks.classes.filter((id) => CLASS[id]);
-  const grid = h('div', { class: 'choices' });
-  owned.forEach((id, i) => {
-    const c = CLASS[id], cv = mkCanvas(48, 48), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-    const sp = c.beast && FORMS[id] ? beastFrames(id)[0] : heroSprites(c.look, id).front[0];
-    const k = Math.max(1, Math.floor(Math.min(44 / sp.w, 44 / sp.h)));
-    g.drawImage(sp.c, Math.round(24 - sp.ax * k), Math.round(46 - (sp.ay + 1) * k), sp.w * k, sp.h * k);
-    const card = h('button', { class: 'card r-common', type: 'button', 'data-autofocus': i === 0 ? true : null, onclick: () => { const st = realmStore(); st.chars.push(newRealmChar(id)); st.last = st.chars.length - 1; persist(); enterRealm(st.last); } },
-      h('div', { class: 'head' }, cv, h('div', {}, h('div', { class: 'nm' }, c.name), h('div', { class: 'sub' }, c.beast ? 'Beast' : 'Hero'))), h('p', { class: 'desc' }, c.blurb || ''), h('span', { class: 'pick' }, 'Begin'));
-    grid.append(card);
-  });
-  const el = h('div', { class: 'screen dim' }, h('div', { class: 'topbar' }, h('h2', {}, 'A new hero for the Realm')), grid, h('p', { class: 'foot' }, 'More heroes and beasts unlock in the Descent. Your passive tree and camp upgrades apply in the Realm too.'), h('div', { class: 'row' }, btn('Back', () => UI.realm())));
-  UI.open(el, { onBack: () => UI.realm() });
-};
 
 /* ============================================================
    Cinderdeep — other heroes. Everyone who has the Realm open
@@ -21637,12 +21063,11 @@ function ghostBody(q) {
   const fake = { cls, look: dyeLook ? { ...CLASS[cls].look, ...dyeLook } : CLASS[cls].look, beast: !!CLASS[cls].beast, form: own(FORMS, pr.fm) ? pr.fm : CLASS[cls].beast ? cls : null, asc: a ? Array(st).fill(a) : [], ascAtt: [], view: pr.v ? 'back' : 'front', turn: Number.isInteger(pr.t) && pr.t >= 0 && pr.t <= 4 ? pr.t : pr.v ? 4 : 0, rigLazy: true, face: pr.f || 1, moving: q.moving, anim: q.anim, dashT: 0, atkPose: 0, leapT: 0, bashT: 0, aim: 0, dyeKey: pr.dy || '' };
   return heroFrame(fake);
 }
-let DYE_LIST = [];
 const DYES_BY_MAIN = {
   ember: { main: '#b33a2a', cloth: '#6e1f1a', trim: '#f2b53c' }, royal: { main: '#3a5e9a', cloth: '#22385e', trim: '#ffd35c' }, forest: { main: '#4f7a3a', cloth: '#2f4d24', trim: '#c8a070' },
   night: { main: '#2c2a34', cloth: '#18161e', trim: '#c873ff' }, bone: { main: '#e8e0d0', cloth: '#a89880', trim: '#c8902a' }, rose: { main: '#c8508a', cloth: '#7a2a5a', trim: '#ffe0f0' }, steel: { main: '#8fa3b8', cloth: '#55677c', trim: '#2f5fa8' },
 };
-DYE_LIST = Object.values(DYES_BY_MAIN);
+const DYE_LIST = Object.values(DYES_BY_MAIN);
 function drawGhostPlayer(g, q, cx, cy) {
   let sp;
   try { sp = ghostBody(q); } catch (e) { return; }
@@ -21873,7 +21298,7 @@ UI.realmMap = function (tab = 'zone') {
     }
   }
 };
-questList = function () {
+function questList() {
   const qs = W.ch.quests || [];
   if (!qs.length) return h('p', {}, 'No quests. Quest boards in every town have work, and guilds pay for bounties.');
   const tracked = (q) => W.ch.track === q.id || (W.ch.track !== 'wp' && !qs.some((x) => x.id === W.ch.track) && qs.find((x) => questTarget(x)) === q);
@@ -23641,16 +23066,6 @@ function curChar() {
 }
 
 /* ---------- talents belong to the character, not the class ---------- */
-const _treeOfLife = treeOf;
-treeOf = function (cls) {
-  const ch = curChar();
-  if (ch && ch.cls === cls) {
-    const T = ch.tree || (ch.tree = { xp: 0, alloc: [] });
-    if (T.ver !== TREE_VER) { T.alloc = []; T.attr = {}; T.ver = TREE_VER; }
-    return T;
-  }
-  return _treeOfLife(cls);
-};
 
 /* ---------- a descent made by a character ---------- */
 const _startRunLife = startRun;
@@ -24246,7 +23661,7 @@ function talentOwn(cls) {
 // which points are being spent: your own while you live, everyone's otherwise
 const talentLayer = (cls) => (CD.treeLayer === 'shared' || !talentOwn(cls) ? 'shared' : 'own');
 const talentLevelOf = (xp) => { let x = xp || 0, lvl = 1; while (lvl < MAX_CLASS_LEVEL && x >= soulsFor(lvl)) { x -= soulsFor(lvl); lvl++; } return { lvl, into: x }; };
-treeOf = function (cls) { return talentLayer(cls) === 'own' ? talentOwn(cls) : talentShared(); };
+function treeOf(cls) { return talentLayer(cls) === 'own' ? talentOwn(cls) : talentShared(); };
 // who placed what: everyone's points first, then every trail, living or fallen
 function talentOwners() {
   if (_towners && _towners.save === CD.save) return _towners.m;
@@ -24257,7 +23672,7 @@ function talentOwners() {
   return m;
 }
 // everything on the tree works for everyone
-treeAlloc = function () { return [...talentOwners().keys()]; };
+function treeAlloc() { return [...talentOwners().keys()]; };
 const _treeChangedT = treeChanged;
 treeChanged = function (cls) { _towners = null; _treeChangedT(cls); };
 function talentWhose(id) {
@@ -24266,12 +23681,12 @@ function talentWhose(id) {
   const k = m.get(id), R = k ? talentShared().trails[k] : null;
   return k == null ? "Placed with everyone's points" : R ? `Placed by ${R.name}${R.fell ? ', who has fallen' : ''}` : 'Placed long ago';
 }
-classLevelInfo = function (cls) {
+function classLevelInfo(cls) {
   const layer = talentLayer(cls), T = treeOf(cls), { lvl, into } = talentLevelOf(T.xp);
   const points = lvl - 1 + (layer === 'shared' ? CD.save.treeBonus || 0 : 0);
   return { lvl, into, need: soulsFor(lvl), points, spent: T.alloc.length, free: Math.max(0, points - T.alloc.length), layer };
 };
-bankSouls = function (cls, n) {
+function bankSouls(cls, n) {
   const S = talentShared(), O = talentOwn(cls), s0 = talentLevelOf(S.xp).lvl, o0 = O ? talentLevelOf(O.xp).lvl : s0;
   S.xp += n; if (O) O.xp += n;
   const fs = CD.save.fs; fs.soulsBanked = (fs.soulsBanked || 0) + n;
@@ -24281,7 +23696,7 @@ bankSouls = function (cls, n) {
   return { before: o0, after: O ? talentLevelOf(O.xp).lvl : s1 };
 };
 // your own points start from your place on the rim; everyone's from any start; both may grow from anything already placed
-treePath = function (cls, target) {
+function treePath(cls, target) {
   const layer = talentLayer(cls), all = talentOwners(), st = treeStart(cls), N0 = TREE.nodes[target];
   if (!N0) return null;
   if (all.has(target) || target === st.id) return [];
@@ -24308,8 +23723,8 @@ function talentConnected(without) {
   while (q.length) { const u = q.shift(); for (const v of TREE.nodes[u].links) if (!seen.has(v) && rest.has(v)) { seen.add(v); q.push(v); } }
   return [...rest].every((x) => seen.has(x));
 }
-treeCanRefund = function (cls, id) { return treeOf(cls).alloc.includes(id) && talentConnected([id]); };
-treeReset = function (cls) {
+function treeCanRefund(cls, id) { return treeOf(cls).alloc.includes(id) && talentConnected([id]); };
+function treeReset(cls) {
   const T = treeOf(cls), c = resetCost(cls);
   if (!T.alloc.length) return null;
   if (!talentConnected(T.alloc)) return "Others' passives grow from these: refund them one at a time";
@@ -24317,11 +23732,11 @@ treeReset = function (cls) {
   CD.save.embers -= c; T.alloc = []; T.attr = {}; persist(); treeChanged(cls);
   return null;
 };
-treeAttrOf = function (cls, n) {
+function treeAttrOf(cls, n) {
   const k = talentOwners().get(n.id), T = talentShared(), L = k == null ? T : T.trails[k];
   return (L && L.attr && L.attr[n.id]) || n.attr;
 };
-treeCycleAttr = function (cls, id) {
+function treeCycleAttr(cls, id) {
   const T = treeOf(cls), n = TREE.nodes[id];
   const nxt = ATTR_IDS[(ATTR_IDS.indexOf(treeAttrOf(cls, n)) + 1) % 3];
   T.attr[id] = nxt;
@@ -24522,7 +23937,7 @@ function talentWeb() {
   TREE.nodes = nodes; TREE.edges = edges; TREE.starts = starts; TREE.startOf = startOf; TREE.glows = glows; TREE.radius = 2300; TREE.heart = heart.id;
 }
 talentWeb();
-treeStart = function (cls) { return TREE.startOf[cls] || TREE.starts[0]; };
+function treeStart(cls) { return TREE.startOf[cls] || TREE.starts[0]; };
 CD.talentWeb = () => ({ nodes: TREE.nodes.length, starts: TREE.starts.length, notables: TREE.nodes.filter((n) => n.type === 'notable').length, keystones: TREE.nodes.filter((n) => n.type === 'keystone').length, attrs: TREE.nodes.filter((n) => n.attr).length, chaos: TREE.nodes.filter((n) => n.chaos).length });
 
 /* ============================================================
@@ -25896,8 +25311,7 @@ CD.living = { get brains() { return LW_BRAINS.map(([id, name]) => ({ id, name, o
    Cinderdeep — Emberhold Proving Trail and the combat toolkit
    Optional per-hero progress; encounters reconstruct from milestones.
    ============================================================ */
-DEFAULT_SETTINGS.combatFlow = true;
-const SG = { Z: null, objects: [], nodes: {}, dummy: null, encounter: [], focus: 0, lastHit: -99, perfectAt: -99, counterUntil: 0, dashAt: -99, tick: 0, hud: null, trial: null, drillAt: 0, lastAction: '' };
+const SG = { Z: null, objects: [], nodes: {}, dummy: null, encounter: [], tick: 0, hud: null, trial: null, drillAt: 0 };
 const SG_STEPS = [
   ['A place to begin', 'Speak with Captain Rowan at the trail camp.', 'mentor'],
   ['Find your reach', 'Land three attacks on the practice dummy.', 'dummy'],
@@ -25908,7 +25322,6 @@ const SG_STEPS = [
   ['The road is yours', 'Claim your trail reward. Try the Watch Trial or explore the Realm.', 'mentor'],
 ];
 const sgOn = () => W.on && !W.inInst && W.Z && G.fl && G.fl.realm && G.p;
-const sgFlow = () => false && CD.settings.combatFlow !== false && G.mode === 'play' && G.p && G.fl && !G.demo;
 function sgBook() {
   if (!W.ch) return { stage: 0, hits: 0, dodges: 0, kills: 0, scrap: 0, paid: {}, boon: null };
   const s = W.ch.trail || (W.ch.trail = { stage: 0, hits: 0, dodges: 0, kills: 0, scrap: 0, paid: {}, boon: null, claimed: false });
@@ -25927,7 +25340,7 @@ function sgSpot(x, y) {
   return realmFreeSpot(x, y);
 }
 function sgReset(Z) {
-  sgRemove(); SG.Z = Z; SG.focus = 0; SG.counterUntil = 0; SG.tick = 0; SG.drillAt = W.t + 2;
+  sgRemove(); SG.Z = Z; SG.tick = 0; SG.drillAt = W.t + 2;
   if (!sgOn()) return;
   recalcStats(G.p);
   if (Z.id !== 'meadows') return;
@@ -26002,48 +25415,11 @@ function sgDummy(){
 }
 AI.traildummy=function(e){e.vx=e.vy=0;e.pose=0;};
 
-/* ---------- break guards, dodge with intent, build momentum ---------- */
-function sgFocus(n){SG.focus=clamp(SG.focus+n,0,100);SG.lastHit=G.t;}
-function sgPerfect(){
-  if(!sgFlow()||G.t-SG.perfectAt<.65)return false;
-  SG.perfectAt=G.t;SG.counterUntil=G.t+3;sgFocus(24);
-  for(const a of G.p.abilities)if(a)a.cd=Math.max(0,a.cd-.8);
-  addText(G.p.x,G.p.y-30,'PERFECT DODGE','#9cf2dd',1);ring(G.p.x,G.p.y-7,23,'#9cf2dd',.35,1);Sound.play('block',{p:1.4,v:.6});return true;
-}
-const _hurtSG=hurtPlayer;
-hurtPlayer=function(amount,src={}){
-  const dash=sgFlow()&&G.p.dashT>0&&G.t-SG.dashAt<=.15&&!G.p.dead&&amount>0&&(src.ent||src.proj||src.sgAttack);
-  const hit=_hurtSG(amount,src);if(dash&&hit===HIT.NONE&&!CD.debug.god)sgPerfect();return hit;
-};
+/* ---------- training dodges ---------- */
 hook('onDash',(p)=>{
-  if(sgFlow())SG.dashAt=G.t;if(!sgOn())return;
+  if(!sgOn())return;
   const s=W.ch.trail,n=SG.nodes.dummy;
   if(W.Z.id==='meadows'&&s&&s.stage===2&&n&&Math.hypot(p.x-n.x,p.y-n.y)<100){s.dodges=Math.min(2,(s.dodges||0)+1);toast('Training dodge '+s.dodges+'/2','#a9e0d2');if(s.dodges>=2)sgAdvance(2);}
-});
-hook('dmgMul',(e,o)=>{
-  if(!sgFlow()||o.dot||!['weapon','ability'].includes(o.src))return 1;
-  let m=1+Math.floor(SG.focus/25)*.035;
-  if((e._sgExposed||0)>G.t)m*=1.18;
-  if(o.src==='weapon'&&SG.counterUntil>G.t)m*=1.3;
-  return m;
-});
-hook('onHit',(e,dmg,o)=>{
-  if(!sgFlow()||e.sgDummy||o.dot||!['weapon','ability'].includes(o.src))return;
-  if(G.t-(SG.focusHitAt||-99)>.12){sgFocus(o.src==='ability'?7:3);SG.focusHitAt=G.t;}
-  if(o.src==='weapon'&&SG.counterUntil>G.t){SG.counterUntil=0;addText(e.x,e.y-e.h-12,'RIPOSTE','#9cf2dd');}
-  if(e.hp<=0||e.invuln||(e._sgResistUntil||0)>G.t)return;
-  const heavy=G.p.swing&&G.p.swing.heavy,add=12+Math.min(20,dmg/Math.max(1,e.maxHp)*85)+(o.src==='ability'?8:0)+(heavy?7:0),cap=e.boss?170:100;
-  e._sgPoise=(e._sgPoise||0)+add;e._sgHitAt=G.t;
-  if(e._sgPoise>=cap){
-    e._sgPoise=0;e._sgExposed=G.t+2;e._sgResistUntil=G.t+6;e._sgAction=(e._sgAction||0)+1;
-    if(!e.boss){e.stunT=Math.max(e.stunT||0,e.sgCaptain?.8:.65);e.st='recover';e.stT=.8;e.pose=0;e.contactDmg=null;}
-    addText(e.x,e.y-e.h-9,'GUARD BREAK','#edcf83',1);ring(e.x,e.y-5,18,'#edcf83',.3,1);Sound.play('block',{p:.7,v:.5});sgFocus(8);
-  }
-});
-hook('onHurt',()=>{if(sgFlow()){SG.focus=Math.max(0,SG.focus-40);SG.counterUntil=0;}});
-hook('entOverlay',(g,e,x,y)=>{
-  if(!sgFlow()||e.sgDummy||!e._sgPoise||e.dead)return;
-  const w=e.sgCaptain?34:16,k=Math.min(1,e._sgPoise/(e.boss?170:100));g.fillStyle='#302e2b';g.fillRect(Math.round(x-w/2),Math.round(y-e.h*(e.scale||1)-3),w,2);g.fillStyle='#e6c682';g.fillRect(Math.round(x-w/2),Math.round(y-e.h*(e.scale||1)-3),Math.round(w*k),2);
 });
 const _damageSG=damageEnemy;
 damageEnemy=function(e,amount,o={}){
@@ -26116,7 +25492,6 @@ spawnCamp=function(c,st){
   return _campSG(c,st);
 };
 hook('onKill',(e)=>{
-  if(sgFlow()&&e.type!=='ally'&&!e.sgDummy)sgFocus(12);
   if(!sgOn()||!e.world)return;const s=sgBook();
   if(!e.summoned&&!e.sgDummy){s.salvageKills=(s.salvageKills||0)+1;if(s.salvageKills%3===0){s.scrap=Math.min(999,s.scrap+1);addText(e.x,e.y-18,'+1 SCRAP','#d4c69b');}}
   if(W.Z.id!=='meadows')return;
@@ -26211,7 +25586,7 @@ UI.provingTrail=function(){
   if(s.stage>=6&&W.Z.id==='meadows')menu.append(btn(SG.trial?'Watch Trial in progress':'Begin the Watch Trial · 3 waves',()=>{if(sgStartTrial())UI.close(el);},'',{disabled:!!SG.trial||!sgSafe()}));
   const el=h('div',{class:'modal'},h('div',{class:'panel'},h('p',{style:{letterSpacing:'.15em',fontSize:'12px',color:'#b7bd8d'}},'EMBERHOLD · FIRST CHAPTER'),h('h2',{},'The Proving Trail'),h('h3',{},step[0]),menu,
     h('div',{style:{display:'flex',gap:'5px',margin:'18px 0'}},...SG_STEPS.slice(0,6).map((q,i)=>h('div',{style:{flex:'1',height:'5px',background:i<s.stage?'#c7cb8a':i===s.stage?'#e5b56f':'#48473d',borderRadius:'3px'}}))),
-    h('p',{},'Combat: mix attacks and abilities to break enemy guards. Dodge through a real attack for a stronger next weapon hit. Momentum grows while you keep pressure on; getting hit breaks your rhythm.'),
+    h('p',{},'Combat: guard, parry and dodge enemy strikes, and break their posture for an opening. Rowan teaches the rest at the practice circle.'),
     h('p',{},'Supplies: every third world kill yields scrap. Spare weapons can be salvaged at the workbench. Rest is available in safe settlements.'),
     h('p',{},s.boon?'Discipline: '+s.boon+(s.bestTrial?' · Best Watch Trial: '+s.bestTrial+'s':''):'A lasting discipline waits beyond the Orchard Watch.'),
     h('div',{class:'row'},btn('Back to the Realm',close,'primary'))));
@@ -26243,14 +25618,13 @@ pauseItem('journey',30,(el)=>sgOn()?btn('Journey · Proving Trail',()=>{UI.close
 const _shopSG=UI.realmShop;
 UI.realmShop=function(role,n){_shopSG(role,n);if(!sgOn()||!['smith','general','tentshop','inn'].includes(role))return;const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(btn('Trail supplies & salvage',()=>UI.fieldWorkbench()));};
 
-document.head.append(h('style',{},'.sg-hud{position:absolute;top:116px;left:10px;max-width:240px;padding:8px 10px;background:rgba(21,29,27,.85);border-left:2px solid #c6b57c;border-radius:3px;color:#e5d7b2;font:11px/1.4 sans-serif;pointer-events:auto}.sg-hud button{background:transparent;border:0;color:#efcf86;font:inherit;padding:0;cursor:pointer;text-align:left;min-height:0;box-shadow:none;clip-path:none}.sg-hud small{display:block;color:#b8c5a3}.sg-hud .sg-momentum{height:3px;background:#405647;margin-top:5px}.sg-hud .sg-momentum i{display:block;height:3px;background:#a8dfca}@media(max-width:600px){.sg-hud{top:195px;max-width:210px;font-size:10px;padding:6px 8px}}'));
+document.head.append(h('style',{},'.sg-hud{position:absolute;top:116px;left:10px;max-width:240px;padding:8px 10px;background:rgba(21,29,27,.85);border-left:2px solid #c6b57c;border-radius:3px;color:#e5d7b2;font:11px/1.4 sans-serif;pointer-events:auto}.sg-hud button{background:transparent;border:0;color:#efcf86;font:inherit;padding:0;cursor:pointer;text-align:left;min-height:0;box-shadow:none;clip-path:none}.sg-hud small{display:block;color:#b8c5a3}@media(max-width:600px){.sg-hud{top:195px;max-width:210px;font-size:10px;padding:6px 8px}}'));
 function sgHud(){
-  if(!SG.hud||!SG.hud.isConnected){SG.hud=h('div',{class:'sg-hud'},btn('Journey',()=>UI.provingTrail()),h('small',{}),h('div',{class:'sg-momentum'},h('i',{})));$('hud').append(SG.hud);}
+  if(!SG.hud||!SG.hud.isConnected){SG.hud=h('div',{class:'sg-hud'},btn('Journey',()=>UI.provingTrail()),h('small',{}));$('hud').append(SG.hud);}
   SG.hud.hidden=!sgOn();if(!sgOn())return;
   const s=W.ch.trail,stage=s?s.stage:0,step=SG_STEPS[stage],trial=SG.trial;
   SG.hud.querySelector('button').textContent=W.Z.id==='meadows'?(trial?'Watch Trial · '+(trial.wave?trial.wave+'/3':'follow the trail'):step[0]+'  ›'):'Expedition supplies  ›';
-  SG.hud.querySelector('small').textContent=trial?(trial.state==='travel'?'Reach Briar Crossing':'Wave '+trial.wave+' · '+Math.floor(G.t-trial.started)+'s'):(W.Z.id==='meadows'&&stage===1?(s.hits||0)+'/3 practice hits':W.Z.id==='meadows'&&stage===2?(s.dodges||0)+'/2 training dodges':W.Z.id==='meadows'&&stage===3?(s.kills||0)+'/3 raiders':(s?s.scrap:0)+' scrap · '+(sgFlow()?'Momentum '+Math.floor(SG.focus):'Field workbench'));
-  SG.hud.querySelector('i').style.width=(sgFlow()?SG.focus:0)+'%';
+  SG.hud.querySelector('small').textContent=trial?(trial.state==='travel'?'Reach Briar Crossing':'Wave '+trial.wave+' · '+Math.floor(G.t-trial.started)+'s'):(W.Z.id==='meadows'&&stage===1?(s.hits||0)+'/3 practice hits':W.Z.id==='meadows'&&stage===2?(s.dodges||0)+'/2 training dodges':W.Z.id==='meadows'&&stage===3?(s.kills||0)+'/3 raiders':(s?s.scrap:0)+' scrap · Field workbench');
   sgBossHud();
 }
 document.head.append(h('style',{},'.sg-boss{position:absolute;top:48px;left:50%;transform:translateX(-50%);width:260px;max-width:43%;padding:7px 10px;background:rgba(31,23,24,.9);border:1px solid #9d7956;border-radius:4px;color:#f1d4a0;text-align:center;font:11px/1.35 sans-serif;pointer-events:none}.sg-boss div{height:5px;background:#3d3332;margin:5px 0}.sg-boss i{display:block;height:5px;background:#ce775d}.sg-boss small{color:#c7cbb2}@media(max-width:600px){.sg-boss{top:273px;max-width:70%;font-size:10px}}'));
@@ -26262,13 +25636,6 @@ function sgBossHud(){
   SG.bossHud.querySelector('small').textContent=(e._sgExposed||0)>G.t?'Opening · strike now':e.st==='windup'?'Attack warning · make space':e.st==='charge'?'Charging · get to the side':'Watch his windup';
 }
 hook('update',dt=>{
-  if(sgFlow()){
-    if(G.t-SG.lastHit>3)SG.focus=Math.max(0,SG.focus-dt*8);
-    for(const e of G.ents)if(e._sgPoise&&G.t-(e._sgHitAt||0)>2.5)e._sgPoise=Math.max(0,e._sgPoise-dt*24);
-  }
-  if(!SG.flowHud||!SG.flowHud.isConnected){SG.flowHud=h('div',{class:'sg-hud',style:{pointerEvents:'none'}},'');$('hud').append(SG.flowHud);}
-  SG.flowHud.hidden=!sgFlow()||!!sgOn()||SG.focus<1;
-  if(!SG.flowHud.hidden)SG.flowHud.textContent='Momentum '+Math.floor(SG.focus)+(SG.counterUntil>G.t?' · Riposte ready':' · +'+Math.round(Math.floor(SG.focus/25)*3.5)+'% damage');
   if(!sgOn()){if(SG.hud)SG.hud.hidden=true;if(SG.bossHud)SG.bossHud.hidden=true;return;}
   if(SG.Z!==W.Z)sgReset(W.Z);
   if(W.Z.id==='meadows'){
@@ -26284,7 +25651,7 @@ hook('update',dt=>{
   }
   SG.tick-=dt;if(SG.tick<=0){SG.tick=.2;sgHud();}
 });
-CD.proving={open:()=>UI.provingTrail(),get stage(){return W.ch&&W.ch.trail?W.ch.trail.stage:0;},get focus(){return SG.focus;}};
+CD.proving={open:()=>UI.provingTrail(),get stage(){return W.ch&&W.ch.trail?W.ch.trail.stage:0;}};
 
 /* ============================================================
    Cinderdeep — CinderFX: GPU cinema, spatial upscaling and VFX
@@ -26697,8 +26064,8 @@ function duelDeflect(d,perfect){
   s.parryUntil=-99;s.recoverUntil=G.t+.08;s.guard=true;duelAnim(perfect?'perfectParry':'parry',.35);duelVfx(perfect?'perfect':'parry',p.x,p.y,perfect?'#ffe4a5':'#c1e7f3');duelSound(perfect?'perfect':'parry');hitstop(perfect?.055:.025);
   return d.pr?HIT.REFLECT:HIT.BLOCK;
 }
-// Replace the previous precision-dodge wrapper, retaining native damage/relic hooks.
-const _hurtDuel=_hurtSG;
+// guard, parry and dodge resolve before the native damage and relic hooks
+const _hurtDuel=hurtPlayer;
 hurtPlayer=function(amount,src={}){
   if(!duelOn())return _hurtDuel(amount,src);const p=G.p,s=duelState(),d=duelSource(src);
   if(p.dead||amount<=0)return HIT.NONE;
@@ -26860,8 +26227,6 @@ const _deflectBossDuel=duelDeflect;
 duelDeflect=function(d,perfect){const result=_deflectBossDuel(d,perfect);if(perfect&&d.e&&(d.e.boss||d.e.sgCaptain)){const b=d.e._duelBoss;if(b&&b.beat===2){b.finalParry=true;}else if(!b&&['recover','rest','idle'].includes(d.e.st))d.e._duelFinishUntil=G.t+1.4;}return result;};
 hook('update',dt=>{
   if(!duelOn())return;
-  // The legacy momentum/precision hooks are disabled by the base flow gate.
-  SG.counterUntil=0;
   for(const e of G.ents){
     if(e._duelPosture&&G.t-(e._duelPostureAt||0)>2.8)e._duelPosture=Math.max(0,e._duelPosture-dt*14);
     const b=e._duelBoss;if(b&&b.finalParry&&b.phase==='rest'){b.t=Math.max(b.t,1.9);b.finalParry=false;e._duelFinishUntil=G.t+1.9;}

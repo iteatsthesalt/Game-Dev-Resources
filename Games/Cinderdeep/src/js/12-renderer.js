@@ -401,26 +401,6 @@ function drawPlayer(g, p, cx, cy) {
     g.save(); g.translate(Math.round(bx), Math.round(by)); g.rotate(G.t * 14); g.fillStyle = '#dde3ec'; g.fillRect(-4, -1, 8, 2); g.fillStyle = '#ffffff'; g.fillRect(-4, -1, 3, 1); g.restore();
   }
 }
-function drawHeld(g, p, x, y) {
-  const w = p.weapon, def = WEAPON[w.id], sp = heldWeapon(w.id);
-  let ang = p.aim, ox = 0;
-  const sw = p.swing;
-  if (sw && (sw.style === 'slash' || sw.style === 'stab' || sw.style === 'punch' || sw.style === 'slam')) {
-    const k = clamp(sw.t / sw.dur, 0, 1), e = easeOut(k);
-    if (sw.style === 'slash' || sw.style === 'slam') ang = sw.ang + (sw.arc / 2) * sw.dir * (e * 2 - 1);
-    else ox = Math.sin(k * Math.PI) * 6;
-  } else if (sw && sw.style === 'spin') ang = sw.ang + (sw.t / sw.dur) * TAU;
-  else if (sw && sw.style === 'thrust') ox = Math.sin(clamp(sw.t / sw.dur, 0, 1) * Math.PI) * 10;
-  if (p.recoil > 0) { ox -= p.recoil * 30; p.recoil -= 1 / 60; }
-  const hx = x + Math.cos(ang) * (4 + ox), hy = y - 8 + Math.sin(ang) * (3 + ox * 0.6);
-  g.save();
-  g.translate(Math.round(hx), Math.round(hy));
-  g.rotate(ang);
-  if (Math.cos(ang) < 0) g.scale(1, -1);
-  g.drawImage(sp.c, -sp.ax, -sp.ay);
-  if (w.rar === 'legendary' || w.rar === 'epic') { g.globalAlpha = 0.25 + Math.sin(G.t * 5) * 0.15; g.drawImage(tintOf(sp, RARITY[w.rar].color, 'gl'), -sp.ax, -sp.ay); }
-  g.restore();
-}
 function drawEnt(g, e, cx, cy) {
   if (e.dead) return;
   if (e.boss) return drawBoss(g, e, cx, cy);

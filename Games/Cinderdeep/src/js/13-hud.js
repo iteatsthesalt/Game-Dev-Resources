@@ -7,12 +7,6 @@ function setText(id, v) { if (HUD.last[id] !== v) { HUD.last[id] = v; $(id).text
 function setHTML(el, key, html) { if (HUD.last[key] !== html) { HUD.last[key] = html; el.innerHTML = html; } }
 function setW(el, key, v) { const s = (v * 100).toFixed(1) + '%'; if (HUD.last[key] !== s) { HUD.last[key] = s; el.style.width = s; } }
 
-function keyLabel(action) {
-  const d = Input.device;
-  if (d === 'pad') return { attack: 'RT', dash: 'A', ab1: 'LB', ab2: 'RB', use: 'X', swap: 'Y', potion: 'B', map: 'Back', pause: 'Start' }[action];
-  if (d === 'touch') return '';
-  return { attack: 'LMB', dash: 'Space', ab1: 'Q', ab2: 'E', use: 'F', swap: 'Tab', potion: 'R', map: 'M', pause: 'Esc' }[action];
-}
 
 function updateHUD(dt) {
   const p = G.p;

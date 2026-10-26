@@ -163,6 +163,6 @@ function talentWeb() {
   TREE.nodes = nodes; TREE.edges = edges; TREE.starts = starts; TREE.startOf = startOf; TREE.glows = glows; TREE.radius = 2300; TREE.heart = heart.id;
 }
 talentWeb();
-treeStart = function (cls) { return TREE.startOf[cls] || TREE.starts[0]; };
+function treeStart(cls) { return TREE.startOf[cls] || TREE.starts[0]; };
 CD.talentWeb = () => ({ nodes: TREE.nodes.length, starts: TREE.starts.length, notables: TREE.nodes.filter((n) => n.type === 'notable').length, keystones: TREE.nodes.filter((n) => n.type === 'keystone').length, attrs: TREE.nodes.filter((n) => n.attr).length, chaos: TREE.nodes.filter((n) => n.chaos).length });
 

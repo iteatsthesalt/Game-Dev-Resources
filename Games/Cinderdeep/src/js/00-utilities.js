@@ -7,10 +7,7 @@ const TAU = Math.PI * 2;
 const clamp = (v, a, b) => (v < a ? a : v > b ? b : v);
 const lerp = (a, b, t) => a + (b - a) * t;
 const dist = (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
-const dist2 = (ax, ay, bx, by) => (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
-const angTo = (ax, ay, bx, by) => Math.atan2(by - ay, bx - ax);
 const angDiff = (a, b) => { let d = (b - a) % TAU; if (d > Math.PI) d -= TAU; if (d < -Math.PI) d += TAU; return d; };
-const approach = (v, t, s) => (v < t ? Math.min(t, v + s) : Math.max(t, v - s));
 const easeOut = (t) => 1 - (1 - t) * (1 - t);
 const sign = (v) => (v < 0 ? -1 : v > 0 ? 1 : 0);
 

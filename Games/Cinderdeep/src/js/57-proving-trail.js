@@ -2,8 +2,7 @@
    Cinderdeep — Emberhold Proving Trail and the combat toolkit
    Optional per-hero progress; encounters reconstruct from milestones.
    ============================================================ */
-DEFAULT_SETTINGS.combatFlow = true;
-const SG = { Z: null, objects: [], nodes: {}, dummy: null, encounter: [], focus: 0, lastHit: -99, perfectAt: -99, counterUntil: 0, dashAt: -99, tick: 0, hud: null, trial: null, drillAt: 0, lastAction: '' };
+const SG = { Z: null, objects: [], nodes: {}, dummy: null, encounter: [], tick: 0, hud: null, trial: null, drillAt: 0 };
 const SG_STEPS = [
   ['A place to begin', 'Speak with Captain Rowan at the trail camp.', 'mentor'],
   ['Find your reach', 'Land three attacks on the practice dummy.', 'dummy'],
@@ -14,7 +13,6 @@ const SG_STEPS = [
   ['The road is yours', 'Claim your trail reward. Try the Watch Trial or explore the Realm.', 'mentor'],
 ];
 const sgOn = () => W.on && !W.inInst && W.Z && G.fl && G.fl.realm && G.p;
-const sgFlow = () => false && CD.settings.combatFlow !== false && G.mode === 'play' && G.p && G.fl && !G.demo;
 function sgBook() {
   if (!W.ch) return { stage: 0, hits: 0, dodges: 0, kills: 0, scrap: 0, paid: {}, boon: null };
   const s = W.ch.trail || (W.ch.trail = { stage: 0, hits: 0, dodges: 0, kills: 0, scrap: 0, paid: {}, boon: null, claimed: false });
@@ -33,7 +31,7 @@ function sgSpot(x, y) {
   return realmFreeSpot(x, y);
 }
 function sgReset(Z) {
-  sgRemove(); SG.Z = Z; SG.focus = 0; SG.counterUntil = 0; SG.tick = 0; SG.drillAt = W.t + 2;
+  sgRemove(); SG.Z = Z; SG.tick = 0; SG.drillAt = W.t + 2;
   if (!sgOn()) return;
   recalcStats(G.p);
   if (Z.id !== 'meadows') return;
@@ -108,48 +106,11 @@ function sgDummy(){
 }
 AI.traildummy=function(e){e.vx=e.vy=0;e.pose=0;};
 
-/* ---------- break guards, dodge with intent, build momentum ---------- */
-function sgFocus(n){SG.focus=clamp(SG.focus+n,0,100);SG.lastHit=G.t;}
-function sgPerfect(){
-  if(!sgFlow()||G.t-SG.perfectAt<.65)return false;
-  SG.perfectAt=G.t;SG.counterUntil=G.t+3;sgFocus(24);
-  for(const a of G.p.abilities)if(a)a.cd=Math.max(0,a.cd-.8);
-  addText(G.p.x,G.p.y-30,'PERFECT DODGE','#9cf2dd',1);ring(G.p.x,G.p.y-7,23,'#9cf2dd',.35,1);Sound.play('block',{p:1.4,v:.6});return true;
-}
-const _hurtSG=hurtPlayer;
-hurtPlayer=function(amount,src={}){
-  const dash=sgFlow()&&G.p.dashT>0&&G.t-SG.dashAt<=.15&&!G.p.dead&&amount>0&&(src.ent||src.proj||src.sgAttack);
-  const hit=_hurtSG(amount,src);if(dash&&hit===HIT.NONE&&!CD.debug.god)sgPerfect();return hit;
-};
+/* ---------- training dodges ---------- */
 hook('onDash',(p)=>{
-  if(sgFlow())SG.dashAt=G.t;if(!sgOn())return;
+  if(!sgOn())return;
   const s=W.ch.trail,n=SG.nodes.dummy;
   if(W.Z.id==='meadows'&&s&&s.stage===2&&n&&Math.hypot(p.x-n.x,p.y-n.y)<100){s.dodges=Math.min(2,(s.dodges||0)+1);toast('Training dodge '+s.dodges+'/2','#a9e0d2');if(s.dodges>=2)sgAdvance(2);}
-});
-hook('dmgMul',(e,o)=>{
-  if(!sgFlow()||o.dot||!['weapon','ability'].includes(o.src))return 1;
-  let m=1+Math.floor(SG.focus/25)*.035;
-  if((e._sgExposed||0)>G.t)m*=1.18;
-  if(o.src==='weapon'&&SG.counterUntil>G.t)m*=1.3;
-  return m;
-});
-hook('onHit',(e,dmg,o)=>{
-  if(!sgFlow()||e.sgDummy||o.dot||!['weapon','ability'].includes(o.src))return;
-  if(G.t-(SG.focusHitAt||-99)>.12){sgFocus(o.src==='ability'?7:3);SG.focusHitAt=G.t;}
-  if(o.src==='weapon'&&SG.counterUntil>G.t){SG.counterUntil=0;addText(e.x,e.y-e.h-12,'RIPOSTE','#9cf2dd');}
-  if(e.hp<=0||e.invuln||(e._sgResistUntil||0)>G.t)return;
-  const heavy=G.p.swing&&G.p.swing.heavy,add=12+Math.min(20,dmg/Math.max(1,e.maxHp)*85)+(o.src==='ability'?8:0)+(heavy?7:0),cap=e.boss?170:100;
-  e._sgPoise=(e._sgPoise||0)+add;e._sgHitAt=G.t;
-  if(e._sgPoise>=cap){
-    e._sgPoise=0;e._sgExposed=G.t+2;e._sgResistUntil=G.t+6;e._sgAction=(e._sgAction||0)+1;
-    if(!e.boss){e.stunT=Math.max(e.stunT||0,e.sgCaptain?.8:.65);e.st='recover';e.stT=.8;e.pose=0;e.contactDmg=null;}
-    addText(e.x,e.y-e.h-9,'GUARD BREAK','#edcf83',1);ring(e.x,e.y-5,18,'#edcf83',.3,1);Sound.play('block',{p:.7,v:.5});sgFocus(8);
-  }
-});
-hook('onHurt',()=>{if(sgFlow()){SG.focus=Math.max(0,SG.focus-40);SG.counterUntil=0;}});
-hook('entOverlay',(g,e,x,y)=>{
-  if(!sgFlow()||e.sgDummy||!e._sgPoise||e.dead)return;
-  const w=e.sgCaptain?34:16,k=Math.min(1,e._sgPoise/(e.boss?170:100));g.fillStyle='#302e2b';g.fillRect(Math.round(x-w/2),Math.round(y-e.h*(e.scale||1)-3),w,2);g.fillStyle='#e6c682';g.fillRect(Math.round(x-w/2),Math.round(y-e.h*(e.scale||1)-3),Math.round(w*k),2);
 });
 const _damageSG=damageEnemy;
 damageEnemy=function(e,amount,o={}){
@@ -222,7 +183,6 @@ spawnCamp=function(c,st){
   return _campSG(c,st);
 };
 hook('onKill',(e)=>{
-  if(sgFlow()&&e.type!=='ally'&&!e.sgDummy)sgFocus(12);
   if(!sgOn()||!e.world)return;const s=sgBook();
   if(!e.summoned&&!e.sgDummy){s.salvageKills=(s.salvageKills||0)+1;if(s.salvageKills%3===0){s.scrap=Math.min(999,s.scrap+1);addText(e.x,e.y-18,'+1 SCRAP','#d4c69b');}}
   if(W.Z.id!=='meadows')return;
@@ -317,7 +277,7 @@ UI.provingTrail=function(){
   if(s.stage>=6&&W.Z.id==='meadows')menu.append(btn(SG.trial?'Watch Trial in progress':'Begin the Watch Trial · 3 waves',()=>{if(sgStartTrial())UI.close(el);},'',{disabled:!!SG.trial||!sgSafe()}));
   const el=h('div',{class:'modal'},h('div',{class:'panel'},h('p',{style:{letterSpacing:'.15em',fontSize:'12px',color:'#b7bd8d'}},'EMBERHOLD · FIRST CHAPTER'),h('h2',{},'The Proving Trail'),h('h3',{},step[0]),menu,
     h('div',{style:{display:'flex',gap:'5px',margin:'18px 0'}},...SG_STEPS.slice(0,6).map((q,i)=>h('div',{style:{flex:'1',height:'5px',background:i<s.stage?'#c7cb8a':i===s.stage?'#e5b56f':'#48473d',borderRadius:'3px'}}))),
-    h('p',{},'Combat: mix attacks and abilities to break enemy guards. Dodge through a real attack for a stronger next weapon hit. Momentum grows while you keep pressure on; getting hit breaks your rhythm.'),
+    h('p',{},'Combat: guard, parry and dodge enemy strikes, and break their posture for an opening. Rowan teaches the rest at the practice circle.'),
     h('p',{},'Supplies: every third world kill yields scrap. Spare weapons can be salvaged at the workbench. Rest is available in safe settlements.'),
     h('p',{},s.boon?'Discipline: '+s.boon+(s.bestTrial?' · Best Watch Trial: '+s.bestTrial+'s':''):'A lasting discipline waits beyond the Orchard Watch.'),
     h('div',{class:'row'},btn('Back to the Realm',close,'primary'))));
@@ -349,14 +309,13 @@ pauseItem('journey',30,(el)=>sgOn()?btn('Journey · Proving Trail',()=>{UI.close
 const _shopSG=UI.realmShop;
 UI.realmShop=function(role,n){_shopSG(role,n);if(!sgOn()||!['smith','general','tentshop','inn'].includes(role))return;const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(btn('Trail supplies & salvage',()=>UI.fieldWorkbench()));};
 
-document.head.append(h('style',{},'.sg-hud{position:absolute;top:116px;left:10px;max-width:240px;padding:8px 10px;background:rgba(21,29,27,.85);border-left:2px solid #c6b57c;border-radius:3px;color:#e5d7b2;font:11px/1.4 sans-serif;pointer-events:auto}.sg-hud button{background:transparent;border:0;color:#efcf86;font:inherit;padding:0;cursor:pointer;text-align:left;min-height:0;box-shadow:none;clip-path:none}.sg-hud small{display:block;color:#b8c5a3}.sg-hud .sg-momentum{height:3px;background:#405647;margin-top:5px}.sg-hud .sg-momentum i{display:block;height:3px;background:#a8dfca}@media(max-width:600px){.sg-hud{top:195px;max-width:210px;font-size:10px;padding:6px 8px}}'));
+document.head.append(h('style',{},'.sg-hud{position:absolute;top:116px;left:10px;max-width:240px;padding:8px 10px;background:rgba(21,29,27,.85);border-left:2px solid #c6b57c;border-radius:3px;color:#e5d7b2;font:11px/1.4 sans-serif;pointer-events:auto}.sg-hud button{background:transparent;border:0;color:#efcf86;font:inherit;padding:0;cursor:pointer;text-align:left;min-height:0;box-shadow:none;clip-path:none}.sg-hud small{display:block;color:#b8c5a3}@media(max-width:600px){.sg-hud{top:195px;max-width:210px;font-size:10px;padding:6px 8px}}'));
 function sgHud(){
-  if(!SG.hud||!SG.hud.isConnected){SG.hud=h('div',{class:'sg-hud'},btn('Journey',()=>UI.provingTrail()),h('small',{}),h('div',{class:'sg-momentum'},h('i',{})));$('hud').append(SG.hud);}
+  if(!SG.hud||!SG.hud.isConnected){SG.hud=h('div',{class:'sg-hud'},btn('Journey',()=>UI.provingTrail()),h('small',{}));$('hud').append(SG.hud);}
   SG.hud.hidden=!sgOn();if(!sgOn())return;
   const s=W.ch.trail,stage=s?s.stage:0,step=SG_STEPS[stage],trial=SG.trial;
   SG.hud.querySelector('button').textContent=W.Z.id==='meadows'?(trial?'Watch Trial · '+(trial.wave?trial.wave+'/3':'follow the trail'):step[0]+'  ›'):'Expedition supplies  ›';
-  SG.hud.querySelector('small').textContent=trial?(trial.state==='travel'?'Reach Briar Crossing':'Wave '+trial.wave+' · '+Math.floor(G.t-trial.started)+'s'):(W.Z.id==='meadows'&&stage===1?(s.hits||0)+'/3 practice hits':W.Z.id==='meadows'&&stage===2?(s.dodges||0)+'/2 training dodges':W.Z.id==='meadows'&&stage===3?(s.kills||0)+'/3 raiders':(s?s.scrap:0)+' scrap · '+(sgFlow()?'Momentum '+Math.floor(SG.focus):'Field workbench'));
-  SG.hud.querySelector('i').style.width=(sgFlow()?SG.focus:0)+'%';
+  SG.hud.querySelector('small').textContent=trial?(trial.state==='travel'?'Reach Briar Crossing':'Wave '+trial.wave+' · '+Math.floor(G.t-trial.started)+'s'):(W.Z.id==='meadows'&&stage===1?(s.hits||0)+'/3 practice hits':W.Z.id==='meadows'&&stage===2?(s.dodges||0)+'/2 training dodges':W.Z.id==='meadows'&&stage===3?(s.kills||0)+'/3 raiders':(s?s.scrap:0)+' scrap · Field workbench');
   sgBossHud();
 }
 document.head.append(h('style',{},'.sg-boss{position:absolute;top:48px;left:50%;transform:translateX(-50%);width:260px;max-width:43%;padding:7px 10px;background:rgba(31,23,24,.9);border:1px solid #9d7956;border-radius:4px;color:#f1d4a0;text-align:center;font:11px/1.35 sans-serif;pointer-events:none}.sg-boss div{height:5px;background:#3d3332;margin:5px 0}.sg-boss i{display:block;height:5px;background:#ce775d}.sg-boss small{color:#c7cbb2}@media(max-width:600px){.sg-boss{top:273px;max-width:70%;font-size:10px}}'));
@@ -368,13 +327,6 @@ function sgBossHud(){
   SG.bossHud.querySelector('small').textContent=(e._sgExposed||0)>G.t?'Opening · strike now':e.st==='windup'?'Attack warning · make space':e.st==='charge'?'Charging · get to the side':'Watch his windup';
 }
 hook('update',dt=>{
-  if(sgFlow()){
-    if(G.t-SG.lastHit>3)SG.focus=Math.max(0,SG.focus-dt*8);
-    for(const e of G.ents)if(e._sgPoise&&G.t-(e._sgHitAt||0)>2.5)e._sgPoise=Math.max(0,e._sgPoise-dt*24);
-  }
-  if(!SG.flowHud||!SG.flowHud.isConnected){SG.flowHud=h('div',{class:'sg-hud',style:{pointerEvents:'none'}},'');$('hud').append(SG.flowHud);}
-  SG.flowHud.hidden=!sgFlow()||!!sgOn()||SG.focus<1;
-  if(!SG.flowHud.hidden)SG.flowHud.textContent='Momentum '+Math.floor(SG.focus)+(SG.counterUntil>G.t?' · Riposte ready':' · +'+Math.round(Math.floor(SG.focus/25)*3.5)+'% damage');
   if(!sgOn()){if(SG.hud)SG.hud.hidden=true;if(SG.bossHud)SG.bossHud.hidden=true;return;}
   if(SG.Z!==W.Z)sgReset(W.Z);
   if(W.Z.id==='meadows'){
@@ -390,5 +342,5 @@ hook('update',dt=>{
   }
   SG.tick-=dt;if(SG.tick<=0){SG.tick=.2;sgHud();}
 });
-CD.proving={open:()=>UI.provingTrail(),get stage(){return W.ch&&W.ch.trail?W.ch.trail.stage:0;},get focus(){return SG.focus;}};
+CD.proving={open:()=>UI.provingTrail(),get stage(){return W.ch&&W.ch.trail?W.ch.trail.stage:0;}};
 

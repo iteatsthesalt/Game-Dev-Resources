@@ -40,7 +40,6 @@ const BIOMES = [
 ];
 const BIOME = Object.fromEntries(BIOMES.map((b, i) => { b.idx = i; return [b.id, b]; }));
 const zoneAt = (c, r) => BIOMES.find((b) => b.at[0] === c && b.at[1] === r) || null;
-const zoneMid = (b) => (b.lvl[0] + b.lvl[1]) / 2;
 
 /* ---------- settlement names ---------- */
 const TOWN_A = ['Ash', 'Bright', 'Cold', 'Deep', 'Elder', 'Fern', 'Gold', 'High', 'Iron', 'Low', 'Mill', 'North', 'Oak', 'Red', 'Salt', 'Thorn', 'Willow', 'Wolf', 'Stone', 'Raven', 'Dusk', 'Ember', 'Frost', 'Glen', 'Moss', 'Sun', 'Hollow', 'Black', 'Silver', 'Briar'];
@@ -280,7 +279,6 @@ for (const b of BIOMES) {
   const bo = W_BOSSES[b.id];
   if (bo) { const [id, name, fam, v, c, pattern, size, ex = {}] = bo; W_BOSS_DEF[id] = { id, name, fam, v, c, pattern, size, zone: b.id, fly: !!ex.fly, gear: ex.gear, title: `Terror of ${b.name}` }; b.boss = id; }
 }
-const WORLD_MOB_COUNT = Object.keys(WORLD_KINDS).length + Object.keys(W_BOSS_DEF).length;
 
 /* ---------- scaling by level ---------- */
 const worldHpMul = (L) => 1 + 0.07 * (L - 1) + 0.0022 * (L - 1) * (L - 1);

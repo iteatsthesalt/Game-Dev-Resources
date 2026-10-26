@@ -61,128 +61,12 @@ const btn = (label, onclick, cls = '', attrs = {}) => h('button', { class: 'btn 
 const emberChip = () => h('span', { class: 'embers', title: 'Embers' }, h('img', { alt: '', src: iconURL(miscIcon('ember'), 2) }), String(CD.save.embers || 0));
 
 /* ---------- title ---------- */
-UI.title = function () {
-  setMode('title');
-  startDemo();
-  const save = CD.save, has = !!save.run;
-  const el = h('div', { class: 'screen center title' },
-    h('div', { style: { display: 'grid', gap: '6px', justifyItems: 'center', marginBottom: '6px' } },
-      h('h1', { class: 'ttl' }, 'Cinderdeep'),
-      h('p', { class: 'ttl-sub' }, 'Twelve floors down to the Cinder King')),
-    h('div', { class: 'menu' },
-      has ? btn(`Continue · ${CLASS[save.run.cls].name}, ${floorLabel(save.run.floorIdx)}`, () => continueRun(), 'primary', { 'data-autofocus': true }) : null,
-      btn('New descent', () => UI.heroes(), has ? '' : 'primary', has ? {} : { 'data-autofocus': true }),
-      btn('Camp · spend embers', () => UI.camp()),
-      btn('Records', () => UI.records()),
-      btn('Settings', () => UI.settings(() => UI.title())),
-      btn('How to play', () => UI.help(() => UI.title()))),
-    h('div', { class: 'row' }, emberChip()),
-    h('p', { class: 'foot' }, `${save.stats.runs || 0} descents · ${save.stats.wins || 0} victories · deepest floor ${save.stats.bestFloor || 0}`),
-    h('p', { class: 'foot', id: 'save-note' }, saveNote()),
-  );
-  UI.open(el, {});
-};
 
 function saveNote() { return CD.cloud ? 'Progress is saved to your account.' : CD.cloudTried ? 'Progress saves in this browser.' : ''; }
 
 /* ---------- hero select ---------- */
-UI.heroes = function () {
-  const save = CD.save;
-  let sel = save.lastClass && save.unlocks.classes.includes(save.lastClass) ? save.lastClass : 'knight';
-  let heat = Math.min(save.lastHeat || 0, save.heatUnlocked || 0);
-  let lookSheet = save.lastSheet || '';
-  const grid = h('div', { class: 'heroes' });
-  const detail = h('div', { class: 'detail' });
-  const go = btn('Begin the descent', () => begin(), 'primary');
-  const begin = () => {
-    if (!save.unlocks.classes.includes(sel)) return;
-    save.lastClass = sel; save.lastHeat = heat; save.lastSheet = lookSheet;
-    const seedIn = $('seed-in'), seed = seedIn && seedIn.value.trim() ? seedIn.value.trim() : null;
-    UI.clear();
-    fadeTransition(() => startRun({ cls: sel, heat, seed, sheetId: lookSheet || null }));
-  };
-  const draw = () => {
-    grid.innerHTML = '';
-    for (const c of CLASSES) {
-      const unlocked = save.unlocks.classes.includes(c.id);
-      const cv = mkCanvas(24, 24), g = cv.getContext('2d');
-      const sp = heroSprites(c.look, c.id).front[0];
-      g.drawImage(sp.c, 12 - sp.ax, 23 - sp.ay);
-      const card = h('button', { class: `hero ${sel === c.id ? 'sel' : ''} ${unlocked ? '' : 'locked'}`, type: 'button', 'aria-pressed': sel === c.id ? 'true' : 'false', 'data-autofocus': sel === c.id ? true : null,
-        onclick: () => { Sound.play('ui'); sel = c.id; draw(); } },
-        cv, h('b', {}, c.name), h('small', {}, c.blurb),
-        h('span', { class: 'stats' }, `${c.hp} health`, ` · ${WEAPON[c.weapon].name}`),
-        unlocked ? null : h('span', { class: 'lock' }, `Unlock in camp · ${c.cost} embers`));
-      grid.append(card);
-    }
-    const c = CLASS[sel], unlocked = save.unlocks.classes.includes(sel);
-    detail.innerHTML = '';
-    const w = makeWeapon(c.weapon, 'common', new RNG(1));
-    const pas = h('div', { class: 'card', style: { '--rc': 'var(--ember-2)' } }, h('div', { class: 'head' }, h('img', { alt: '', src: iconURL(miscIcon('heat'), 3) }), h('div', {}, h('div', { class: 'nm' }, c.passive.name), h('div', { class: 'sub' }, `${c.name} passive`))), h('p', { class: 'desc' }, c.passive.desc));
-    const wc = h('div', { html: weaponCardHTML(w) });
-    const ac = h('div', { html: abilityCardHTML(c.ability, 1) });
-    detail.append(h('div', { style: { display: 'grid', gap: '10px' } }, wc.firstElementChild, pas), ac.firstElementChild);
-    go.disabled = !unlocked;
-    go.textContent = unlocked ? `Descend as the ${c.name}` : `Locked · unlock in camp`;
-  };
-  draw();
-  const heatSel = h('select', { id: 'heat-sel', onchange: (e) => { heat = +e.target.value; } },
-    ...Array.from({ length: (save.heatUnlocked || 0) + 1 }, (_, i) => h('option', { value: i, selected: i === heat ? true : null }, i === 0 ? 'Heat 0 · normal' : `Heat ${i} · ${HEAT[i]}`)));
-  const sheets = save.sheets || [];
-  const lookSel = h('select', { id: 'look-sel', onchange: (e) => { lookSheet = e.target.value; } },
-    h('option', { value: '' }, 'The hero’s own look'), ...sheets.map((s) => h('option', { value: s.id, selected: s.id === lookSheet ? true : null }, `Sheet: ${s.name}`)));
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'Choose a hero'), emberChip()),
-    grid, detail,
-    h('div', { class: 'opts' },
-      (save.heatUnlocked || 0) > 0 ? h('label', { class: 'field' }, 'Heat', heatSel) : h('span', { class: 'foot' }, 'Win a run to unlock Heat, harder descents that pay more embers.'),
-      h('label', { class: 'field' }, 'Look', lookSel),
-      h('label', { class: 'field' }, 'Seed (optional)', h('input', { id: 'seed-in', type: 'text', maxlength: 24, placeholder: 'random', autocomplete: 'off', spellcheck: 'false' })),
-      btn('Today’s seed', () => { const d = new Date(); $('seed-in').value = `daily-${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; toast('Everyone who plays today gets the same floors'); }, 'small')),
-    sheetDrop(() => UI.heroes()),
-    h('div', { class: 'row' }, btn('Back', () => UI.title()), go),
-  );
-  UI.open(el, { onBack: () => UI.title() });
-};
 
 /* ---------- camp: permanent upgrades and unlocks ---------- */
-UI.camp = function (tab = 'upgrades') {
-  const save = CD.save;
-  const tabs = [['upgrades', 'Upgrades'], ['heroes', 'Heroes'], ['armory', 'Armory'], ['library', 'Library']];
-  const body = h('div', { class: 'grid-up' });
-  const spend = (cost, fn) => { if ((save.embers || 0) < cost) { Sound.play('deny'); toast('Not enough embers'); return; } save.embers -= cost; fn(); Sound.play('buy'); persist(); UI.camp(tab); };
-  if (tab === 'upgrades') for (const m of META) {
-    const r = save.meta[m.id] || 0, max = m.costs.length, cost = m.costs[r];
-    body.append(h('div', { class: `up ${r >= max ? 'owned' : ''}` },
-      h('img', { alt: '', src: iconURL(metaIcon(m.id), 3) }),
-      h('b', {}, m.name), h('small', {}, `${m.desc}${max > 1 ? ` per rank` : ''}`),
-      h('div', { class: 'pips' }, ...Array.from({ length: max }, (_, i) => h('i', { class: i < r ? 'on' : '' }))),
-      r >= max ? h('small', {}, 'Complete') : btn(h('span', {}, 'Buy ', h('span', { class: 'cost' }, `${cost}`)), () => spend(cost, () => { save.meta[m.id] = r + 1; }), 'small', { disabled: (save.embers || 0) < cost ? true : null })));
-  }
-  if (tab === 'heroes') for (const c of CLASSES) {
-    const own = save.unlocks.classes.includes(c.id);
-    const cv = mkCanvas(24, 24), sp = heroSprites(c.look, c.id).front[0]; cv.getContext('2d').drawImage(sp.c, 12 - sp.ax, 23 - sp.ay);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, cv, h('b', {}, c.name), h('small', {}, `${c.passive.name}: ${c.passive.desc}`), h('small', {}, `Starts with ${WEAPON[c.weapon].name} and ${ABILITY[c.ability].name}`),
-      own ? h('small', {}, 'Ready') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${c.cost}`)), () => spend(c.cost, () => save.unlocks.classes.push(c.id)), 'small', { disabled: (save.embers || 0) < c.cost ? true : null })));
-  }
-  if (tab === 'armory') for (const w of WEAPONS.filter((x) => !x.start)) {
-    const own = save.unlocks.weapons.includes(w.id);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, h('img', { alt: '', src: iconURL(weaponIcon(w.id), 3) }), h('b', {}, w.name), h('small', {}, w.desc), h('small', {}, `${w.kind === 'melee' ? 'Melee' : 'Ranged'} · ${w.dmg} damage · ${w.rate}/s`),
-      own ? h('small', {}, 'In the deep now') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${w.cost}`)), () => spend(w.cost, () => save.unlocks.weapons.push(w.id)), 'small', { disabled: (save.embers || 0) < w.cost ? true : null })));
-  }
-  if (tab === 'library') for (const a of ABILITIES.filter((x) => !x.start && x.cost)) {
-    const own = save.unlocks.abilities.includes(a.id);
-    body.append(h('div', { class: `up ${own ? 'owned' : ''}` }, h('img', { alt: '', src: iconURL(abilityIcon(a.id), 3) }), h('b', {}, a.name), h('small', {}, a.desc), h('small', {}, `${a.cd}s recharge`),
-      own ? h('small', {}, 'In the deep now') : btn(h('span', {}, 'Unlock ', h('span', { class: 'cost' }, `${a.cost}`)), () => spend(a.cost, () => save.unlocks.abilities.push(a.id)), 'small', { disabled: (save.embers || 0) < a.cost ? true : null })));
-  }
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'The Camp'), emberChip()),
-    h('p', { class: 'notice' }, 'Embers you carry out of the deep buy lasting strength. Unlocked weapons and abilities start turning up in chests and shops.'),
-    h('div', { class: 'tabs', role: 'tablist' }, ...tabs.map(([id, label]) => btn(label, () => UI.camp(id), 'small', { role: 'tab', 'aria-selected': id === tab ? 'true' : 'false', 'data-autofocus': id === tab ? true : null }))),
-    body,
-    h('div', { class: 'row' }, btn('Back', () => UI.title())));
-  UI.open(el, { onBack: () => UI.title() });
-};
 function metaIcon(id) {
   return { vigor: miscIcon('heart'), might: skillIcon('offense'), swiftness: skillIcon('utility'), flask: miscIcon('potion'), purse: miscIcon('gold'), insight: pickupIconXP(), reroll: miscIcon('swap'), keen: relicIcon('glasseye'), pull: miscIcon('ember'), keys: miscIcon('key'), map: relicIcon('lantern'), revive: relicIcon('phoenix') }[id] || miscIcon('rune');
 }
@@ -254,29 +138,6 @@ UI.settings = function (back) {
 };
 
 /* ---------- help ---------- */
-UI.help = function (back) {
-  const k = (keys, what) => h('div', {}, ...keys.map((x) => h('kbd', {}, x)), ' ', what);
-  const el = h('div', { class: 'modal' }, h('div', { class: 'panel wide' },
-    h('h2', {}, 'How to play'),
-    h('p', {}, 'Fight down through four regions of three floors each. Every room you enter seals until its monsters fall. Find the stairs, beat the boss on every third floor, and claim a relic from its altar. When you die, the run ends but the embers you gathered stay with you for the camp.'),
-    h('h3', {}, 'Keyboard and mouse'),
-    h('div', { class: 'keys' }, k(['W', 'A', 'S', 'D'], 'move'), k(['Mouse'], 'aim'), k(['Click'], 'attack (hold to keep swinging)'), k(['Space'], 'dash through danger'), k(['Q', 'E'], 'abilities (right click works for Q)'), k(['F'], 'pick up, open, buy, talk'), k(['Tab'], 'swap weapons (or the wheel)'), k(['R'], 'drink a potion'), k(['M'], 'map'), k(['Esc'], 'pause')),
-    h('p', {}, 'No mouse? Arrows move, J attacks, K dashes, U and I are abilities, L interacts. Your aim snaps to the nearest foe.'),
-    h('h3', {}, 'Gamepad'),
-    h('div', { class: 'keys' }, k(['L stick'], 'move'), k(['R stick'], 'aim (and attack)'), k(['RT'], 'attack'), k(['A'], 'dash'), k(['LB', 'RB'], 'abilities'), k(['X'], 'interact'), k(['Y'], 'swap weapon'), k(['B'], 'potion'), k(['Start'], 'pause'), k(['Back'], 'map')),
-    h('h3', {}, 'Touch'),
-    h('p', {}, 'Left stick moves. Hold the right stick to attack; drag it to aim or just hold it to hit the nearest foe. Buttons above it dash and cast. A USE button appears when something can be picked up.'),
-    h('h3', {}, 'Tips'),
-    h('div', { class: 'keys' },
-      h('div', {}, 'Dashing makes you untouchable for a moment.'),
-      h('div', {}, 'Melee swings cut small missiles out of the air.'),
-      h('div', {}, 'Red markers on the floor show where an attack will land.'),
-      h('div', {}, 'Ember Knights block hits from the front.'),
-      h('div', {}, 'Keys open treasure rooms and silver chests.'),
-      h('div', {}, 'Level ups wait until a room is clear.')),
-    h('div', { class: 'row' }, btn('Got it', () => back ? back() : UI.close(), 'primary', { 'data-autofocus': true }))));
-  UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: () => (back ? back() : UI.close()) });
-};
 
 /* ---------- pause, map, build ---------- */
 UI.map = function () {
@@ -385,26 +246,6 @@ UI.replaceAbility = function (it, onTake) {
 };
 
 /* ---------- the forge ---------- */
-UI.forge = function () {
-  const p = G.p;
-  const draw = () => {
-    const w = p.weapon;
-    const up = Math.round((45 + 35 * (w.lvl || 0) + 8 * G.fl.idx) * p.stats.shopMul), re = Math.round((30 + 10 * G.fl.idx) * p.stats.shopMul);
-    const panel = h('div', { class: 'panel' },
-      h('h2', {}, 'The Forge'), h('p', {}, 'The smith works on whatever is in your hand. Gold only, no favors.'),
-      h('div', { html: weaponCardHTML(w) }),
-      h('div', { class: 'menu', style: { width: '100%' } },
-        btn(h('span', {}, `Temper to +${(w.lvl || 0) + 1} (+12% damage) · `, h('span', { class: 'cost' }, `${up}g`)), () => { if ((w.lvl || 0) >= 5) { toast('It cannot take more'); return; } if (p.gold < up) { Sound.play('deny'); toast('Not enough gold'); return; } p.gold -= up; w.lvl = (w.lvl || 0) + 1; Sound.play('slam', { p: 1.6, v: 0.6 }); burst(p.x, p.y - 10, 12, ['#ffd08a', '#ff7a2a'], { glow: true, smax: 80 }); redraw(); }, 'primary', { 'data-autofocus': true, disabled: (w.lvl || 0) >= 5 ? true : null }),
-        w.rar !== 'common' ? btn(h('span', {}, 'Reforge its traits · ', h('span', { class: 'cost' }, `${re}g`)), () => { if (p.gold < re) { Sound.play('deny'); toast('Not enough gold'); return; } p.gold -= re; const nw = makeWeapon(w.id, w.rar, G.run.rng); w.affixes = nw.affixes; w.legend = nw.legend; recalcStats(p); Sound.play('slam', { p: 1.3, v: 0.5 }); redraw(); }) : null,
-        p.weapons[1] ? btn('Work on your other weapon', () => { swapWeapon(p); redraw(); }) : null,
-        btn('Leave', () => UI.close(el))));
-    return panel;
-  };
-  const el = h('div', { class: 'modal' });
-  const redraw = () => { el.innerHTML = ''; el.append(draw()); UI.focusFirst(el); };
-  el.append(draw());
-  UI.open(el, { modal: true, replace: false });
-};
 
 /* ---------- final stairs ---------- */
 UI.finalChoice = function () {
@@ -418,22 +259,6 @@ UI.finalChoice = function () {
 };
 
 /* ---------- end of run ---------- */
-UI.runSummary = function (won) {
-  const run = G.run, p = G.p;
-  setMode('menu');
-  const stat = (k, v) => h('div', {}, k, h('b', {}, String(v)));
-  const el = h('div', { class: 'screen dim center' },
-    h('div', { class: 'lv-head' }, h('b', { style: { color: won ? 'var(--gold)' : 'var(--bone)' } }, won ? 'Victory' : 'You fell'), h('small', {}, won ? `The ${CLASS[run.cls].name} climbs out of the deep` : `${CLASS[run.cls].name} · ${floorLabel(run.floorIdx)} · level ${p ? p.level : 1}`)),
-    h('div', { class: 'panel sum' },
-      h('div', { class: 'statgrid' }, stat('Time', fmtTime(run.t)), stat('Floor', run.floorIdx + 1), stat('Foes slain', run.stats.kills), stat('Bosses', run.stats.bosses), stat('Damage dealt', Math.round(run.stats.dmgDealt)), stat('Damage taken', Math.round(run.stats.dmgTaken)), stat('Gold found', run.stats.gold), stat('Rooms cleared', run.stats.cleared)),
-      h('div', { class: 'row' }, h('span', { class: 'embers' }, h('img', { alt: '', src: iconURL(miscIcon('ember'), 2) }), `+${run.emberTotal} embers`), h('span', { class: 'foot' }, `You now hold ${CD.save.embers}`)),
-      won && run.heat < MAX_HEAT ? h('p', {}, `Heat ${Math.min(MAX_HEAT, run.heat + 1)} is unlocked. Harder descents pay 10% more embers per level.`) : null),
-    h('div', { class: 'menu' },
-      btn('Descend again', () => { UI.clear(); fadeTransition(() => startRun({ cls: run.cls, heat: run.heat, sheetId: run.sheetId })); }, 'primary', { 'data-autofocus': true }),
-      btn('Camp', () => UI.camp()),
-      btn('Title', () => UI.title())));
-  UI.open(el, {});
-};
 
 /* ---------- character sheets ---------- */
 const SHEET_ORDERS = {

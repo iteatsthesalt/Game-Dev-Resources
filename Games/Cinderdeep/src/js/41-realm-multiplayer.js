@@ -87,12 +87,11 @@ function ghostBody(q) {
   const fake = { cls, look: dyeLook ? { ...CLASS[cls].look, ...dyeLook } : CLASS[cls].look, beast: !!CLASS[cls].beast, form: own(FORMS, pr.fm) ? pr.fm : CLASS[cls].beast ? cls : null, asc: a ? Array(st).fill(a) : [], ascAtt: [], view: pr.v ? 'back' : 'front', turn: Number.isInteger(pr.t) && pr.t >= 0 && pr.t <= 4 ? pr.t : pr.v ? 4 : 0, rigLazy: true, face: pr.f || 1, moving: q.moving, anim: q.anim, dashT: 0, atkPose: 0, leapT: 0, bashT: 0, aim: 0, dyeKey: pr.dy || '' };
   return heroFrame(fake);
 }
-let DYE_LIST = [];
 const DYES_BY_MAIN = {
   ember: { main: '#b33a2a', cloth: '#6e1f1a', trim: '#f2b53c' }, royal: { main: '#3a5e9a', cloth: '#22385e', trim: '#ffd35c' }, forest: { main: '#4f7a3a', cloth: '#2f4d24', trim: '#c8a070' },
   night: { main: '#2c2a34', cloth: '#18161e', trim: '#c873ff' }, bone: { main: '#e8e0d0', cloth: '#a89880', trim: '#c8902a' }, rose: { main: '#c8508a', cloth: '#7a2a5a', trim: '#ffe0f0' }, steel: { main: '#8fa3b8', cloth: '#55677c', trim: '#2f5fa8' },
 };
-DYE_LIST = Object.values(DYES_BY_MAIN);
+const DYE_LIST = Object.values(DYES_BY_MAIN);
 function drawGhostPlayer(g, q, cx, cy) {
   let sp;
   try { sp = ghostBody(q); } catch (e) { return; }

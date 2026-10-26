@@ -298,16 +298,6 @@ UI.realmTravel = function () {
 };
 
 /* ---------- the fall ---------- */
-UI.realmDeath = function () {
-  const p = G.p, home = W.ch.home ? W.ch.home.name : 'Emberhold', lost = W.deathLost || 0, way = !W.inInst ? nearestWay() : null;
-  const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
-    h('h2', {}, 'You have fallen'),
-    h('p', {}, W.inInst ? `You are dragged out of ${W.inst.name} to its mouth. You lost ${lost} gold.` : `You lost ${lost} gold and will feel weak for a minute. Banked gold is safe.`),
-    h('div', { class: 'menu', style: { width: '100%' } },
-      btn(W.inInst ? 'Get up' : `Wake in ${home}`, () => { UI.close(el); realmRespawn('home'); }, 'primary', { 'data-autofocus': true }),
-      way ? btn(`Wake at ${way.name} waystone (5% more gold)`, () => { UI.close(el); realmRespawn('way'); }) : null)));
-  UI.open(el, { modal: true, replace: false, onBack: () => {} });
-};
 
 /* ---------- maps ---------- */
 const GR_COL = (b) => ({ [GR.BASE]: b.g[0], [GR.ALT]: b.g[1], [GR.DARK]: b.g[2], [GR.ROAD]: b.road, [GR.PLAZA]: '#c8bca8', [GR.SAND]: mixHex(b.g[3], '#e8d4a0', 0.6), [GR.SHALLOW]: b.water[1], [GR.DEEP]: b.water[0], [GR.LAVA]: '#ff6a1a', [GR.ICE]: '#cfeaf6', [GR.TOXIC]: '#6aa83a', [GR.CLIFF]: b.cliff[1], [GR.BRIDGE]: '#8a6a42', [GR.FIELD]: '#6a4a2e', [GR.FLOOR]: '#c8bca8', [GR.DIRT]: b.road });
@@ -378,11 +368,6 @@ function realmGrid() {
   }
   return wrap;
 }
-function questList() {
-  const qs = W.ch.quests || [];
-  if (!qs.length) return h('p', {}, 'No quests. Quest boards in every town have work, and guilds pay for bounties.');
-  return h('div', { class: 'quests' }, ...qs.map((q) => h('div', { class: 'quest' }, h('b', {}, q.name), h('small', {}, `${q.desc} · ${q.have || 0}/${q.need} · ${BIOME[q.zone] ? BIOME[q.zone].name : ''}`))));
-}
 
 /* ---------- the minimap and the HUD label ---------- */
 const _drawMinimapRealm = drawMinimap;
@@ -449,25 +434,6 @@ UI.title = function () {
   if (!hasRun) for (const x of [...menu.children]) if (x !== b && x.classList.contains('primary')) { x.classList.remove('primary'); x.removeAttribute('data-autofocus'); }
   const sub = el.querySelector('.ttl-sub'); if (sub) sub.textContent = 'A realm of 25 lands above, the old deep below';
 };
-UI.realm = function () {
-  const st = realmStore();
-  const list = h('div', { class: 'rchars' });
-  st.chars.forEach((ch, i) => {
-    const lvl = ch.snap && ch.snap.p ? ch.snap.p.level : 1, asc = ch.snap && ch.snap.ext && ch.snap.ext.asc ? ch.snap.ext.asc : [];
-    const name = asc.length ? `${ASPECT[asc[asc.length - 1]].titles[asc.length - 1]} ${CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls}` : CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls;
-    const cv = realmCharPortrait(ch);
-    list.append(h('div', { class: 'rchar' }, cv, h('div', {}, h('b', {}, name), h('small', {}, `Level ${lvl} · ${BIOME[ch.zone] ? BIOME[ch.zone].name : 'Verdant Meadows'} · ${fmtTime(ch.play || 0)} played · ${(ch.seenZones || []).length || 1} of 25 lands`)),
-      h('div', { class: 'row' }, btn('Play', () => enterRealm(i), 'primary', { 'data-autofocus': i === st.last ? true : null }), btn('Delete', () => UI.confirm('Delete this hero?', 'Their level, gear and progress in the Realm are gone for good.', 'Delete', () => { st.chars.splice(i, 1); st.last = 0; persist(); UI.realm(); }), 'small'))));
-  });
-  const el = h('div', { class: 'screen dim' },
-    h('div', { class: 'topbar' }, h('h2', {}, 'The Realm'), emberChip()),
-    h('div', { class: 'panel wide' },
-      h('p', {}, '25 lands, each a world of its own. Towns, roads, monsters in the hundreds, world bosses in their lairs, and the old dungeons waiting underneath. Your hero keeps everything: levels, gear and all ten evolutions.'),
-      st.chars.length ? list : h('p', {}, 'No heroes in the Realm yet.'),
-      h('div', { class: 'row' }, st.chars.length < 6 ? btn('New hero', () => UI.realmNew(), st.chars.length ? '' : 'primary', st.chars.length ? {} : { 'data-autofocus': true }) : null)),
-    h('div', { class: 'row' }, btn('Back', () => UI.title())));
-  UI.open(el, { onBack: () => UI.title() });
-};
 function realmCharPortrait(ch) {
   const cv = mkCanvas(56, 56), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
   try {
@@ -478,19 +444,4 @@ function realmCharPortrait(ch) {
   cv.className = 'rportrait';
   return cv;
 }
-UI.realmNew = function () {
-  const save = CD.save, owned = save.unlocks.classes.filter((id) => CLASS[id]);
-  const grid = h('div', { class: 'choices' });
-  owned.forEach((id, i) => {
-    const c = CLASS[id], cv = mkCanvas(48, 48), g = cv.getContext('2d'); g.imageSmoothingEnabled = false;
-    const sp = c.beast && FORMS[id] ? beastFrames(id)[0] : heroSprites(c.look, id).front[0];
-    const k = Math.max(1, Math.floor(Math.min(44 / sp.w, 44 / sp.h)));
-    g.drawImage(sp.c, Math.round(24 - sp.ax * k), Math.round(46 - (sp.ay + 1) * k), sp.w * k, sp.h * k);
-    const card = h('button', { class: 'card r-common', type: 'button', 'data-autofocus': i === 0 ? true : null, onclick: () => { const st = realmStore(); st.chars.push(newRealmChar(id)); st.last = st.chars.length - 1; persist(); enterRealm(st.last); } },
-      h('div', { class: 'head' }, cv, h('div', {}, h('div', { class: 'nm' }, c.name), h('div', { class: 'sub' }, c.beast ? 'Beast' : 'Hero'))), h('p', { class: 'desc' }, c.blurb || ''), h('span', { class: 'pick' }, 'Begin'));
-    grid.append(card);
-  });
-  const el = h('div', { class: 'screen dim' }, h('div', { class: 'topbar' }, h('h2', {}, 'A new hero for the Realm')), grid, h('p', { class: 'foot' }, 'More heroes and beasts unlock in the Descent. Your passive tree and camp upgrades apply in the Realm too.'), h('div', { class: 'row' }, btn('Back', () => UI.realm())));
-  UI.open(el, { onBack: () => UI.realm() });
-};
 

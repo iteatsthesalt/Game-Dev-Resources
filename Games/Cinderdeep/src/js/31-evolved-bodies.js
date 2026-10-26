@@ -639,7 +639,7 @@ heroFrame = function (p) {
   return rigHeroFrame(ascFramesFor(p), p, fi);
 };
 // held weapons and hands follow the bigger body
-drawHeld = function (g, p, x, y) {
+function drawHeld(g, p, x, y) {
   const w = p.weapon, sp = heldWeapon(w.id), body = heroFrame(p);
   const u = body && body.u ? Math.min(2.2, body.u) : 1, handY = body && body.handY ? body.handY : 8, reachB = body && body.handR ? Math.max(4, body.handR * 0.7) : 4;
   let ang = p.aim, ox = 0;
