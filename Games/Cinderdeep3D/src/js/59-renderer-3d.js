@@ -298,8 +298,8 @@ const v3PaintBolt = (seed) => (g, w, hgt) => {
   for (const [width, alpha] of [[7, 0.1], [3, 0.35], [1, 1]]) { g.lineWidth = width; g.globalAlpha = alpha; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
 };
 // one draw for every particle sharing a picture
-function v3Batch(tex, cap) {
-  const mesh = new THREE.InstancedMesh(V3_QUAD, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), cap);
+function v3Batch(tex, cap, mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending })) {
+  const mesh = new THREE.InstancedMesh(V3_QUAD, mat, cap);
   mesh.setColorAt(0, new THREE.Color()); mesh.frustumCulled = false; mesh.renderOrder = 5; mesh.count = 0;
   V3.scene.add(mesh);
   return mesh;
@@ -318,9 +318,16 @@ function v3AirFx(on) {
   if (!V3.air) V3.air = {
     dot: v3Batch(v3FxTex(64, 64, v3PaintDot), 420), burst: v3Batch(v3FxTex(64, 64, v3PaintBurst), 40),
     beam: v3Batch(v3FxTex(64, 256, v3PaintBeam), 16), bolts: [1, 2, 3, 4].map((seed) => v3Batch(v3FxTex(64, 256, v3PaintBolt(seed)), 6)),
+    // the game's own particles are square pixels: glowing ones added on as light, the rest (blood, grit, soot) lit like anything else
+    shine: v3Batch(null, 720), bits: v3Batch(null, 720, new THREE.MeshLambertMaterial()),
   };
-  const A = V3.air, all = [A.dot, A.burst, A.beam, ...A.bolts];
+  const A = V3.air, all = [A.dot, A.burst, A.beam, ...A.bolts, A.shine, A.bits];
   for (const m of all) m.count = 0;
+  if (on) for (const q of G.parts) {
+    const a = clamp(q.life / q.max, 0, 1), z = q.z || 0;
+    if (q.glow) v3Put(A.shine, q.x, z + q.size / 2, q.y, q.size, q.size, 0, q.color, a);
+    else { const s = q.size * Math.min(1, a * 1.6); v3Put(A.bits, q.x, z + s / 2, q.y, s, s, 0, q.color, 1); }
+  }
   if (on) for (const q of fxLive()) {
     if (!FX_UPRIGHT.has(q.type)) continue;
     const { age, k, fade, x, y, z } = fxState(q);
@@ -391,12 +398,10 @@ function v3Floor({ Wd, Hd, ox, oy }, paintGround, shadows) {
     for (const e of G.ents) if (!e.hidden && !e.dead) shadow(g, e.x - ox, e.y - oy, e.r * (e.scale || 1) * (e.boss ? 1.4 : 1.1), e.z || 0);
     shadow(g, G.p.x - ox, G.p.y - oy, 6 + ascStage(G.p) * 0.8 + (G.p.mounted ? 4 : 0), G.p.z || 0);
     const f = V3.fx.g;
-    drawParticles(f, ox, oy, false);
     runHooks('renderWorld', f, ox, oy);
     for (const q of G.fx) if (TOP_FX[q.kind]) TOP_FX[q.kind](f, q, ox, oy);
     for (const q of G.fx) if (q.kind === 'tele') drawTele(f, q, ox, oy);
     drawGlow(f, ox, oy);
-    drawParticles(f, ox, oy, true);
     runHooks('renderTop', f, ox, oy);
     fxPaint(f);
   } finally { R.VW = vw; R.VH = vh; }

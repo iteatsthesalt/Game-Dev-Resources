@@ -601,25 +601,6 @@ function drawTele(g, f, cx, cy) {
     g.beginPath(); g.ellipse(x, y, f.r, f.r * 0.6, 0, 0, TAU); g.stroke();
   }
 }
-function drawParticles(g, cx, cy, glowPass) {
-  const p = G.p;
-  for (const q of G.parts) {
-    if (!!q.glow !== glowPass) continue;
-    const x = Math.round(q.x - cx), y = Math.round(q.y - cy - (q.z || 0));
-    if (x < -4 || y < -4 || x > R.VW + 4 || y > R.VH + 4) continue;
-    const a = clamp(q.life / q.max, 0, 1);
-    if (q.ghost) {
-      const sp = heroFrame(p);
-      drawSprite(g, sp, q.x - cx, q.y - cy, q.face < 0, { alpha: a * 0.45, white: true });
-      continue;
-    }
-    g.globalAlpha = glowPass ? a : Math.min(1, a * 1.6);
-    g.fillStyle = q.color;
-    g.fillRect(x, y, q.size, q.size);
-  }
-  g.globalAlpha = 1;
-}
-
 /* ---------- lighting ---------- */
 function lightSources(vis) {
   const p = G.p, fl = G.fl, L = [];

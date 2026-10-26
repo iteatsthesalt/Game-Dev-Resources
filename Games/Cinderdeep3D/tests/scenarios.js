@@ -169,6 +169,8 @@ module.exports = [
       const A = V3.air, n = (m) => m.count;
       T.check('sparks and glows stand in the air', n(A.dot) >= 12, n(A.dot));
       T.check('the level-up beam and the bolt stand up', n(A.beam) === 1 && A.bolts.reduce((s, m) => s + n(m), 0) === 1, { beam: n(A.beam), bolts: A.bolts.map(n) });
+      burst(p.x, p.y, 10, '#c03030'); burst(p.x, p.y, 10, '#ffd08a', { glow: true }); render();
+      T.check('the game\'s own particles fly in 3D, lit or glowing', A.bits.count >= 5 && A.shine.count >= 5, { bits: A.bits.count, shine: A.shine.count });
       T.check('a dash leaves an after-image', [...V3.cards.entries()].some(([id, c]) => /^ghost/.test(id) && c.mesh.visible));
       T.sim(2); render();
       T.check('and fade away', FX.particles.length === 0, FX.particles.length);

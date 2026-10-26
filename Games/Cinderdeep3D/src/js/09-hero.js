@@ -123,7 +123,6 @@ function updatePlayer(dt) {
     p.dashT -= dt;
     const sp = 330;
     p.vx = p.dashDx * sp; p.vy = p.dashDy * sp;
-    if (Math.random() < 0.7) G.parts.push({ x: p.x, y: p.y, z: 6, vx: 0, vy: 0, vz: 0, grav: 0, drag: 0, life: 0.18, max: 0.18, ghost: true, face: p.face, view: p.view });
     if (s.bladeDash) for (const e of G.ents) if (!e.dead && e.type !== 'ally' && e.spawnT <= 0 && !p.dashHit.has(e) && Math.hypot(e.x - p.x, e.y - p.y) < e.r + 10) { p.dashHit.add(e); damageEnemy(e, weaponDamage() * s.bladeDash, { src: 'weapon', ang: Math.atan2(p.dashDy, p.dashDx), kb: 60 }); }
     if (s.dashThorns && Math.random() < 0.5) G.fx.push({ kind: 'thorns', x: p.x, y: p.y, r: 10, t: 0, life: 2.5, team: 'p', dmg: weaponDamage() * 0.3, tick: 0 });
     if (p.dashT <= 0) { p.vx *= 0.35; p.vy *= 0.35; }
