@@ -186,6 +186,7 @@ module.exports = [
       T.check('every room has a floor and walls', st.rooms === G.fl.rooms.length, st);
       T.check('hero, monsters and props stand in the scene', st.cards >= 4, st);
       T.check('torches and the hero light the scene', st.lights >= 1, st);
+      T.check('hot colours glow by themselves in the dark', V3_SELF_GLOW.value > 0.3, V3_SELF_GLOW.value);
       const c = screenToWorld(R.cssW / 2, R.cssH / 2);
       T.check('the middle of the screen is the camera target', Math.hypot(c.x - G.cam.x, c.y - G.cam.y) < 3, c);
       const e = G.ents.find((q) => !q.dead && q.type === 'enemy');

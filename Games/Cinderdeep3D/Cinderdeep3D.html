@@ -25923,11 +25923,23 @@ function v3Init() {
   V3.ground = v3Layer(true, -2); V3.fx = v3Layer(false, -1);
   return true;
 }
+// hot colours glow by themselves in the dark: fire, lava, lit windows, eyes and magic, but not white bone or pale cloth
+const V3_SELF_GLOW = { value: 0 };
+function v3SelfGlow(mat) {
+  mat.onBeforeCompile = (sh) => {
+    sh.uniforms.selfGlow = V3_SELF_GLOW;
+    sh.fragmentShader = 'uniform float selfGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec3 t = diffuseColor.rgb; float hi = max(t.r, max(t.g, t.b)), sat = (hi - min(t.r, min(t.g, t.b))) / max(hi, 0.001);
+        totalEmissiveRadiance += t * smoothstep(0.65, 0.95, hi) * smoothstep(0.7, 0.9, sat) * selfGlow; }`);
+  };
+  mat.customProgramCacheKey = () => 'v3-self-glow';
+  return mat;
+}
 const v3Tex = (c) => { const t = new THREE.CanvasTexture(c); t.magFilter = t.minFilter = THREE.NearestFilter; t.generateMipmaps = false; t.colorSpace = THREE.SRGBColorSpace; return t; };
 // a canvas laid flat on the floor around the camera: lit for the ground, unlit for effects
 function v3Layer(lit, order) {
   const c = mkCanvas(8, 8), tex = v3Tex(c), o = { map: tex, transparent: true, depthWrite: false };
-  const mesh = new THREE.Mesh(V3_QUAD, lit ? new THREE.MeshLambertMaterial(o) : new THREE.MeshBasicMaterial(o));
+  const mesh = new THREE.Mesh(V3_QUAD, lit ? v3SelfGlow(new THREE.MeshLambertMaterial(o)) : new THREE.MeshBasicMaterial(o));
   mesh.rotation.x = -Math.PI / 2; mesh.renderOrder = order;
   V3.scene.add(mesh);
   return { c, g: c.getContext('2d'), tex, mesh };
@@ -25944,7 +25956,7 @@ function v3BuildLevel() {
   V3.level = level; V3.fl = fl; V3.rooms = [];
   const top = v3Tex(T.top), face = v3Tex(T.face[0]), m = new THREE.Matrix4();
   for (const r of fl.rooms) {
-    const group = new THREE.Group(), canvas = roomCanvas(r), floorMat = new THREE.MeshLambertMaterial({ map: v3Tex(canvas) });
+    const group = new THREE.Group(), canvas = roomCanvas(r), floorMat = v3SelfGlow(new THREE.MeshLambertMaterial({ map: v3Tex(canvas) }));
     const floor = new THREE.Mesh(V3_QUAD, floorMat);
     floor.rotation.x = -Math.PI / 2; floor.scale.set(r.w * TS, r.h * TS, 1);
     floor.position.set((r.x + r.w / 2) * TS, 0, (r.y + r.h / 2) * TS);
@@ -26023,6 +26035,7 @@ function v3Light(L, dark, tint) {
   V3.ambient.intensity = 0.06 + lit * 1.4;
   V3.ambient.color.set(tint);
   const own = 0.06 + lit * 0.24;
+  V3_SELF_GLOW.value = 0.9 * (1 - lit);
   if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) if (!c.selfLit) c.mesh.material.emissiveIntensity = own; }
   const p = G.p;
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
@@ -26044,7 +26057,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   if (!c || c.w !== w || c.hgt !== hgt) {
     if (c) v3DropCard(id, c);
     const cv = mkCanvas(w, hgt), tex = v3Tex(cv);
-    const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.04, depthWrite: false, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: V3.ownGlow ?? 0.28 });
+    const mat = v3SelfGlow(new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.04, depthWrite: false, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: V3.ownGlow ?? 0.28 }));
     const mesh = new THREE.Mesh(V3_QUAD, mat);
     mesh.scale.set(w, hgt, 1);
     V3.scene.add(mesh);
