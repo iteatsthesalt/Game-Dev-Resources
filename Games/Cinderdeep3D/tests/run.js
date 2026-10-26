@@ -13,9 +13,10 @@ const scenarios = require('./scenarios');
 (async () => {
   const want = process.argv.slice(2);
   const list = scenarios.filter((s) => !want.length || want.some((w) => s.name.includes(w)));
-  const browser = await chromium.launch();
   let failed = 0;
   for (const s of list) {
+    // a browser of its own for each: the soak leaves the software GL process with a backlog of frames that would starve the next page
+    const browser = await chromium.launch();
     const ctx = await browser.newContext({ viewport: s.viewport || { width: 1280, height: 720 }, isMobile: !!s.mobile, hasTouch: !!s.mobile });
     const page = await ctx.newPage(), errors = [];
     page.on('pageerror', (e) => errors.push(String(e.stack || e.message).split('\n').slice(0, 4).join('\n')));
@@ -38,8 +39,8 @@ const scenarios = require('./scenarios');
     if (crash) console.log('      crashed: ' + crash.replace(/\n/g, '\n      '));
     for (const e of errors.slice(0, 5)) console.log('      page error: ' + e.replace(/\n/g, '\n      '));
     await ctx.close();
+    await browser.close();
   }
-  await browser.close();
   console.log(failed ? `\n${failed} of ${list.length} scenarios failed` : `\nall ${list.length} scenarios passed`);
   process.exit(failed ? 1 : 0);
 })();
