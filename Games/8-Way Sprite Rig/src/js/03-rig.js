@@ -181,9 +181,9 @@
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
     const pal = look.pal, farSide = P.shL.d > P.shR.d ? "L" : "R", back = P.visor.d > P.head.d;
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
-    const items = [];
+    const items = [], rec = ctx.rec ? ctx.rec(sc) : null;
     const disc = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
-    const bone = (a, b, w, col, side) => items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
+    const bone = (a, b, w, col, side) => rec ? rec.cap(j[a], j[b], w / 2, col) : items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
       ctx.strokeStyle = mono || (side && side === farSide ? shade(col, 0.72) : col);
       ctx.lineWidth = w * sc; ctx.lineCap = "round";
       ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke();
@@ -198,6 +198,10 @@
       ctx.fillStyle = back ? pal.gear : shade(pal.gear, 0.62);
       ctx.beginPath(); for (const k of ["capeTL", "capeTR", "capeBR", "capeBL"]) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill();
     } });
+    if (rec) {
+      rec.ball(j.head, 3.7 * hk, look.head === "helmet" ? STEEL : look.head === "hood" ? pal.gear : pal.skin);
+      if (look.back === "cape") rec.quad(["capeTL", "capeTR", "capeBR", "capeBL"].map((k) => j[k]), pal.gear);
+    }
     items.push({ d: P.head.d, draw: () => {
       const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc * hk, dx = (X(P.visor) - hx) * hk, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
       if (mono) return disc(hx, hy, r, mono);
@@ -236,6 +240,7 @@
       for (const s of ["L", "R"]) {
         const sh = P["sh" + s];
         const pc = look.pauldron === "plate" ? STEEL : look.pauldron === "spikes" ? "#454b59" : look.pauldron === "orbs" ? "#00e5ff" : pal.gear;
+        if (rec) rec.ball(j["sh" + s], 2.6, pc);
         items.push({ d: sh.d - 0.3, draw: () => {
           disc(X(sh), Y(sh) - 0.8 * sc, 2.6 * sc, s === farSide ? shade(pc, 0.75) : pc);
           if (look.pauldron === "spikes") { ctx.fillStyle = "#e5e8ef"; ctx.beginPath(); ctx.moveTo(X(sh) - 1.5 * sc, Y(sh) - 2 * sc); ctx.lineTo(X(sh), Y(sh) - 5.5 * sc); ctx.lineTo(X(sh) + 1.5 * sc, Y(sh) - 2 * sc); ctx.fill(); }
@@ -274,7 +279,7 @@
         ctx.strokeStyle = "#fff27a"; ctx.lineWidth = 1.5 * sc * hk; ctx.beginPath(); ctx.ellipse(X(P.hat1), Y(P.hat1), 4.8 * sc * hk, 2.2 * sc * hk, 0, 0, TAU); ctx.stroke();
       } });
     }
-    items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
+    if (!rec) items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
     return P;
   }
 
@@ -503,16 +508,17 @@
   // ---------- other subjects: a beast on four legs, a tree, a chest. Each has its own skeleton, clips and painter;
   // rows from angle, columns from clip time, baking and export are shared ----------
   const seg = (t, a, b) => ease((t - a) / (b - a));
-  // draw helpers shared by the painters below: items carry a depth and are drawn far to near
+  // draw helpers shared by the painters below: items carry a depth and are drawn far to near.
+  // Handed a recorder (ctx.rec) instead of a canvas, bones and discs are kept as 3D parts and nothing is drawn.
   function painterFor(ctx, j, rel, ox, oy, sc, mono) {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
-    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [];
+    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [], rec = ctx.rec ? ctx.rec(sc) : null;
     const col = (c, dark) => mono || (dark ? shade(c, dark) : c);
     return {
-      P, X, Y, items,
-      bone: (a, b, w, c, dark, bias = 0) => items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
-      disc: (a, r, c, dark, bias = 0) => items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
-      run: () => items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
+      P, X, Y, items, rec,
+      bone: (a, b, w, c, dark, bias = 0) => rec ? rec.cap(j[a], j[b], w / 2, c) : items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
+      disc: (a, r, c, dark, bias = 0) => rec ? rec.ball(j[a], r, c) : items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
+      run: () => rec || items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
     };
   }
 
@@ -587,12 +593,12 @@
     D.disc("head", 3.1, pal.coat); D.disc("nose", 0.75, "#1b1416", 0, -0.4);
     // facing us, the long body rises behind the head and swallows it: rim the head so it stands off the back,
     // and give the ears the darker mane colour so they read against it
-    if (P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
+    if (!D.rec && P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
     for (const s of ["L", "R"]) {
       D.bone("ear" + s, "earT" + s, b.ear === "round" ? 2 : 1.8, pal.mane, s === far ? 0.8 : 0, 0.2);
       if (look.tusks) D.bone("tusk" + s, "tuskT" + s, 0.8, "#efe6d0", 0, -0.5);
       // an eye shows only on the side of the head turned toward us
-      if (!mono && P["eye" + s].d < P.head.d + 0.4) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
+      if (!mono && (D.rec || P["eye" + s].d < P.head.d + 0.4)) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
     }
     D.run();
     return P;
@@ -651,6 +657,7 @@
     for (let i = 0; i < 4; i++) D.bone("t" + i, "t" + (i + 1), tw * (1 - i * 0.18), pal.trunk, i % 2 ? 0 : 0.88, 3);
     if (look.kind === "pine") for (let i = 0; i < 4; i++) {
       const T = P["pT" + i], C = P["pC" + i], r = j["pR" + i][0];
+      if (D.rec) { D.rec.cap(j["pC" + i], j["pT" + i], r * 0.55, pal.leaf); continue; }
       D.items.push({ d: C.d - 0.5 - i * 0.01, draw: () => {
         const cx = X(C), cy = Y(C), tx = X(T), ty = Y(T), rw = r * sc, rh = r * Math.sin(ELEV) * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.82); ctx.beginPath(); ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI); ctx.lineTo(tx, ty); ctx.closePath(); ctx.fill();
@@ -659,6 +666,7 @@
     }
     (look.blobs || []).forEach(([, , , r], i) => {
       const k = "c" + i, R = look.build.r * r;
+      if (D.rec) return D.rec.ball(j[k], R, pal.leaf);
       D.items.push({ d: P[k].d, draw: () => {
         const x = X(P[k]), y = Y(P[k]), rr = R * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.78); ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.fill();
@@ -713,10 +721,11 @@
   function drawChest(ctx, j, rel, ox, oy, sc, look, mono) {
     const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P, X, Y } = D, pal = look.pal;
     const avg = (keys) => keys.reduce((s, k) => s + P[k].d, 0) / keys.length;
-    const quad = (keys, c, dark, bias) => D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
+    const quad = (keys, c, dark, bias) => D.rec ? D.rec.quad(keys.map((k) => j[k]), c) : D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
     // of each pair of opposite faces, the one nearer the camera is the one we see
     const box = (n, top, side, front, bias, openTop) => {
       const F = [n + "Lbf", n + "Rbf", n + "Rtf", n + "Ltf"], K = [n + "Rbk", n + "Lbk", n + "Ltk", n + "Rtk"], Lf = [n + "Lbk", n + "Lbf", n + "Ltf", n + "Ltk"], Rf = [n + "Rbf", n + "Rbk", n + "Rtk", n + "Rtf"], T = [n + "Ltf", n + "Rtf", n + "Rtk", n + "Ltk"], Bt = [n + "Lbk", n + "Rbk", n + "Rbf", n + "Lbf"];
+      if (D.rec) { for (const f of [F, K, Lf, Rf, T, Bt]) quad(f, front); return true; }
       quad(avg(F) < avg(K) ? F : K, front, avg(F) < avg(K) ? 0 : 0.7, bias);
       quad(avg(Lf) < avg(Rf) ? Lf : Rf, side, 0.8, bias);
       if (avg(T) < avg(Bt)) { if (openTop) D.items.push({ d: avg(T) + 30, draw: () => { ctx.fillStyle = mono || "#1a0e0c"; ctx.beginPath(); for (const k of T) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); if (!mono && j.lidA[0] > 0.4 && !look.mimic) { ctx.fillStyle = "#ffd35c"; ctx.fillRect(Math.round(X(P.in) - 2 * sc), Math.round(Y(P.in) - 0.5 * sc), Math.round(4 * sc), Math.max(1, Math.round(sc))); } } }); else quad(T, top, 0, bias); }
@@ -771,6 +780,14 @@
   }
   function drawDragon(ctx, j, rel, ox, oy, sc, look, mono) {
     const P = drawBeast(ctx, j, rel, ox, oy, sc, look, mono);
+    if (ctx.rec) {
+      const rec = ctx.rec(sc);
+      for (const s of ["L", "R"]) {
+        rec.quad(["wRoot", "wMid", "wTip", "wBack"].map((k) => j[k + s]), look.pal.mane);
+        rec.cap(j["wRoot" + s], j["wMid" + s], 1.1, look.pal.coat); rec.cap(j["wMid" + s], j["wTip" + s], 1.1, look.pal.coat);
+      }
+      return P;
+    }
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
     for (const s of ["L", "R"]) {
       const r = P["wRoot" + s], m = P["wMid" + s], tp = P["wTip" + s], bk = P["wBack" + s];
@@ -897,24 +914,31 @@
     return { props: [] };
   }
 
-  // ---------- True 3D Volumetric Capsule/Voxel/Normal-Lit Renderers ----------
+  // ---------- the other views: the three.js model, extruded voxels and normal-lit relighting ----------
   let renderMode = "sprite3d", atlasChan = "pbr", onionOn = false, gizmosOn = true, pedestalOn = true, cursorLight = { x: 0.3, y: -0.5 };
-  function drawTrue3DMesh(ctx, sub, look, clip, clipT, relRad, cx, cy, S) {
-    const j = sub.pose(clip, clipT, look);
-    const hk = RIG.morph.hd;
-    ctx.save();
-    ctx.imageSmoothingEnabled = true;
-    // Render high-res smooth 3D shaded volumetric figure directly at continuous angle relRad!
-    sub.draw(ctx, j, relRad, cx, cy, S, look, undefined, hk);
-    if (sub.gear) {
-      const chest = project(j.chest, relRad);
-      const props = propsFor(look, j, relRad, cx, cy, S, ctx);
-      for (const p of props) p.draw();
-    }
-    // Add 3D specular rim & volumetric wireframe contour
-    ctx.globalAlpha = 0.28;
-    sub.draw(ctx, j, relRad, cx - 0.6 * S, cy - 0.8 * S, S, look, "#ffffff", hk);
-    ctx.restore();
+  // the subject as 3D parts: its painter, handed a recorder, gives its bones, joints and faces in pose units
+  function recordParts(sub, look, clip, clipT) {
+    const parts = [], at = (p, sc) => [p[0] * sc, p[1] * sc, p[2] * sc];
+    const rec = (sc) => ({
+      cap: (p, q, r, c) => parts.push({ kind: "round", p: at(p, sc), q: at(q, sc), r: r * sc, c }),
+      ball: (p, r, c) => parts.push({ kind: "round", p: at(p, sc), r: r * sc, c }),
+      quad: (pts, c) => parts.push({ kind: "quad", pts: pts.map((p) => at(p, sc)), c }),
+    });
+    sub.draw({ rec }, sub.pose(clip, clipT, look), 0, 0, 0, 1, look, undefined, RIG.morph.hd);
+    return parts;
+  }
+  // the three.js model at the sprite's place; held props are drawn round it as on the sprite. Returns the props.
+  let preview = null;
+  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT) {
+    const pic = window.Preview3D.render(recordParts(SUBJ, st.look, st.clip, clipT), { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az });
+    preview = { cx, cy, S };
+    const props = SUBJ.gear ? propsFor(st.look, SUBJ.pose(st.clip, clipT, st.look), rel, cx, cy, S, ctx) : [];
+    const chest = SUBJ.gear ? project(SUBJ.pose(st.clip, clipT, st.look).chest, rel) : null;
+    for (const p of props) if (p.d > chest.d) p.draw();
+    if (pic) ctx.drawImage(pic, 0, 0, w, h);
+    else { ctx.fillStyle = tok("--hot"); ctx.font = `600 12px ${tok("--mono")}`; ctx.fillText("The 3D view needs WebGL, which this browser has turned off.", 12, h - 16); }
+    for (const p of props) if (p.d <= chest.d) p.draw();
+    return props;
   }
 
   function drawVoxel3D(ctx, sheet, cell, cx, cy, S, camR) {
@@ -1024,14 +1048,13 @@
 
     let props = [];
     if (renderMode === "mesh3d") {
-      drawTrue3DMesh(ctx, SUBJ, st.look, st.clip, t, s.rel * D2R, cx, cy, S);
-      if (SUBJ.gear) props = propsFor(st.look, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, S, ctx);
+      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t);
     } else if (renderMode === "split3d") {
-      drawTrue3DMesh(ctx, SUBJ, st.look, st.clip, t, s.rel * D2R, cx - 18 * S, cy, S * 0.88);
+      drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t);
       ({ props } = drawActor(ctx, SUBJ, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx + 18 * S, cy, S * 0.88));
       ctx.strokeStyle = tok("--accent"); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(cx, 36); ctx.lineTo(cx, h - 20); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = tok("--accent"); ctx.font = `600 11px ${tok("--mono")}`;
-      ctx.fillText("TRUE 3D CONTINUOUS RIG", cx - 34 * S, 38);
+      ctx.fillText("THREE.JS MODEL", cx - 34 * S, 38);
       ctx.fillText("8-WAY BAKED SPRITE", cx + 6 * S, 38);
     } else if (renderMode === "voxel3d") {
       drawVoxel3D(ctx, atlas[st.clip], s, cx, cy, S, camR);
@@ -1731,8 +1754,8 @@
   // 100 3D Upgrades Interactive Explorer Modal
   const UPGRADES_100 = [
     ["1. Analytic 3D Z-Buffer", "Per-pixel depth & heightfield solver from 3D skeleton joints."],
-    ["2. True 3D Mesh Stage Mode", "Continuous 360° volumetric 3D rendering on the stage."],
-    ["3. Split 3D/2D Comparison", "Side-by-side live comparison of True 3D Rig vs 8-Way Sprite."],
+    ["2. 3D Model Stage Mode", "A three.js model of the rig, lit and turned with the camera, at any angle."],
+    ["3. Split 3D/2D Comparison", "The three.js model beside the baked sprite, live."],
     ["4. 3D Voxel Extrusion Mode", "Multi-layer 3D depth-extruded voxel slice rendering."],
     ["5. 3D Normal Map Baker", "Bakes tangent-space RGB surface normal maps (nx, ny, nz)."],
     ["6. 3D Depth (Z) Map Baker", "Bakes height/depth plasma buffer for parallax & shadow shaders."],
@@ -1847,7 +1870,7 @@
   $("up100Search").addEventListener("input", (e) => renderUp100(e.target.value));
 
   // a handle for the tests: what the bench shows, and its export
-  window.SpriteRig = { state: () => ({ subject: st.subject, clip: st.clip, mode: st.mode, N: st.N, FR: st.FR, render: renderMode, mount: RIG.mount, tod: RIG.tod, metro: RIG.metro, dash: world.p.dash || 0, player: { x: world.p.x, z: world.p.z }, baked: Object.keys(atlas) }), exportJson: () => buildExport().json };
+  window.SpriteRig = { state: () => ({ subject: st.subject, clip: st.clip, mode: st.mode, N: st.N, FR: st.FR, render: renderMode, preview: preview && { ...preview, ...window.Preview3D.stats }, mount: RIG.mount, tod: RIG.tod, metro: RIG.metro, dash: world.p.dash || 0, player: { x: world.p.x, z: world.p.z }, baked: Object.keys(atlas) }), exportJson: () => buildExport().json };
   buildSubjectControls();
   setupNpcs();
   syncControls();

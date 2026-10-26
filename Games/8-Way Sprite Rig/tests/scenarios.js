@@ -87,6 +87,29 @@ module.exports = [
     },
   },
   {
+    name: 'model: the three.js view of every subject',
+    run: inPage(async () => {
+      await T.press('[data-rmode="mesh3d"]');
+      for (const [sub, least] of [['character', 10], ['beast', 20], ['dragon', 30], ['golem', 10], ['tree', 5], ['chest', 16]]) {
+        await T.press(`#subjectSeg [data-subject="${sub}"]`);
+        await T.until(() => T.state().preview && T.state().preview.parts >= least, 3000);
+        const p = T.state().preview;
+        T.check(`${sub} is built in three.js`, p.gl && p.parts >= least, p);
+      }
+      // the picture stands where the rig projects it: the character's torso is drawn, the air beside it is not
+      await T.press('#subjectSeg [data-subject="character"]');
+      await T.wait(150);
+      const { cx, cy, S } = T.state().preview, gl = window.Preview3D.canvas, k = window.devicePixelRatio || 1;
+      const cv = document.createElement('canvas'); cv.width = gl.width; cv.height = gl.height;
+      const g = cv.getContext('2d'); g.drawImage(gl, 0, 0);
+      const alpha = (x, y) => g.getImageData(Math.round(x * k), Math.round(y * k), 1, 1).data[3];
+      T.check('the torso is in the picture', alpha(cx, cy - 20 * S) > 200, alpha(cx, cy - 20 * S));
+      T.check('the air beside it is clear', alpha(cx + 20 * S, cy - 20 * S) === 0, alpha(cx + 20 * S, cy - 20 * S));
+      await T.press('[data-rmode="sprite3d"]');
+      return T.done();
+    }),
+  },
+  {
     name: 'upgrades: the list opens, filters and closes',
     run: inPage(async () => {
       await T.press('up100Btn');

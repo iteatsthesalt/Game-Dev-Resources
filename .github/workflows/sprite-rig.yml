@@ -1,9 +1,9 @@
 name: 8-Way Sprite Rig
 on:
   push:
-    paths: ['Games/8-Way Sprite Rig/**', '.github/workflows/sprite-rig.yml']
+    paths: ['Games/8-Way Sprite Rig/**', 'Games/Cinderdeep3D/src/vendor/**', '.github/workflows/sprite-rig.yml']
   pull_request:
-    paths: ['Games/8-Way Sprite Rig/**', '.github/workflows/sprite-rig.yml']
+    paths: ['Games/8-Way Sprite Rig/**', 'Games/Cinderdeep3D/src/vendor/**', '.github/workflows/sprite-rig.yml']
 jobs:
   test:
     runs-on: ubuntu-latest
