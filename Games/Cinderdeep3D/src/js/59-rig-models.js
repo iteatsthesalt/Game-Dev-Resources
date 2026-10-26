@@ -6,9 +6,10 @@
    what it holds, its state the clip and the moment in it, its
    aim the way it faces. Its card is still painted, unseen, so
    its shadow still falls. Chests stand as the rig's chest, Realm
-   trees as the rig's trees, each merged into one mesh. Heroes
-   drawn from a custom sheet, heroes on a mount, and beasts stay
-   on their cards for now.
+   trees as the rig's trees, each merged into one mesh. Playable
+   hounds and foxes are the rig's beast, golems its heavy figure.
+   Heroes drawn from a custom sheet, heroes on a mount, and the
+   beetle, plant and shade beasts stay on their cards for now.
    ============================================================ */
 const RIGM = { groups: new Map() };
 const rigmOn = () => CD.settings.rigModels !== false && typeof RigModels === 'object';
@@ -59,11 +60,39 @@ function rigmGroup(id) {
 }
 // the model faces where the hero aims: pose space looks along +z, which the kit lays along three.js's -z
 const rigmYaw = (a) => Math.atan2(-Math.cos(a), -Math.sin(a));
+/* ---------- beasts: hounds and foxes as the rig's beast, golems as its heavy figure, in their form's colours ---------- */
+const RIGM_BEAST = { hound: 'wolf', fox: 'fox' };
+function rigmBeastLook(F, el) {
+  const P = RigKit.BEAST_PRESETS[RIGM_BEAST[F.fam]];
+  return { ...P, pal: { coat: F.c1, belly: F.c2, mane: F.c3, eye: F.eye || P.pal.eye }, mane: F.fam === 'hound', tip: F.fam === 'fox', tusks: F.stage >= 3 && F.fam === 'hound', ember: el === 'fire' };
+}
+function rigmGolemLook(F) {
+  return { pal: { shirt: F.c1, pants: F.c3, skin: F.c2, hair: F.acc || F.c2, gear: F.acc || F.c3 }, head: 'helmet', back: F.stage >= 3 ? 'crystal' : 'none', pauldron: 'plate', right: 'none', left: 'none', enchant: 'none' };
+}
+// the beast's moment: the rig's beasts trot, bound and pounce
+function rigmBeastClip(p) {
+  if (p.swing) return ['attack', clamp(p.swing.t / (p.swing.dur || 0.3), 0, 0.999)];
+  if (p.dashT > 0 || (p.moving && Math.hypot(p.vx, p.vy) > 95)) return ['run', (p.anim / 2) % 1];
+  if (p.moving) return ['walk', (p.anim / 2) % 1];
+  return ['idle', (G.t * 0.35) % 1];
+}
+// what model a hero is built as this frame, into M: a person, a beast or a golem; null for those still on their card
+function rigmBuild(p, M) {
+  const o = { hk: 1.1, STEEL: RigKit.STEEL, CREST: RigKit.CREST, VISOR: RigKit.VISOR };
+  if (!p.beast) { const [clip, t] = rigmClip(p); RigModels.figure(RigKit.charPose(clip, t), rigmLook(p), M, o); return M; }
+  const F = p.form && FORMS[p.form];
+  if (!F) return null;
+  if (F.fam === 'golem') { const [clip, t] = rigmClip(p); RigModels.figure(RigKit.charPose(clip, t), rigmGolemLook(F), M, { ...o, heavy: true }); return M; }
+  if (!RIGM_BEAST[F.fam]) return null;
+  const look = rigmBeastLook(F, BEAST[F.line] && BEAST[F.line].element), [clip, t] = rigmBeastClip(p);
+  RigModels.beast(RigKit.beastPose(clip, t, look), look, M);
+  return M;
+}
 function rigmHero(c, p) {
-  if (!rigmOn() || p.sheet || p.mounted || p.beast) { c.model = null; return; }
-  const [clip, t] = rigmClip(p), M = RigShapes.builder(1);
-  RigModels.figure(RigKit.charPose(clip, t), rigmLook(p), M, { hk: 1.1, STEEL: RigKit.STEEL, CREST: RigKit.CREST, VISOR: RigKit.VISOR });
-  const g = rigmGroup(p), sp = heroFrame(p), k = Math.max(0.3, (sp ? sp.ay : 26) / RIGM_PERSON);
+  const M = rigmOn() && !p.sheet && !p.mounted ? rigmBuild(p, RigShapes.builder(1)) : null;
+  if (!M) { c.model = null; return; }
+  // as tall as its sprite: a hero by the person it is, a beast by its own build at rest
+  const g = rigmGroup(p), sp = heroFrame(p), tall = p.beast ? rigmRestHeight(p) : RIGM_PERSON, k = Math.max(0.2, (sp ? sp.ay : 26) / tall);
   g.parts.place(M.parts);
   g.group.scale.setScalar(k);
   g.group.position.set(p.x, (p.z || 0) + (p.fly ? 4 : 0), p.y);
@@ -145,6 +174,18 @@ function rigmTree(c, o, sp, faded) {
   c.mesh.visible = false;
   if (c.vox) c.vox.visible = false;
   return true;
+}
+
+// a beast form's height at rest, in pose units, measured once
+const RIGM_REST = new Map();
+function rigmRestHeight(p) {
+  if (!RIGM_REST.has(p.form)) {
+    const F = FORMS[p.form], M = RigShapes.builder(1);
+    if (F.fam === 'golem') RigModels.figure(RigKit.charPose('idle', 0), rigmGolemLook(F), M, { hk: 1.1, heavy: true, STEEL: RigKit.STEEL, CREST: RigKit.CREST, VISOR: RigKit.VISOR });
+    else { const look = rigmBeastLook(F); RigModels.beast(RigKit.beastPose('idle', 0, look), look, M); }
+    RIGM_REST.set(p.form, M.bounds.h);
+  }
+  return RIGM_REST.get(p.form);
 }
 
 // models whose card was not stood up this frame are put away, and dropped after a while

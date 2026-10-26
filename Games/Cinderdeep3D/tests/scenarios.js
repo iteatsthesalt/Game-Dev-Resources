@@ -286,6 +286,10 @@ module.exports = [
       CD.settings.glow = false; render();
       T.check('glow can be turned off', CD.renderer.status.glow === false);
       CD.settings.glow = true;
+      // a playable hound is the rig's beast, as tall as its sprite
+      await T.descent('emberpup'); render();
+      const pup = CD.rigModels.groups.get(G.p);
+      T.check('a playable hound is the rig\'s beast', pup && pup.group.visible && pup.group.children.filter((m) => m.visible).length > 40 && !V3.cards.get(G.p).mesh.visible, pup && pup.group.children.length);
       return T.done();
     },
   },

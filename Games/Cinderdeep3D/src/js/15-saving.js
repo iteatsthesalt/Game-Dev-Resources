@@ -4,7 +4,7 @@
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '10.2';
+const VERSION = '10.3';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
