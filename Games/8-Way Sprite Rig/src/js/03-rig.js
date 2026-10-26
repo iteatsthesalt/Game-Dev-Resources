@@ -181,9 +181,9 @@
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
     const pal = look.pal, farSide = P.shL.d > P.shR.d ? "L" : "R", back = P.visor.d > P.head.d;
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
-    const items = [], rec = ctx.rec ? ctx.rec(sc) : null;
+    const items = [];
     const disc = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
-    const bone = (a, b, w, col, side) => rec ? rec.cap(j[a], j[b], w / 2, col) : items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
+    const bone = (a, b, w, col, side) => items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
       ctx.strokeStyle = mono || (side && side === farSide ? shade(col, 0.72) : col);
       ctx.lineWidth = w * sc; ctx.lineCap = "round";
       ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke();
@@ -198,10 +198,6 @@
       ctx.fillStyle = back ? pal.gear : shade(pal.gear, 0.62);
       ctx.beginPath(); for (const k of ["capeTL", "capeTR", "capeBR", "capeBL"]) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill();
     } });
-    if (rec) {
-      rec.ball(j.head, 3.7 * hk, look.head === "helmet" ? STEEL : look.head === "hood" ? pal.gear : pal.skin);
-      if (look.back === "cape") rec.quad(["capeTL", "capeTR", "capeBR", "capeBL"].map((k) => j[k]), pal.gear);
-    }
     items.push({ d: P.head.d, draw: () => {
       const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc * hk, dx = (X(P.visor) - hx) * hk, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
       if (mono) return disc(hx, hy, r, mono);
@@ -240,7 +236,6 @@
       for (const s of ["L", "R"]) {
         const sh = P["sh" + s];
         const pc = look.pauldron === "plate" ? STEEL : look.pauldron === "spikes" ? "#454b59" : look.pauldron === "orbs" ? "#00e5ff" : pal.gear;
-        if (rec) rec.ball(j["sh" + s], 2.6, pc);
         items.push({ d: sh.d - 0.3, draw: () => {
           disc(X(sh), Y(sh) - 0.8 * sc, 2.6 * sc, s === farSide ? shade(pc, 0.75) : pc);
           if (look.pauldron === "spikes") { ctx.fillStyle = "#e5e8ef"; ctx.beginPath(); ctx.moveTo(X(sh) - 1.5 * sc, Y(sh) - 2 * sc); ctx.lineTo(X(sh), Y(sh) - 5.5 * sc); ctx.lineTo(X(sh) + 1.5 * sc, Y(sh) - 2 * sc); ctx.fill(); }
@@ -279,7 +274,7 @@
         ctx.strokeStyle = "#fff27a"; ctx.lineWidth = 1.5 * sc * hk; ctx.beginPath(); ctx.ellipse(X(P.hat1), Y(P.hat1), 4.8 * sc * hk, 2.2 * sc * hk, 0, 0, TAU); ctx.stroke();
       } });
     }
-    if (!rec) items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
+    items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
     return P;
   }
 
@@ -508,17 +503,16 @@
   // ---------- other subjects: a beast on four legs, a tree, a chest. Each has its own skeleton, clips and painter;
   // rows from angle, columns from clip time, baking and export are shared ----------
   const seg = (t, a, b) => ease((t - a) / (b - a));
-  // draw helpers shared by the painters below: items carry a depth and are drawn far to near.
-  // Handed a recorder (ctx.rec) instead of a canvas, bones and discs are kept as 3D parts and nothing is drawn.
+  // draw helpers shared by the painters below: items carry a depth and are drawn far to near
   function painterFor(ctx, j, rel, ox, oy, sc, mono) {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
-    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [], rec = ctx.rec ? ctx.rec(sc) : null;
+    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [];
     const col = (c, dark) => mono || (dark ? shade(c, dark) : c);
     return {
-      P, X, Y, items, rec,
-      bone: (a, b, w, c, dark, bias = 0) => rec ? rec.cap(j[a], j[b], w / 2, c) : items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
-      disc: (a, r, c, dark, bias = 0) => rec ? rec.ball(j[a], r, c) : items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
-      run: () => rec || items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
+      P, X, Y, items,
+      bone: (a, b, w, c, dark, bias = 0) => items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
+      disc: (a, r, c, dark, bias = 0) => items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
+      run: () => items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
     };
   }
 
@@ -593,25 +587,25 @@
     D.disc("head", 3.1, pal.coat); D.disc("nose", 0.75, "#1b1416", 0, -0.4);
     // facing us, the long body rises behind the head and swallows it: rim the head so it stands off the back,
     // and give the ears the darker mane colour so they read against it
-    if (!D.rec && P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
+    if (P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
     for (const s of ["L", "R"]) {
       D.bone("ear" + s, "earT" + s, b.ear === "round" ? 2 : 1.8, pal.mane, s === far ? 0.8 : 0, 0.2);
       if (look.tusks) D.bone("tusk" + s, "tuskT" + s, 0.8, "#efe6d0", 0, -0.5);
       // an eye shows only on the side of the head turned toward us
-      if (!mono && (D.rec || P["eye" + s].d < P.head.d + 0.4)) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
+      if (!mono && P["eye" + s].d < P.head.d + 0.4) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
     }
     D.run();
     return P;
   }
   const BEAST_PRESETS = {
-    wolf: { name: "Wolf", pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
-    fox: { name: "Fox", pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
-    bear: { name: "Bear", pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
-    boar: { name: "Boar", pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
-    tiger: { name: "Dire Tiger", pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
-    stag: { name: "Runic Stag", pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
-    drake: { name: "Cinder Drake", pal: { coat: "#a82820", belly: "#ffb35e", mane: "#ff5a20", eye: "#fff27a" }, build: { len: 13.0, body: 7.2, leg: 4.4, legW: 2.5, tail: 10.0, tailW: 2.6, snout: 4.2, ear: "point" }, mane: true, tusks: true },
-    hound: { name: "Hellhound", pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
+    wolf: { name: "Wolf", metres: 0.9, pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
+    fox: { name: "Fox", metres: 0.5, pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
+    bear: { name: "Bear", metres: 1.6, pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
+    boar: { name: "Boar", metres: 0.95, pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
+    tiger: { name: "Dire Tiger", metres: 1.25, pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
+    stag: { name: "Runic Stag", metres: 1.9, pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
+    drake: { name: "Cinder Drake", metres: 1.5, pal: { coat: "#a82820", belly: "#ffb35e", mane: "#ff5a20", eye: "#fff27a" }, build: { len: 13.0, body: 7.2, leg: 4.4, legW: 2.5, tail: 10.0, tailW: 2.6, snout: 4.2, ear: "point" }, mane: true, tusks: true },
+    hound: { name: "Hellhound", metres: 1.1, pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
   };
 
   /* -- the tree: a trunk that bends from its foot, a canopy that rides its top, fronds and strands that swing further -- */
@@ -657,7 +651,6 @@
     for (let i = 0; i < 4; i++) D.bone("t" + i, "t" + (i + 1), tw * (1 - i * 0.18), pal.trunk, i % 2 ? 0 : 0.88, 3);
     if (look.kind === "pine") for (let i = 0; i < 4; i++) {
       const T = P["pT" + i], C = P["pC" + i], r = j["pR" + i][0];
-      if (D.rec) { D.rec.cap(j["pC" + i], j["pT" + i], r * 0.55, pal.leaf); continue; }
       D.items.push({ d: C.d - 0.5 - i * 0.01, draw: () => {
         const cx = X(C), cy = Y(C), tx = X(T), ty = Y(T), rw = r * sc, rh = r * Math.sin(ELEV) * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.82); ctx.beginPath(); ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI); ctx.lineTo(tx, ty); ctx.closePath(); ctx.fill();
@@ -666,7 +659,6 @@
     }
     (look.blobs || []).forEach(([, , , r], i) => {
       const k = "c" + i, R = look.build.r * r;
-      if (D.rec) return D.rec.ball(j[k], R, pal.leaf);
       D.items.push({ d: P[k].d, draw: () => {
         const x = X(P[k]), y = Y(P[k]), rr = R * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.78); ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.fill();
@@ -682,11 +674,11 @@
     return P;
   }
   const TREE_PRESETS = {
-    oak: { name: "Oak", kind: "oak", pal: { trunk: "#6a4a2a", leaf: "#3e8a3a", light: "#6cb85a", accent: null }, build: { h: 18, r: 9, trunk: 3.6 }, blobs: [[0, 0.9, 0, 0.75], [-0.6, 0.4, 0.3, 0.55], [0.6, 0.45, -0.2, 0.55], [0.1, 0.35, 0.65, 0.5], [-0.2, 0.5, -0.65, 0.5], [0.35, 1.3, 0.2, 0.45]] },
-    pine: { name: "Pine", kind: "pine", pal: { trunk: "#5a3e24", leaf: "#2e6a3e", light: "#3e8a4e", accent: null }, build: { h: 30, r: 9, trunk: 2.6 } },
-    willow: { name: "Willow", kind: "willow", pal: { trunk: "#4a3a2a", leaf: "#5a7a3a", light: "#8aac5a", accent: null }, build: { h: 16, r: 10, trunk: 4 }, blobs: [[0, 0.7, 0, 0.8], [-0.55, 0.35, 0.2, 0.55], [0.55, 0.35, -0.2, 0.55], [0, 0.3, 0.6, 0.5], [0, 0.4, -0.6, 0.5]] },
-    blossom: { name: "Blossom", kind: "oak", pal: { trunk: "#5a3a3a", leaf: "#ff9ac8", light: "#ffd8e8", accent: "#ffffff" }, build: { h: 15, r: 8.5, trunk: 3.2 }, blobs: [[0, 0.85, 0, 0.7], [-0.6, 0.35, 0.3, 0.55], [0.6, 0.4, -0.25, 0.55], [0.15, 0.3, 0.6, 0.5], [-0.25, 0.45, -0.6, 0.48]] },
-    palm: { name: "Palm", kind: "palm", pal: { trunk: "#9a7a4a", leaf: "#3a8a3a", light: "#5ab04a", accent: null }, build: { h: 24, r: 6, trunk: 2.6 }, blobs: [[0, 0.3, 0, 0.22]] },
+    oak: { name: "Oak", metres: 10, kind: "oak", pal: { trunk: "#6a4a2a", leaf: "#3e8a3a", light: "#6cb85a", accent: null }, build: { h: 18, r: 9, trunk: 3.6 }, blobs: [[0, 0.9, 0, 0.75], [-0.6, 0.4, 0.3, 0.55], [0.6, 0.45, -0.2, 0.55], [0.1, 0.35, 0.65, 0.5], [-0.2, 0.5, -0.65, 0.5], [0.35, 1.3, 0.2, 0.45]] },
+    pine: { name: "Pine", metres: 16, kind: "pine", pal: { trunk: "#5a3e24", leaf: "#2e6a3e", light: "#3e8a4e", accent: null }, build: { h: 30, r: 9, trunk: 2.6 } },
+    willow: { name: "Willow", metres: 9, kind: "willow", pal: { trunk: "#4a3a2a", leaf: "#5a7a3a", light: "#8aac5a", accent: null }, build: { h: 16, r: 10, trunk: 4 }, blobs: [[0, 0.7, 0, 0.8], [-0.55, 0.35, 0.2, 0.55], [0.55, 0.35, -0.2, 0.55], [0, 0.3, 0.6, 0.5], [0, 0.4, -0.6, 0.5]] },
+    blossom: { name: "Blossom", metres: 6, kind: "oak", pal: { trunk: "#5a3a3a", leaf: "#ff9ac8", light: "#ffd8e8", accent: "#ffffff" }, build: { h: 15, r: 8.5, trunk: 3.2 }, blobs: [[0, 0.85, 0, 0.7], [-0.6, 0.35, 0.3, 0.55], [0.6, 0.4, -0.25, 0.55], [0.15, 0.3, 0.6, 0.5], [-0.25, 0.45, -0.6, 0.48]] },
+    palm: { name: "Palm", metres: 12, kind: "palm", pal: { trunk: "#9a7a4a", leaf: "#3a8a3a", light: "#5ab04a", accent: null }, build: { h: 24, r: 6, trunk: 2.6 }, blobs: [[0, 0.3, 0, 0.22]] },
   };
 
   /* -- the chest: a box with a lid hinged along its back edge -- */
@@ -721,11 +713,10 @@
   function drawChest(ctx, j, rel, ox, oy, sc, look, mono) {
     const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P, X, Y } = D, pal = look.pal;
     const avg = (keys) => keys.reduce((s, k) => s + P[k].d, 0) / keys.length;
-    const quad = (keys, c, dark, bias) => D.rec ? D.rec.quad(keys.map((k) => j[k]), c) : D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
+    const quad = (keys, c, dark, bias) => D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
     // of each pair of opposite faces, the one nearer the camera is the one we see
     const box = (n, top, side, front, bias, openTop) => {
       const F = [n + "Lbf", n + "Rbf", n + "Rtf", n + "Ltf"], K = [n + "Rbk", n + "Lbk", n + "Ltk", n + "Rtk"], Lf = [n + "Lbk", n + "Lbf", n + "Ltf", n + "Ltk"], Rf = [n + "Rbf", n + "Rbk", n + "Rtk", n + "Rtf"], T = [n + "Ltf", n + "Rtf", n + "Rtk", n + "Ltk"], Bt = [n + "Lbk", n + "Rbk", n + "Rbf", n + "Lbf"];
-      if (D.rec) { for (const f of [F, K, Lf, Rf, T, Bt]) quad(f, front); return true; }
       quad(avg(F) < avg(K) ? F : K, front, avg(F) < avg(K) ? 0 : 0.7, bias);
       quad(avg(Lf) < avg(Rf) ? Lf : Rf, side, 0.8, bias);
       if (avg(T) < avg(Bt)) { if (openTop) D.items.push({ d: avg(T) + 30, draw: () => { ctx.fillStyle = mono || "#1a0e0c"; ctx.beginPath(); for (const k of T) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); if (!mono && j.lidA[0] > 0.4 && !look.mimic) { ctx.fillStyle = "#ffd35c"; ctx.fillRect(Math.round(X(P.in) - 2 * sc), Math.round(Y(P.in) - 0.5 * sc), Math.round(4 * sc), Math.max(1, Math.round(sc))); } } }); else quad(T, top, 0, bias); }
@@ -780,14 +771,6 @@
   }
   function drawDragon(ctx, j, rel, ox, oy, sc, look, mono) {
     const P = drawBeast(ctx, j, rel, ox, oy, sc, look, mono);
-    if (ctx.rec) {
-      const rec = ctx.rec(sc);
-      for (const s of ["L", "R"]) {
-        rec.quad(["wRoot", "wMid", "wTip", "wBack"].map((k) => j[k + s]), look.pal.mane);
-        rec.cap(j["wRoot" + s], j["wMid" + s], 1.1, look.pal.coat); rec.cap(j["wMid" + s], j["wTip" + s], 1.1, look.pal.coat);
-      }
-      return P;
-    }
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
     for (const s of ["L", "R"]) {
       const r = P["wRoot" + s], m = P["wMid" + s], tp = P["wTip" + s], bk = P["wBack" + s];
@@ -816,12 +799,12 @@
 
   // a subject: its clips, skeleton, painter, looks, colour names, the cell it bakes into and the sockets it exports
   const SUBJECTS = {
-    character: { name: "Character", clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
-    beast: { name: "Beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
-    dragon: { name: "Dragon", clips: DRAGON_CLIPS, pose: dragonPose, draw: drawDragon, presets: DRAGON_PRESETS, palNames: { coat: "Scales", belly: "Belly", mane: "Wings", eye: "Eyes" }, cell: { w: 56, h: 48, ox: 28, oy: 42 }, dot: "mane", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 14 },
-    golem: { name: "Golem", clips: CHAR_CLIPS, pose: (c, t) => scalePose(charPose(c, t), GOLEM_K), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, scalePose(j, 1 / GOLEM_K), rel, ox, oy, sc * GOLEM_K, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
-    tree: { name: "Tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
-    chest: { name: "Chest", clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
+    character: { name: "Character", model: "figure", metres: 1.8, clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
+    beast: { name: "Beast", model: "beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
+    dragon: { name: "Dragon", model: "dragon", metres: 5, clips: DRAGON_CLIPS, pose: dragonPose, draw: drawDragon, presets: DRAGON_PRESETS, palNames: { coat: "Scales", belly: "Belly", mane: "Wings", eye: "Eyes" }, cell: { w: 56, h: 48, ox: 28, oy: 42 }, dot: "mane", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 14 },
+    golem: { name: "Golem", model: "figure", heavy: true, metres: 3.4, clips: CHAR_CLIPS, pose: (c, t) => scalePose(charPose(c, t), GOLEM_K), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, scalePose(j, 1 / GOLEM_K), rel, ox, oy, sc * GOLEM_K, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
+    tree: { name: "Tree", model: "tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
+    chest: { name: "Chest", model: "chest", metres: 0.75, clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
   };
 
   let SUBJ = SUBJECTS.character;
@@ -916,24 +899,44 @@
 
   // ---------- the other views: the three.js model, extruded voxels and normal-lit relighting ----------
   let renderMode = "sprite3d", atlasChan = "pbr", onionOn = false, gizmosOn = true, pedestalOn = true, cursorLight = { x: 0.3, y: -0.5 };
-  // the subject as 3D parts: its painter, handed a recorder, gives its bones, joints and faces in pose units
-  function recordParts(sub, look, clip, clipT) {
-    const parts = [], at = (p, sc) => [p[0] * sc, p[1] * sc, p[2] * sc];
-    const rec = (sc) => ({
-      cap: (p, q, r, c) => parts.push({ kind: "round", p: at(p, sc), q: at(q, sc), r: r * sc, c }),
-      ball: (p, r, c) => parts.push({ kind: "round", p: at(p, sc), r: r * sc, c }),
-      quad: (pts, c) => parts.push({ kind: "quad", pts: pts.map((p) => at(p, sc)), c }),
-    });
-    sub.draw({ rec }, sub.pose(clip, clipT, look), 0, 0, 0, 1, look, undefined, RIG.morph.hd);
-    return parts;
+  // ---- the 3D model view, at the subject's real size ----
+  // one unit is one pose unit of the character, who stands 1.8 m: hips at 20, head at 38, skull round it
+  const PERSON_U = 42, PERSON_M = 1.8;
+  const GHOST = { pal: { shirt: "#9aa4b4", pants: "#9aa4b4", skin: "#9aa4b4", hair: "#9aa4b4", gear: "#9aa4b4" }, head: "none", back: "none", pauldron: "none" };
+  const buildModel = (M, sub, look, clip, clipT) => {
+    window.RigModels[sub.model](sub.pose(clip, clipT, look), look, M, { hk: RIG.morph.hd, heavy: !!sub.heavy, STEEL, CREST, VISOR });
+    return M;
+  };
+  // k turns the subject's pose units into world units, so that it stands its real height; with its height and reach
+  const sizes = new Map();
+  function worldSize(sub, look, preset) {
+    const key = `${sub.name}:${preset}`;
+    if (!sizes.has(key)) {
+      const metres = (sub.presets[preset] || Object.values(sub.presets)[0]).metres || sub.metres;
+      const b = buildModel(window.Preview3D.builder(), sub, look, Object.keys(sub.clips)[0], 0).bounds;
+      // people are measured by the skeleton, so body morphs still change their height
+      const k = sub.model === "figure" ? metres / PERSON_M / (sub.heavy ? GOLEM_K : 1) : (metres / PERSON_M) * PERSON_U / b.h;
+      sizes.set(key, { k, metres, h: b.h * k, r: b.r * k });
+    }
+    return sizes.get(key);
   }
-  // the three.js model at the sprite's place; held props are drawn round it as on the sprite. Returns the props.
+  // the model where the sprite would stand; held props are drawn round it as on the sprite.
+  // world: true sizes it with a grey person beside it for scale. S is pixels per world unit. Returns the props.
   let preview = null;
-  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT) {
-    const pic = window.Preview3D.render(recordParts(SUBJ, st.look, st.clip, clipT), { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az });
-    preview = { cx, cy, S };
-    const props = SUBJ.gear ? propsFor(st.look, SUBJ.pose(st.clip, clipT, st.look), rel, cx, cy, S, ctx) : [];
-    const chest = SUBJ.gear ? project(SUBJ.pose(st.clip, clipT, st.look).chest, rel) : null;
+  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT, world) {
+    const z = world ? worldSize(SUBJ, st.look, st.preset) : { k: 1, h: 0, r: 0 }, k = z.k, M = buildModel(window.Preview3D.builder(k), SUBJ, st.look, st.clip, clipT);
+    let parts = M.parts, reach = Math.max(M.bounds.h, M.bounds.r);
+    if (world && SUBJ !== SUBJECTS.character) {
+      // the person stands to the subject's right on screen, whichever way the camera turns
+      const d = z.r + 10, G = window.Preview3D.builder(1, [d * Math.cos(rel), 0, d * Math.sin(rel)], true);
+      window.RigModels.figure(charPose("idle", 0), GHOST, G, { hk: 1, STEEL, CREST, VISOR });
+      parts = parts.concat(G.parts); reach = Math.max(reach, d + 6);
+    }
+    const pic = window.Preview3D.render(parts, { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az, reach });
+    preview = { cx, cy, S: S * k, k, metres: z.metres, height: z.h, ghost: parts.length > M.parts.length };
+    const pose = SUBJ.pose(st.clip, clipT, st.look);
+    const props = SUBJ.gear ? propsFor(st.look, pose, rel, cx, cy, S * k, ctx) : [];
+    const chest = SUBJ.gear ? project(pose.chest, rel) : null;
     for (const p of props) if (p.d > chest.d) p.draw();
     if (pic) ctx.drawImage(pic, 0, 0, w, h);
     else { ctx.fillStyle = tok("--hot"); ctx.font = `600 12px ${tok("--mono")}`; ctx.fillText("The 3D view needs WebGL, which this browser has turned off.", 12, h - 16); }
@@ -993,13 +996,17 @@
   function drawTurntable(s) {
     const { ctx, w, h } = fit($("stage"));
     ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
-    const S = Math.max(2, Math.floor(Math.min(w / (CW + 12), h / (CH + 16))));
+    // the 3D Model view stands things at their real size: S is pixels per world unit, fitted to the subject and the
+    // person beside it; U grows the floor with them. Every other view fits the baked cell, one unit to the pose unit.
+    const world = renderMode === "mesh3d" ? worldSize(SUBJ, st.look, st.preset) : null, beside = world && SUBJ !== SUBJECTS.character ? world.r + 16 : 0;
+    const S = world ? Math.min((h * 0.72) / Math.max(world.h, PERSON_U), (w * 0.44) / Math.max(world.r + 6, beside + 2)) : Math.max(2, Math.floor(Math.min(w / (CW + 12), h / (CH + 16))));
+    const kS = S * (world ? world.k : 1), U = world ? Math.max(1, Math.max(world.r * 1.3, beside + 4) / 26) : 1;
     const cx = w / 2, cy = h * 0.84;
     const camR = -s.cam * D2R;
 
     // 3D Stone Pedestal & Rotating Grid
     if (pedestalOn) {
-      const pR = 26 * S, pH = 4.2 * S, ry = pR * Math.sin(ELEV);
+      const pR = 26 * U * S, pH = 4.2 * U * S, ry = pR * Math.sin(ELEV);
       const grd = ctx.createLinearGradient(cx - pR, cy, cx + pR, cy + pH);
       grd.addColorStop(0, tok("--stone")); grd.addColorStop(0.5, tok("--stone-top")); grd.addColorStop(1, "#0b141d");
       ctx.fillStyle = grd;
@@ -1013,7 +1020,7 @@
 
     ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 1;
     for (let i = -6; i <= 6; i++) for (const axis of [0, 1]) {
-      const a = project(axis ? [i * 8, 0, -48] : [-48, 0, i * 8], camR), b = project(axis ? [i * 8, 0, 48] : [48, 0, i * 8], camR);
+      const a = project(axis ? [i * 8 * U, 0, -48 * U] : [-48 * U, 0, i * 8 * U], camR), b = project(axis ? [i * 8 * U, 0, 48 * U] : [48 * U, 0, i * 8 * U], camR);
       ctx.beginPath(); ctx.moveTo(cx + a.x * S, cy - a.y * S); ctx.lineTo(cx + b.x * S, cy - b.y * S); ctx.stroke();
     }
 
@@ -1022,8 +1029,8 @@
       ctx.save();
       for (let d = 0; d < st.N; d++) {
         const a = (d * 360 / st.N) * D2R - camR;
-        const p1 = project([Math.sin(a) * 14, 0, Math.cos(a) * 14], 0);
-        const p2 = project([Math.sin(a) * 22, 0, Math.cos(a) * 22], 0);
+        const p1 = project([Math.sin(a) * 14 * U, 0, Math.cos(a) * 14 * U], 0);
+        const p2 = project([Math.sin(a) * 22 * U, 0, Math.cos(a) * 22 * U], 0);
         ctx.strokeStyle = d === s.dir ? tok("--hot") : tok("--line");
         ctx.lineWidth = d === s.dir ? 2.5 : 1;
         ctx.beginPath(); ctx.moveTo(cx + p1.x * S, cy - p1.y * S); ctx.lineTo(cx + p2.x * S, cy - p2.y * S); ctx.stroke();
@@ -1034,7 +1041,7 @@
     // Dynamic 3D ground shadow cast from light angle
     const lAz = (RIG.shader.az * Math.PI) / 180;
     const shX = cx - Math.cos(lAz) * 2.2 * S, shY = cy + Math.sin(lAz) * 0.8 * S;
-    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * S, SUBJ.shadow * 0.32 * S, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * kS, SUBJ.shadow * 0.32 * kS, 0, 0, TAU); ctx.fill();
 
     // Onion-skinning previous & next frames
     if (onionOn && atlas[st.clip]) {
@@ -1048,9 +1055,9 @@
 
     let props = [];
     if (renderMode === "mesh3d") {
-      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t);
+      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t, true);
     } else if (renderMode === "split3d") {
-      drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t);
+      drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t, false);
       ({ props } = drawActor(ctx, SUBJ, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx + 18 * S, cy, S * 0.88));
       ctx.strokeStyle = tok("--accent"); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(cx, 36); ctx.lineTo(cx, h - 20); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = tok("--accent"); ctx.font = `600 11px ${tok("--mono")}`;
@@ -1066,7 +1073,7 @@
 
     if (ui.skel.checked) {
       ctx.globalAlpha = 0.85;
-      SUBJ.draw(ctx, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, S * 0.999, st.look, tok("--accent"));
+      SUBJ.draw(ctx, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, kS * 0.999, st.look, tok("--accent"));
       ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
     if (gizmosOn) {

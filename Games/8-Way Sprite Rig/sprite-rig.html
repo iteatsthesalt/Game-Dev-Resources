@@ -5004,9 +5004,9 @@ window.FX = (() => {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
     const pal = look.pal, farSide = P.shL.d > P.shR.d ? "L" : "R", back = P.visor.d > P.head.d;
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
-    const items = [], rec = ctx.rec ? ctx.rec(sc) : null;
+    const items = [];
     const disc = (x, y, r, col) => { ctx.fillStyle = col; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); };
-    const bone = (a, b, w, col, side) => rec ? rec.cap(j[a], j[b], w / 2, col) : items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
+    const bone = (a, b, w, col, side) => items.push({ d: (P[a].d + P[b].d) / 2, draw: () => {
       ctx.strokeStyle = mono || (side && side === farSide ? shade(col, 0.72) : col);
       ctx.lineWidth = w * sc; ctx.lineCap = "round";
       ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke();
@@ -5021,10 +5021,6 @@ window.FX = (() => {
       ctx.fillStyle = back ? pal.gear : shade(pal.gear, 0.62);
       ctx.beginPath(); for (const k of ["capeTL", "capeTR", "capeBR", "capeBL"]) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill();
     } });
-    if (rec) {
-      rec.ball(j.head, 3.7 * hk, look.head === "helmet" ? STEEL : look.head === "hood" ? pal.gear : pal.skin);
-      if (look.back === "cape") rec.quad(["capeTL", "capeTR", "capeBR", "capeBL"].map((k) => j[k]), pal.gear);
-    }
     items.push({ d: P.head.d, draw: () => {
       const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc * hk, dx = (X(P.visor) - hx) * hk, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
       if (mono) return disc(hx, hy, r, mono);
@@ -5063,7 +5059,6 @@ window.FX = (() => {
       for (const s of ["L", "R"]) {
         const sh = P["sh" + s];
         const pc = look.pauldron === "plate" ? STEEL : look.pauldron === "spikes" ? "#454b59" : look.pauldron === "orbs" ? "#00e5ff" : pal.gear;
-        if (rec) rec.ball(j["sh" + s], 2.6, pc);
         items.push({ d: sh.d - 0.3, draw: () => {
           disc(X(sh), Y(sh) - 0.8 * sc, 2.6 * sc, s === farSide ? shade(pc, 0.75) : pc);
           if (look.pauldron === "spikes") { ctx.fillStyle = "#e5e8ef"; ctx.beginPath(); ctx.moveTo(X(sh) - 1.5 * sc, Y(sh) - 2 * sc); ctx.lineTo(X(sh), Y(sh) - 5.5 * sc); ctx.lineTo(X(sh) + 1.5 * sc, Y(sh) - 2 * sc); ctx.fill(); }
@@ -5102,7 +5097,7 @@ window.FX = (() => {
         ctx.strokeStyle = "#fff27a"; ctx.lineWidth = 1.5 * sc * hk; ctx.beginPath(); ctx.ellipse(X(P.hat1), Y(P.hat1), 4.8 * sc * hk, 2.2 * sc * hk, 0, 0, TAU); ctx.stroke();
       } });
     }
-    if (!rec) items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
+    items.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
     return P;
   }
 
@@ -5331,17 +5326,16 @@ window.FX = (() => {
   // ---------- other subjects: a beast on four legs, a tree, a chest. Each has its own skeleton, clips and painter;
   // rows from angle, columns from clip time, baking and export are shared ----------
   const seg = (t, a, b) => ease((t - a) / (b - a));
-  // draw helpers shared by the painters below: items carry a depth and are drawn far to near.
-  // Handed a recorder (ctx.rec) instead of a canvas, bones and discs are kept as 3D parts and nothing is drawn.
+  // draw helpers shared by the painters below: items carry a depth and are drawn far to near
   function painterFor(ctx, j, rel, ox, oy, sc, mono) {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
-    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [], rec = ctx.rec ? ctx.rec(sc) : null;
+    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [];
     const col = (c, dark) => mono || (dark ? shade(c, dark) : c);
     return {
-      P, X, Y, items, rec,
-      bone: (a, b, w, c, dark, bias = 0) => rec ? rec.cap(j[a], j[b], w / 2, c) : items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
-      disc: (a, r, c, dark, bias = 0) => rec ? rec.ball(j[a], r, c) : items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
-      run: () => rec || items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
+      P, X, Y, items,
+      bone: (a, b, w, c, dark, bias = 0) => items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
+      disc: (a, r, c, dark, bias = 0) => items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
+      run: () => items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
     };
   }
 
@@ -5416,25 +5410,25 @@ window.FX = (() => {
     D.disc("head", 3.1, pal.coat); D.disc("nose", 0.75, "#1b1416", 0, -0.4);
     // facing us, the long body rises behind the head and swallows it: rim the head so it stands off the back,
     // and give the ears the darker mane colour so they read against it
-    if (!D.rec && P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
+    if (P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
     for (const s of ["L", "R"]) {
       D.bone("ear" + s, "earT" + s, b.ear === "round" ? 2 : 1.8, pal.mane, s === far ? 0.8 : 0, 0.2);
       if (look.tusks) D.bone("tusk" + s, "tuskT" + s, 0.8, "#efe6d0", 0, -0.5);
       // an eye shows only on the side of the head turned toward us
-      if (!mono && (D.rec || P["eye" + s].d < P.head.d + 0.4)) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
+      if (!mono && P["eye" + s].d < P.head.d + 0.4) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
     }
     D.run();
     return P;
   }
   const BEAST_PRESETS = {
-    wolf: { name: "Wolf", pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
-    fox: { name: "Fox", pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
-    bear: { name: "Bear", pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
-    boar: { name: "Boar", pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
-    tiger: { name: "Dire Tiger", pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
-    stag: { name: "Runic Stag", pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
-    drake: { name: "Cinder Drake", pal: { coat: "#a82820", belly: "#ffb35e", mane: "#ff5a20", eye: "#fff27a" }, build: { len: 13.0, body: 7.2, leg: 4.4, legW: 2.5, tail: 10.0, tailW: 2.6, snout: 4.2, ear: "point" }, mane: true, tusks: true },
-    hound: { name: "Hellhound", pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
+    wolf: { name: "Wolf", metres: 0.9, pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
+    fox: { name: "Fox", metres: 0.5, pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
+    bear: { name: "Bear", metres: 1.6, pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
+    boar: { name: "Boar", metres: 0.95, pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
+    tiger: { name: "Dire Tiger", metres: 1.25, pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
+    stag: { name: "Runic Stag", metres: 1.9, pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
+    drake: { name: "Cinder Drake", metres: 1.5, pal: { coat: "#a82820", belly: "#ffb35e", mane: "#ff5a20", eye: "#fff27a" }, build: { len: 13.0, body: 7.2, leg: 4.4, legW: 2.5, tail: 10.0, tailW: 2.6, snout: 4.2, ear: "point" }, mane: true, tusks: true },
+    hound: { name: "Hellhound", metres: 1.1, pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
   };
 
   /* -- the tree: a trunk that bends from its foot, a canopy that rides its top, fronds and strands that swing further -- */
@@ -5480,7 +5474,6 @@ window.FX = (() => {
     for (let i = 0; i < 4; i++) D.bone("t" + i, "t" + (i + 1), tw * (1 - i * 0.18), pal.trunk, i % 2 ? 0 : 0.88, 3);
     if (look.kind === "pine") for (let i = 0; i < 4; i++) {
       const T = P["pT" + i], C = P["pC" + i], r = j["pR" + i][0];
-      if (D.rec) { D.rec.cap(j["pC" + i], j["pT" + i], r * 0.55, pal.leaf); continue; }
       D.items.push({ d: C.d - 0.5 - i * 0.01, draw: () => {
         const cx = X(C), cy = Y(C), tx = X(T), ty = Y(T), rw = r * sc, rh = r * Math.sin(ELEV) * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.82); ctx.beginPath(); ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI); ctx.lineTo(tx, ty); ctx.closePath(); ctx.fill();
@@ -5489,7 +5482,6 @@ window.FX = (() => {
     }
     (look.blobs || []).forEach(([, , , r], i) => {
       const k = "c" + i, R = look.build.r * r;
-      if (D.rec) return D.rec.ball(j[k], R, pal.leaf);
       D.items.push({ d: P[k].d, draw: () => {
         const x = X(P[k]), y = Y(P[k]), rr = R * sc;
         ctx.fillStyle = mono || shade(pal.leaf, 0.78); ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.fill();
@@ -5505,11 +5497,11 @@ window.FX = (() => {
     return P;
   }
   const TREE_PRESETS = {
-    oak: { name: "Oak", kind: "oak", pal: { trunk: "#6a4a2a", leaf: "#3e8a3a", light: "#6cb85a", accent: null }, build: { h: 18, r: 9, trunk: 3.6 }, blobs: [[0, 0.9, 0, 0.75], [-0.6, 0.4, 0.3, 0.55], [0.6, 0.45, -0.2, 0.55], [0.1, 0.35, 0.65, 0.5], [-0.2, 0.5, -0.65, 0.5], [0.35, 1.3, 0.2, 0.45]] },
-    pine: { name: "Pine", kind: "pine", pal: { trunk: "#5a3e24", leaf: "#2e6a3e", light: "#3e8a4e", accent: null }, build: { h: 30, r: 9, trunk: 2.6 } },
-    willow: { name: "Willow", kind: "willow", pal: { trunk: "#4a3a2a", leaf: "#5a7a3a", light: "#8aac5a", accent: null }, build: { h: 16, r: 10, trunk: 4 }, blobs: [[0, 0.7, 0, 0.8], [-0.55, 0.35, 0.2, 0.55], [0.55, 0.35, -0.2, 0.55], [0, 0.3, 0.6, 0.5], [0, 0.4, -0.6, 0.5]] },
-    blossom: { name: "Blossom", kind: "oak", pal: { trunk: "#5a3a3a", leaf: "#ff9ac8", light: "#ffd8e8", accent: "#ffffff" }, build: { h: 15, r: 8.5, trunk: 3.2 }, blobs: [[0, 0.85, 0, 0.7], [-0.6, 0.35, 0.3, 0.55], [0.6, 0.4, -0.25, 0.55], [0.15, 0.3, 0.6, 0.5], [-0.25, 0.45, -0.6, 0.48]] },
-    palm: { name: "Palm", kind: "palm", pal: { trunk: "#9a7a4a", leaf: "#3a8a3a", light: "#5ab04a", accent: null }, build: { h: 24, r: 6, trunk: 2.6 }, blobs: [[0, 0.3, 0, 0.22]] },
+    oak: { name: "Oak", metres: 10, kind: "oak", pal: { trunk: "#6a4a2a", leaf: "#3e8a3a", light: "#6cb85a", accent: null }, build: { h: 18, r: 9, trunk: 3.6 }, blobs: [[0, 0.9, 0, 0.75], [-0.6, 0.4, 0.3, 0.55], [0.6, 0.45, -0.2, 0.55], [0.1, 0.35, 0.65, 0.5], [-0.2, 0.5, -0.65, 0.5], [0.35, 1.3, 0.2, 0.45]] },
+    pine: { name: "Pine", metres: 16, kind: "pine", pal: { trunk: "#5a3e24", leaf: "#2e6a3e", light: "#3e8a4e", accent: null }, build: { h: 30, r: 9, trunk: 2.6 } },
+    willow: { name: "Willow", metres: 9, kind: "willow", pal: { trunk: "#4a3a2a", leaf: "#5a7a3a", light: "#8aac5a", accent: null }, build: { h: 16, r: 10, trunk: 4 }, blobs: [[0, 0.7, 0, 0.8], [-0.55, 0.35, 0.2, 0.55], [0.55, 0.35, -0.2, 0.55], [0, 0.3, 0.6, 0.5], [0, 0.4, -0.6, 0.5]] },
+    blossom: { name: "Blossom", metres: 6, kind: "oak", pal: { trunk: "#5a3a3a", leaf: "#ff9ac8", light: "#ffd8e8", accent: "#ffffff" }, build: { h: 15, r: 8.5, trunk: 3.2 }, blobs: [[0, 0.85, 0, 0.7], [-0.6, 0.35, 0.3, 0.55], [0.6, 0.4, -0.25, 0.55], [0.15, 0.3, 0.6, 0.5], [-0.25, 0.45, -0.6, 0.48]] },
+    palm: { name: "Palm", metres: 12, kind: "palm", pal: { trunk: "#9a7a4a", leaf: "#3a8a3a", light: "#5ab04a", accent: null }, build: { h: 24, r: 6, trunk: 2.6 }, blobs: [[0, 0.3, 0, 0.22]] },
   };
 
   /* -- the chest: a box with a lid hinged along its back edge -- */
@@ -5544,11 +5536,10 @@ window.FX = (() => {
   function drawChest(ctx, j, rel, ox, oy, sc, look, mono) {
     const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P, X, Y } = D, pal = look.pal;
     const avg = (keys) => keys.reduce((s, k) => s + P[k].d, 0) / keys.length;
-    const quad = (keys, c, dark, bias) => D.rec ? D.rec.quad(keys.map((k) => j[k]), c) : D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
+    const quad = (keys, c, dark, bias) => D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
     // of each pair of opposite faces, the one nearer the camera is the one we see
     const box = (n, top, side, front, bias, openTop) => {
       const F = [n + "Lbf", n + "Rbf", n + "Rtf", n + "Ltf"], K = [n + "Rbk", n + "Lbk", n + "Ltk", n + "Rtk"], Lf = [n + "Lbk", n + "Lbf", n + "Ltf", n + "Ltk"], Rf = [n + "Rbf", n + "Rbk", n + "Rtk", n + "Rtf"], T = [n + "Ltf", n + "Rtf", n + "Rtk", n + "Ltk"], Bt = [n + "Lbk", n + "Rbk", n + "Rbf", n + "Lbf"];
-      if (D.rec) { for (const f of [F, K, Lf, Rf, T, Bt]) quad(f, front); return true; }
       quad(avg(F) < avg(K) ? F : K, front, avg(F) < avg(K) ? 0 : 0.7, bias);
       quad(avg(Lf) < avg(Rf) ? Lf : Rf, side, 0.8, bias);
       if (avg(T) < avg(Bt)) { if (openTop) D.items.push({ d: avg(T) + 30, draw: () => { ctx.fillStyle = mono || "#1a0e0c"; ctx.beginPath(); for (const k of T) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); if (!mono && j.lidA[0] > 0.4 && !look.mimic) { ctx.fillStyle = "#ffd35c"; ctx.fillRect(Math.round(X(P.in) - 2 * sc), Math.round(Y(P.in) - 0.5 * sc), Math.round(4 * sc), Math.max(1, Math.round(sc))); } } }); else quad(T, top, 0, bias); }
@@ -5603,14 +5594,6 @@ window.FX = (() => {
   }
   function drawDragon(ctx, j, rel, ox, oy, sc, look, mono) {
     const P = drawBeast(ctx, j, rel, ox, oy, sc, look, mono);
-    if (ctx.rec) {
-      const rec = ctx.rec(sc);
-      for (const s of ["L", "R"]) {
-        rec.quad(["wRoot", "wMid", "wTip", "wBack"].map((k) => j[k + s]), look.pal.mane);
-        rec.cap(j["wRoot" + s], j["wMid" + s], 1.1, look.pal.coat); rec.cap(j["wMid" + s], j["wTip" + s], 1.1, look.pal.coat);
-      }
-      return P;
-    }
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
     for (const s of ["L", "R"]) {
       const r = P["wRoot" + s], m = P["wMid" + s], tp = P["wTip" + s], bk = P["wBack" + s];
@@ -5639,12 +5622,12 @@ window.FX = (() => {
 
   // a subject: its clips, skeleton, painter, looks, colour names, the cell it bakes into and the sockets it exports
   const SUBJECTS = {
-    character: { name: "Character", clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
-    beast: { name: "Beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
-    dragon: { name: "Dragon", clips: DRAGON_CLIPS, pose: dragonPose, draw: drawDragon, presets: DRAGON_PRESETS, palNames: { coat: "Scales", belly: "Belly", mane: "Wings", eye: "Eyes" }, cell: { w: 56, h: 48, ox: 28, oy: 42 }, dot: "mane", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 14 },
-    golem: { name: "Golem", clips: CHAR_CLIPS, pose: (c, t) => scalePose(charPose(c, t), GOLEM_K), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, scalePose(j, 1 / GOLEM_K), rel, ox, oy, sc * GOLEM_K, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
-    tree: { name: "Tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
-    chest: { name: "Chest", clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
+    character: { name: "Character", model: "figure", metres: 1.8, clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
+    beast: { name: "Beast", model: "beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
+    dragon: { name: "Dragon", model: "dragon", metres: 5, clips: DRAGON_CLIPS, pose: dragonPose, draw: drawDragon, presets: DRAGON_PRESETS, palNames: { coat: "Scales", belly: "Belly", mane: "Wings", eye: "Eyes" }, cell: { w: 56, h: 48, ox: 28, oy: 42 }, dot: "mane", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 14 },
+    golem: { name: "Golem", model: "figure", heavy: true, metres: 3.4, clips: CHAR_CLIPS, pose: (c, t) => scalePose(charPose(c, t), GOLEM_K), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, scalePose(j, 1 / GOLEM_K), rel, ox, oy, sc * GOLEM_K, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
+    tree: { name: "Tree", model: "tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
+    chest: { name: "Chest", model: "chest", metres: 0.75, clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
   };
 
   let SUBJ = SUBJECTS.character;
@@ -5739,24 +5722,44 @@ window.FX = (() => {
 
   // ---------- the other views: the three.js model, extruded voxels and normal-lit relighting ----------
   let renderMode = "sprite3d", atlasChan = "pbr", onionOn = false, gizmosOn = true, pedestalOn = true, cursorLight = { x: 0.3, y: -0.5 };
-  // the subject as 3D parts: its painter, handed a recorder, gives its bones, joints and faces in pose units
-  function recordParts(sub, look, clip, clipT) {
-    const parts = [], at = (p, sc) => [p[0] * sc, p[1] * sc, p[2] * sc];
-    const rec = (sc) => ({
-      cap: (p, q, r, c) => parts.push({ kind: "round", p: at(p, sc), q: at(q, sc), r: r * sc, c }),
-      ball: (p, r, c) => parts.push({ kind: "round", p: at(p, sc), r: r * sc, c }),
-      quad: (pts, c) => parts.push({ kind: "quad", pts: pts.map((p) => at(p, sc)), c }),
-    });
-    sub.draw({ rec }, sub.pose(clip, clipT, look), 0, 0, 0, 1, look, undefined, RIG.morph.hd);
-    return parts;
+  // ---- the 3D model view, at the subject's real size ----
+  // one unit is one pose unit of the character, who stands 1.8 m: hips at 20, head at 38, skull round it
+  const PERSON_U = 42, PERSON_M = 1.8;
+  const GHOST = { pal: { shirt: "#9aa4b4", pants: "#9aa4b4", skin: "#9aa4b4", hair: "#9aa4b4", gear: "#9aa4b4" }, head: "none", back: "none", pauldron: "none" };
+  const buildModel = (M, sub, look, clip, clipT) => {
+    window.RigModels[sub.model](sub.pose(clip, clipT, look), look, M, { hk: RIG.morph.hd, heavy: !!sub.heavy, STEEL, CREST, VISOR });
+    return M;
+  };
+  // k turns the subject's pose units into world units, so that it stands its real height; with its height and reach
+  const sizes = new Map();
+  function worldSize(sub, look, preset) {
+    const key = `${sub.name}:${preset}`;
+    if (!sizes.has(key)) {
+      const metres = (sub.presets[preset] || Object.values(sub.presets)[0]).metres || sub.metres;
+      const b = buildModel(window.Preview3D.builder(), sub, look, Object.keys(sub.clips)[0], 0).bounds;
+      // people are measured by the skeleton, so body morphs still change their height
+      const k = sub.model === "figure" ? metres / PERSON_M / (sub.heavy ? GOLEM_K : 1) : (metres / PERSON_M) * PERSON_U / b.h;
+      sizes.set(key, { k, metres, h: b.h * k, r: b.r * k });
+    }
+    return sizes.get(key);
   }
-  // the three.js model at the sprite's place; held props are drawn round it as on the sprite. Returns the props.
+  // the model where the sprite would stand; held props are drawn round it as on the sprite.
+  // world: true sizes it with a grey person beside it for scale. S is pixels per world unit. Returns the props.
   let preview = null;
-  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT) {
-    const pic = window.Preview3D.render(recordParts(SUBJ, st.look, st.clip, clipT), { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az });
-    preview = { cx, cy, S };
-    const props = SUBJ.gear ? propsFor(st.look, SUBJ.pose(st.clip, clipT, st.look), rel, cx, cy, S, ctx) : [];
-    const chest = SUBJ.gear ? project(SUBJ.pose(st.clip, clipT, st.look).chest, rel) : null;
+  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT, world) {
+    const z = world ? worldSize(SUBJ, st.look, st.preset) : { k: 1, h: 0, r: 0 }, k = z.k, M = buildModel(window.Preview3D.builder(k), SUBJ, st.look, st.clip, clipT);
+    let parts = M.parts, reach = Math.max(M.bounds.h, M.bounds.r);
+    if (world && SUBJ !== SUBJECTS.character) {
+      // the person stands to the subject's right on screen, whichever way the camera turns
+      const d = z.r + 10, G = window.Preview3D.builder(1, [d * Math.cos(rel), 0, d * Math.sin(rel)], true);
+      window.RigModels.figure(charPose("idle", 0), GHOST, G, { hk: 1, STEEL, CREST, VISOR });
+      parts = parts.concat(G.parts); reach = Math.max(reach, d + 6);
+    }
+    const pic = window.Preview3D.render(parts, { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az, reach });
+    preview = { cx, cy, S: S * k, k, metres: z.metres, height: z.h, ghost: parts.length > M.parts.length };
+    const pose = SUBJ.pose(st.clip, clipT, st.look);
+    const props = SUBJ.gear ? propsFor(st.look, pose, rel, cx, cy, S * k, ctx) : [];
+    const chest = SUBJ.gear ? project(pose.chest, rel) : null;
     for (const p of props) if (p.d > chest.d) p.draw();
     if (pic) ctx.drawImage(pic, 0, 0, w, h);
     else { ctx.fillStyle = tok("--hot"); ctx.font = `600 12px ${tok("--mono")}`; ctx.fillText("The 3D view needs WebGL, which this browser has turned off.", 12, h - 16); }
@@ -5816,13 +5819,17 @@ window.FX = (() => {
   function drawTurntable(s) {
     const { ctx, w, h } = fit($("stage"));
     ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
-    const S = Math.max(2, Math.floor(Math.min(w / (CW + 12), h / (CH + 16))));
+    // the 3D Model view stands things at their real size: S is pixels per world unit, fitted to the subject and the
+    // person beside it; U grows the floor with them. Every other view fits the baked cell, one unit to the pose unit.
+    const world = renderMode === "mesh3d" ? worldSize(SUBJ, st.look, st.preset) : null, beside = world && SUBJ !== SUBJECTS.character ? world.r + 16 : 0;
+    const S = world ? Math.min((h * 0.72) / Math.max(world.h, PERSON_U), (w * 0.44) / Math.max(world.r + 6, beside + 2)) : Math.max(2, Math.floor(Math.min(w / (CW + 12), h / (CH + 16))));
+    const kS = S * (world ? world.k : 1), U = world ? Math.max(1, Math.max(world.r * 1.3, beside + 4) / 26) : 1;
     const cx = w / 2, cy = h * 0.84;
     const camR = -s.cam * D2R;
 
     // 3D Stone Pedestal & Rotating Grid
     if (pedestalOn) {
-      const pR = 26 * S, pH = 4.2 * S, ry = pR * Math.sin(ELEV);
+      const pR = 26 * U * S, pH = 4.2 * U * S, ry = pR * Math.sin(ELEV);
       const grd = ctx.createLinearGradient(cx - pR, cy, cx + pR, cy + pH);
       grd.addColorStop(0, tok("--stone")); grd.addColorStop(0.5, tok("--stone-top")); grd.addColorStop(1, "#0b141d");
       ctx.fillStyle = grd;
@@ -5836,7 +5843,7 @@ window.FX = (() => {
 
     ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 1;
     for (let i = -6; i <= 6; i++) for (const axis of [0, 1]) {
-      const a = project(axis ? [i * 8, 0, -48] : [-48, 0, i * 8], camR), b = project(axis ? [i * 8, 0, 48] : [48, 0, i * 8], camR);
+      const a = project(axis ? [i * 8 * U, 0, -48 * U] : [-48 * U, 0, i * 8 * U], camR), b = project(axis ? [i * 8 * U, 0, 48 * U] : [48 * U, 0, i * 8 * U], camR);
       ctx.beginPath(); ctx.moveTo(cx + a.x * S, cy - a.y * S); ctx.lineTo(cx + b.x * S, cy - b.y * S); ctx.stroke();
     }
 
@@ -5845,8 +5852,8 @@ window.FX = (() => {
       ctx.save();
       for (let d = 0; d < st.N; d++) {
         const a = (d * 360 / st.N) * D2R - camR;
-        const p1 = project([Math.sin(a) * 14, 0, Math.cos(a) * 14], 0);
-        const p2 = project([Math.sin(a) * 22, 0, Math.cos(a) * 22], 0);
+        const p1 = project([Math.sin(a) * 14 * U, 0, Math.cos(a) * 14 * U], 0);
+        const p2 = project([Math.sin(a) * 22 * U, 0, Math.cos(a) * 22 * U], 0);
         ctx.strokeStyle = d === s.dir ? tok("--hot") : tok("--line");
         ctx.lineWidth = d === s.dir ? 2.5 : 1;
         ctx.beginPath(); ctx.moveTo(cx + p1.x * S, cy - p1.y * S); ctx.lineTo(cx + p2.x * S, cy - p2.y * S); ctx.stroke();
@@ -5857,7 +5864,7 @@ window.FX = (() => {
     // Dynamic 3D ground shadow cast from light angle
     const lAz = (RIG.shader.az * Math.PI) / 180;
     const shX = cx - Math.cos(lAz) * 2.2 * S, shY = cy + Math.sin(lAz) * 0.8 * S;
-    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * S, SUBJ.shadow * 0.32 * S, 0, 0, TAU); ctx.fill();
+    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * kS, SUBJ.shadow * 0.32 * kS, 0, 0, TAU); ctx.fill();
 
     // Onion-skinning previous & next frames
     if (onionOn && atlas[st.clip]) {
@@ -5871,9 +5878,9 @@ window.FX = (() => {
 
     let props = [];
     if (renderMode === "mesh3d") {
-      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t);
+      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t, true);
     } else if (renderMode === "split3d") {
-      drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t);
+      drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t, false);
       ({ props } = drawActor(ctx, SUBJ, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx + 18 * S, cy, S * 0.88));
       ctx.strokeStyle = tok("--accent"); ctx.setLineDash([4, 4]); ctx.beginPath(); ctx.moveTo(cx, 36); ctx.lineTo(cx, h - 20); ctx.stroke(); ctx.setLineDash([]);
       ctx.fillStyle = tok("--accent"); ctx.font = `600 11px ${tok("--mono")}`;
@@ -5889,7 +5896,7 @@ window.FX = (() => {
 
     if (ui.skel.checked) {
       ctx.globalAlpha = 0.85;
-      SUBJ.draw(ctx, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, S * 0.999, st.look, tok("--accent"));
+      SUBJ.draw(ctx, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, kS * 0.999, st.look, tok("--accent"));
       ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
     if (gizmosOn) {
@@ -6701,15 +6708,16 @@ window.FX = (() => {
   setMode("turn");
   requestAnimationFrame(step);
 })();
-// ---------- the 3D preview: a three.js scene of the parts a painter records ----------
-// Parts are capsules (bones), balls (joints, heads, leaves) and quads (faces, wings, capes) in pose
-// space. The camera matches the rig's own projection exactly, so the picture lands where the
-// sprite would and the stage can draw it in place.
+// ---------- the 3D preview: a three.js scene of the parts a model is built from ----------
+// A model (05-models-3d.js) is built through a builder into parts in pose space: limbs (tapered
+// capsules), balls, ellipsoids, rounded blocks and quads. The camera matches the rig's own
+// projection exactly, so the picture lands where the sprite would and the stage draws it in place.
 window.Preview3D = (() => {
   let three = null, failed = false;
   const stats = { parts: 0, gl: null };
-  const UP = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3();
-  const geos = new Map(), mats = new Map(), pool = { round: [], quad: [] };
+  const UP = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3(), basis = new THREE.Matrix4();
+  const bx = new THREE.Vector3(), by = new THREE.Vector3(), bz = new THREE.Vector3();
+  const geos = new Map(), mats = new Map(), pool = { solid: [], quad: [] };
 
   function init() {
     if (three || failed) return three;
@@ -6718,14 +6726,21 @@ window.Preview3D = (() => {
       // the drawing buffer is kept so the stage (and the tests) can read the picture after the frame
       const renderer = new THREE.WebGLRenderer({ canvas, alpha: true, antialias: true, preserveDrawingBuffer: true });
       renderer.setClearColor(0x000000, 0);
-      const scene = new THREE.Scene(), camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 1000);
-      camera.position.set(0, 0, 500);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = 2; // PCF soft shadows
+      renderer.toneMapping = 7; // neutral tone mapping: bright lights without washing out the palette
+      renderer.toneMappingExposure = 1.05;
+      const scene = new THREE.Scene(), camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.1, 4000);
+      camera.position.set(0, 0, 2000);
       // pitch (outer) then turn (inner), the same order as the rig's project()
       const pitch = new THREE.Group(), turn = new THREE.Group();
       pitch.add(turn); scene.add(pitch);
-      const sun = new THREE.DirectionalLight(0xffffff, 2.2);
-      scene.add(sun, new THREE.HemisphereLight(0xcfe4ff, 0x3a2a24, 1.1));
-      three = { renderer, scene, camera, pitch, turn, sun };
+      const sun = new THREE.DirectionalLight(0xfff1dc, 2.6);
+      sun.castShadow = true;
+      sun.shadow.mapSize.set(2048, 2048);
+      const rim = new THREE.DirectionalLight(0x8fd8ff, 1.4);
+      scene.add(sun, sun.target, rim, new THREE.HemisphereLight(0xcfe4ff, 0x3a2a24, 0.9));
+      three = { renderer, scene, camera, pitch, turn, sun, rim };
     } catch (e) {
       failed = true;
     }
@@ -6733,84 +6748,391 @@ window.Preview3D = (() => {
     return three;
   }
 
-  // a capsule along Y: a subdivided box pushed onto a sphere and stretched at the equator.
-  // An odd number of rows keeps every vertex off the equator, so none is left unstretched.
-  function roundGeo(r, half) {
-    const key = `${r.toFixed(2)}:${half.toFixed(1)}`;
-    let g = geos.get(key);
-    if (g) return g;
-    g = new THREE.BoxGeometry(1, 1, 1, 6, 7, 6);
-    const p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3();
+  // ---------- shapes, each made once and shared ----------
+  const shape = (key, make) => { let g = geos.get(key); if (!g) { g = make(); g.computeBoundingSphere(); geos.set(key, g); } return g; };
+  // a tapered capsule along Y: a subdivided box pushed onto a sphere, its halves given their own radius and
+  // pulled apart. An odd number of rows keeps every vertex off the equator. flat squashes the bottom cap.
+  const limbGeo = (r1, r2, half, flat) => shape(`L${r1.toFixed(2)}:${r2.toFixed(2)}:${half.toFixed(1)}:${flat}`, () => {
+    const g = new THREE.BoxGeometry(1, 1, 1, 8, 9, 8), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).normalize();
       n.setXYZ(i, v.x, v.y, v.z);
-      p.setXYZ(i, v.x * r, v.y * r + Math.sign(v.y) * half, v.z * r);
+      const top = v.y > 0, r = top ? r2 : r1;
+      p.setXYZ(i, v.x * r, top ? v.y * r + half : v.y * r * flat - half, v.z * r);
     }
-    g.computeBoundingSphere();
-    geos.set(key, g);
     return g;
-  }
-  const mat = (c, quad) => {
-    const key = c + (quad ? ":2" : "");
-    if (!mats.has(key)) mats.set(key, new THREE.MeshLambertMaterial({ color: new THREE.Color(c), side: quad ? THREE.DoubleSide : THREE.FrontSide }));
+  });
+  // a box with rounded edges: each point is pulled onto the inner box and pushed back out by the radius
+  const blockGeo = (hx, hy, hz, r) => shape(`B${hx.toFixed(1)}:${hy.toFixed(1)}:${hz.toFixed(1)}:${r.toFixed(1)}`, () => {
+    const g = new THREE.BoxGeometry(1, 1, 1, 6, 6, 6), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
+    const size = new THREE.Vector3(hx * 2, hy * 2, hz * 2), k = [hx, hy, hz].map((e) => Math.max(0, e - r));
+    for (let i = 0; i < p.count; i++) {
+      v.fromBufferAttribute(p, i).multiply(size);
+      c.set(Math.max(-k[0], Math.min(k[0], v.x)), Math.max(-k[1], Math.min(k[1], v.y)), Math.max(-k[2], Math.min(k[2], v.z)));
+      v.sub(c).normalize();
+      n.setXYZ(i, v.x, v.y, v.z);
+      p.setXYZ(i, c.x + v.x * r, c.y + v.y * r, c.z + v.z * r);
+    }
+    return g;
+  });
+  const mat = (c, o) => {
+    const key = `${c}:${o.glow ? "g" : ""}${o.ghost ? "h" : ""}${o.quad ? "q" : ""}`;
+    if (!mats.has(key)) {
+      const side = o.quad ? THREE.DoubleSide : THREE.FrontSide;
+      mats.set(key, o.glow ? new THREE.MeshBasicMaterial({ color: new THREE.Color(c), side, transparent: !!o.ghost, opacity: o.ghost ? 0.3 : 1 })
+        : new THREE.MeshLambertMaterial({ color: new THREE.Color(c), side, transparent: !!o.ghost, opacity: o.ghost ? 0.3 : 1, depthWrite: !o.ghost }));
+    }
     return mats.get(key);
   };
+
+  // ---------- the builder a model draws into: pose-space points, scaled by k and moved by off ----------
+  // A frame is { x, y, z }: three unit vectors in pose space, x right, y up, z forward.
+  function builder(k = 1, off = [0, 0, 0], ghost = false) {
+    const parts = [], lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+    const at = (p) => [p[0] * k + off[0], p[1] * k + off[1], p[2] * k + off[2]];
+    const grow = (p, r) => { for (let i = 0; i < 3; i++) { lo[i] = Math.min(lo[i], p[i] - r); hi[i] = Math.max(hi[i], p[i] + r); } };
+    const put = (part, pts, r) => { for (const p of pts) grow(p, r); parts.push({ ghost, ...part }); };
+    return {
+      parts, k,
+      // the space it takes, in the builder's own units: height, and reach from the middle in x and z
+      get bounds() { return { lo, hi, h: hi[1], r: Math.max(Math.abs(lo[0]), Math.abs(hi[0]), Math.abs(lo[2]), Math.abs(hi[2])) }; },
+      limb(p, q, r1, r2 = r1, c, o = {}) { const a = at(p), b = at(q); put({ kind: "limb", p: a, q: b, r1: r1 * k, r2: r2 * k, flat: o.flat || 1, c, glow: o.glow }, [a, b], Math.max(r1, r2) * k); },
+      ball(p, r, c, o = {}) { const a = at(p); put({ kind: "limb", p: a, q: a, r1: r * k, r2: r * k, flat: 1, c, glow: o.glow }, [a], r * k); },
+      ellipsoid(p, f, rad, c, o = {}) { const a = at(p); put({ kind: "ellipsoid", p: a, f, rad: rad.map((x) => x * k), c, glow: o.glow }, [a], Math.max(...rad) * k); },
+      block(p, f, half, r, c, o = {}) { const a = at(p); put({ kind: "block", p: a, f, half: half.map((x) => x * k), r: r * k, c, glow: o.glow }, [a], Math.max(...half) * k); },
+      quad(pts, c) { const q = pts.map(at); put({ kind: "quad", pts: q, c }, q, 0); },
+    };
+  }
+
+  // ---------- placing parts in the scene ----------
   const take = (kind, i, make) => {
     const list = pool[kind];
-    if (!list[i]) { list[i] = make(); three.turn.add(list[i]); }
+    if (!list[i]) { list[i] = make(); list[i].castShadow = list[i].receiveShadow = true; three.turn.add(list[i]); }
     list[i].visible = true;
     return list[i];
   };
   // pose space has its depth axis the other way round from three.js
-  const at = (p) => new THREE.Vector3(p[0], p[1], -p[2]);
+  const at3 = (p) => new THREE.Vector3(p[0], p[1], -p[2]);
+  // a frame turned into three.js space; z flips sign with the depth axis, which keeps the basis a rotation
+  // (every shape is symmetric front to back, so the flip does not change it)
+  const orient = (m, f) => {
+    bx.set(f.x[0], f.x[1], -f.x[2]); by.set(f.y[0], f.y[1], -f.y[2]); bz.set(-f.z[0], -f.z[1], f.z[2]);
+    m.quaternion.setFromRotationMatrix(basis.makeBasis(bx, by, bz));
+  };
 
   function place(parts) {
-    let nr = 0, nq = 0;
+    let ns = 0, nq = 0;
     // the shape cache empties between frames, before any mesh of this frame has taken a shape from it
-    if (geos.size > 400) { for (const x of geos.values()) x.dispose(); geos.clear(); }
+    if (geos.size > 600) { for (const g of geos.values()) g.dispose(); geos.clear(); }
     for (const part of parts) {
+      const o = { glow: part.glow, ghost: part.ghost };
       if (part.kind === "quad") {
-        const m = take("quad", nq++, () => new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat("#ffffff", true)));
+        const m = take("quad", nq++, () => new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat("#ffffff", { quad: true })));
         const pos = m.geometry.attributes.position, [a, b, c, d = c] = part.pts;
         // PlaneGeometry's corners run top-left, top-right, bottom-left, bottom-right
         for (const [i, q] of [[0, a], [1, b], [3, c], [2, d]]) pos.setXYZ(i, q[0], q[1], -q[2]);
         pos.needsUpdate = true;
         m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere();
-        m.material = mat(part.c, true);
+        m.material = mat(part.c, { ...o, quad: true });
+        m.castShadow = !part.ghost;
         continue;
       }
-      const p = at(part.p), q = part.q ? at(part.q) : p, len = p.distanceTo(q);
-      const m = take("round", nr++, () => new THREE.Mesh(roundGeo(1, 0), mat("#ffffff")));
-      m.geometry = roundGeo(part.r, len / 2);
-      m.material = mat(part.c);
-      m.position.copy(p).add(q).multiplyScalar(0.5);
-      if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
-      else m.quaternion.identity();
+      const m = take("solid", ns++, () => new THREE.Mesh(limbGeo(1, 1, 0, 1), mat("#ffffff", {})));
+      m.material = mat(part.c, o);
+      m.castShadow = m.receiveShadow = !part.ghost;
+      m.scale.set(1, 1, 1);
+      if (part.kind === "limb") {
+        const p = at3(part.p), q = at3(part.q), len = p.distanceTo(q);
+        m.geometry = limbGeo(part.r1, part.r2, len / 2, part.flat);
+        m.position.copy(p).add(q).multiplyScalar(0.5);
+        if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
+        else m.quaternion.identity();
+      } else if (part.kind === "ellipsoid") {
+        m.geometry = limbGeo(1, 1, 0, 1);
+        m.position.copy(at3(part.p)); m.scale.set(...part.rad); orient(m, part.f);
+      } else {
+        m.geometry = blockGeo(...part.half, Math.min(part.r, ...part.half));
+        m.position.copy(at3(part.p)); orient(m, part.f);
+      }
     }
-    for (let i = nr; i < pool.round.length; i++) pool.round[i].visible = false;
+    for (let i = ns; i < pool.solid.length; i++) pool.solid[i].visible = false;
     for (let i = nq; i < pool.quad.length; i++) pool.quad[i].visible = false;
-    return nr + nq;
+    return ns + nq;
   }
 
   // v: { w, h } the picture in CSS pixels, { cx, cy } where the feet stand, S pixels per unit,
-  // rel the turn and elev the pitch in radians, az the light's direction in degrees
+  // rel the turn and elev the pitch in radians, az the light's direction in degrees, reach the model's size
   function render(parts, v) {
     if (!init()) return null;
-    const { renderer, camera, pitch, turn, sun } = three, dpr = window.devicePixelRatio || 1;
+    const { renderer, camera, pitch, turn, sun, rim } = three, dpr = window.devicePixelRatio || 1;
     renderer.setPixelRatio(dpr);
     renderer.setSize(Math.max(1, Math.round(v.w)), Math.max(1, Math.round(v.h)), false);
     camera.left = -v.cx / v.S; camera.right = (v.w - v.cx) / v.S;
     camera.top = v.cy / v.S; camera.bottom = -(v.h - v.cy) / v.S;
     camera.updateProjectionMatrix();
     pitch.rotation.x = v.elev; turn.rotation.y = -v.rel;
-    const az = (v.az * Math.PI) / 180;
-    sun.position.set(Math.cos(az), 1.2, Math.sin(az));
-    const shown = place(parts);
+    // the sun follows the bench's light direction; its shadow box is fitted round the model
+    const az = (v.az * Math.PI) / 180, R = Math.max(10, v.reach);
+    sun.position.set(Math.cos(az) * R * 2, R * 2.6, Math.sin(az) * R * 2 + R);
+    sun.target.position.set(0, R * 0.4, 0);
+    const sc = sun.shadow.camera;
+    sc.left = sc.bottom = -R * 1.4; sc.right = sc.top = R * 1.4; sc.near = 1; sc.far = R * 8;
+    sc.updateProjectionMatrix();
+    sun.shadow.bias = -0.0004; sun.shadow.normalBias = R * 0.004;
+    rim.position.set(-Math.cos(az) * R, R * 1.2, -R * 2);
+    stats.parts = place(parts);
     renderer.render(three.scene, camera);
-    stats.parts = shown;
     return renderer.domElement;
   }
-  return { render, get canvas() { return three && three.renderer.domElement; }, stats };
+  return { render, builder, get canvas() { return three && three.renderer.domElement; }, stats };
+})();
+// ---------- 3D models: each subject's skeleton dressed in solid shapes ----------
+// A model reads the pose's joints (pose units, y up, z forward) and the look, and builds into M,
+// a Preview3D builder. o carries the head size (hk), the rig's metal colours, and heavy for the Golem.
+window.RigModels = (() => {
+  const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
+  const lerp = (a, b, t) => add(a, mul(sub(b, a), t));
+  const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const norm = (a) => { const l = Math.hypot(...a) || 1; return mul(a, 1 / l); };
+  // a point offset along a frame: f.x * x + f.y * y + f.z * z
+  const off = (p, f, x, y, z) => add(p, add(add(mul(f.x, x), mul(f.y, y)), mul(f.z, z)));
+  const UPV = [0, 1, 0];
+  // frames: y is kept and z (or x) is made square to it
+  const frameYZ = (y, zHint) => { y = norm(y); const z = norm(sub(zHint, mul(y, dot(zHint, y)))); return { x: cross(y, z), y, z }; };
+  const frameZY = (z, yHint) => { z = norm(z); const y = norm(sub(yHint, mul(z, dot(yHint, z)))); return { x: cross(y, z), y, z }; };
+  const shade = (hex, k) => {
+    const n = parseInt(hex.slice(1), 16), c = (v) => Math.max(0, Math.min(255, Math.round(v * k)));
+    return "#" + ((c(n >> 16) << 16) | (c((n >> 8) & 255) << 8) | c(n & 255)).toString(16).padStart(6, "0");
+  };
+
+  // ---------- people: the character, and the Golem built heavier ----------
+  function figure(j, look, M, o) {
+    const pal = look.pal, w = o.heavy ? 1.35 : 1, hk = o.hk || 1, { STEEL, CREST, VISOR } = o;
+    const up = norm(sub(j.neck, j.hip)), fwd = norm(sub(j.visor, j.head));
+    const B = frameYZ(up, fwd.map((v, i) => (i === 1 ? 0 : v)));
+    const P = frameYZ(up, cross(norm(sub(j.hpR, j.hpL)), up));
+    const boot = o.heavy ? shade(pal.pants, 0.7) : "#3a2a22";
+    // hips, belly, chest and belt
+    M.block(off(j.hip, P, 0, 1, 0), P, [4.3 * w, 2.7, 2.7 * w], 1.4, pal.pants);
+    M.block(lerp(j.hip, j.chest, 0.38), B, [3.9 * w, 3.4, 2.5 * w], 1.6, pal.shirt);
+    M.block(off(j.chest, B, 0, -1, -0.2), B, [4.9 * w, 3.7, 3 * w], 1.9, pal.shirt);
+    M.block(off(j.hip, P, 0, 2.6, 0), P, [4.2 * w, 0.75, 2.8 * w], 0.5, pal.gear);
+    M.block(off(j.hip, P, 0, 2.6, 2.8 * w), P, [1, 0.9, 0.3], 0.2, "#ffd35c");
+    M.limb(off(j.chest, B, 0, 2, 0), off(j.neck, B, 0, 1, 0), 1.4 * w, 1.3 * w, pal.skin);
+    // arms: shoulder, upper arm in the shirt, bare forearm, hand
+    for (const s of ["L", "R"]) {
+      const sh = j["sh" + s], el = j["el" + s], ha = j["ha" + s];
+      M.ball(sh, 2.1 * w, pal.shirt);
+      M.limb(sh, el, 1.85 * w, 1.5 * w, pal.shirt);
+      M.limb(el, ha, 1.45 * w, 1.15 * w, o.heavy ? pal.gear : pal.skin);
+      M.ball(ha, 1.4 * w, o.heavy ? pal.gear : pal.skin);
+      if (o.heavy) M.ball(el, 1.7 * w, pal.gear);
+    }
+    // legs: thigh, shin, boot pointing where the body faces
+    const toe = norm([B.z[0], 0, B.z[2]]), F = frameYZ(UPV, toe);
+    for (const s of ["L", "R"]) {
+      const hp = j["hp" + s], kn = j["kn" + s], ft = j["ft" + s];
+      M.limb(hp, kn, 2.35 * w, 1.85 * w, pal.pants);
+      M.limb(kn, ft, 1.8 * w, 1.35 * w, pal.pants);
+      if (o.heavy) M.ball(kn, 2 * w, pal.gear);
+      M.block(off(ft, F, 0, 1.1, 0.9 * w), F, [1.55 * w, 1.25, 2.7 * w], 0.8, boot);
+    }
+    // the head: skull, hair, eyes and nose, then whatever is worn on it
+    const head = j.head, H = frameYZ(norm(sub(j.head, j.neck)), fwd), h = (v) => v * hk;
+    const face = (x, y, z) => off(head, H, h(x), h(y), h(z));
+    M.block(head, H, [h(3.1), h(3.4), h(3.2)], h(2.1), pal.skin);
+    for (const sx of [-1, 1]) M.ball(face(sx * 1.2, 0.3, 3.05), h(0.5), VISOR);
+    M.ball(face(0, -0.7, 3.3), h(0.55), shade(pal.skin, 0.9));
+    const hair = () => M.block(face(0, 0.95, -0.55), H, [h(3.35), h(2.7), h(3.25)], h(2.2), pal.hair);
+    const hd = look.head;
+    if (hd === "helmet" || hd === "viking") {
+      M.block(face(0, 0.4, -0.1), H, [h(3.6), h(3.8), h(3.55)], h(2.4), STEEL);
+      M.block(face(0, 0.3, 3.5), H, [h(2.5), h(0.4), h(0.3)], h(0.2), VISOR);
+      if (hd === "helmet") M.limb(j.crest0, j.crest1, h(1), h(0.6), CREST);
+      else for (const sx of [-1, 1]) {
+        const base = face(sx * 3, 2, 0), mid = face(sx * 5.4, 3.6, 0.2);
+        M.limb(base, mid, h(1), h(0.65), "#efe6d0"); M.limb(mid, face(sx * 5.6, 6.6, 0.6), h(0.65), h(0.12), "#efe6d0");
+      }
+    } else if (hd === "hood" || hd === "plague") {
+      const cloth = hd === "hood" ? pal.gear : "#2b2d38";
+      M.block(face(0, 0.5, -0.9), H, [h(3.75), h(3.95), h(3.4)], h(2.6), cloth);
+      if (hd === "hood") M.limb(j.hood0, j.hood1, h(2), h(0.5), cloth);
+      else M.limb(face(0, -0.3, 3.2), face(0, -2.4, 8), h(1.25), h(0.2), "#d8d0c0");
+    } else if (hd === "hat") {
+      hair();
+      M.ellipsoid(j.hat0, H, [h(6.6), h(0.55), h(6.6)], shade(pal.gear, 0.8));
+      M.limb(j.hat0, j.hat1, h(4.2), h(2.3), pal.gear, { flat: 0.3 });
+      M.limb(j.hat1, j.hat2, h(2.3), h(0.3), pal.gear);
+    } else if (hd === "crown") {
+      hair();
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2, base = face(Math.cos(a) * 2.9, 3.2, Math.sin(a) * 2.9);
+        M.limb(base, off(base, H, 0, h(2.3), 0), h(0.75), h(0.12), "#ffd35c");
+      }
+      M.block(face(0, 3.1, 0), H, [h(3.3), h(0.65), h(3.3)], h(0.5), "#ffd35c");
+    } else if (hd === "horns") {
+      hair();
+      for (const sx of [-1, 1]) { const b = face(sx * 2.4, 2.6, 0.4), m = face(sx * 4.6, 4.6, -0.6); M.limb(b, m, h(0.95), h(0.6), "#3a1a20"); M.limb(m, face(sx * 5.4, 7, -2), h(0.6), h(0.1), "#3a1a20"); }
+    } else hair();
+    if (hd === "halo") for (let i = 0; i < 10; i++) { const a = (i / 10) * Math.PI * 2; M.ball(off(j.hat1, H, h(Math.cos(a) * 4.8), 0, h(Math.sin(a) * 4.8)), h(0.55), "#fff27a", { glow: true }); }
+    // pauldrons
+    const pd = look.pauldron;
+    if (pd && pd !== "none") {
+      const pc = pd === "plate" ? STEEL : pd === "spikes" ? "#454b59" : pd === "orbs" ? "#00e5ff" : pd === "fur" ? shade(pal.gear, 1.25) : pal.gear;
+      for (const s of ["L", "R"]) {
+        const sh = off(j["sh" + s], B, 0, 0.7, 0);
+        M.ellipsoid(sh, B, [3 * w, 2 * w, 3 * w], pc, { glow: pd === "orbs" });
+        if (pd === "spikes") M.limb(sh, off(sh, B, 0, 4.5, 0), 0.9, 0.1, "#e5e8ef");
+      }
+    }
+    // the back: pack, quiver, cape, wings, banner or crystal
+    const bk = look.back, back = (y, z) => off(j.chest, B, 0, y, z);
+    if (bk === "pack") M.block(back(-3, -4.4), B, [3.2, 4.2, 1.8], 1.1, pal.gear);
+    if (bk === "quiver") {
+      M.limb(back(-6, -3.8), back(4, -3.6), 1.6, 1.6, "#6b4426");
+      for (const x of [-0.7, 0, 0.7]) M.limb(back(4, -3.6), off(back(8, -3.4), B, x, 0, 0), 0.25, 0.25, "#d9dde3");
+    }
+    if (bk === "cape") {
+      const TL = j.capeTL, TR = j.capeTR, BL = j.capeBL, BR = j.capeBR;
+      const mL = off(lerp(TL, BL, 0.5), B, 0, 0, -0.8), mR = off(lerp(TR, BR, 0.5), B, 0, 0, -0.8);
+      M.quad([TL, TR, mR, mL], pal.gear); M.quad([mL, mR, BR, BL], shade(pal.gear, 0.85));
+    }
+    if (bk === "wings" || bk === "dwings") {
+      const wc = bk === "wings" ? "#eef6ff" : "#8a1e38";
+      for (const sx of [-1, 1]) {
+        const root = back(0, -3), tip = off(root, B, sx * 12, 8, -3), low = off(root, B, sx * 14, -2, -4), inner = off(root, B, sx * 6, -9, -2);
+        M.quad([root, tip, low, inner], wc);
+        M.limb(root, tip, 0.7, 0.3, shade(wc, 0.8));
+      }
+    }
+    if (bk === "banner") {
+      M.limb(j.pack0, j.hat2, 0.6, 0.6, "#8a6236");
+      const top = lerp(j.pack0, j.hat2, 0.95), low = lerp(j.pack0, j.hat2, 0.6);
+      M.quad([top, off(top, B, 8, 0, 0), off(low, B, 8, 0, 0), low], pal.gear);
+    }
+    if (bk === "crystal") M.ellipsoid(back(3, -4.5), B, [2, 3.6, 2], "#00e5ff", { glow: true });
+  }
+
+  // ---------- four legs: the beast, and the dragon on top of it ----------
+  function beast(j, look, M) {
+    const pal = look.pal, b = look.build;
+    const S = frameZY(sub(j.shoulders, j.hips), UPV), len = Math.hypot(...sub(j.shoulders, j.hips));
+    const coat = pal.coat, under = pal.belly, dark = shade(coat, 0.75);
+    // body: barrel, deep chest, haunch, pale belly, mane
+    M.ellipsoid(lerp(j.hips, j.shoulders, 0.5), S, [b.body * 0.47, b.body * 0.5, len / 2 + b.body * 0.3], coat);
+    M.ellipsoid(off(j.shoulders, S, 0, -0.2, -0.6), S, [b.body * 0.52, b.body * 0.64, b.body * 0.6], coat);
+    M.ellipsoid(j.hips, S, [b.body * 0.5, b.body * 0.56, b.body * 0.55], coat);
+    M.ellipsoid(off(lerp(j.belly0, j.belly1, 0.5), S, 0, 0.6, 0), S, [b.body * 0.36, b.body * 0.3, len / 2], under);
+    if (look.mane) M.ellipsoid(lerp(j.shoulders, j.neck, 0.55), frameYZ(sub(j.head, j.shoulders), S.z), [b.body * 0.56, b.body * 0.62, b.body * 0.5], pal.mane);
+    // neck and head
+    M.limb(j.shoulders, j.neck, b.body * 0.4, b.body * 0.32, coat);
+    M.limb(j.neck, j.head, b.body * 0.32, 2.3, coat);
+    const Hd = frameZY(sub(j.snout, j.head), UPV);
+    M.ellipsoid(j.head, Hd, [2.7, 2.5, 2.9], coat);
+    M.limb(j.head, j.snout, 1.9, 1.15, coat);
+    M.limb(j.head, j.jaw, 1.35, 0.85, shade(under, 0.9));
+    M.ball(j.mouth, 0.9, "#5a1a1e");
+    M.ball(j.nose, 0.75, "#1b1416");
+    for (const s of ["L", "R"]) {
+      M.ball(j["eye" + s], 0.55, pal.eye, { glow: true });
+      const round = b.ear === "round";
+      M.limb(j["ear" + s], j["earT" + s], round ? 1.25 : 1.05, round ? 0.85 : 0.15, pal.mane);
+      if (look.tusks) M.limb(j["tusk" + s], j["tuskT" + s], 0.5, 0.1, "#efe6d0");
+    }
+    // legs: muscled upper leg, lower leg, paw
+    for (const k of ["FL", "FR", "HL", "HR"]) {
+      const top = j["top" + k], kn = j["kn" + k], ft = j["ft" + k], lw = b.legW;
+      M.ellipsoid(lerp(top, kn, 0.3), frameYZ(sub(top, kn), S.z), [lw * 0.62, b.leg * 0.42, lw * 0.75], coat);
+      M.limb(top, kn, lw * 0.6, lw * 0.44, coat);
+      M.limb(kn, ft, lw * 0.44, lw * 0.34, coat);
+      M.ellipsoid(add(ft, [0, 0.45, 0]), frameZY([S.z[0], 0, S.z[2]], UPV), [lw * 0.55, 0.55, lw * 0.75], dark);
+    }
+    // tail
+    M.limb(j.tail0, j.tail1, b.tailW * 0.55, b.tailW * 0.45, coat);
+    M.limb(j.tail1, j.tail2, b.tailW * 0.45, b.tailW * 0.2, look.tip ? under : coat);
+    return S;
+  }
+  function dragon(j, look, M) {
+    const S = beast(j, look, M), pal = look.pal;
+    for (const s of ["L", "R"]) {
+      const r = j["wRoot" + s], m = j["wMid" + s], t = j["wTip" + s], k = j["wBack" + s];
+      M.quad([r, m, t, k], pal.mane);
+      M.limb(r, m, 1.1, 0.75, pal.coat); M.limb(m, t, 0.75, 0.15, pal.coat); M.limb(m, k, 0.4, 0.15, shade(pal.coat, 0.8));
+    }
+    // spines along the back and neck, and horns
+    for (let i = 0; i <= 5; i++) {
+      const p = i < 4 ? lerp(j.hips, j.shoulders, i / 3) : lerp(j.shoulders, j.head, (i - 3) / 3);
+      const base = off(p, S, 0, look.build.body * (i < 4 ? 0.5 : 0.3), 0);
+      M.limb(base, off(base, S, 0, 2.2, -1.2), 0.8, 0.1, pal.mane);
+    }
+    const Hd = frameZY(sub(j.snout, j.head), UPV);
+    for (const sx of [-1, 1]) { const b = off(j.head, Hd, sx * 1.2, 1.8, -1), m = off(b, Hd, sx * 0.6, 2, -2.4); M.limb(b, m, 0.7, 0.45, "#efe6d0"); M.limb(m, off(m, Hd, 0, 0.6, -2.6), 0.45, 0.08, "#efe6d0"); }
+  }
+
+  // ---------- trees ----------
+  function tree(j, look, M) {
+    const pal = look.pal, tw = look.build.trunk, R = look.build.r;
+    for (let i = 0; i < 4; i++) M.limb(j["t" + i], j["t" + (i + 1)], tw * 0.55 * (1 - i * 0.18), tw * 0.55 * (1 - (i + 1) * 0.18), pal.trunk);
+    // roots flare out at the foot
+    for (let i = 0; i < 5; i++) { const a = (i / 5) * Math.PI * 2 + 0.4; M.limb(add(j.t0, [0, tw * 0.6, 0]), [Math.cos(a) * tw * 1.5, 0.2, Math.sin(a) * tw * 1.5], tw * 0.32, tw * 0.12, shade(pal.trunk, 0.85)); }
+    // canopy: each blob a lumpy cluster, lighter on top, with flowers when it has them
+    (look.blobs || []).forEach(([, by, , r], i) => {
+      const c = j["c" + i], rr = R * r;
+      M.limb(lerp(j.t3, j.t4, 0.5), lerp(j.t4, c, 0.75), tw * 0.2, tw * 0.1, pal.trunk);
+      M.ellipsoid(c, frameYZ(UPV, [0, 0, 1]), [rr, rr * 0.82, rr], pal.leaf);
+      for (let k = 0; k < 5; k++) {
+        const a = k * 2.4 + i, lift = k % 2 ? 0.35 : -0.1, d = [Math.cos(a) * 0.62, lift, Math.sin(a) * 0.62];
+        M.ball(add(c, mul(d, rr)), rr * 0.55, k % 2 ? pal.light : shade(pal.leaf, 0.9));
+      }
+      if (pal.accent) for (let k = 0; k < 6; k++) { const a = k * 1.9 + i * 0.7, d = norm([Math.cos(a), 0.6, Math.sin(a)]); M.ball(add(c, mul(d, rr * 0.98)), rr * 0.12, pal.accent); }
+    });
+    if (look.kind === "pine") for (let i = 0; i < 4; i++) M.limb(j["pC" + i], j["pT" + i], j["pR" + i][0], 0.3, i % 2 ? pal.light : pal.leaf, { flat: 0.2 });
+    if (look.kind === "willow") for (let i = 0; i < 10; i++) M.limb(j["s" + i], j["sT" + i], 0.45, 0.2, pal.light);
+    if (look.kind === "palm") {
+      for (let i = 0; i < 7; i++) {
+        const a = j["f0" + i], b = j["f1" + i], c = j["f2" + i], side = mul(norm(cross(sub(c, a), UPV)), 1.7);
+        M.quad([add(a, mul(side, 0.3)), add(b, side), sub(b, side), sub(a, mul(side, 0.3))], pal.leaf);
+        M.quad([add(b, side), add(c, mul(side, 0.2)), sub(c, mul(side, 0.2)), sub(b, side)], pal.light);
+      }
+      for (let i = 0; i < 3; i++) { const a = i * 2.1; M.ball(add(j.t4, [Math.cos(a) * 1.2, -1, Math.sin(a) * 1.2]), 1.1, "#6a4a2a"); }
+    }
+  }
+
+  // ---------- the chest: a box and a lid, banded and locked ----------
+  function chest(j, look, M) {
+    const pal = look.pal;
+    // a box from its eight named corners: centre, frame and half sizes
+    const boxOf = (n) => {
+      const c = (k) => j[n + k], ks = ["Lbf", "Rbf", "Ltf", "Rtf", "Lbk", "Rbk", "Ltk", "Rtk"];
+      const mid = mul(ks.reduce((s, k) => add(s, c(k)), [0, 0, 0]), 1 / 8);
+      const f = frameYZ(sub(c("Ltf"), c("Lbf")), sub(c("Lbf"), c("Lbk")));
+      return { mid, f, half: [Math.hypot(...sub(c("Rbf"), c("Lbf"))) / 2, Math.hypot(...sub(c("Ltf"), c("Lbf"))) / 2, Math.hypot(...sub(c("Lbf"), c("Lbk"))) / 2], c };
+    };
+    const B = boxOf("B"), L = boxOf("L");
+    M.block(B.mid, B.f, B.half, 0.7, pal.wood);
+    M.block(L.mid, L.f, L.half, 1, pal.lid);
+    // bands round box and lid, metal caps on the box's corners, the lock
+    // a band is named by its front edge; it sits at the box's middle depth and wraps front, top and back
+    const band = (a, b, X) => M.block(off(lerp(a, b, 0.5), X.f, 0, 0, -X.half[2] - 0.06), X.f, [0.65, X.half[1] + 0.12, X.half[2] + 0.15], 0.2, pal.band);
+    for (const i of [0, 1]) { band(j["bb" + i], j["bt" + i], B); band(j["lb" + i], j["lt" + i], L); }
+    for (const k of ["Lbf", "Rbf", "Ltf", "Rtf", "Lbk", "Rbk", "Ltk", "Rtk"]) M.ball(B.c(k), 0.6, pal.band);
+    M.block(j.lockB, B.f, [1.25, 1.3, 0.35], 0.25, pal.band);
+    M.block(off(j.lockB, B.f, 0, -0.1, 0.3), B.f, [0.3, 0.55, 0.1], 0.05, "#1a1214");
+    if (j.lidA[0] > 0.4 && !look.mimic) M.ball(j.in, 2.2, "#ffd35c", { glow: true });
+    if (look.mimic) {
+      for (let i = 0; i < 5; i++) {
+        M.limb(j["tt" + i], off(j["tt" + i], L.f, 0, -1.7, 0), 0.55, 0.06, "#f4ead8");
+        M.limb(j["tb" + i], off(j["tb" + i], B.f, 0, 1.5, 0), 0.5, 0.06, "#f4ead8");
+      }
+      for (const s of ["L", "R"]) M.ball(j["eye" + s], 0.9, "#ff3a2a", { glow: true });
+      if (j.lidA[0] > 0.2) M.limb(j.in, off(j.lockB, B.f, 0, 1.6, 1.5), 1.2, 0.7, "#c8344a");
+    }
+  }
+
+  return { figure, beast, dragon, tree, chest };
 })();
 </script>
 </body></html>

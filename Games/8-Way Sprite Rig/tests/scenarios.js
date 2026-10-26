@@ -90,12 +90,22 @@ module.exports = [
     name: 'model: the three.js view of every subject',
     run: inPage(async () => {
       await T.press('[data-rmode="mesh3d"]');
-      for (const [sub, least] of [['character', 10], ['beast', 20], ['dragon', 30], ['golem', 10], ['tree', 5], ['chest', 16]]) {
+      const tall = {};
+      for (const [sub, least] of [['character', 20], ['beast', 40], ['dragon', 60], ['golem', 40], ['tree', 40], ['chest', 30]]) {
         await T.press(`#subjectSeg [data-subject="${sub}"]`);
         await T.until(() => T.state().preview && T.state().preview.parts >= least, 3000);
         const p = T.state().preview;
         T.check(`${sub} is built in three.js`, p.gl && p.parts >= least, p);
+        T.check(`${sub} ${sub === 'character' ? 'stands alone' : 'has a person beside it for scale'}`, p.ghost === (sub !== 'character'), p);
+        tall[sub] = p.height;
       }
+      // real sizes: a person 1.8 m, a golem 3.4 m, a 10 m oak, a knee-high chest
+      const man = tall.character;
+      T.check('a person is the measure', Math.abs(man / 42 - 1) < 0.05, tall);
+      T.check('the oak towers over a person', tall.tree > man * 4.5, tall);
+      T.check('the golem stands well over a person', tall.golem > man * 1.6, tall);
+      T.check('the dragon dwarfs a wolf', tall.dragon > tall.beast * 4, tall);
+      T.check('the chest comes to the knee', tall.chest < man * 0.5, tall);
       // the picture stands where the rig projects it: the character's torso is drawn, the air beside it is not
       await T.press('#subjectSeg [data-subject="character"]');
       await T.wait(150);
