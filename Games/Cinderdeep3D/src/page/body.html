@@ -1,0 +1,40 @@
+<div class="app" id="app">
+  <canvas id="screen" aria-label="Game view"></canvas>
+  <div class="hud" id="hud" hidden>
+    <div class="hud-tl">
+      <div class="bar" id="hpbar"><i class="ghost" id="hp-ghost"></i><i class="fill" id="hp-fill"></i><i class="shield" id="hp-shield"></i><span id="hp-txt"></span></div>
+      <div class="xprow"><span class="lvl" id="lvl">1</span><div class="bar xpbar" id="xpbar"><i class="fill" id="xp-fill"></i></div></div>
+      <div class="evo-tag" id="evo-tag" hidden></div>
+      <div class="res" id="res"></div>
+    </div>
+    <div class="hud-tr"><canvas id="minimap" width="132" height="96"></canvas><div class="floor-lbl" id="floor-lbl"></div><div class="omens" id="omens"></div></div>
+    <div class="hud-bl" id="slots"></div>
+    <div class="hud-bc" id="abil"></div>
+    <div class="bossbar" id="bossbar" hidden><b id="boss-name"></b><div class="bar"><i class="ghost" id="boss-ghost"></i><i class="fill" id="boss-fill"></i></div></div>
+    <div class="banner" id="banner"><b></b><small></small></div>
+    <div class="announce" id="announce"><b></b><small></small></div>
+    <div class="combo" id="combo" hidden><b id="combo-n"></b><small id="combo-t"></small><i><em id="combo-bar"></em></i></div>
+    <div class="letterbox" id="letterbox"><i></i><i></i></div>
+    <div class="prompt" id="prompt" hidden></div>
+    <div class="itemcard" id="itemcard" hidden></div>
+    <div class="chatlog" id="chatlog" aria-live="polite"></div>
+  </div>
+  <div class="touch" id="touch" hidden>
+    <div class="tzone l" id="tzone-l" hidden></div>
+    <div class="tzone r" id="tzone-r" hidden></div>
+    <div class="stick l" id="stick-l"><i></i></div>
+    <div class="stick a" id="stick-a"><i></i></div>
+    <button class="tb dash" id="tb-dash" type="button" aria-label="Dash">DASH</button>
+    <button class="tb ab1" id="tb-ab1" type="button" aria-label="Ability one"><img alt=""><i class="cd"></i></button>
+    <button class="tb ab2" id="tb-ab2" type="button" aria-label="Ability two"><img alt=""><i class="cd"></i></button>
+    <button class="tb use" id="tb-use" type="button" aria-label="Interact" hidden>USE</button>
+    <button class="tb pot" id="tb-pot" type="button" aria-label="Drink a potion"><img alt=""><span id="tb-pot-n"></span></button>
+    <button class="tb swap" id="tb-swap" type="button" aria-label="Swap weapon"><img alt=""></button>
+    <button class="tsmall pause" id="tb-pause" type="button">Pause</button>
+    <button class="tsmall map" id="tb-map" type="button">Map</button>
+  </div>
+  <div class="tfx" id="tfx" aria-hidden="true"></div>
+  <div class="ui" id="ui"></div>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <div class="rotate" id="rotate" hidden><div><i></i><b>Turn your phone sideways</b><small>Cinderdeep is set to landscape. You can change that in Controls.</small><button class="btn small" id="rotate-ok" type="button">Play in portrait instead</button></div></div>
+</div>

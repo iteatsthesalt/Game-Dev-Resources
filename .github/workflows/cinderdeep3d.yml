@@ -1,0 +1,20 @@
+name: Cinderdeep 3D
+on:
+  push:
+    paths: ['Games/Cinderdeep3D/**', '.github/workflows/cinderdeep3d.yml']
+  pull_request:
+    paths: ['Games/Cinderdeep3D/**', '.github/workflows/cinderdeep3d.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Games/Cinderdeep3D
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test
