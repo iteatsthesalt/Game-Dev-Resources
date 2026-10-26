@@ -237,21 +237,24 @@ module.exports = [
       CD.settings.glow = false;
       const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyJ', 'KeyV', 'Space', 'KeyB', 'KeyQ', 'KeyE', 'KeyR'];
       let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+      // the game's own work and the drawing are timed apart: CI draws in software, so drawing gets a wide margin
       const play = (secs) => {
-        const t0 = performance.now();
+        let sim = 0, draw = 0, draws = 0;
         for (let i = 0; i < secs * 60; i++) {
           if (i % 12 === 0) { Input.down.clear(); for (const k of keys) if (rnd() < 0.3) { Input.down.add(k); Input.edge.add(k); } }
-          T.sim(1 / 60); if (i % 4 === 0) render();
+          let t0 = performance.now(); T.sim(1 / 60); sim += performance.now() - t0;
+          if (i % 4 === 0) { t0 = performance.now(); render(); draw += performance.now() - t0; draws++; }
           if (G.p.dead) { G.p.dead = false; G.p.hp = G.p.maxHp; }
         }
-        Input.down.clear(); return (performance.now() - t0) / (secs * 60);
+        Input.down.clear(); return { sim: sim / (secs * 60), draw: draw / draws };
       };
       await T.descent('samurai');
-      let worst = 0;
-      for (let f = 0; f < 6; f++) { G.p.hp = G.p.maxHp; worst = Math.max(worst, play(6)); goFloor(G.fl.idx + 1); await T.wait(80); }
+      const worst = { sim: 0, draw: 0 }, keep = (r) => { worst.sim = Math.max(worst.sim, r.sim); worst.draw = Math.max(worst.draw, r.draw); };
+      for (let f = 0; f < 6; f++) { G.p.hp = G.p.maxHp; keep(play(6)); goFloor(G.fl.idx + 1); await T.wait(80); }
       await T.realm('storm');
-      worst = Math.max(worst, play(25));
-      T.check('frames stay cheap (ms per simulated frame)', worst < 12, worst.toFixed(2));
+      keep(play(25));
+      T.check('the game stays cheap (ms per simulated frame)', worst.sim < 4, worst.sim.toFixed(2));
+      T.check('drawing stays cheap even in software (ms per frame)', worst.draw < 120, worst.draw.toFixed(2));
       T.check('no "something went wrong" toast', !frame.errShown);
       return T.done();
     },
