@@ -1,0 +1,13 @@
+{
+  "name": "cinderdeep-3d",
+  "private": true,
+  "description": "Cinderdeep in 3D, a single-file browser roguelite, built from src/",
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/build.js --check",
+    "test": "node tools/build.js --check && node tests/run.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

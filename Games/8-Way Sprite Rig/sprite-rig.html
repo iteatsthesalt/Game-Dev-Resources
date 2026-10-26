@@ -101,6 +101,7 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .cinder-text p { margin: 0; max-width: 60ch; }
 .cinder-text .label { margin: 0; }
 .cinder-text .hint { color: var(--muted); font-size: 12.5px; }
+.cinder[hidden] { display: none; }
 @media (max-width: 760px) { .cinder { grid-template-columns: minmax(0, 1fr); } }
 .bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
 @media (max-width: 880px) { .bottom { grid-template-columns: minmax(0, 1fr); } }
@@ -115,8 +116,9 @@ code { font-family: var(--mono); font-size: 0.9em; }
 
 <div class="wrap">
   <header>
+    <p class="label">Cinderdeep 9.0 · sprite tool</p>
     <h1>8-Way Sprite Rig</h1>
-    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Gear is baked into the atlas; anything held in a hand rides on a projected 3D bone. Walk the result around the playground, then take the atlas with you.</p>
+    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Gear is baked into the atlas; anything held in a hand rides on a projected 3D bone. The same rig works for a beast on four legs, a tree in the wind and a chest on its hinge. Cinderdeep's heroes walk on this skeleton, and its creatures, trees and chests follow the same rules. Walk the result around the playground, then take the atlas with you.</p>
   </header>
 
   <section class="top">
@@ -148,14 +150,18 @@ code { font-family: var(--mono); font-size: 0.9em; }
 
     <div class="panel controls">
       <div class="group">
+        <p class="label">Subject</p>
+        <div class="seg" id="subjectSeg" aria-label="What is on the bench"></div>
+      </div>
+      <div class="group">
         <p class="label">Clip</p>
         <div class="seg" id="clipSeg" aria-label="Animation clip"></div>
       </div>
       <div class="group">
-        <p class="label">Character</p>
+        <p class="label" id="lookLabel">Character</p>
         <div class="seg chips" id="presetSeg" aria-label="Character preset"></div>
         <div class="swatches" id="swatches"></div>
-        <div class="fields">
+        <div class="fields" id="gearFields">
           <label for="gHead">Head<select id="gHead"><option value="none">Goggles</option><option value="helmet">Helmet</option><option value="hood">Hood</option><option value="hat">Wizard hat</option></select></label>
           <label for="gBack">Back<select id="gBack"><option value="pack">Backpack</option><option value="cape">Cape</option><option value="none">Nothing</option></select></label>
           <label for="gRight">Right hand<select id="gRight"><option value="torch">Torch</option><option value="sword">Sword</option><option value="staff">Staff</option><option value="lantern">Lantern</option><option value="none">Empty</option></select></label>
@@ -169,7 +175,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
           <input id="cam" type="range" min="0" max="359" value="200">
         </div>
         <div class="ctl" id="faceCtl">
-          <div class="row"><label for="face">Character facing (yaw)</label><output id="faceOut">0°</output></div>
+          <div class="row"><label for="face" id="faceLabel">Character facing (yaw)</label><output id="faceOut">0°</output></div>
           <input id="face" type="range" min="0" max="359" value="20">
         </div>
         <div class="ctl">
@@ -266,6 +272,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
         <li><b>Column from clip time.</b> Each clip is baked at even steps, so <code>floor(t × frames)</code> keeps sprite and skeleton in lockstep through blends and speed changes.</li>
         <li><b>Gear is baked, props are attached.</b> Helmets, hoods, capes and packs move with the body, so they go into the atlas. A sword or a torch changes during play, so it is drawn from the projected hand bone and sorted against the chest.</li>
         <li><b>Mirroring is free art, sometimes.</b> A flipped walk is the same walk half a cycle later, so fewer than half the rows need baking. An attack swings one arm: flipped, it swings the other, so asymmetric clips bake every row.</li>
+        <li><b>Anything with joints.</b> A beast's four legs, a tree's trunk and canopy, a chest's hinged lid: only the skeleton and the painter change. Rows still come from the angle and columns from clip time. Whatever can be flipped without lying (a trot, a shut lid) mirrors; a tree in a one-way wind cannot.</li>
         <li><b>Export the contract.</b> The JSON lists each clip's rows, which directions flip, and where the hands are in every cell, so a game engine can attach props without the skeleton.</li>
       </ol>
     </div>
@@ -274,7 +281,9 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
 
 <script>
 (() => {
-  const CW = 32, CH = 48, OX = 16, OY = 44, ELEV = 28 * Math.PI / 180, D2R = Math.PI / 180, TAU = Math.PI * 2;
+  // the cell the current subject bakes into: width, height, and where its feet sit
+  let CW = 32, CH = 48, OX = 16, OY = 44;
+  const ELEV = 28 * Math.PI / 180, D2R = Math.PI / 180, TAU = Math.PI * 2;
   const wrap360 = (a) => ((a % 360) + 360) % 360;
   const wrap180 = (a) => { a = wrap360(a); return a > 180 ? a - 360 : a; };
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -287,15 +296,17 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   const ease = (k) => { k = clamp(k, 0, 1); return k * k * (3 - 2 * k); };
 
   // ---------- clips: symmetric ones can mirror (with a frame shift); the attack swings one arm and cannot ----------
-  const CLIPS = {
+  const CHAR_CLIPS = {
     idle: { name: "Idle", rate: 0.35, sym: true, shift: 0 },
     walk: { name: "Walk", rate: 1, sym: true, shift: 0.5 },
     run: { name: "Run", rate: 1.6, sym: true, shift: 0.5 },
-    attack: { name: "Attack", rate: 1.1, sym: false, shift: 0 },
+    attack: { name: "Attack", rate: 1.1, sym: false, shift: 0, loop: false, why: "Attack swings the right arm. Flipped, it would swing the left, so this clip bakes and uses every row even with mirroring on." },
   };
+  // the clips of whatever is on the bench
+  let CLIPS = CHAR_CLIPS;
 
   // ---------- 3D skeleton: every clip is a pose as a function of clip time t (0..1) ----------
-  function pose(clip, t) {
+  function charPose(clip, t) {
     const ph = t * TAU, j = {}, Lg = {}, Ar = {};
     let hy = 20, lean = 0, twist = 0, breath = 0, capeZ = -3.2, capeY = 0;
     if (clip === "idle") {
@@ -383,6 +394,8 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     const r = Math.round(((n >> 16) & 255) * f), g = Math.round(((n >> 8) & 255) * f), b = Math.round((n & 255) * f);
     return `rgb(${Math.min(255, r)},${Math.min(255, g)},${Math.min(255, b)})`;
   };
+  // the outline the bake draws round every silhouette
+  const LINE = "#151824";
 
   // Draws the figure at origin (ox, oy) in screen space, scale sc. `mono` draws a flat silhouette of the true skeleton.
   function drawFigure(ctx, j, rel, ox, oy, sc, look, mono, hk = 1) {
@@ -435,20 +448,20 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   }
 
   // ---------- bake: every direction × frame of one clip, then pixel-threshold and outline ----------
-  // o: cell size, origin, scale, head size and row angles, for sheets other than the atlas (the Cinderdeep hero)
-  function bakeClip(look, clip, N, FR, o = {}) {
-    const cw = o.cw || CW, ch = o.ch || CH, angles = o.angles || Array.from({ length: N }, (_, d) => (d * 360) / N);
-    const cv = document.createElement("canvas");
-    cv.width = cw * FR; cv.height = ch * angles.length;
+  // o overrides the cell, scale, head size and row angles, for sheets other than the atlas (the Cinderdeep hero)
+  function bakeClip(look, clip, N, FR, sub = SUBJ, o = {}) {
+    const cell = o.cell || sub.cell, { w: CW, h: CH, ox: OX, oy: OY } = cell, cv = document.createElement("canvas");
+    const angles = o.angles || Array.from({ length: N }, (_, d) => (d * 360) / N);
+    cv.width = CW * FR; cv.height = CH * angles.length; cv.cell = cell;
     const c = cv.getContext("2d");
-    for (let d = 0; d < angles.length; d++) for (let f = 0; f < FR; f++) drawFigure(c, pose(clip, f / FR), angles[d] * D2R, f * cw + (o.ox ?? OX), d * ch + (o.oy ?? OY), o.sc || 1, look, undefined, o.head || 1);
+    for (let d = 0; d < angles.length; d++) for (let f = 0; f < FR; f++) sub.draw(c, sub.pose(clip, f / FR, look), angles[d] * D2R, f * CW + OX, d * CH + OY, o.sc || 1, look, undefined, o.head || 1);
     const img = c.getImageData(0, 0, cv.width, cv.height), px = img.data, W = cv.width, H = cv.height;
     const solid = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) { solid[i] = px[i * 4 + 3] > 100 ? 1 : 0; px[i * 4 + 3] = solid[i] ? 255 : 0; }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (solid[i]) continue;
       const n = (x > 0 && solid[i - 1]) || (x < W - 1 && solid[i + 1]) || (y > 0 && solid[i - W]) || (y < H - 1 && solid[i + W]);
-      if (n && (x % cw) !== 0 && (x % cw) !== cw - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
+      if (n && (x % CW) !== 0 && (x % CW) !== CW - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
     }
     c.putImageData(img, 0, 0);
     return cv;
@@ -509,24 +522,302 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     return out;
   }
 
+  // ---------- other subjects: a beast on four legs, a tree, a chest. Each has its own skeleton, clips and painter;
+  // rows from angle, columns from clip time, baking and export are shared ----------
+  const seg = (t, a, b) => ease((t - a) / (b - a));
+  // draw helpers shared by the painters below: items carry a depth and are drawn far to near
+  function painterFor(ctx, j, rel, ox, oy, sc, mono) {
+    const P = {}; for (const k in j) P[k] = project(j[k], rel);
+    const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc, items = [];
+    const col = (c, dark) => mono || (dark ? shade(c, dark) : c);
+    return {
+      P, X, Y, items,
+      bone: (a, b, w, c, dark, bias = 0) => items.push({ d: (P[a].d + P[b].d) / 2 + bias, draw: () => { ctx.strokeStyle = col(c, dark); ctx.lineWidth = w * sc; ctx.lineCap = "round"; ctx.beginPath(); ctx.moveTo(X(P[a]), Y(P[a])); ctx.lineTo(X(P[b]), Y(P[b])); ctx.stroke(); } }),
+      disc: (a, r, c, dark, bias = 0) => items.push({ d: P[a].d + bias, draw: () => { ctx.fillStyle = col(c, dark); ctx.beginPath(); ctx.arc(X(P[a]), Y(P[a]), r * sc, 0, TAU); ctx.fill(); } }),
+      run: () => items.sort((a, b) => b.d - a.d).forEach((i) => i.draw()),
+    };
+  }
+
+  /* -- the beast: a spine from hips to shoulders, a neck and head, a tail, four legs -- */
+  const BEAST_CLIPS = {
+    idle: { name: "Idle", rate: 0.35, sym: true, shift: 0 },
+    walk: { name: "Trot", rate: 1, sym: true, shift: 0.5 },
+    run: { name: "Bound", rate: 1.5, sym: true, shift: 0 },
+    attack: { name: "Pounce", rate: 1.1, sym: true, shift: 0 },
+  };
+  function beastPose(clip, t, look) {
+    const ph = t * TAU, j = {}, b = look.build, L = {};
+    let lift = 0, pitch = 0, fwd = 0, hy = 0, hz = 0, jaw = 0.15, tailA = 0, tailUp = 0.5;
+    for (const k of ["FL", "FR", "HL", "HR"]) L[k] = [0, 0.1];
+    if (clip === "idle") { lift = 0.25 * Math.sin(ph); hy = 0.35 * Math.sin(ph + 1); tailA = 0.3 * Math.sin(ph); }
+    else if (clip === "walk") {
+      // a trot: diagonal pairs move together
+      const pp = { FL: 0, HR: 0, FR: Math.PI, HL: Math.PI };
+      for (const k in L) { const p = ph + pp[k]; L[k] = [0.5 * Math.sin(p), 0.8 * Math.max(0, Math.sin(p - 0.8)) + 0.1]; }
+      lift = 0.5 * Math.abs(Math.sin(ph)); hy = 0.45 * Math.sin(2 * ph); tailA = 0.45 * Math.sin(ph); tailUp = 0.6;
+    } else if (clip === "run") {
+      // a bound: hind legs push together, front legs land together, the spine flexes between
+      const hp = ph, fp = ph + Math.PI;
+      for (const k of ["HL", "HR"]) L[k] = [0.85 * Math.sin(hp), 1.1 * Math.max(0, Math.sin(hp - 0.7)) + 0.1];
+      for (const k of ["FL", "FR"]) L[k] = [0.85 * Math.sin(fp), 1.1 * Math.max(0, Math.sin(fp - 0.7)) + 0.1];
+      lift = 1.4 * Math.max(0, Math.sin(ph * 2 + 0.5)); pitch = 0.16 * Math.sin(ph); hy = -0.4 * Math.sin(2 * ph); tailA = 0.15 * Math.sin(ph); tailUp = 0.9;
+    } else {
+      // crouch, leap, bite, land
+      if (t < 0.35) { const k = seg(t, 0, 0.35); lift = -2.2 * k; fwd = -1.2 * k; pitch = -0.1 * k; hy = -1 * k; for (const q in L) L[q] = [q[0] === "F" ? 0.3 * k : -0.2 * k, 0.9 * k + 0.1]; }
+      else if (t < 0.6) { const k = seg(t, 0.35, 0.6); lift = lerp(-2.2, 2.6, k); fwd = lerp(-1.2, 5, k); pitch = lerp(-0.1, -0.22, k); hy = lerp(-1, 1, k); jaw = lerp(0.15, 1.1, k); for (const q in L) L[q] = q[0] === "F" ? [lerp(0.3, 1.2, k), 0.2] : [lerp(-0.2, -0.9, k), 0.3]; }
+      else if (t < 0.78) { const k = seg(t, 0.6, 0.78); lift = lerp(2.6, 0, k); fwd = 5; pitch = lerp(-0.22, 0.12, k); hy = lerp(1, -1.4, k); jaw = lerp(1.1, 0.1, k); for (const q in L) L[q] = q[0] === "F" ? [lerp(1.2, 0.2, k), 0.5] : [lerp(-0.9, -0.2, k), 0.3]; }
+      else { const k = seg(t, 0.78, 1); fwd = lerp(5, 0, k); pitch = lerp(0.12, 0, k); hy = lerp(-1.4, 0, k); for (const q in L) L[q] = [lerp(q[0] === "F" ? 0.2 : -0.2, 0, k), 0.1]; }
+      tailUp = 0.8; tailA = 0.1 * Math.sin(ph * 3);
+    }
+    const H = b.leg * 2 + 1.5, half = b.len / 2;
+    j.hips = [0, H + lift - pitch * half, -half + fwd]; j.shoulders = [0, H + lift + pitch * half + 0.6, half + fwd];
+    j.belly0 = add(j.hips, [0, -b.body * 0.32, 1]); j.belly1 = add(j.shoulders, [0, -b.body * 0.32, -1]);
+    j.neck = add(j.shoulders, [0, 2.6 + hy * 0.5, 2.2 + hz]);
+    j.head = add(j.shoulders, [0, 4.4 + hy, 4.4 + hz]);
+    j.snout = add(j.head, [0, -0.8 - jaw * 0.4, b.snout]); j.nose = add(j.snout, [0, 0.2, 0.6]);
+    j.jaw = add(j.head, [0, -1.8 - jaw * 1.6, b.snout * 0.85]); j.mouth = add(j.head, [0, -1.1 - jaw * 0.8, b.snout * 0.7]);
+    for (const [s, sx] of [["L", -1], ["R", 1]]) {
+      j["ear" + s] = add(j.head, [sx * 1.4, 1.8, -0.6]); j["earT" + s] = add(j.head, b.ear === "round" ? [sx * 2.4, 3, -0.6] : [sx * 2.3, 4.7, -0.4]);
+      j["eye" + s] = add(j.head, [sx * 1.25, 0.6, 1.6]); j["tusk" + s] = add(j.snout, [sx * 1.1, -0.6, -0.2]); j["tuskT" + s] = add(j["tusk" + s], [sx * 0.4, 1.4, 0.6]);
+    }
+    // the tail curls up and back, swinging side to side
+    const tb = add(j.hips, [0, 0.6, -1.4]);
+    j.tail0 = tb; j.tail1 = add(tb, [Math.sin(tailA) * b.tail * 0.5, tailUp * b.tail * 0.45, -b.tail * 0.45]);
+    j.tail2 = add(j.tail1, [Math.sin(tailA * 1.6) * b.tail * 0.5, (tailUp - 0.45) * b.tail * 0.5, -b.tail * 0.42]);
+    for (const k of ["FL", "FR", "HL", "HR"]) {
+      // legs hang from the outside of the chest and haunch, so the beast has shoulders when it faces you
+      const sx = k[1] === "L" ? -1 : 1, top = add(k[0] === "F" ? j.shoulders : j.hips, [sx * b.body * 0.4, -0.6, 0]), [a, kb] = L[k];
+      const knee = add(top, limb(a, b.leg)), foot = add(add(knee, limb(a - kb * (k[0] === "F" ? 1 : -0.6), b.leg)), [sx * 0.3, 0, 0]);
+      if (foot[1] < 0) foot[1] = 0;
+      j["top" + k] = top; j["kn" + k] = knee; j["ft" + k] = foot;
+    }
+    return j;
+  }
+  function drawBeast(ctx, j, rel, ox, oy, sc, look, mono) {
+    const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P } = D, pal = look.pal, b = look.build;
+    const far = P.topFL.d > P.topFR.d ? "L" : "R";
+    for (const k of ["FL", "FR", "HL", "HR"]) {
+      const dark = k[1] === far ? 0.72 : 0;
+      D.bone("top" + k, "kn" + k, b.legW, pal.coat, dark); D.bone("kn" + k, "ft" + k, b.legW * 0.82, pal.coat, dark); D.disc("ft" + k, b.legW * 0.55, pal.coat, 0.6);
+    }
+    D.bone("hips", "shoulders", b.body, pal.coat); D.bone("belly0", "belly1", b.body * 0.55, pal.belly, 0, 0.6);
+    // a deep chest and a rounded haunch: the spine alone is only as wide as one bone end-on
+    D.disc("shoulders", b.body * 0.6, pal.coat, 0, 0.1); D.disc("hips", b.body * 0.54, pal.coat, 0.9, 0.1);
+    if (look.mane) D.bone("shoulders", "neck", b.body * 1.05, pal.mane, 0, -0.4);
+    D.bone("shoulders", "neck", b.body * 0.62, pal.coat); D.bone("tail0", "tail1", b.tailW, pal.coat); D.bone("tail1", "tail2", b.tailW * 0.8, look.tip ? pal.belly : pal.coat);
+    D.bone("head", "snout", 2.6, pal.coat, 0, -0.2); D.bone("head", "jaw", 1.5, pal.coat, 0.78, 0.1); D.disc("mouth", 1, "#5a1a1e", 0, 0.3);
+    D.disc("head", 3.1, pal.coat); D.disc("nose", 0.75, "#1b1416", 0, -0.4);
+    // facing us, the long body rises behind the head and swallows it: rim the head so it stands off the back,
+    // and give the ears the darker mane colour so they read against it
+    if (P.hips.d - P.head.d > b.len * 0.45) D.disc("head", 3.5, LINE, 0, 0.05);
+    for (const s of ["L", "R"]) {
+      D.bone("ear" + s, "earT" + s, b.ear === "round" ? 2 : 1.8, pal.mane, s === far ? 0.8 : 0, 0.2);
+      if (look.tusks) D.bone("tusk" + s, "tuskT" + s, 0.8, "#efe6d0", 0, -0.5);
+      // an eye shows only on the side of the head turned toward us
+      if (!mono && P["eye" + s].d < P.head.d + 0.4) D.disc("eye" + s, 0.62, pal.eye, 0, -0.6);
+    }
+    D.run();
+    return P;
+  }
+  const BEAST_PRESETS = {
+    wolf: { name: "Wolf", pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
+    fox: { name: "Fox", pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
+    bear: { name: "Bear", pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
+    boar: { name: "Boar", pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
+  };
+
+  /* -- the tree: a trunk that bends from its foot, a canopy that rides its top, fronds and strands that swing further -- */
+  const WIND = "The wind blows one way. Flipped, the tree would lean into it, so this clip bakes every row.";
+  const TREE_CLIPS = {
+    sway: { name: "Sway", rate: 0.3, sym: false, shift: 0, why: WIND },
+    gust: { name: "Gust", rate: 0.55, sym: false, shift: 0, why: WIND },
+    shaken: { name: "Shaken", rate: 0.9, sym: false, shift: 0, loop: false, why: "A blow from one side rings out to the other: flipped, it would come from the wrong side, so every row is baked." },
+  };
+  function treePose(clip, t, look) {
+    const ph = t * TAU, j = {}, Ht = look.build.h;
+    let lean = 0, side = 0, flutter = 0.25;
+    if (clip === "sway") { lean = 0.05 + 0.05 * Math.sin(ph); side = 0.02 * Math.sin(ph * 2 + 1); }
+    else if (clip === "gust") { lean = 0.15 + 0.09 * Math.sin(ph) + 0.03 * Math.sin(ph * 3); side = 0.05 * Math.sin(ph * 2); flutter = 0.8; }
+    else { const k = Math.exp(-t * 4.5); lean = 0.24 * Math.sin(t * TAU * 4) * k; side = 0.1 * Math.cos(t * TAU * 4) * k; flutter = 1.4 * k + 0.2; }
+    // the wind blows along +x; each trunk joint leans further than the one below
+    const bend = (y) => { const f = Math.pow(y / Ht, 1.6); return [lean * Ht * f, y, side * Ht * f]; };
+    for (let i = 0; i <= 4; i++) j["t" + i] = bend((Ht * i) / 4);
+    const top = j.t4, dx = top[0], dz = top[2];
+    const R = look.build.r;
+    (look.blobs || []).forEach(([x, y, z, r], i) => {
+      const f = 1 + y / (Ht * 0.6), w = flutter * 0.5 * Math.sin(ph * 2 + i * 1.7);
+      j["c" + i] = [x * R + dx * f + w, Ht - R * 0.3 + y * R, z * R + dz * f + w * 0.6];
+    });
+    if (look.kind === "willow") for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * TAU, ax = Math.cos(a) * R * 0.85 + dx * 1.05, az = Math.sin(a) * R * 0.85 + dz * 1.05, ay = Ht - R * 0.35;
+      // strands hang from the canopy rim and trail behind its swing
+      j["s" + i] = [ax, ay, az]; j["sT" + i] = [ax - lean * Ht * 0.5 + 0.4 * Math.sin(ph + i), ay - Ht * 0.55, az - side * Ht * 0.5];
+    }
+    if (look.kind === "palm") for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * TAU + 0.3, c = Math.cos(a), s = Math.sin(a), wob = flutter * 0.6 * Math.sin(ph * 2 + i);
+      j["f0" + i] = top; j["f1" + i] = [top[0] + c * 4.5 + dx * 0.3, top[1] + 2.2 + wob, top[2] + s * 4.5 + dz * 0.3];
+      j["f2" + i] = [top[0] + c * 9 + dx * 0.6 + lean * 6, top[1] - 1.5 + wob * 1.6, top[2] + s * 9 + dz * 0.6];
+    }
+    if (look.kind === "pine") for (let i = 0; i < 4; i++) {
+      const y = Ht * (0.32 + i * 0.2), c = bend(y), r = R * (1 - i * 0.22);
+      j["pT" + i] = add(bend(Math.min(Ht * 1.08, y + Ht * 0.3)), [0, 0, 0]); j["pC" + i] = c; j["pR" + i] = [r, 0, 0];
+    }
+    return j;
+  }
+  function drawTree(ctx, j, rel, ox, oy, sc, look, mono) {
+    const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P, X, Y } = D, pal = look.pal, tw = look.build.trunk;
+    for (let i = 0; i < 4; i++) D.bone("t" + i, "t" + (i + 1), tw * (1 - i * 0.18), pal.trunk, i % 2 ? 0 : 0.88, 3);
+    if (look.kind === "pine") for (let i = 0; i < 4; i++) {
+      const T = P["pT" + i], C = P["pC" + i], r = j["pR" + i][0];
+      D.items.push({ d: C.d - 0.5 - i * 0.01, draw: () => {
+        const cx = X(C), cy = Y(C), tx = X(T), ty = Y(T), rw = r * sc, rh = r * Math.sin(ELEV) * sc;
+        ctx.fillStyle = mono || shade(pal.leaf, 0.82); ctx.beginPath(); ctx.ellipse(cx, cy, rw, rh, 0, 0, Math.PI); ctx.lineTo(tx, ty); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = mono || pal.leaf; ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(cx - rw, cy); ctx.ellipse(cx, cy, rw, rh, 0, Math.PI, Math.PI * 0.5, true); ctx.closePath(); ctx.fill();
+      } });
+    }
+    (look.blobs || []).forEach(([, , , r], i) => {
+      const k = "c" + i, R = look.build.r * r;
+      D.items.push({ d: P[k].d, draw: () => {
+        const x = X(P[k]), y = Y(P[k]), rr = R * sc;
+        ctx.fillStyle = mono || shade(pal.leaf, 0.78); ctx.beginPath(); ctx.arc(x, y, rr, 0, TAU); ctx.fill();
+        if (mono) return;
+        ctx.fillStyle = pal.leaf; ctx.beginPath(); ctx.arc(x - rr * 0.12, y - rr * 0.12, rr * 0.86, 0, TAU); ctx.fill();
+        ctx.fillStyle = pal.light; ctx.beginPath(); ctx.arc(x - rr * 0.32, y - rr * 0.36, rr * 0.42, 0, TAU); ctx.fill();
+        if (pal.accent && i % 2 === 0) { ctx.fillStyle = pal.accent; ctx.fillRect(Math.round(x + rr * 0.3), Math.round(y + rr * 0.1), Math.max(1, sc), Math.max(1, sc)); }
+      } });
+    });
+    if (look.kind === "willow") for (let i = 0; i < 10; i++) D.bone("s" + i, "sT" + i, 0.9, pal.light, i % 2 ? 0.8 : 0, -0.2);
+    if (look.kind === "palm") for (let i = 0; i < 7; i++) { D.bone("f0" + i, "f1" + i, 1.8, pal.leaf, i % 2 ? 0.82 : 0); D.bone("f1" + i, "f2" + i, 1.4, pal.light, i % 2 ? 0.82 : 0); }
+    D.run();
+    return P;
+  }
+  const TREE_PRESETS = {
+    oak: { name: "Oak", kind: "oak", pal: { trunk: "#6a4a2a", leaf: "#3e8a3a", light: "#6cb85a", accent: null }, build: { h: 18, r: 9, trunk: 3.6 }, blobs: [[0, 0.9, 0, 0.75], [-0.6, 0.4, 0.3, 0.55], [0.6, 0.45, -0.2, 0.55], [0.1, 0.35, 0.65, 0.5], [-0.2, 0.5, -0.65, 0.5], [0.35, 1.3, 0.2, 0.45]] },
+    pine: { name: "Pine", kind: "pine", pal: { trunk: "#5a3e24", leaf: "#2e6a3e", light: "#3e8a4e", accent: null }, build: { h: 30, r: 9, trunk: 2.6 } },
+    willow: { name: "Willow", kind: "willow", pal: { trunk: "#4a3a2a", leaf: "#5a7a3a", light: "#8aac5a", accent: null }, build: { h: 16, r: 10, trunk: 4 }, blobs: [[0, 0.7, 0, 0.8], [-0.55, 0.35, 0.2, 0.55], [0.55, 0.35, -0.2, 0.55], [0, 0.3, 0.6, 0.5], [0, 0.4, -0.6, 0.5]] },
+    blossom: { name: "Blossom", kind: "oak", pal: { trunk: "#5a3a3a", leaf: "#ff9ac8", light: "#ffd8e8", accent: "#ffffff" }, build: { h: 15, r: 8.5, trunk: 3.2 }, blobs: [[0, 0.85, 0, 0.7], [-0.6, 0.35, 0.3, 0.55], [0.6, 0.4, -0.25, 0.55], [0.15, 0.3, 0.6, 0.5], [-0.25, 0.45, -0.6, 0.48]] },
+    palm: { name: "Palm", kind: "palm", pal: { trunk: "#9a7a4a", leaf: "#3a8a3a", light: "#5ab04a", accent: null }, build: { h: 24, r: 6, trunk: 2.6 }, blobs: [[0, 0.3, 0, 0.22]] },
+  };
+
+  /* -- the chest: a box with a lid hinged along its back edge -- */
+  const CHEST_CLIPS = {
+    shut: { name: "Shut", rate: 0.4, sym: true, shift: 0 },
+    open: { name: "Open", rate: 0.8, sym: true, shift: 0, loop: false },
+    close: { name: "Close", rate: 1, sym: true, shift: 0, loop: false },
+    rattle: { name: "Rattle", rate: 1.2, sym: true, shift: 0 },
+  };
+  const BOX = { w: 7, d: 4.5, h: 6.5, lid: 2.6 };
+  function chestPose(clip, t, look) {
+    const ph = t * TAU, { w, d, h, lid: lt } = BOX;
+    let lid = 0, hop = 0, yaw = 0;
+    if (clip === "shut") lid = look.mimic ? 0.06 + 0.06 * Math.sin(ph) : 0;
+    else if (clip === "open") { const k = seg(t, 0, 0.55); lid = 1.95 * k + (t > 0.55 ? 0.14 * Math.sin((t - 0.55) * 18) * Math.exp(-(t - 0.55) * 7) : 0); }
+    else if (clip === "close") { const k = seg(t, 0, 0.45); lid = 1.95 * (1 - k); hop = t > 0.45 && t < 0.62 ? 0.6 * Math.sin(((t - 0.45) / 0.17) * Math.PI) : 0; }
+    else { lid = 0.25 + 0.3 * Math.abs(Math.sin(ph * 3)); hop = 1.4 * Math.abs(Math.sin(ph * 2)); yaw = 0.14 * Math.sin(ph * 4); }
+    const j = { lidA: [lid, 0, 0] }, c = Math.cos(yaw), s = Math.sin(yaw), put = (k, p) => { j[k] = [p[0] * c + p[2] * s, p[1] + hop, -p[0] * s + p[2] * c]; };
+    // the lid turns about the back top edge of the box
+    const ca = Math.cos(lid), sa = Math.sin(lid), lp = (x, y, z) => { const dy = y - h, dz = z + d; return [x, h + dy * ca + dz * sa, -d - dy * sa + dz * ca]; };
+    // corners named by side (L/R), height (b/t) and depth (f front, k back), for the box (B) and the lid (L)
+    for (const [sx, xs] of [["L", -1], ["R", 1]]) for (const [sz, z] of [["f", d], ["k", -d]]) {
+      put("B" + sx + "b" + sz, [xs * w, 0, z]); put("B" + sx + "t" + sz, [xs * w, h, z]);
+      put("L" + sx + "b" + sz, lp(xs * w, h, z)); put("L" + sx + "t" + sz, lp(xs * w, h + lt, z));
+    }
+    for (const [i, x] of [[0, -4.2], [1, 4.2]]) { put("bb" + i, [x, 0.2, d + 0.06]); put("bt" + i, [x, h - 0.2, d + 0.06]); put("lb" + i, lp(x, h + 0.2, d + 0.06)); put("lt" + i, lp(x, h + lt - 0.2, d + 0.06)); }
+    put("lock", lp(0, h + 0.5, d + 0.08)); put("lockB", [0, h - 1.3, d + 0.08]);
+    for (let i = 0; i < 5; i++) { put("tt" + i, lp(-w + 1.6 + i * 2.7, h - 0.1, d + 0.05)); put("tb" + i, [-w + 2.9 + i * 2.7, h - 0.2, d + 0.05]); }
+    put("eyeL", lp(-2.4, h + 1.6, d + 0.1)); put("eyeR", lp(2.4, h + 1.6, d + 0.1)); put("in", [0, h - 1.4, 0]);
+    return j;
+  }
+  function drawChest(ctx, j, rel, ox, oy, sc, look, mono) {
+    const D = painterFor(ctx, j, rel, ox, oy, sc, mono), { P, X, Y } = D, pal = look.pal;
+    const avg = (keys) => keys.reduce((s, k) => s + P[k].d, 0) / keys.length;
+    const quad = (keys, c, dark, bias) => D.items.push({ d: avg(keys) + bias, draw: () => { ctx.fillStyle = mono || (dark ? shade(c, dark) : c); ctx.beginPath(); for (const k of keys) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); } });
+    // of each pair of opposite faces, the one nearer the camera is the one we see
+    const box = (n, top, side, front, bias, openTop) => {
+      const F = [n + "Lbf", n + "Rbf", n + "Rtf", n + "Ltf"], K = [n + "Rbk", n + "Lbk", n + "Ltk", n + "Rtk"], Lf = [n + "Lbk", n + "Lbf", n + "Ltf", n + "Ltk"], Rf = [n + "Rbf", n + "Rbk", n + "Rtk", n + "Rtf"], T = [n + "Ltf", n + "Rtf", n + "Rtk", n + "Ltk"], Bt = [n + "Lbk", n + "Rbk", n + "Rbf", n + "Lbf"];
+      quad(avg(F) < avg(K) ? F : K, front, avg(F) < avg(K) ? 0 : 0.7, bias);
+      quad(avg(Lf) < avg(Rf) ? Lf : Rf, side, 0.8, bias);
+      if (avg(T) < avg(Bt)) { if (openTop) D.items.push({ d: avg(T) + 30, draw: () => { ctx.fillStyle = mono || "#1a0e0c"; ctx.beginPath(); for (const k of T) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill(); if (!mono && j.lidA[0] > 0.4 && !look.mimic) { ctx.fillStyle = "#ffd35c"; ctx.fillRect(Math.round(X(P.in) - 2 * sc), Math.round(Y(P.in) - 0.5 * sc), Math.round(4 * sc), Math.max(1, Math.round(sc))); } } }); else quad(T, top, 0, bias); }
+      else quad(Bt, top, 0.5, bias);
+      return avg(F) < avg(K);
+    };
+    const boxFront = box("B", pal.wood, pal.wood, pal.wood, 0, true);
+    const lidFront = box("L", pal.lid, pal.lid, pal.lid, -0.05, false);
+    if (!mono) {
+      // bands down the front of box and lid, and the lock
+      for (const i of [0, 1]) { if (boxFront) D.bone("bb" + i, "bt" + i, 1.3, pal.band, 0, -0.3); if (lidFront) D.bone("lb" + i, "lt" + i, 1.3, pal.band, 0, -0.35); }
+      if (boxFront) D.items.push({ d: P.lockB.d - 0.4, draw: () => { ctx.fillStyle = pal.band; ctx.fillRect(Math.round(X(P.lockB) - 1.2 * sc), Math.round(Y(P.lockB) - 1.2 * sc), Math.round(2.4 * sc), Math.round(2.4 * sc)); ctx.fillStyle = "#1a1214"; ctx.fillRect(Math.round(X(P.lockB) - 0.3 * sc), Math.round(Y(P.lockB) - 0.2 * sc), Math.max(1, Math.round(0.6 * sc)), Math.max(1, Math.round(sc))); } });
+      if (look.mimic && boxFront) {
+        // teeth along both lips, eyes on the lid, a tongue when it gapes
+        D.items.push({ d: P.lock.d - 0.5, draw: () => {
+          ctx.fillStyle = "#f4ead8";
+          for (let i = 0; i < 5; i++) { const a = P["tt" + i], b2 = P["tb" + i]; ctx.beginPath(); ctx.moveTo(X(a) - 0.9 * sc, Y(a)); ctx.lineTo(X(a) + 0.9 * sc, Y(a)); ctx.lineTo(X(a), Y(a) + 1.6 * sc); ctx.fill(); ctx.beginPath(); ctx.moveTo(X(b2) - 0.9 * sc, Y(b2)); ctx.lineTo(X(b2) + 0.9 * sc, Y(b2)); ctx.lineTo(X(b2), Y(b2) - 1.6 * sc); ctx.fill(); }
+          ctx.fillStyle = "#ffd35c"; for (const e of ["eyeL", "eyeR"]) ctx.fillRect(Math.round(X(P[e]) - 0.7 * sc), Math.round(Y(P[e]) - 0.7 * sc), Math.round(1.4 * sc), Math.round(1.4 * sc));
+          if (j.lidA[0] > 0.35) { ctx.fillStyle = "#c43a5a"; ctx.fillRect(Math.round(X(P.in) - 1.5 * sc), Math.round(Y(P.in)), Math.round(3 * sc), Math.round(1.6 * sc)); }
+        } });
+      } else if (lidFront) D.items.push({ d: P.lock.d - 0.5, draw: () => { ctx.fillStyle = pal.band; ctx.fillRect(Math.round(X(P.lock) - 1.1 * sc), Math.round(Y(P.lock) - 0.4 * sc), Math.round(2.2 * sc), Math.round(1.8 * sc)); } });
+    }
+    D.run();
+    return P;
+  }
+  const CHEST_PRESETS = {
+    wood: { name: "Wooden", pal: { wood: "#8a5a32", lid: "#a8743e", band: "#4a3a2a" } },
+    iron: { name: "Iron-bound", pal: { wood: "#5a4632", lid: "#6a5440", band: "#aab3c2" } },
+    gold: { name: "Golden", pal: { wood: "#c8901c", lid: "#e0a82a", band: "#fff1a8" } },
+    mimic: { name: "Mimic", pal: { wood: "#7a4a2a", lid: "#93603a", band: "#3a2a1a" }, mimic: true },
+  };
+
+  // a subject: its clips, skeleton, painter, looks, colour names, the cell it bakes into and the sockets it exports
+  const SUBJECTS = {
+    character: { name: "Character", clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
+    beast: { name: "Beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
+    tree: { name: "Tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
+    chest: { name: "Chest", clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
+  };
+
+  let SUBJ = SUBJECTS.character;
+  function useSubject(key) {
+    SUBJ = SUBJECTS[key] || SUBJECTS.character;
+    CLIPS = SUBJ.clips; CW = SUBJ.cell.w; CH = SUBJ.cell.h; OX = SUBJ.cell.ox; OY = SUBJ.cell.oy;
+  }
+
   // ---------- runtime state ----------
   const $ = (id) => document.getElementById(id);
   const ui = { cam: $("cam"), face: $("face"), speed: $("speed"), hyst: $("hyst"), turn: $("turn"), mirror: $("mirror"), skel: $("skel"), dirs: $("dirs"), frames: $("frames"), head: $("gHead"), back: $("gBack"), right: $("gRight"), left: $("gLeft") };
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const st = { look: cloneLook(PRESETS.scout), preset: "scout", clip: "walk", N: 8, FR: 8, mode: "turn" };
+  // st.look and st.preset are the subject on the bench; every subject keeps its own in st.looks
+  const st = { subject: "character", look: cloneLook(PRESETS.scout), preset: "scout", clip: "walk", N: 8, FR: 8, mode: "turn", looks: {} };
+  // a look read back from storage: a known preset, with only real colours laid over it
+  function restoreLook(key, saved) {
+    const sub = SUBJECTS[key], preset = sub.presets[saved.preset] ? saved.preset : Object.keys(sub.presets)[0], look = cloneLook(sub.presets[preset]);
+    if (saved.look && saved.look.pal) for (const k in look.pal) if (typeof saved.look.pal[k] === "string" && /^#[0-9a-f]{6}$/i.test(saved.look.pal[k])) look.pal[k] = saved.look.pal[k];
+    return { look, preset: saved.preset === "custom" ? "custom" : preset };
+  }
+  let savedClip = null;
   try {
     const saved = JSON.parse(localStorage.getItem("spriteRig.v2") || "null");
     if (saved && saved.look && saved.look.pal) { st.look = sanitizeLook(saved.look); st.preset = PRESETS[saved.preset] ? saved.preset : "custom"; }
-    if (saved && CLIPS[saved.clip]) st.clip = saved.clip;
+    if (saved && saved.looks) for (const k in SUBJECTS) if (k !== "character" && saved.looks[k]) st.looks[k] = restoreLook(k, saved.looks[k]);
+    if (saved && SUBJECTS[saved.subject]) st.subject = saved.subject;
+    if (saved && typeof saved.clip === "string") savedClip = saved.clip;
     if (saved && [4, 8, 16].includes(saved.N)) st.N = saved.N;
     if (saved && [6, 8, 12].includes(saved.FR)) st.FR = saved.FR;
   } catch (e) { /* no storage here */ }
-  const remember = () => { try { localStorage.setItem("spriteRig.v2", JSON.stringify({ look: st.look, preset: st.preset, clip: st.clip, N: st.N, FR: st.FR })); } catch (e) { /* no storage here */ } };
+  st.looks.character = { look: st.look, preset: st.preset };
+  for (const k in SUBJECTS) if (!st.looks[k]) { const p0 = Object.keys(SUBJECTS[k].presets)[0]; st.looks[k] = { look: cloneLook(SUBJECTS[k].presets[p0]), preset: p0 }; }
+  useSubject(st.subject);
+  ({ look: st.look, preset: st.preset } = st.looks[st.subject]);
+  st.clip = CLIPS[savedClip] ? savedClip : Object.keys(CLIPS)[1] || Object.keys(CLIPS)[0];
+  const remember = () => {
+    st.looks[st.subject] = { look: st.look, preset: st.preset };
+    const looks = {}; for (const k in st.looks) if (k !== "character") looks[k] = st.looks[k];
+    try { localStorage.setItem("spriteRig.v2", JSON.stringify({ subject: st.subject, look: st.looks.character.look, preset: st.looks.character.preset, looks, clip: st.clip, N: st.N, FR: st.FR })); } catch (e) { /* no storage here */ }
+  };
   let playing = !reduce, t = 0.1, dir = null, last = performance.now(), faceVal = +ui.face.value, camVal = +ui.cam.value;
   if (reduce) { ui.turn.checked = false; $("play").textContent = "Play"; }
   let atlas = {}, cinder = null;
   // Cinderdeep reads hero sheets of 18×26 cells, rows facing down, left, right and up
-  const CINDER = { cw: 18, ch: 26, ox: 9, oy: 24, sc: 0.55, head: 1.3, angles: [180, 270, 90, 0] };
+  const CINDER = { cell: { w: 18, h: 26, ox: 9, oy: 24 }, sc: 0.55, head: 1.3, angles: [180, 270, 90, 0] };
 
   function pickDir(rel, cur, hyst, N) {
     const step = 360 / N, snap = Math.floor((rel + step / 2) / step) % N;
@@ -534,8 +825,8 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     return Math.abs(wrap180(rel - cur * step)) <= step / 2 + hyst ? cur : snap;
   }
   // which baked cell a direction and frame land on
-  function cellFor(clip, d, frame) {
-    const c = CLIPS[clip], N = st.N, mirror = ui.mirror.checked && c.sym;
+  function cellFor(clip, d, frame, clips = CLIPS) {
+    const c = clips[clip], N = st.N, mirror = ui.mirror.checked && c.sym;
     if (mirror && d > N / 2) return { row: N - d, col: (frame + Math.round(c.shift * st.FR)) % st.FR, flip: true, mirror };
     return { row: d, col: frame, flip: false, mirror };
   }
@@ -550,6 +841,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     return { ctx, w: r.width, h: r.height };
   }
   function blitCell(ctx, sheet, cell, x, y, S) {
+    const { w: CW, h: CH, ox: OX, oy: OY } = sheet.cell;
     ctx.imageSmoothingEnabled = false;
     ctx.save();
     ctx.translate(Math.round(x), Math.round(y - OY * S));
@@ -559,19 +851,25 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   }
   // a sprite plus its props, each prop behind or in front by the hand's depth against the chest
   function drawCharacter(ctx, look, sheet, clip, d, frame, cell, x, y, S) {
-    const j = pose(clip, frame / st.FR), rq = (d * 360 / st.N) * D2R, chest = project(j.chest, rq);
+    const j = charPose(clip, frame / st.FR), rq = (d * 360 / st.N) * D2R, chest = project(j.chest, rq);
     const props = propsFor(look, j, rq, x, y, S, ctx);
     for (const p of props) if (p.d > chest.d) p.draw();
     blitCell(ctx, sheet, cell, x, y, S);
     for (const p of props) if (p.d <= chest.d) p.draw();
     return { j, rq, props };
   }
+  // characters carry props in their hands; beasts, trees and chests are only their baked cells
+  function drawActor(ctx, sub, look, sheet, clip, d, frame, cell, x, y, S) {
+    if (sub.gear) return drawCharacter(ctx, look, sheet, clip, d, frame, cell, x, y, S);
+    blitCell(ctx, sheet, cell, x, y, S);
+    return { props: [] };
+  }
 
   // ---------- the turntable ----------
   function drawTurntable(s) {
     const { ctx, w, h } = fit($("stage"));
     ctx.fillStyle = tok("--stage"); ctx.fillRect(0, 0, w, h);
-    const S = Math.max(3, Math.floor(Math.min(w / 44, h / 64)));
+    const S = Math.max(2, Math.floor(Math.min(w / (CW + 12), h / (CH + 16))));
     const cx = w / 2, cy = h * 0.86;
     // ground grid in camera space so it visibly turns with the camera
     ctx.strokeStyle = tok("--ground"); ctx.lineWidth = 1;
@@ -580,11 +878,11 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
       const a = project(axis ? [i * 8, 0, -48] : [-48, 0, i * 8], camR), b = project(axis ? [i * 8, 0, 48] : [48, 0, i * 8], camR);
       ctx.beginPath(); ctx.moveTo(cx + a.x * S, cy - a.y * S); ctx.lineTo(cx + b.x * S, cy - b.y * S); ctx.stroke();
     }
-    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(cx, cy, 9 * S, 2.6 * S, 0, 0, TAU); ctx.fill();
-    const { props } = drawCharacter(ctx, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx, cy, S);
+    ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(cx, cy, SUBJ.shadow * S, SUBJ.shadow * 0.29 * S, 0, 0, TAU); ctx.fill();
+    const { props } = drawActor(ctx, SUBJ, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx, cy, S);
     if (ui.skel.checked) {
       ctx.globalAlpha = 0.85;
-      drawFigure(ctx, pose(st.clip, t), s.rel * D2R, cx, cy, S * 0.999, st.look, tok("--accent"));
+      SUBJ.draw(ctx, SUBJ.pose(st.clip, t, st.look), s.rel * D2R, cx, cy, S * 0.999, st.look, tok("--accent"));
       ctx.globalAlpha = 1; ctx.lineWidth = 1;
     }
     // socket markers on the hands that hold something
@@ -597,13 +895,31 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
 
   // ---------- the playground: a courtyard with the camera orbiting the player ----------
   const ARENA = 56, PILLARS = [[-34, -30], [34, -30], [-34, 34], [34, 34]], CRATES = [[14, -40], [-44, 4]];
-  const world = { p: { x: 0, z: 0, yaw: 20, t: 0, dir: null, atk: 0, moving: false, run: false }, npcs: [], keys: new Set(), joy: null, focused: false, orbit: 0, camX: 0, camZ: 0 };
-  const npcAtlas = {};
+  const world = { p: { x: 0, z: 0, yaw: 20, t: 0, dir: null, atk: 0, moving: false, run: false }, npcs: [], things: [], keys: new Set(), joy: null, focused: false, orbit: 0, camX: 0, camZ: 0 };
+  const npcAtlas = {}, thingAtlas = {};
+  let scoutAtlas = null;
+  // who walks the yard: the subject itself, or for trees and chests, a scout among them
+  const mover = () => (SUBJ.still ? SUBJECTS.character : SUBJ);
   function setupNpcs() {
-    const keys = Object.keys(PRESETS).filter((k) => k !== st.preset).slice(0, 3);
-    world.npcs = keys.map((k, i) => ({ key: k, look: PRESETS[k], x: [-26, 30, 4][i], z: [18, 12, -24][i], yaw: [90, 250, 10][i], t: Math.random(), dir: null, moving: false, tx: 0, tz: 0, wait: 1 + i, atk: 0 }));
+    if (SUBJ.still) {
+      // every look of the subject stands about the yard, yours first
+      world.npcs = [];
+      const keys = ["mine", ...Object.keys(SUBJ.presets).filter((k) => k !== st.preset)].slice(0, 4);
+      world.things = keys.map((k, i) => ({ key: k, look: k === "mine" ? st.look : SUBJ.presets[k], x: [-20, 24, -8, 30][i], z: [-14, -18, 24, 22][i], yaw: [200, 150, 30, 250][i], t: Math.random(), dir: null, clip: Object.keys(CLIPS)[0], hold: 0 }));
+      return;
+    }
+    world.things = [];
+    const keys = Object.keys(SUBJ.presets).filter((k) => k !== st.preset).slice(0, 3);
+    world.npcs = keys.map((k, i) => ({ key: k, look: SUBJ.presets[k], x: [-26, 30, 4][i], z: [18, 12, -24][i], yaw: [90, 250, 10][i], t: Math.random(), dir: null, moving: false, tx: 0, tz: 0, wait: 1 + i, atk: 0 }));
   }
-  function bakeNpcs() { for (const n of world.npcs) npcAtlas[n.key] = { idle: bakeClip(n.look, "idle", st.N, st.FR), walk: bakeClip(n.look, "walk", st.N, st.FR), attack: bakeClip(n.look, "attack", st.N, st.FR) }; }
+  function bakeNpcs() {
+    if (SUBJ.still) {
+      if (!scoutAtlas || scoutAtlas.N !== st.N || scoutAtlas.FR !== st.FR) { scoutAtlas = { N: st.N, FR: st.FR }; for (const c in CHAR_CLIPS) scoutAtlas[c] = bakeClip(PRESETS.scout, c, st.N, st.FR, SUBJECTS.character); }
+      for (const o of world.things) thingAtlas[o.key] = o.key === "mine" ? atlas : Object.fromEntries(Object.keys(CLIPS).map((c) => [c, bakeClip(o.look, c, st.N, st.FR)]));
+      return;
+    }
+    for (const n of world.npcs) npcAtlas[n.key] = { idle: bakeClip(n.look, "idle", st.N, st.FR), walk: bakeClip(n.look, "walk", st.N, st.FR), attack: bakeClip(n.look, "attack", st.N, st.FR) };
+  }
   const blocked = (x, z, r) => Math.abs(x) > ARENA - r || Math.abs(z) > ARENA - r || PILLARS.some(([px, pz]) => Math.hypot(px - x, pz - z) < 6 + r) || CRATES.some(([cx, cz]) => Math.abs(cx - x) < 5 + r && Math.abs(cz - z) < 5 + r);
   function moveBody(o, dx, dz) { if (!blocked(o.x + dx, o.z, 3)) o.x += dx; if (!blocked(o.x, o.z + dz, 3)) o.z += dz; }
   const turnToward = (cur, want, maxStep) => cur + clamp(wrap180(want - cur), -maxStep, maxStep);
@@ -628,7 +944,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     }
     if (p.atk > 0) p.atk -= dt;
     const clip = clipOf(p);
-    const rate = clip === "attack" ? 0 : CLIPS[clip].rate * (clip === "walk" ? 1.1 : 1) * +ui.speed.value;
+    const rate = clip === "attack" ? 0 : mover().clips[clip].rate * (clip === "walk" ? 1.1 : 1) * +ui.speed.value;
     p.t = clip === "attack" ? clamp(1 - p.atk / 0.75, 0, 0.999) : (p.t + dt * rate) % 1;
     // wanderers: pick a spot, walk there, wait
     for (const n of world.npcs) {
@@ -643,6 +959,18 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
         else { let tries = 0; do { n.tx = (Math.random() * 2 - 1) * (ARENA - 8); n.tz = (Math.random() * 2 - 1) * (ARENA - 8); } while (blocked(n.tx, n.tz, 3) && ++tries < 20); n.moving = true; }
       }
       if (n.atk <= 0) n.t = (n.t + dt * CLIPS[n.moving ? "walk" : "idle"].rate * 1.1) % 1;
+    }
+    // trees shake when you swing at them and lean when you run past; chests open to a blow, shut again, and a mimic rattles as you come close
+    for (const o of world.things) {
+      const d = Math.hypot(p.x - o.x, p.z - o.z), hit = p.atk > 0.6 && d < 18, C = CLIPS;
+      if (SUBJ === SUBJECTS.tree) {
+        if (hit && o.clip !== "shaken") { o.clip = "shaken"; o.t = 0; }
+        if (o.clip === "shaken") { o.t += dt * C.shaken.rate; if (o.t >= 1) { o.clip = "sway"; o.t = 0; } }
+        else { o.clip = p.run && p.moving && d < 28 ? "gust" : "sway"; o.t = (o.t + dt * C[o.clip].rate) % 1; }
+      } else if (o.clip === "open") { o.t = Math.min(0.999, o.t + dt * C.open.rate); if (o.t >= 0.999 && (o.hold += dt) > 2.5) { o.clip = "close"; o.t = 0; o.hold = 0; } }
+      else if (o.clip === "close") { o.t += dt * C.close.rate; if (o.t >= 1) { o.clip = "shut"; o.t = 0; } }
+      else if (hit) { o.clip = "open"; o.t = 0; o.hold = 0; }
+      else { o.clip = o.look.mimic && d < 26 ? "rattle" : "shut"; o.t = (o.t + dt * C[o.clip].rate) % 1; }
     }
     // the camera trails the player
     const kf = 1 - Math.exp(-6 * dt);
@@ -687,18 +1015,31 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
         ctx.strokeStyle = "rgba(60,36,16,0.6)"; ctx.lineWidth = 1; ctx.beginPath(); c1.forEach((v) => ctx.lineTo(v[0], v[1])); ctx.closePath(); ctx.stroke();
       } });
     }
-    const actors = [{ o: world.p, look: st.look, sheets: atlas, me: true }, ...world.npcs.map((n) => ({ o: n, look: n.look, sheets: npcAtlas[n.key] }))];
+    const M = mover(), still = SUBJ.still;
+    const actors = [{ o: world.p, look: still ? PRESETS.scout : st.look, sheets: still ? scoutAtlas : atlas, me: true }, ...world.npcs.map((n) => ({ o: n, look: n.look, sheets: npcAtlas[n.key] }))];
     let mine = null;
     for (const a of actors) {
       const o = a.o, F = scr(o.x, 0, o.z), clip = a.me ? clipOf(o) : o.atk > 0 ? "attack" : o.moving ? "walk" : "idle";
       const rel = wrap360(o.yaw - camVal);
       o.dir = pickDir(rel, o.dir, +ui.hyst.value, st.N);
-      const frame = Math.floor(o.t * st.FR) % st.FR, cell = cellFor(clip, o.dir, frame);
-      if (a.me) mine = { cam: camVal, face: o.yaw, rel, dir: o.dir, frame, clip, t: o.t, ...cell };
+      const frame = Math.floor(o.t * st.FR) % st.FR, cell = cellFor(clip, o.dir, frame, M.clips), mh = M.cell.h;
+      if (a.me && !still) mine = { cam: camVal, face: o.yaw, rel, dir: o.dir, frame, clip, t: o.t, ...cell };
       list.push({ d: F[2], draw: () => {
-        ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(F[0], F[1], 8 * S, 2.4 * S, 0, 0, TAU); ctx.fill();
-        if (a.sheets && a.sheets[clip]) drawCharacter(ctx, a.look, a.sheets[clip], clip, o.dir, frame, cell, F[0], F[1], S);
-        if (a.me) { ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.moveTo(F[0], F[1] - (CH + 4) * S); ctx.lineTo(F[0] - 3 * S, F[1] - (CH + 8) * S); ctx.lineTo(F[0] + 3 * S, F[1] - (CH + 8) * S); ctx.closePath(); ctx.fill(); }
+        ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(F[0], F[1], M.shadow * 0.9 * S, M.shadow * 0.27 * S, 0, 0, TAU); ctx.fill();
+        if (a.sheets && a.sheets[clip]) drawActor(ctx, M, a.look, a.sheets[clip], clip, o.dir, frame, cell, F[0], F[1], S);
+        if (a.me) { ctx.fillStyle = tok("--hot"); ctx.beginPath(); ctx.moveTo(F[0], F[1] - (mh + 4) * S); ctx.lineTo(F[0] - 3 * S, F[1] - (mh + 8) * S); ctx.lineTo(F[0] + 3 * S, F[1] - (mh + 8) * S); ctx.closePath(); ctx.fill(); }
+      } });
+    }
+    for (const o of world.things) {
+      const F = scr(o.x, 0, o.z), rel = wrap360(o.yaw - camVal);
+      o.dir = pickDir(rel, o.dir, +ui.hyst.value, st.N);
+      const frame = Math.floor(o.t * st.FR) % st.FR, cell = cellFor(o.clip, o.dir, frame), sheets = thingAtlas[o.key];
+      // the readout follows your own tree or chest
+      if (o.key === "mine") mine = { cam: camVal, face: o.yaw, rel, dir: o.dir, frame, clip: o.clip, t: o.t, ...cell };
+      list.push({ d: F[2], draw: () => {
+        ctx.fillStyle = "rgba(0,0,0,0.22)"; ctx.beginPath(); ctx.ellipse(F[0], F[1], SUBJ.shadow * S, SUBJ.shadow * 0.29 * S, 0, 0, TAU); ctx.fill();
+        if (sheets && sheets[o.clip]) blitCell(ctx, sheets[o.clip], cell, F[0], F[1], S);
+        if (o.key === "mine") { ctx.strokeStyle = tok("--hot"); ctx.lineWidth = 2; ctx.beginPath(); ctx.ellipse(F[0], F[1], (SUBJ.shadow + 2) * S, (SUBJ.shadow + 2) * 0.29 * S, 0, 0, TAU); ctx.stroke(); }
       } });
     }
     list.sort((a, b) => b.d - a.d).forEach((i) => i.draw());
@@ -711,8 +1052,8 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
       ctx.globalAlpha = 1;
     }
     ctx.font = `500 12px ${tok("--mono")}`; ctx.textAlign = "left";
-    if (!world.focused) { ctx.fillStyle = tok("--muted"); ctx.fillText("Click the stage, then WASD · or drag to walk", 12, 20); }
-    else if (mine) { ctx.fillStyle = tok("--muted"); ctx.fillText(`${CLIPS[mine.clip].name.toLowerCase()} · row ${mine.row}${mine.flip ? " (flipped)" : ""} · col ${mine.col}`, 12, 20); }
+    if (!world.focused) { ctx.fillStyle = tok("--muted"); ctx.fillText(still ? (SUBJ === SUBJECTS.tree ? "Click the stage, then walk · swing at a tree, run past for a gust" : "Click the stage, then walk · swing at a chest to open it") : "Click the stage, then WASD · or drag to walk", 12, 20); }
+    else if (mine) { ctx.fillStyle = tok("--muted"); ctx.fillText(`${CLIPS[mine.clip].name.toLowerCase()}${still ? " (ringed)" : ""} · row ${mine.row}${mine.flip ? " (flipped)" : ""} · col ${mine.col}`, 12, 20); }
     return mine;
   }
 
@@ -779,7 +1120,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     $("atlasNote").textContent = mirror
       ? `Every cell was rendered from the same skeleton by a virtual camera at that row's angle, then pixel-thresholded and outlined. With mirroring on, rows past ${180}° are never sampled: the runtime flips the row on the other side${c.shift ? " and shifts the frame by half a cycle so the stride stays on the correct leg" : ""}.`
       : c.sym ? "Mirroring is off, so every row is sampled as baked."
-      : `${c.name} swings the right arm. Flipped, it would swing the left, so this clip bakes and uses all ${N} rows even with mirroring on.`;
+      : c.why || `${c.name} cannot be mirrored, so this clip bakes and uses all ${N} rows.`;
     const ex = exportPlan();
     $("exportSize").textContent = `${ex.rows} rows · ${CW * st.FR}×${ex.rows * CH} px`;
   }
@@ -799,20 +1140,22 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
       g.drawImage(atlas[c], 0, 0, FR * CW, rows * CH, 0, r0 * CH, FR * CW, rows * CH);
       const mir = mirror && CLIPS[c].sym, shift = mir ? Math.round(CLIPS[c].shift * FR) : 0;
       clips[c] = {
-        firstRow: r0, rows, frames: FR, fps: +(CLIPS[c].rate * FR).toFixed(2), loop: c !== "attack", mirrored: mir, mirrorShiftFrames: shift,
+        name: CLIPS[c].name, firstRow: r0, rows, frames: FR, fps: +(CLIPS[c].rate * FR).toFixed(2), loop: CLIPS[c].loop !== false, mirrored: mir, mirrorShiftFrames: shift,
         directions: Array.from({ length: N }, (_, d) => { const m = mir && d > N / 2; return { dir: d, deg: +(d * step).toFixed(2), row: r0 + (m ? N - d : d), flip: m }; }),
       };
       for (let r = 0; r < rows; r++) for (let f = 0; f < FR; f++) {
-        const j = pose(c, f / FR), rq = r * step * D2R, ch = project(j.chest, rq);
-        const sock = (k) => { const q = project(j[k], rq); return { x: +(OX + q.x).toFixed(1), y: +(OY - q.y).toFixed(1), behind: q.d > ch.d }; };
-        frames.push({ clip: c, dir: r, deg: +(r * step).toFixed(2), frame: f, x: f * CW, y: (r0 + r) * CH, w: CW, h: CH, sockets: { "hand.R": sock("haR"), "hand.L": sock("haL"), head: sock("head") } });
+        // sockets: where to attach things in this cell, and whether they sit behind the body
+        const j = SUBJ.pose(c, f / FR, st.look), rq = r * step * D2R, ref = project(j[SUBJ.ref], rq);
+        const sock = (k) => { const q = project(j[k], rq); return { x: +(OX + q.x).toFixed(1), y: +(OY - q.y).toFixed(1), behind: q.d > ref.d }; };
+        frames.push({ clip: c, dir: r, deg: +(r * step).toFixed(2), frame: f, x: f * CW, y: (r0 + r) * CH, w: CW, h: CH, sockets: Object.fromEntries(Object.entries(SUBJ.sockets).map(([n, k]) => [n, sock(k)])) });
       }
       r0 += rows;
     }
     const meta = {
       app: "8-Way Sprite Rig", image: "sprite-rig-atlas.png", size: { w: cv.width, h: cv.height }, cell: { w: CW, h: CH }, anchor: { x: OX, y: OY },
       directions: N, degreesPerDirection: step, zeroDegrees: "facing away from the camera", cameraElevationDeg: 28, framesPerClip: FR, mirror,
-      character: { colors: st.look.pal, head: st.look.head, back: st.look.back, props: { "hand.R": st.look.right, "hand.L": st.look.left } },
+      subject: SUBJ.name.toLowerCase(), preset: st.preset, colors: Object.fromEntries(Object.entries(st.look.pal).filter(([, v]) => v)),
+      ...(SUBJ.gear ? { character: { colors: st.look.pal, head: st.look.head, back: st.look.back, props: { "hand.R": st.look.right, "hand.L": st.look.left } } } : {}),
     };
     return { cv, json: JSON.stringify({ meta, clips, frames }, null, 1) };
   }
@@ -846,43 +1189,66 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     atlas = {};
     for (const c in CLIPS) atlas[c] = bakeClip(st.look, c, st.N, st.FR);
     bakeNpcs();
-    cinder = bakeClip(st.look, "walk", 4, 8, CINDER);
-    $("cinderImg").src = cinder.toDataURL("image/png");
-    dir = null; world.p.dir = null; for (const n of world.npcs) n.dir = null;
+    // the Cinderdeep hero sheet is a character's: other subjects hide it
+    const asHero = SUBJ === SUBJECTS.character;
+    document.querySelector(".cinder").hidden = !asHero;
+    if (asHero) { cinder = bakeClip(st.look, "walk", 4, 8, SUBJECTS.character, CINDER); $("cinderImg").src = cinder.toDataURL("image/png"); }
+    dir = null; world.p.dir = null; for (const n of world.npcs) n.dir = null; for (const o of world.things) o.dir = null;
     describeAtlas(); remember();
   }
-  const clipSeg = $("clipSeg");
-  for (const c in CLIPS) {
-    const b = document.createElement("button"); b.type = "button"; b.textContent = CLIPS[c].name; b.dataset.clip = c;
-    b.addEventListener("click", () => { st.clip = c; syncControls(); remember(); });
-    clipSeg.append(b);
-  }
-  const presetSeg = $("presetSeg");
-  for (const k in PRESETS) {
-    const b = document.createElement("button"); b.type = "button"; b.dataset.preset = k;
-    const dot = document.createElement("i"); dot.style.background = PRESETS[k].pal.gear;
-    b.append(dot, PRESETS[k].name);
-    b.addEventListener("click", () => { st.look = cloneLook(PRESETS[k]); st.preset = k; setupNpcs(); syncControls(); rebake(); });
-    presetSeg.append(b);
-  }
-  const sw = $("swatches"), swIn = {};
-  for (const k in PAL_NAMES) {
-    const id = "c-" + k, lab = document.createElement("label"), inp = document.createElement("input");
-    inp.type = "color"; inp.id = id; lab.htmlFor = id;
-    inp.addEventListener("input", () => { st.look.pal[k] = inp.value; st.preset = "custom"; syncControls(); rebakeSoon(); });
-    lab.append(inp, PAL_NAMES[k]); sw.append(lab); swIn[k] = inp;
-  }
+  const clipSeg = $("clipSeg"), presetSeg = $("presetSeg"), sw = $("swatches"), swIn = {};
   let rebakeT = 0;
   const rebakeSoon = () => { clearTimeout(rebakeT); rebakeT = setTimeout(rebake, 60); };
+  // clips, looks and colours belong to the subject on the bench
+  function buildSubjectControls() {
+    clipSeg.replaceChildren(); presetSeg.replaceChildren(); sw.replaceChildren();
+    for (const k in swIn) delete swIn[k];
+    for (const c in CLIPS) {
+      const b = document.createElement("button"); b.type = "button"; b.textContent = CLIPS[c].name; b.dataset.clip = c;
+      b.addEventListener("click", () => { st.clip = c; syncControls(); remember(); });
+      clipSeg.append(b);
+    }
+    for (const k in SUBJ.presets) {
+      const P0 = SUBJ.presets[k], b = document.createElement("button"); b.type = "button"; b.dataset.preset = k;
+      const dot = document.createElement("i"); dot.style.background = P0.pal[SUBJ.dot];
+      b.append(dot, P0.name);
+      b.addEventListener("click", () => { st.look = cloneLook(P0); st.preset = k; setupNpcs(); syncControls(); rebake(); });
+      presetSeg.append(b);
+    }
+    for (const k in SUBJ.palNames) {
+      const id = "c-" + k, lab = document.createElement("label"), inp = document.createElement("input");
+      inp.type = "color"; inp.id = id; lab.htmlFor = id;
+      inp.addEventListener("input", () => { st.look.pal[k] = inp.value; st.preset = "custom"; syncControls(); rebakeSoon(); });
+      lab.append(inp, SUBJ.palNames[k]); sw.append(lab); swIn[k] = inp;
+    }
+    $("lookLabel").textContent = SUBJ.name;
+    $("faceLabel").textContent = SUBJ.name + " facing (yaw)";
+    $("gearFields").hidden = !SUBJ.gear;
+    presetSeg.setAttribute("aria-label", SUBJ.name + " preset");
+  }
+  const subjectSeg = $("subjectSeg");
+  for (const k in SUBJECTS) {
+    const b = document.createElement("button"); b.type = "button"; b.textContent = SUBJECTS[k].name; b.dataset.subject = k;
+    b.addEventListener("click", () => {
+      if (k === st.subject) return;
+      remember();
+      st.subject = k; useSubject(k);
+      ({ look: st.look, preset: st.preset } = st.looks[k]);
+      st.clip = Object.keys(CLIPS)[1] || Object.keys(CLIPS)[0]; t = 0.1; shownClip = null;
+      buildSubjectControls(); setupNpcs(); syncControls(); setMode(st.mode); rebake();
+    });
+    subjectSeg.append(b);
+  }
   for (const [key, el] of [["head", ui.head], ["back", ui.back], ["right", ui.right], ["left", ui.left]]) el.addEventListener("change", () => { st.look[key] = el.value; st.preset = "custom"; syncControls(); key === "right" || key === "left" ? remember() : rebake(); });
   ui.dirs.addEventListener("change", () => { st.N = +ui.dirs.value; rebake(); });
   ui.frames.addEventListener("change", () => { st.FR = +ui.frames.value; rebake(); });
   ui.mirror.addEventListener("change", () => describeAtlas());
   function syncControls() {
+    for (const b of subjectSeg.children) b.setAttribute("aria-pressed", String(b.dataset.subject === st.subject));
     for (const b of clipSeg.children) b.setAttribute("aria-pressed", String(b.dataset.clip === st.clip));
     for (const b of presetSeg.children) b.setAttribute("aria-pressed", String(b.dataset.preset === st.preset));
     for (const k in swIn) swIn[k].value = st.look.pal[k];
-    ui.head.value = st.look.head; ui.back.value = st.look.back; ui.right.value = st.look.right; ui.left.value = st.look.left;
+    if (SUBJ.gear) { ui.head.value = st.look.head; ui.back.value = st.look.back; ui.right.value = st.look.right; ui.left.value = st.look.left; }
     ui.dirs.value = String(st.N); ui.frames.value = String(st.FR);
   }
 
@@ -895,7 +1261,10 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     // in the playground your input picks the clip
     for (const b of clipSeg.children) { b.disabled = m === "play"; b.title = m === "play" ? "In the playground the clip follows what you do" : ""; }
     $("play").disabled = m === "play";
-    $("stageCap").textContent = m === "play" ? "The same atlas in a game: every character picks its row from its own facing against the orbiting camera." : "Sprite from the baked atlas. Hand props attach to the 3D hand bones, not the pixels.";
+    $("stageCap").textContent = m === "play"
+      ? SUBJ.still ? `The same atlas in a yard: every ${SUBJ.name.toLowerCase()} picks its row from its own facing against the orbiting camera, and plays the clip your scout sets off.` : `The same atlas in a game: every ${SUBJ.name.toLowerCase()} picks its row from its own facing against the orbiting camera.`
+      : SUBJ.gear ? "Sprite from the baked atlas. Hand props attach to the 3D hand bones, not the pixels." : "Sprite from the baked atlas. Turn on the skeleton overlay to see the 3D rig it was baked from.";
+    $("attackBtn").textContent = SUBJ.still ? "Swing" : SUBJ === SUBJECTS.beast ? "Pounce" : "Attack";
     stage.setAttribute("aria-label", m === "play" ? "Playground: walk the character around a courtyard" : "Game camera view of the sprite");
     if (m === "play") { camVal = +ui.cam.value; world.camX = world.p.x; world.camZ = world.p.z; }
   }
@@ -979,6 +1348,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   const stepFrame = (k) => { playing = false; $("play").textContent = "Play"; t = ((Math.floor(t * st.FR + 0.001) + k + st.FR) % st.FR) / st.FR + 0.001; };
   $("stepBack").addEventListener("click", () => stepFrame(-1));
   $("stepFwd").addEventListener("click", () => stepFrame(1));
+  buildSubjectControls();
   setupNpcs();
   syncControls();
   rebake();
