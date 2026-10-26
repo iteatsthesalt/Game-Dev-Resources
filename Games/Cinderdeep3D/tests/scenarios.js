@@ -191,6 +191,9 @@ module.exports = [
       const e = G.ents.find((q) => !q.dead && q.type === 'enemy');
       const q = v3Project(e.x, e.y), back = screenToWorld((q.x / R.VW) * R.cssW, (q.y / R.VH) * R.cssH);
       T.check('a point on screen and on the floor agree', Math.hypot(back.x - e.x, back.y - e.y) < 4, { e: [e.x, e.y], back });
+      spawnProj({ team: 'p', x: G.p.x, y: G.p.y, ang: -1, speed: 60, dmg: 0, kind: 'fireball', color: '#ff9a4a' }); render();
+      const shot = V3.cards.get('proj0');
+      T.check('missiles fly upright above the floor', shot && shot.mesh.visible && shot.mesh.position.y > 0 && shot.selfLit, shot && shot.mesh.position);
       for (let f = 0; f < 3; f++) { goFloor(G.fl.idx + 1); await T.wait(60); T.sim(0.5); render(); }
       T.check('new floors rebuild the scene', CD.renderer.status.rooms === G.fl.rooms.length);
       await T.realm('ranger'); T.sim(1); render();

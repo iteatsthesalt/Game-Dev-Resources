@@ -145,7 +145,7 @@ function v3Light(L, dark, tint) {
   V3.ambient.intensity = 0.06 + lit * 1.4;
   V3.ambient.color.set(tint);
   const own = 0.06 + lit * 0.24;
-  if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) if (!c.ghost) c.mesh.material.emissiveIntensity = own; }
+  if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) if (!c.selfLit) c.mesh.material.emissiveIntensity = own; }
   const p = G.p;
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
   R.lights = L;
@@ -216,6 +216,7 @@ function v3DeepCards(vis) {
     for (const e of G.ents) if (!e.dead && (e.room === rid || e.boss)) v3EntCard(e);
     for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
     for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3ProjCards();
     v3GhostCards();
     v3HeroCard(G.p);
   });
@@ -246,6 +247,7 @@ function v3RealmCards(x0, y0, x1, y1) {
     if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy));
     for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
     for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3ProjCards();
     v3GhostCards();
     v3HeroCard(p);
   });
@@ -326,6 +328,19 @@ function v3AirFx(on) {
   }
   for (const m of all) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
 }
+// missiles fly at hand height over a shadow of their own, lit by themselves; their cards are a pool, so a storm of them leaves nothing behind
+const V3_FLY = 9;
+function v3ProjCards() {
+  G.projs.forEach((pr, i) => {
+    if (i >= 120) return;
+    const c = v3Card(`proj${i}`, pr.x, pr.y, 48, pr.lob ? 112 : 56, 8, (g, cx, cy) => {
+      if (!pr.lob) shadow(g, pr.x - cx, pr.y - cy, 3, V3_FLY);
+      const z = pr.z; pr.z = (z || 0) + (pr.lob ? 0 : V3_FLY);
+      try { drawProj(g, pr, cx, cy); } finally { pr.z = z; }
+    });
+    c.selfLit = true; c.mesh.material.emissiveIntensity = 1;
+  });
+}
 // a dash leaves after-images: cards of the hero's frame, added on as light and fading
 function v3GhostCards() {
   let i = 0;
@@ -333,7 +348,7 @@ function v3GhostCards() {
     if (q.type !== 'ghost' || G.t - q.born >= q.life || i >= 12) continue;
     const c = v3Card(`ghost${i++}`, q.x, q.y - 1, 128, 128, 18, (g) => { const pt = fxPoint(q.x, q.y, q.z); drawSprite(g, q.sp, pt.x, pt.y, q.flip, { scale: q.scale, tint: q.color, tintA: 0.8 }); }, q.seed);
     const m = c.mesh.material;
-    c.ghost = true; m.blending = THREE.AdditiveBlending; m.emissiveIntensity = 1; m.opacity = fxState(q).fade * 0.28;
+    c.selfLit = true; m.blending = THREE.AdditiveBlending; m.emissiveIntensity = 1; m.opacity = fxState(q).fade * 0.28;
   }
 }
 
@@ -363,7 +378,6 @@ function v3Floor({ Wd, Hd, ox, oy }, paintGround, shadows) {
     for (const e of G.ents) if (!e.hidden && !e.dead) shadow(g, e.x - ox, e.y - oy, e.r * (e.scale || 1) * (e.boss ? 1.4 : 1.1), e.z || 0);
     shadow(g, G.p.x - ox, G.p.y - oy, 6 + ascStage(G.p) * 0.8 + (G.p.mounted ? 4 : 0), G.p.z || 0);
     const f = V3.fx.g;
-    for (const pr of G.projs) drawProj(f, pr, ox, oy);
     drawParticles(f, ox, oy, false);
     runHooks('renderWorld', f, ox, oy);
     for (const q of G.fx) if (TOP_FX[q.kind]) TOP_FX[q.kind](f, q, ox, oy);
