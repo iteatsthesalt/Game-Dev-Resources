@@ -218,6 +218,11 @@ module.exports = [
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
       const sol = CD.renderer.status, vox = [...V3.cards.values()].find((k) => k.vox && k.vox.visible);
       T.check('the Realm\'s still things are solid models, not cards', sol.solids > 10 && sol.models > 0 && sol.models <= sol.solids && vox.vox.geometry.attributes.position.count > 0 && !vox.mesh.visible, sol);
+      for (let i = 0; V3_SOLIDS.size <= 600; i++) V3_SOLIDS.set(`pad${i}`, new THREE.BoxGeometry(1, 1, 1));
+      v3SolidFor('rollover', () => new THREE.BoxGeometry(1, 1, 1));
+      T.check('a full model cache empties without leaving bare solids on show', V3_SOLIDS.size === 1 && [...V3.cards.values()].every((k) => !k.vox || !k.vox.visible || k.vox.geometry), V3_SOLIDS.size);
+      render();
+      T.check('and the next frame builds its models again', CD.renderer.status.solids > 10, CD.renderer.status);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
       T.check('glow and colour are on by default', CD.renderer.status.glow === true, CD.renderer.status);
       CD.settings.glow = false; render();

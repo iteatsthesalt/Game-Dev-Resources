@@ -308,7 +308,7 @@ function v3SolidGeo(cv, w, hgt, below, ax = w / 2, shadeK = 1) {
 function v3SolidFor(key, build) {
   let geo = V3_SOLIDS.get(key);
   if (!geo) {
-    if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) k.vox.geometry = null; }
+    if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
     geo = build(); V3_SOLIDS.set(key, geo);
   }
   return geo;
