@@ -11747,7 +11747,7 @@ UI.records = function () {
   const stat = (k, v) => h('div', {}, k, h('b', {}, String(v)));
   const extra = [];
   const levels = CLASSES.filter((c) => save.unlocks.classes.includes(c.id) || (save.tree && save.tree[c.id] && save.tree[c.id].xp)).map((c) => stat(c.name, `Lv ${classLevelInfo(c.id).lvl}`));
-  extra.push(h('h3', {}, 'Souls'), h('div', { class: 'statgrid' }, stat('Souls banked', F.soulsBanked || 0), stat('Souls reclaimed', F.soulsReclaimed || 0), stat('Chaos Beasts slain', F.nemesesSlain || 0), stat('DMT zones found', F.dmtFound || 0), stat('Secrets found', F.secrets || 0), stat('Best combo', F.maxCombo || 0)));
+  extra.push(h('h3', {}, 'Souls'), h('div', { class: 'statgrid' }, stat('Souls banked', F.soulsBanked || 0), stat('Souls reclaimed', F.soulsReclaimed || 0), stat('Chaos Beasts slain', F.nemesesSlain || 0), stat('DMT zones found', F.dmtFound || 0), stat('Mycelial bond', F.mycBond || 0), stat('Secrets found', F.secrets || 0), stat('Best combo', F.maxCombo || 0)));
   extra.push(h('h3', {}, 'Class levels'), h('div', { class: 'statgrid' }, ...levels));
   const nems = save.nemeses || [];
   extra.push(h('h3', {}, `Chaos Beasts (${nems.length})`), nems.length
@@ -18331,6 +18331,942 @@ function drawDecoBent(g, kind, x, y, h, b, s) {
   };
   try { drawDeco(g, kind, x, y, h, b); } finally { g.fillRect = fill; }
 }
+
+/* ============================================================
+   Cinderdeep — elemental creatures. Any monster or Realm
+   creature can be born of an element: fire, frost, storm,
+   venom, shadow or earth. It wears the element's colours on
+   its own rigged body, sheds its particles, lights the dark,
+   lays its status on what it hits, resists its own element,
+   and dies the element's way. Lands lean toward their own.
+   ============================================================ */
+const ELEM = {
+  fire: { name: 'Ember', ramp: ['#2a0c08', '#8a1e10', '#e2501a', '#ffb347', '#fff1a8'], glow: '#ffb35e', eye: '#fff6c8', mix: 0.74 },
+  frost: { name: 'Rime', ramp: ['#0e1e3a', '#2a5a8a', '#6ab4e8', '#cfefff', '#ffffff'], glow: '#bfe9ff', eye: '#ffffff', mix: 0.72 },
+  storm: { name: 'Storm', ramp: ['#161a3a', '#2e3a7a', '#5a7ad8', '#a8c8ff', '#fff27a'], glow: '#fff27a', eye: '#fff27a', mix: 0.7 },
+  venom: { name: 'Blight', ramp: ['#0e1a0a', '#2a5a1a', '#5fa83a', '#a8e05c', '#e8ffb0'], glow: '#a8ff6a', eye: '#e8ff6a', mix: 0.72 },
+  shadow: { name: 'Shade', ramp: ['#08060e', '#1e1430', '#3e2a5e', '#7a5aa8', '#e0b8ff'], glow: '#c873ff', eye: '#ff6fe0', mix: 0.8 },
+  earth: { name: 'Stone', ramp: ['#1a1410', '#4a3a2a', '#7a6a52', '#b8a888', '#e8dcc0'], glow: '#ffd35c', eye: '#ffd35c', mix: 0.7 },
+};
+const ELEM_IDS = Object.keys(ELEM);
+// lands and depths that breed their own element
+const ELEM_LAND = {
+  ashlands: 'fire', caldera: 'fire', desert: 'fire', frostpeak: 'frost', glacier: 'frost', storm: 'storm', saltflats: 'storm', coral: 'storm',
+  murkmire: 'venom', sporeveil: 'venom', jungle: 'venom', mangrove: 'venom', shadowfen: 'shadow', voidscar: 'shadow', ossplains: 'shadow',
+  canyon: 'earth', crystal: 'earth', savanna: 'earth', pine: 'earth', ossuary: 'shadow', grotto: 'venom', frost: 'frost', core: 'fire',
+};
+function elemRoll(elite) {
+  const realm = W.on && !W.inInst && W.Z, land = realm ? W.Z.b.id : G.fl && G.fl.info && G.fl.info.act ? G.fl.info.act.id : '';
+  const ch = (realm ? 0.11 : Math.min(0.2, 0.05 + 0.015 * ((G.fl && G.fl.idx) || 0))) * (elite ? 1.6 : 1);
+  if (Math.random() >= ch) return null;
+  const home = ELEM_LAND[land];
+  if (home && Math.random() < 0.6) return home;
+  return rndPick(ELEM_IDS);
+}
+
+/* ---------- its own body in the element's colours: light maps to the ramp, the outline stays, eyes burn ---------- */
+const ELEM_RGB = {};
+function elemRamp(el) {
+  if (ELEM_RGB[el]) return ELEM_RGB[el];
+  const E = ELEM[el];
+  return (ELEM_RGB[el] = { ramp: E.ramp.map(hexRGB), eye: hexRGB(E.eye) });
+}
+function elemSprite(sp, el, veil) {
+  if (!sp || !ELEM[el]) return sp;
+  const key = el + (veil ? ':v' : '');
+  sp._elem = sp._elem || {};
+  if (sp._elem[key]) return sp._elem[key];
+  if (veil) {
+    const base = elemSprite(sp, el), c = mkCanvas(sp.w, sp.h), g = c.getContext('2d');
+    g.globalAlpha = 0.38; g.drawImage(base.c, 0, 0);
+    return (sp._elem[key] = makeSprite(c, sp.ax, sp.ay));
+  }
+  const c = mkCanvas(sp.w, sp.h), g = c.getContext('2d');
+  g.drawImage(sp.c, 0, 0);
+  try {
+    const img = g.getImageData(0, 0, sp.w, sp.h), d = img.data, { ramp, eye } = elemRamp(el), mix = ELEM[el].mix, n = ramp.length - 1;
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i + 3] < 10) continue;
+      const r = d[i], gg = d[i + 1], b = d[i + 2], L = (r * 0.3 + gg * 0.59 + b * 0.11) / 255;
+      if (L < 0.09) continue;
+      let t;
+      if (L > 0.86 && Math.max(r, gg, b) - Math.min(r, gg, b) < 90) t = eye;
+      else { const f = Math.min(n - 0.001, L * n * 1.08), k = Math.floor(f), u = f - k; t = [lerp(ramp[k][0], ramp[k + 1][0], u), lerp(ramp[k][1], ramp[k + 1][1], u), lerp(ramp[k][2], ramp[k + 1][2], u)]; }
+      d[i] = Math.round(lerp(r, t[0], mix)); d[i + 1] = Math.round(lerp(gg, t[1], mix)); d[i + 2] = Math.round(lerp(b, t[2], mix));
+    }
+    g.putImageData(img, 0, 0);
+  } catch (err) { /* a canvas we may not read: keep its colours */ }
+  return (sp._elem[key] = makeSprite(c, sp.ax, sp.ay));
+}
+const _crigEntFrameElem = crigEntFrame;
+crigEntFrame = function (e) {
+  const sp = _crigEntFrameElem(e);
+  if (!e.elem) return sp;
+  // without the rig, the painted frame the game would have picked, recoloured all the same
+  const base = sp || e.frames[e.pose === 2 ? 2 : e.pose === 1 ? 1 : Math.floor(e.anim * (e.fly ? 8 : 4)) % 2] || e.frames[0];
+  return elemSprite(base, e.elem, e.veilT > 0);
+};
+const _crigCorpseElem = crigCorpse;
+crigCorpse = function (e) {
+  const sp = _crigCorpseElem(e);
+  return e.elem ? elemSprite(sp || e.frames[0], e.elem) : sp;
+};
+
+/* ---------- being born of it ---------- */
+hook('spawned', (e) => { e._elemRoll = true; });
+function makeElemental(e, el) {
+  const k = e.hp / (e.maxHp || 1);
+  e.elem = el; e.maxHp *= 1.35; e.xp *= 1.5; e.gold *= 1.5;
+  if (el === 'fire') e.fireproof = true;
+  if (el === 'storm') e.spd *= 1.18;
+  if (el === 'earth') { e.maxHp *= 1.25; e.spd *= 0.85; e.armor = 1 - (1 - (e.armor || 0)) * 0.8; }
+  if (el === 'shadow') e.veilCd = rnd(2, 4);
+  e.hp = e.maxHp * k;
+  e.blood = [ELEM[el].glow, ELEM[el].ramp[2]];
+}
+CD.makeElemental = makeElemental;
+hook('update', (dt) => {
+  if (!dt) return;
+  const VW = R.VW, VH = R.VH, cam = { x: G.cam.x - VW / 2, y: G.cam.y - VH / 2 }, fx = !CD.settings.lowFx;
+  for (const e of G.ents) {
+    if (e._elemRoll) {
+      e._elemRoll = false;
+      if (e.type === 'enemy' && !e.summoned && !e.nem && !e.boss && !e.mini && !e.elem && e.def && !e.def.ally) { const el = elemRoll(!!e.eliteMods); if (el) makeElemental(e, el); }
+    }
+    if (!e.elem || e.dead) continue;
+    if (e.elem === 'frost') { e.chillT = 0; e.freezeT = 0; e.chillN = 0; }
+    if (e.elem === 'fire') e.burn = null;
+    if (e.elem === 'venom') e.poison = null;
+    if (e.elem === 'shadow') {
+      if (e.veilT > 0) e.veilT -= dt;
+      else if ((e.veilCd -= dt) <= 0) { e.veilCd = rnd(3.5, 6); e.veilT = 1.3; burst(e.x, e.y - e.h / 2, 8, ['#3e2a5e', '#c873ff', '#08060e'], { smax: 40, grav: -20, floor: false }); }
+    }
+    // what it sheds
+    if (!fx || e.spawnT > 0 || e.x < cam.x - 30 || e.x > cam.x + VW + 30 || e.y < cam.y - 20 || e.y > cam.y + VH + 40) continue;
+    const E = ELEM[e.elem], hgt = (e.h || 12) * (e.scale || 1), x = e.x + rnd(-e.r, e.r), z = rnd(2, hgt);
+    if (Math.random() > dt * 9) continue;
+    const P = { x, y: e.y, z, vx: rnd(-6, 6), vy: rnd(-3, 3), vz: 0, grav: 0, drag: 1, life: 0.8, max: 0.8, color: E.glow, size: 1, glow: true, floor: false };
+    if (e.elem === 'fire') { P.vz = rnd(18, 34); P.grav = -20; P.color = rndPick(['#ffb347', '#ff7a2a', '#fff1a8']); }
+    else if (e.elem === 'frost') { P.vz = rnd(-6, 2); P.grav = 14; P.color = rndPick(['#ffffff', '#cfefff']); P.life = P.max = 1.1; }
+    else if (e.elem === 'storm') { P.vx = rnd(-40, 40); P.vz = rnd(-20, 30); P.drag = 6; P.life = P.max = 0.25; P.color = rndPick(['#fff27a', '#ffffff', '#a8c8ff']); }
+    else if (e.elem === 'venom') { P.z = rnd(hgt * 0.2, hgt * 0.7); P.grav = 120; P.vz = 0; P.color = rndPick(['#a8e05c', '#5fa83a']); P.floor = true; P.glow = false; }
+    else if (e.elem === 'shadow') { P.vz = rnd(6, 14); P.grav = -6; P.color = rndPick(['#3e2a5e', '#1e1430', '#7a5aa8']); P.glow = false; P.life = P.max = 1.2; P.size = 2; }
+    else { P.z = rnd(hgt * 0.3, hgt); P.grav = 160; P.color = rndPick(['#7a6a52', '#b8a888', '#ffd35c']); P.glow = false; P.floor = true; }
+    G.parts.push(P);
+  }
+});
+// shades fade half out of the world now and then, and little reaches them there
+HOOKS.dmgMul.push((e) => (e.veilT > 0 ? 0.4 : 1));
+
+/* ---------- what its touch leaves on you ---------- */
+hook('projSpawn', (pr) => {
+  const o = pr.owner;
+  if (pr.team !== 'e' || !o || !o.elem) return;
+  pr.elem = o.elem; pr.color = ELEM[o.elem].glow; pr.light = ELEM[o.elem].glow;
+});
+hook('onHurt', (dmg, src, p) => {
+  const el = (src.ent && src.ent.elem) || (src.proj && (src.proj.elem || (src.proj.owner && src.proj.owner.elem)));
+  if (!el || !p || p.dead) return;
+  if (el === 'fire' && !p.stats.fireproof) p.burnT = Math.max(p.burnT || 0, 2);
+  else if (el === 'frost') p.chillT = Math.max(p.chillT || 0, 1.6);
+  else if (el === 'storm') { p.slowT = Math.max(p.slowT || 0, 0.35); zapFx(p.x + rnd(-6, 6), p.y - 14, p.x + rnd(-6, 6), p.y, '#fff27a', 0.12); }
+  else if (el === 'venom') p.poisonT = Math.max(p.poisonT || 0, 3);
+  else if (el === 'shadow') { const e = src.ent || (src.proj && src.proj.owner); if (e && !e.dead) e.hp = Math.min(e.maxHp, e.hp + dmg); G.darkMul = 1.25; later(1.2, () => { G.darkMul = 1; }, true); }
+  else if (el === 'earth' && src.kx != null && !p.stats.sturdy) { p.vx += src.kx * 0.6; p.vy += src.ky * 0.6; }
+});
+
+/* ---------- dying its element's death ---------- */
+hook('onKill', (e) => {
+  if (!e || !e.elem) return;
+  const x = e.x, y = e.y, E = ELEM[e.elem], dmg = e.dmg || 8, p = G.p;
+  if (e.elem === 'fire') {
+    G.fx.push({ kind: 'firefield', x, y, r: 18, t: 0, life: 2.4, team: 'e', burn: true, tick: 0.3 });
+    burst(x, y - 6, 16, ['#ffb347', '#ff7a2a', '#fff1a8'], { smax: 110, glow: true }); Sound.play('fire', { v: 0.5 });
+  } else if (e.elem === 'frost') {
+    G.fx.push({ kind: 'pool', x, y, r: 22, t: 0, life: 3, team: 'e', slow: true, tick: 0.3, color: '#bfe9ff' });
+    burst(x, y - 6, 14, ['#ffffff', '#cfefff', '#6ab4e8'], { smax: 90 }); ring(x, y, 22, '#cfefff', 0.4, 2); Sound.play('ice', { v: 0.5 });
+  } else if (e.elem === 'storm') {
+    for (let i = 0; i < 3; i++) { const a = rnd(TAU); zapFx(x, y - 6, x + Math.cos(a) * 34, y - 6 + Math.sin(a) * 20, '#fff27a', 0.18); }
+    if (p && !p.dead && Math.hypot(p.x - x, p.y - y) < 60) { zapFx(x, y - 6, p.x, p.y - 8, '#fff27a', 0.2); hurtPlayer(dmg * 0.5, { ent: null }); }
+    Sound.play('zap', { v: 0.6 });
+  } else if (e.elem === 'venom') {
+    G.fx.push({ kind: 'pool', x, y, r: 20, t: 0, life: 4, team: 'e', poison: true, tick: 0.3, color: '#8fe05c' });
+    burst(x, y - 4, 12, ['#a8e05c', '#5fa83a'], { smax: 70 }); Sound.play('splat', { v: 0.5 });
+  } else if (e.elem === 'shadow') {
+    burst(x, y - 8, 20, ['#3e2a5e', '#c873ff', '#08060e'], { smax: 80, grav: -30, floor: false });
+    G.darkMul = 1.35; later(0.8, () => { G.darkMul = 1; }, true);
+  } else if (e.elem === 'earth') {
+    const sp = crigCorpse(e) || e.frames[0];
+    if (sp && typeof crigShatter === 'function') crigShatter(x, y, sp);
+    burst(x, y - 4, 10, ['#7a6a52', '#b8a888', '#ffd35c'], { smax: 90 }); shake(2); Sound.play('slam', { v: 0.35 });
+  }
+  ring(x, y - 4, 16, E.glow, 0.35, 1);
+});
+
+/* ---------- light, and a mark over its health ---------- */
+const _lightsElem = lightSources;
+lightSources = function (vis) {
+  const L = _lightsElem(vis), cam = { x: G.cam.x - R.VW / 2, y: G.cam.y - R.VH / 2 };
+  for (const e of G.ents) {
+    if (!e.elem || e.dead || e.elem === 'shadow') continue;
+    if (e.x < cam.x - 60 || e.x > cam.x + R.VW + 60 || e.y < cam.y - 60 || e.y > cam.y + R.VH + 60) continue;
+    L.push({ x: e.x, y: e.y - 6, r: e.elem === 'earth' ? 16 : 28, c: ELEM[e.elem].glow, a: 0.25 });
+  }
+  return L;
+};
+hook('entOverlay', (g, e, x, y) => {
+  if (!e.elem || e.dead) return;
+  const top = Math.round(y - e.h * (e.scale || 1) - 6), w = e.eliteMods ? 20 : 14, px = Math.round(x - w / 2) - 5;
+  g.fillStyle = '#0a0608'; g.fillRect(px - 1, top - 1, 5, 4);
+  g.fillStyle = ELEM[e.elem].glow; g.fillRect(px, top, 3, 2); g.fillRect(px + 1, top - 1, 1, 4);
+});
+
+/* ============================================================
+   Cinderdeep — the Mycelium. One living thing runs under the
+   whole world and ties it together: every tree, cap, stone,
+   door and grave is a knot in it. Mostly it is unseen. In the
+   fungal lands it shows; elsewhere it lights up under your feet
+   and when something dies, and what dies is carried along it
+   toward the nearest DMT zone and grows back where it fell as
+   caps that ripen, spore and wither. It keeps the world's time.
+   DMT zones are where you commune with it.
+   ============================================================ */
+const MYC = { fl: null, key: '', nodes: [], edges: new Map(), pulses: [], blooms: [], stepT: 0, lapse: 0, cache: new Map(), fx: { sight: 0, still: 0, rot: 0, bloom: 0 }, inSite: false, elves: null };
+// how much of it shows of its own accord
+const MYC_SEEN = { sporeveil: 0.24, feywild: 0.15, voidscar: 0.13, murkmire: 0.08, shadowfen: 0.08, elderwood: 0.07, jungle: 0.05 };
+const MYC_THREAD = '#e4f6ff', MYC_PULSE = '#bff6ff';
+const mycBond = () => (CD.save && CD.save.fs && CD.save.fs.mycBond) || 0;
+const mycRealm = () => !!(W.on && !W.inInst && W.Z && G.fl && G.fl.realm);
+function mycBase() {
+  const zone = mycRealm() ? MYC_SEEN[W.Z.b.id] || 0 : G.fl && G.fl.info && G.fl.info.act && G.fl.info.act.id === 'grotto' ? 0.2 : 0;
+  return Math.min(0.3, zone + Math.min(0.12, mycBond() * 0.015));
+}
+
+/* ---------- a thread between two knots: it wanders, and puts out twigs ---------- */
+function mycThread(x0, y0, x1, y1, seed) {
+  const d = Math.hypot(x1 - x0, y1 - y0) || 1, n = Math.max(3, Math.round(d / 7)), nx = -(y1 - y0) / d, ny = (x1 - x0) / d;
+  const a1 = (hashU(seed, 1) - 0.5) * d * 0.3, a2 = (hashU(seed, 2) - 0.5) * d * 0.16, pts = [], cum = [0];
+  for (let i = 0; i <= n; i++) {
+    const k = i / n, w = Math.sin(k * Math.PI) * a1 + Math.sin(k * TAU) * a2 + (i && i < n ? (hashU(seed, i + 3) - 0.5) * 2.4 : 0);
+    pts.push(x0 + (x1 - x0) * k + nx * w, y0 + (y1 - y0) * k + ny * w * 0.6);
+    if (i) cum.push(cum[i - 1] + Math.hypot(pts[i * 2] - pts[i * 2 - 2], pts[i * 2 + 1] - pts[i * 2 - 1]));
+  }
+  const twigs = [];
+  for (let i = 1; i < n; i++) if (hashU(seed, 50 + i) < 0.35) {
+    const a = Math.atan2(ny, nx) * (hashU(seed, 70 + i) < 0.5 ? 1 : -1) + (hashU(seed, 90 + i) - 0.5), l = 3 + hashU(seed, 110 + i) * 5;
+    twigs.push(pts[i * 2], pts[i * 2 + 1], pts[i * 2] + Math.cos(a) * l, pts[i * 2 + 1] + Math.sin(a) * l * 0.6);
+  }
+  let x = Infinity, y = Infinity, X = -Infinity, Y = -Infinity;
+  for (let i = 0; i < pts.length; i += 2) { x = Math.min(x, pts[i]); X = Math.max(X, pts[i]); y = Math.min(y, pts[i + 1]); Y = Math.max(Y, pts[i + 1]); }
+  return { pts, cum, total: cum[n], twigs, box: [x - 8, y - 8, X + 8, Y + 8] };
+}
+function mycEdge(a, b, edges) {
+  const ka = a.id < b.id ? a.id : b.id, kb = a.id < b.id ? b.id : a.id, key = ka + '|' + kb;
+  if (edges.has(key)) return;
+  let th = MYC.cache.get(key);
+  if (!th) { if (MYC.cache.size > 4000) MYC.cache.clear(); th = mycThread(a.x, a.y, b.x, b.y, hash2(Math.round(a.x * 7 + b.x), Math.round(a.y * 13 + b.y))); MYC.cache.set(key, th); }
+  const e = { key, a, b, ...th, lit: 0 };
+  edges.set(key, e); a.edges.push(e); b.edges.push(e);
+}
+const mycNode = (x, y, id, o) => ({ x, y, id, o, edges: [] });
+
+/* ---------- the knots: rooms, doors and props below; trees, stones and waystones above ---------- */
+function mycBuildFloor(fl) {
+  const nodes = [], edges = new Map(), byRoom = new Map();
+  for (const r of fl.rooms) { const n = mycNode((r.ix + r.iw / 2) * TS, (r.iy + r.ih / 2) * TS, 'r' + r.id, null); n.room = r; byRoom.set(r.id, n); nodes.push(n); }
+  (fl.doors || []).forEach((d, i) => {
+    const n = mycNode(d.px, d.py, 'd' + i, null); nodes.push(n);
+    for (const rid of [d.a, d.b]) if (byRoom.has(rid)) mycEdge(n, byRoom.get(rid), edges);
+  });
+  for (const r of fl.rooms) {
+    const c = byRoom.get(r.id);
+    (r.props || []).slice(0, 6).forEach((pid) => { const pr = fl.props[pid]; if (!pr) return; const n = mycNode(pr.x, pr.y, 'p' + pid, null); nodes.push(n); mycEdge(n, c, edges); });
+  }
+  MYC.nodes = nodes; MYC.edges = edges;
+}
+function mycBuildRealm(cx, cy) {
+  const Z = W.Z, x0 = cx - 320, y0 = cy - 320, x1 = cx + R.VW + 320, y1 = cy + R.VH + 320, nodes = [];
+  for (let cyy = Math.max(0, Math.floor(y0 / TS / ZCH)); cyy <= Math.min(ZCN - 1, Math.floor(y1 / TS / ZCH)); cyy++) for (let cxx = Math.max(0, Math.floor(x0 / TS / ZCH)); cxx <= Math.min(ZCN - 1, Math.floor(x1 / TS / ZCH)); cxx++) {
+    for (const o of Z.objs[cyy * ZCN + cxx]) {
+      if (o.x < x0 || o.x > x1 || o.y < y0 || o.y > y1) continue;
+      if (o.kind !== 'tree' && o.kind !== 'mark' && o.kind !== 'waystone' && o.kind !== 'boulder' && o.kind !== 'menhir') continue;
+      nodes.push(mycNode(o.x, o.y - 1, Math.round(o.x) * 100003 + Math.round(o.y), o));
+    }
+  }
+  const s = Z.dmtSite;
+  if (s && s.px > x0 && s.px < x1 && s.py > y0 && s.py < y1) { const n = mycNode(s.px, s.py, 'dmt', null); n.site = true; nodes.push(n); }
+  // each knot reaches for its two nearest neighbours; a bucket grid keeps the search short
+  const B = 160, grid = new Map(), edges = new Map();
+  for (const n of nodes) { const k = Math.floor(n.x / B) + ',' + Math.floor(n.y / B); if (!grid.has(k)) grid.set(k, []); grid.get(k).push(n); }
+  for (const n of nodes) {
+    const gx = Math.floor(n.x / B), gy = Math.floor(n.y / B), near = [];
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) for (const m of grid.get(gx + dx + ',' + (gy + dy)) || []) {
+      if (m === n) continue;
+      const d = Math.hypot(m.x - n.x, m.y - n.y);
+      if (d > 8 && d < (n.site || m.site ? 200 : 150)) near.push([d, m]);
+    }
+    near.sort((a, b) => a[0] - b[0]);
+    for (const [, m] of near.slice(0, n.site ? 6 : 2)) mycEdge(n, m, edges);
+  }
+  // pulses already travelling keep their threads
+  MYC.pulses = MYC.pulses.filter((q) => (q.e = edges.get(q.e.key)));
+  MYC.nodes = nodes; MYC.edges = edges;
+}
+function mycTarget() {
+  if (mycRealm()) { const s = W.Z.dmtSite; return s ? { x: s.px, y: s.py } : null; }
+  const r = G.fl && G.fl.rooms && G.fl.rooms.find((q) => q.type === 'dmt');
+  return r ? { x: (r.ix + r.iw / 2) * TS, y: (r.iy + r.ih / 2) * TS } : null;
+}
+function mycNearest(x, y, lim) {
+  let best = null, bd = lim;
+  for (const n of MYC.nodes) { const d = Math.hypot(n.x - x, n.y - y); if (d < bd && n.edges.length) { bd = d; best = n; } }
+  return best;
+}
+
+/* ---------- pulses: what the network carries, drawn toward where it is communed with ---------- */
+function mycSend(node, str, col, hops, skip) {
+  if (!node || MYC.pulses.length > 70) return;
+  for (const e of node.edges) {
+    if (e === skip) continue;
+    MYC.pulses.push({ e, s: e.a === node ? 0 : e.total, dir: e.a === node ? 1 : -1, v: 70 + str * 40, str, col, hops });
+  }
+}
+function mycArrive(q, node) {
+  if (node.o && node.o.kind === 'tree' && q.str > 0.45 && mycRealm()) { const sp = objSprite(node.o, W.Z.b); if (sp) shakeObj(node.o, sp, q.str * 0.35, null); }
+  if (node.site || node.room && node.room.type === 'dmt') { ring(node.x, node.y, 10 + q.str * 14, q.col, 0.5, 1); return; }
+  if (q.hops <= 0 || q.str < 0.12) return;
+  const T = mycTarget(), next = node.edges.filter((e) => e !== q.e);
+  if (!next.length) return;
+  const far = (e) => { const m = e.a === node ? e.b : e.a; return T ? Math.hypot(m.x - T.x, m.y - T.y) : hashU(m.x | 0, m.y | 0); };
+  next.sort((a, b) => far(a) - far(b));
+  const go = (e, k) => MYC.pulses.length < 70 && MYC.pulses.push({ e, s: e.a === node ? 0 : e.total, dir: e.a === node ? 1 : -1, v: q.v, str: q.str * k, col: q.col, hops: q.hops - 1 });
+  go(next[0], 0.9);
+  if (next.length > 1 && q.str > 0.5) go(next[1 + Math.floor(Math.random() * (next.length - 1))], 0.5);
+}
+function mycAt(e, s) {
+  const c = e.cum, n = c.length - 1;
+  let i = 1; while (i < n && c[i] < s) i++;
+  const k = clamp((s - c[i - 1]) / (c[i] - c[i - 1] || 1), 0, 1);
+  return [lerp(e.pts[i * 2 - 2], e.pts[i * 2], k), lerp(e.pts[i * 2 - 1], e.pts[i * 2 + 1], k)];
+}
+
+/* ---------- what dies grows back: caps sprout where it fell, ripen, spore and wither ---------- */
+const BLOOM_LIFE = 270;
+function mycBloom(x, y, col) {
+  if (MYC.blooms.length > 70) MYC.blooms.shift();
+  MYC.blooms.push({ x, y, t: 0, seed: (Math.random() * 1e9) | 0, col: col || mycCapColor(), n: 2 + Math.floor(Math.random() * 3) });
+}
+function mycCapColor() {
+  const id = mycRealm() ? W.Z.b.id : G.fl && G.fl.info && G.fl.info.act ? G.fl.info.act.id : '';
+  return { sporeveil: '#c58cff', grotto: '#c58cff', feywild: '#ff8ad8', voidscar: '#4affe0', frost: '#9fd8ff', frostpeak: '#9fd8ff', glacier: '#9fd8ff', core: '#ff9a3c', ashlands: '#ff9a3c', caldera: '#ff9a3c', murkmire: '#a8e05c', shadowfen: '#8a6ab8' }[id] || '#d8b48a';
+}
+const mycAgeRate = () => (MYC.fx.bloom > 0 ? 8 : 1);
+function drawBloom(g, b, cx, cy, night) {
+  const t = b.t, x = Math.round(b.x - cx), y = Math.round(b.y - cy);
+  if (x < -20 || y < -20 || x > R.VW + 20 || y > R.VH + 20) return;
+  const fade = t < 220 ? 1 : Math.max(0, 1 - (t - 220) / 50);
+  // hyphae spread out from where it fell
+  const reach = Math.min(1, t / 8) * 9;
+  g.strokeStyle = rgbaStr(MYC_THREAD, 0.35 * fade); g.lineWidth = 1; g.beginPath();
+  for (let i = 0; i < 6; i++) { const a = hashU(b.seed, i) * TAU, l = reach * (0.5 + hashU(b.seed, i + 9) * 0.6); g.moveTo(x + 0.5, y + 0.5); g.lineTo(x + 0.5 + Math.cos(a) * l, y + 0.5 + Math.sin(a) * l * 0.55); }
+  g.stroke();
+  if (t < 6) return;
+  // then caps: tiny, grown, glowing at night, sporing, withering
+  const grow = Math.min(1, (t - 6) / 34), wither = t > 210 ? Math.min(1, (t - 210) / 40) : 0;
+  for (let i = 0; i < b.n; i++) {
+    const a = hashU(b.seed, 20 + i) * TAU, d = 2 + hashU(b.seed, 30 + i) * 6, px = Math.round(x + Math.cos(a) * d), py = Math.round(y + Math.sin(a) * d * 0.5);
+    const s = Math.max(1, Math.round((0.6 + hashU(b.seed, 40 + i) * 0.8) * grow * 2.4 * (1 - wither * 0.5))), stem = Math.max(1, Math.round(s * 0.8));
+    const col = wither ? shade(b.col, -0.45 * wither) : b.col;
+    g.globalAlpha = fade;
+    g.fillStyle = '#e8dcc8'; g.fillRect(px, py - stem, 1, stem);
+    g.fillStyle = col; g.fillRect(px - s, py - stem - Math.max(1, s - 1), s * 2 + 1, Math.max(1, s - 1)); g.fillRect(px - s + 1, py - stem - s, s * 2 - 1, 1);
+    if (night && t > 30 && !wither) { g.fillStyle = '#ffffff'; g.fillRect(px, py - stem - s, 1, 1); }
+    g.globalAlpha = 1;
+  }
+}
+
+/* ---------- each frame: build, carry, age, keep time ---------- */
+hook('update', (dt) => {
+  const p = G.p;
+  if (!p || !G.fl || !dt) return;
+  if (MYC.fl !== G.fl) {
+    // a new place: its own threads, its own graves; what you were given here stays here
+    MYC.fl = G.fl; MYC.key = ''; MYC.pulses = []; MYC.blooms = []; MYC.nodes = []; MYC.edges = new Map(); MYC.elves = null; MYC.inSite = false;
+    for (const k in MYC.fx) MYC.fx[k] = 0;
+    if (!G.fl.realm) mycBuildFloor(G.fl);
+  }
+  if (mycRealm()) {
+    // rebuilt as you cross the land, and again while the land around you is still being grown
+    const key = Math.floor(G.cam.x / 256) + ',' + Math.floor(G.cam.y / 256), grown = W.Z.gen;
+    if (key !== MYC.key || grown !== MYC.grown) { MYC.key = key; MYC.grown = grown; mycBuildRealm(G.cam.x - R.VW / 2, G.cam.y - R.VH / 2); }
+  }
+  for (const k in MYC.fx) if (MYC.fx[k] > 0) MYC.fx[k] -= dt;
+  // footsteps: the network notices you
+  if (p.moving && !p.dead && (MYC.stepT -= dt) <= 0) { MYC.stepT = 0.85; mycSend(mycNearest(p.x, p.y, 60), 0.35, MYC_PULSE, 1); }
+  for (let i = MYC.pulses.length - 1; i >= 0; i--) {
+    const q = MYC.pulses[i];
+    q.s += q.v * dt * q.dir; q.e.lit = Math.max(q.e.lit, q.str * 0.6);
+    if (q.s < 0 || q.s > q.e.total) { MYC.pulses.splice(i, 1); mycArrive(q, q.dir > 0 ? q.e.b : q.e.a); }
+  }
+  for (const e of MYC.edges.values()) if (e.lit > 0) e.lit = Math.max(0, e.lit - dt * 0.5);
+  // the dead age back into the ground
+  const ar = mycAgeRate();
+  for (let i = MYC.blooms.length - 1; i >= 0; i--) {
+    const b = MYC.blooms[i];
+    b.t += dt * ar;
+    if (b.t > 150 && b.t < 210 && Math.random() < dt * 0.6 && !CD.settings.lowFx) G.parts.push({ x: b.x + rnd(-4, 4), y: b.y, z: 3, vx: rnd(-6, 6), vy: rnd(-4, 4), vz: rnd(8, 18), grav: -4, drag: 0.8, life: 1.6, max: 1.6, color: b.col, size: 1, glow: true, floor: false });
+    if (b.t > BLOOM_LIFE) MYC.blooms.splice(i, 1);
+  }
+  // it keeps the world's time: held still, or hurried forward
+  if (mycRealm()) {
+    if (MYC.fx.still > 0) W.t -= dt;
+    if (MYC.lapse > 0) { MYC.lapse -= dt; W.t += dt * DAY_LEN * 0.1; }
+  }
+  if (MYC.fx.bloom > 0 && p.hp < p.maxHp && !p.dead) p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.01 * dt);
+});
+hook('onKill', (e) => {
+  if (!e || e.type === 'ally' || !G.fl) return;
+  const col = e.elem && ELEM[e.elem] ? ELEM[e.elem].glow : MYC_PULSE;
+  mycSend(mycNearest(e.x, e.y, 110), 1, col, 6);
+  if (!e.boss || Math.random() < 0.5) mycBloom(e.x, e.y, e.elem && ELEM[e.elem] ? ELEM[e.elem].glow : null);
+  // Rot: everything returns at once, and takes its neighbours with it
+  if (MYC.fx.rot > 0 && e.type === 'enemy') {
+    const base = typeof weaponDamage === 'function' ? weaponDamage(G.p) : 10;
+    G.fx.push({ kind: 'pool', x: e.x, y: e.y, r: 24, t: 0, life: 3, team: 'p', poison: true, base, tick: 0.2, color: '#b07ad8' });
+    burst(e.x, e.y - 4, 10, ['#b07ad8', '#e0c8ff', '#8fe05c'], { smax: 60, glow: true });
+  }
+});
+// Stillness thickens the time foes move through
+const _walkMyc = walk;
+walk = function (e, dx, dy, spd, dt) { return _walkMyc(e, dx, dy, MYC.fx.still > 0 && e.type === 'enemy' ? spd * 0.8 : spd, dt); };
+
+/* ---------- drawing the threads ---------- */
+hook('renderFloor', (g, cx, cy) => {
+  if (!G.p || MYC.fl !== G.fl) return;
+  const p = G.p, VW = R.VW, VH = R.VH, base = mycBase(), sight = MYC.fx.sight > 0 ? 0.42 : 0;
+  const night = mycRealm() ? 1 + (1 - daylight()) * 0.5 : 1;
+  const buckets = [[], [], [], [], [], []];
+  for (const e of MYC.edges.values()) {
+    const bx = e.box;
+    if (bx[2] < cx || bx[0] > cx + VW || bx[3] < cy || bx[1] > cy + VH) continue;
+    const pts = e.pts;
+    for (let i = 2; i < pts.length; i += 2) {
+      const mx = (pts[i] + pts[i - 2]) / 2, my = (pts[i + 1] + pts[i - 1]) / 2, d = Math.hypot(mx - p.x, my - p.y);
+      const a = (Math.max(base, sight, d < 72 ? (1 - d / 72) * 0.22 : 0) + e.lit) * night;
+      const q = Math.min(5, Math.round(a * 10));
+      if (q > 0) buckets[q].push(pts[i - 2] - cx, pts[i - 1] - cy, pts[i] - cx, pts[i + 1] - cy);
+    }
+    if (base + sight + e.lit > 0.1) for (let i = 0; i < e.twigs.length; i += 4) buckets[1].push(e.twigs[i] - cx, e.twigs[i + 1] - cy, e.twigs[i + 2] - cx, e.twigs[i + 3] - cy);
+  }
+  g.lineWidth = 1;
+  for (let q = 1; q < 6; q++) {
+    const L = buckets[q];
+    if (!L.length) continue;
+    g.strokeStyle = rgbaStr(MYC_THREAD, Math.min(0.8, q / 10 + 0.04)); g.beginPath();
+    for (let i = 0; i < L.length; i += 4) { g.moveTo(Math.round(L[i]) + 0.5, Math.round(L[i + 1]) + 0.5); g.lineTo(Math.round(L[i + 2]) + 0.5, Math.round(L[i + 3]) + 0.5); }
+    g.stroke();
+  }
+  // the pulses: a bright head with a short tail
+  for (const q of MYC.pulses) {
+    for (let k = 0; k < 4; k++) {
+      const [x, y] = mycAt(q.e, q.s - q.dir * k * 2.5);
+      g.fillStyle = rgbaStr(k ? q.col : '#ffffff', Math.min(1, q.str * (1 - k * 0.22)));
+      g.fillRect(Math.round(x - cx), Math.round(y - cy), 1, 1);
+    }
+  }
+  const dark = mycRealm() ? daylight() < 0.35 : true;
+  for (const b of MYC.blooms) drawBloom(g, b, cx, cy, dark);
+});
+const _lightsMyc = lightSources;
+lightSources = function (vis) {
+  const L = _lightsMyc(vis);
+  if (MYC.fl !== G.fl) return L;
+  for (const q of MYC.pulses) if (q.str > 0.3) { const [x, y] = mycAt(q.e, q.s); L.push({ x, y, r: 10 + q.str * 10, c: q.col, a: 0.3 * q.str }); }
+  for (const b of MYC.blooms) if (b.t > 30 && b.t < 220) L.push({ x: b.x, y: b.y - 3, r: 14, c: b.col, a: 0.18 });
+  const s = mycRealm() && W.Z.dmtSite;
+  if (s && mycSiteFound(W.Z)) L.push({ x: s.px, y: s.py, r: 120, c: `#ffd8ff`, a: 0.35 });
+  return L;
+};
+
+/* ============================================================
+   DMT zones in the Realm: one in every land, a clearing where
+   the ground breathes. It cannot be seen from far off; follow
+   the pulses, and the air shimmers when you are close.
+   ============================================================ */
+const _planMyc = planFeatures;
+planFeatures = function (Z) {
+  const out = _planMyc(Z);
+  try { placeDmtSite(Z); } catch (err) { /* a land without one */ }
+  return out;
+};
+function placeDmtSite(Z) {
+  const Rn = new RNG(hash2(Z.seed || 1, 0x6d7c)), prefer = ['giantshroom', 'stones', 'oldoak', 'shrine', 'obelisk', 'spire', 'eye', 'torii'];
+  const marks = (Z.marks || []).slice().sort((a, b) => prefer.indexOf(b.kind) - prefer.indexOf(a.kind));
+  let at = null;
+  for (const m of marks) {
+    for (let k = 0; k < 10 && !at; k++) { const a = Rn.next() * TAU, d = Rn.range(14, 24), tx = Math.round(m.x + Math.cos(a) * d), ty = Math.round(m.y + Math.sin(a) * d); if (walkableSite(Z, tx, ty, 6)) at = { x: tx, y: ty }; }
+    if (at) break;
+  }
+  for (let k = 0; k < 60 && !at; k++) { const tx = Rn.int(160, ZT - 160), ty = Rn.int(160, ZT - 160); if (walkableSite(Z, tx, ty, 6)) at = { x: tx, y: ty }; }
+  if (!at) return;
+  stampDisc(Z, at.x, at.y, 6, MK.CLEAR | MK.NOSPAWN);
+  Z.dmtSite = { x: at.x, y: at.y, px: (at.x + 0.5) * TS, py: (at.y + 0.5) * TS, r: 54 };
+}
+const mycSiteFound = (Z) => !!(W.ch && W.ch.dmtSites && W.ch.dmtSites.includes(Z.id));
+hook('update', (dt) => {
+  if (!mycRealm() || !G.p || !W.Z.dmtSite) return;
+  const s = W.Z.dmtSite, p = G.p, d = Math.hypot(p.x - s.px, p.y - s.py), found = mycSiteFound(W.Z);
+  if (!found) {
+    // the air gives it away
+    if (d < 220 && Math.random() < 0.6) { const a = rnd(TAU), r = rnd(0, s.r); G.parts.push({ x: s.px + Math.cos(a) * r, y: s.py + Math.sin(a) * r * 0.55, z: 2, vx: rnd(-8, 8), vy: rnd(-5, 5), vz: rnd(4, 14), grav: 0, drag: 0.5, life: 1.2, max: 1.2, color: `hsl(${(G.t * 120 + rnd(120)) % 360},90%,65%)`, size: 1, glow: true, floor: false }); }
+    if (d < 170 && !s.hinted) { s.hinted = true; toast('The air shimmers here...', '#ff8ad8'); Sound.play('shimmer'); }
+    if (d < 90) {
+      W.ch.dmtSites = W.ch.dmtSites || []; W.ch.dmtSites.push(W.Z.id);
+      banner('DMT Zone', 'the ground is breathing', 2.8); Sound.play('breakthrough');
+      const fs = CD.save.fs; fs.dmtFound = (fs.dmtFound || 0) + 1; persist();
+      burst(s.px, s.py, 30, ['#ff6f9c', '#7fc8ff', '#fff27a', '#7dff9a', '#c873ff'], { smax: 120, glow: true });
+      if (typeof saveRealm === 'function') saveRealm();
+    }
+    return;
+  }
+  if (!MYC.elves) MYC.elves = Array.from({ length: 4 }, (_, i) => ({ x: s.px + rnd(-30, 30), y: s.py + rnd(-16, 16), vx: 0, vy: 0, i, t: rnd(3), say: null, sayT: 0 }));
+  for (const el of MYC.elves) {
+    el.t += dt;
+    if (Math.random() < dt * 0.8) { const a = rnd(TAU); el.vx = Math.cos(a) * 24; el.vy = Math.sin(a) * 14; }
+    const nx = el.x + el.vx * dt, ny = el.y + el.vy * dt;
+    if (Math.hypot((nx - s.px) / s.r, (ny - s.py) / (s.r * 0.55)) < 0.9) { el.x = nx; el.y = ny; } else { el.vx *= -1; el.vy *= -1; }
+    if (el.sayT > 0) el.sayT -= dt;
+    else if (Math.hypot(p.x - el.x, p.y - el.y) < 60 && Math.random() < dt * 0.3) { el.say = rndPick(MYC_LINES); el.sayT = 2.6; Sound.play('elf', { p: 0.9 + el.i * 0.08 }); }
+  }
+  const inside = d < s.r;
+  if (inside !== MYC.inSite) { MYC.inSite = inside; if (inside) Music.theme('dmt'); else realmMusic(true); }
+});
+const MYC_LINES = ['IT IS ALL ONE THING', 'EVERYTHING IS CONNECTED', 'THE ROOTS REMEMBER YOU', 'TIME IS A RING', 'YOU WERE A TREE ONCE', 'NOTHING ENDS HERE', 'LISTEN TO THE GROUND', 'WELCOME BACK', 'IT KNOWS YOUR NAME', 'THE CAPS ARE WATCHING'];
+hook('renderFloor', (g, cx, cy) => {
+  if (!mycRealm() || !W.Z.dmtSite || !mycSiteFound(W.Z)) return;
+  const s = W.Z.dmtSite, t = G.t, mx = s.px - cx, my = s.py - cy;
+  if (mx < -s.r || my < -s.r || mx > R.VW + s.r || my > R.VH + s.r) return;
+  // the floor breathes in colour
+  for (let ty = -4; ty <= 4; ty++) for (let tx = -6; tx <= 6; tx++) {
+    const x = tx * 8, y = ty * 8 * 0.55, e = Math.hypot(x / s.r, y / (s.r * 0.55));
+    if (e > 1) continue;
+    const d = Math.hypot(x, y), k = Math.sin(d * 0.08 - t * 2.4) * 0.5 + 0.5, sym = Math.abs(Math.sin(Math.atan2(y, x) * 3 + t * 0.5));
+    g.fillStyle = `hsla(${((t * 60 + d * 1.6 + sym * 120) % 360).toFixed(0)},85%,${(40 + k * 20).toFixed(0)}%,${(0.5 * (1 - e * 0.6)).toFixed(2)})`;
+    g.fillRect(Math.round(mx + x - 4), Math.round(my + y - 2), 8, 5);
+  }
+  g.lineWidth = 1;
+  for (let ring2 = 1; ring2 <= 3; ring2++) {
+    const n = 6 + ring2 * 2, rr = ring2 * 15 + Math.sin(t * 1.3 + ring2) * 3;
+    g.strokeStyle = `hsla(${(t * 90 + ring2 * 60) % 360},95%,72%,0.55)`; g.beginPath();
+    for (let i = 0; i <= n; i++) { const a = (i / n) * TAU + t * (ring2 % 2 ? 0.3 : -0.3), rad = rr * (i % 2 ? 0.8 : 1); const px = mx + Math.cos(a) * rad, py = my + Math.sin(a) * rad * 0.55; if (i) g.lineTo(px, py); else g.moveTo(px, py); }
+    g.stroke();
+  }
+  // a ring of glowing caps around it
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * TAU, x = Math.round(mx + Math.cos(a) * s.r), y = Math.round(my + Math.sin(a) * s.r * 0.55), hue = (t * 40 + i * 26) % 360;
+    g.fillStyle = '#e8dcc8'; g.fillRect(x, y - 3, 1, 3);
+    g.fillStyle = `hsl(${hue.toFixed(0)},80%,62%)`; g.fillRect(x - 2, y - 5, 5, 2); g.fillRect(x - 1, y - 6, 3, 1);
+  }
+});
+hook('renderWorld', (g, cx, cy) => {
+  if (!mycRealm() || !MYC.elves) return;
+  for (const el of MYC.elves) {
+    const sp = elfSprite(el.i, Math.floor(el.t * 5) % 2), x = el.x - cx, y = el.y - cy - Math.abs(Math.sin(el.t * 5)) * 3;
+    shadow(g, x, el.y - cy, 4);
+    drawSprite(g, sp, x, y, el.vx < 0);
+  }
+});
+hook('renderTop', (g, cx, cy) => {
+  if (!mycRealm()) return;
+  const VW = R.VW, VH = R.VH;
+  if (MYC.inSite) {
+    const a = 0.1 + Math.sin(G.t * 1.7) * 0.04, hue = (G.t * 50) % 360;
+    const grd = g.createRadialGradient(VW / 2, VH / 2, VH * 0.25, VW / 2, VH / 2, VH * 0.9);
+    grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, `hsla(${hue.toFixed(0)},90%,60%,${(a * 2).toFixed(3)})`);
+    g.fillStyle = grd; g.fillRect(0, 0, VW, VH);
+  }
+  for (const el of MYC.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); g.drawImage(t, Math.round(el.x - cx - t.width / 2), Math.round(el.y - cy - 24)); g.globalAlpha = 1; }
+});
+
+/* ---------- communing: what you are shown, and what you ask of it ---------- */
+const MYC_CURRENTS = [
+  { id: 'bloom', name: 'Bloom', sub: 'age the world forward', col: '#7dff9a',
+    desc: (realm) => `${realm ? 'A quarter of a day passes in moments. ' : ''}Every grave in the network ripens, you are made whole, and you regrow 1% of your health each second ${realm ? 'for three minutes' : 'on this floor'}. Growth here runs eight times faster.` },
+  { id: 'still', name: 'Stillness', sub: 'hold time', col: '#9fd8ff',
+    desc: (realm) => `${realm ? 'The sun stops where it is. ' : ''}Foes move through thickened time, 20% slower, ${realm ? 'for three minutes' : 'for the rest of this floor'}.` },
+  { id: 'rot', name: 'Rot', sub: 'everything returns', col: '#c58cff',
+    desc: (realm) => `What you kill goes back into the ground at once and bursts into spores that poison everything near it, ${realm ? 'for three minutes' : 'for the rest of this floor'}.` },
+];
+function mycIcon(id) {
+  const c = mkCanvas(16, 16), g = c.getContext('2d');
+  if (id === 'bloom') { g.fillStyle = '#e8dcc8'; g.fillRect(7, 8, 2, 6); g.fillStyle = '#7dff9a'; g.fillRect(3, 5, 10, 3); g.fillRect(5, 3, 6, 2); g.fillStyle = '#ffffff'; g.fillRect(6, 4, 1, 1); g.fillRect(10, 6, 1, 1); g.fillStyle = '#3a8a4a'; g.fillRect(2, 14, 12, 1); }
+  else if (id === 'still') { g.fillStyle = '#9fd8ff'; g.fillRect(4, 2, 8, 1); g.fillRect(4, 13, 8, 1); g.fillStyle = '#cfefff'; for (let i = 0; i < 5; i++) { g.fillRect(5 + i, 3 + i, 6 - i * 2 > 0 ? 6 - i * 2 : 1, 1); g.fillRect(5 + i, 12 - i, 6 - i * 2 > 0 ? 6 - i * 2 : 1, 1); } g.fillStyle = '#ffd35c'; g.fillRect(7, 10, 2, 2); }
+  else { g.fillStyle = '#c58cff'; for (const [x, y, r] of [[5, 8, 3], [10, 7, 3.5], [8, 5, 2.5]]) { g.beginPath(); g.arc(x, y, r, 0, TAU); g.fill(); } g.fillStyle = '#8fe05c'; g.fillRect(4, 12, 1, 1); g.fillRect(11, 12, 1, 1); g.fillRect(7, 13, 1, 1); }
+  c.style.width = '40px'; c.style.height = '40px';
+  return c;
+}
+function mycCommune(where) {
+  const realm = mycRealm(), p = G.p;
+  const wrap = h('div', { class: 'choices' });
+  const pick = (cur) => { UI.close(el); mycApply(cur, realm, where); };
+  MYC_CURRENTS.forEach((cur, i) => {
+    wrap.append(h('button', { class: 'card', type: 'button', style: { '--rc': cur.col }, 'data-autofocus': i === 0 ? true : null, onclick: () => pick(cur) },
+      h('div', { class: 'head' }, mycIcon(cur.id), h('div', {}, h('div', { class: 'nm' }, cur.name), h('div', { class: 'sub' }, cur.sub))),
+      h('p', { class: 'desc' }, cur.desc(realm))));
+  });
+  const el = h('div', { class: 'modal' }, h('div', { style: { display: 'grid', gap: '16px', justifyItems: 'center', width: 'min(100%, 980px)' } },
+    h('div', { class: 'lv-head' }, h('b', {}, 'The Mycelium'), h('small', {}, `It shows you everything ${realm ? 'in this land' : 'on this floor'}, and asks what you want of it. Bond ${mycBond() + 1}.`)),
+    wrap));
+  el.addEventListener('keydown', (e) => { const n = +e.key; if (n >= 1 && n <= 3 && wrap.children[n - 1]) wrap.children[n - 1].click(); });
+  UI.open(el, { modal: true, replace: false, onBack: () => {} });
+  Sound.play('breakthrough');
+  if (p) ring(p.x, p.y - 8, 40, '#ff8ad8', 0.8, 2);
+}
+function mycApply(cur, realm, where) {
+  const p = G.p, dur = realm ? 180 : Infinity, fs = CD.save.fs;
+  fs.mycBond = (fs.mycBond || 0) + 1; persist();
+  if (where && where.room) where.room.communed = true;
+  if (realm) { W.ch.mycAt = W.ch.mycAt || {}; W.ch.mycAt[W.Z.id] = W.t; }
+  // sight: the whole of it shows, and so does everything it touches
+  MYC.fx.sight = dur;
+  if (!realm) for (const r of G.fl.rooms) r.seen = true;
+  else if (W.disc) for (const m of W.Z.marks) { const x = Math.floor(m.x / 16), y = Math.floor(m.y / 16); if (x >= 0 && y >= 0 && x < DISC_N && y < DISC_N) W.disc[y * DISC_N + x] = 1; }
+  MYC.fx[cur.id] = dur;
+  if (cur.id === 'bloom') {
+    heal(p, p.maxHp); p.poisonT = p.burnT = p.slowT = p.chillT = 0;
+    for (const b of MYC.blooms) b.t = Math.max(b.t, 60);
+    if (realm) MYC.lapse = 2.5;
+  }
+  if (cur.id === 'still' && realm) toast('The sun holds still', '#9fd8ff');
+  // the network answers all at once
+  for (const n of MYC.nodes) if (Math.hypot(n.x - p.x, n.y - p.y) < 260) mycSend(n, 0.7, cur.col, 2);
+  banner(cur.name, 'the Mycelium answers', 2.4);
+  Sound.play('ascend'); ring(p.x, p.y - 8, 90, cur.col, 1, 3);
+  burst(p.x, p.y - 8, 30, [cur.col, '#ffffff', '#ff8ad8'], { smax: 140, glow: true });
+}
+// below: the well that takes souls also lets you commune, once a zone
+const _soulWellMyc = soulWell;
+soulWell = function (pr) {
+  const r = G.room;
+  if (!(G.run.souls > 0) && r && r.type === 'dmt' && !r.communed) return mycCommune({ room: r });
+  return _soulWellMyc(pr);
+};
+// above: the clearing itself, once a day
+const _interMyc = realmInteractables;
+realmInteractables = function (Z) {
+  const L = _interMyc(Z);
+  if (Z.dmtSite && !L.includes(Z.dmtSite.obj)) { Z.dmtSite.obj = { kind: 'dmtsite', x: Z.dmtSite.px, y: Z.dmtSite.py }; L.push(Z.dmtSite.obj); }
+  return L;
+};
+const _promptMyc = promptFor;
+promptFor = function (t) {
+  if (t && t.kind === 'prop' && t.pr.soulwell && !(G.run.souls > 0) && G.room && G.room.type === 'dmt' && !G.room.communed) return 'Commune with the Mycelium';
+  if (t && t.kind === 'world' && t.type === 'dmtsite') return mycSiteFound(W.Z) ? 'Commune with the Mycelium' : 'The ground breathes here';
+  return _promptMyc(t);
+};
+const _interactMyc = interact;
+interact = function () {
+  const t = nearestInteract();
+  if (t && t.kind === 'world' && t.type === 'dmtsite') {
+    if (!mycSiteFound(W.Z)) return;
+    const last = W.ch.mycAt && W.ch.mycAt[W.Z.id];
+    if (last != null && W.t - last < DAY_LEN && W.t >= last) { toast('It has answered you today. Come back tomorrow.', '#ff8ad8'); return; }
+    return mycCommune(null);
+  }
+  return _interactMyc();
+};
+// the Records remember how close you have grown
+CD.mycStatus = () => ({ bond: mycBond(), edges: MYC.edges.size, pulses: MYC.pulses.length, blooms: MYC.blooms.length, fx: { ...MYC.fx }, site: mycRealm() ? W.Z.dmtSite || null : null });
+
+/* ============================================================
+   Cinderdeep — handling weapons. A weapon has weight: it comes
+   up to your aim on a spring, slower the heavier it is, and
+   between fights it is carried, not pointed: blades low at the
+   side, greatswords and hammers on the shoulder, spears and
+   staffs upright, bows and guns down. Swings smear, blows
+   spark, bows draw and nock as they reload, crossbows show
+   their bolt, staffs gather light at the tip, thrown knives
+   come back to the hand, a boomerang leaves it empty, tomes
+   open, guns smoke, and twin blades and fists use both hands.
+   ============================================================ */
+const WPN_FEEL = {};
+function wpnFeel(def) {
+  if (!def) return { carry: 'low', k: 16, base: '' };
+  if (WPN_FEEL[def.id]) return WPN_FEEL[def.id];
+  const b = def.from && WEAPON[def.from] ? WEAPON[def.from] : def, id = b.id, st = b.style;
+  let carry = 'low';
+  if (b.heavy || st === 'slam' || st === 'spin' || id === 'axe' || id === 'mace') carry = 'shoulder';
+  else if (/staff|rod|wand|spear|harpoon/.test(id)) carry = 'pole';
+  else if (st === 'arrow') carry = 'bow';
+  else if (st === 'bolt' || st === 'blast' || id === 'pistols' || id === 'crossbow' || id === 'cannon') carry = 'gun';
+  // how fast it comes up to the aim: heavy and slow weapons lag, quick ones snap
+  const k = b.heavy || (b.rate || 2) < 1.3 ? 8 : (b.rate || 2) > 3.5 ? 26 : 15;
+  return (WPN_FEEL[def.id] = { carry, k, base: id, magic: { fireball: '#ff9a3c', shard: '#bfe9ff', chain: '#fff27a', venom: '#a8ff6a', missile: '#c8a8ff' }[st] || (id === 'hexstaff' ? '#8fe05c' : null), pair: id === 'daggers' || id === 'gauntlets' || id === 'pistols' });
+}
+function wpnRest(carry, f) {
+  const r = { low: 1.15, shoulder: -2.3, bow: 0.9, gun: 0.75 }[carry];
+  if (carry === 'pole') return -Math.PI / 2 + f * 0.14;
+  return f > 0 ? r : Math.PI - r;
+}
+const wpnReady = (p) => p.wpnReadyT > 0 || G.combat || (p.swing && p.swing.t < p.swing.dur * 1.5);
+hook('update', (dt) => {
+  const p = G.p;
+  if (!p || !p.weapon || !dt) return;
+  const F = wpnFeel(WEAPON[p.weapon.id]);
+  if (p.wpnReadyT > 0) p.wpnReadyT -= dt;
+  const want = wpnReady(p) ? p.aim : wpnRest(F.carry, p.face < 0 ? -1 : 1);
+  if (p.wpnAng == null || p.swing && p.swing.t < p.swing.dur) p.wpnAng = p.aim;
+  else p.wpnAng += angDiff(p.wpnAng, want) * (1 - Math.exp(-F.k * dt));
+});
+hook('onAttack', (p, def) => {
+  p.wpnReadyT = 1.6;
+  const F = wpnFeel(def), hp = handPos(p, p.aim);
+  // what leaves the hand: a flash in the colour of the shot, smoke from a gun
+  if (def.kind === 'ranged') {
+    const col = F.magic || (F.carry === 'gun' ? '#ffd08a' : '#f4f0ea');
+    burst(hp.x + Math.cos(p.aim) * 8, hp.y + Math.sin(p.aim) * 6, F.magic ? 5 : 3, [col, '#ffffff'], { ang: p.aim, spread: 0.5, smin: 20, smax: 60, glow: !!F.magic, lmax: 0.25 });
+    if (F.carry === 'gun') for (let i = 0; i < 4; i++) G.parts.push({ x: hp.x + Math.cos(p.aim) * 12, y: hp.y + 2 + Math.sin(p.aim) * 8, z: 6, vx: Math.cos(p.aim) * rnd(10, 30) + rnd(-6, 6), vy: Math.sin(p.aim) * rnd(6, 16), vz: rnd(6, 16), grav: -10, drag: 1.6, life: 0.9, max: 0.9, color: rndPick(['#8a8a8a', '#b8b8b8', '#6a6a6a']), size: 2, glow: false, floor: false });
+  }
+});
+// blows land with weight: sparks where steel meets hide, and heavy ones stop the world a moment
+hook('onHit', (e, dmg, o, crit) => {
+  const p = G.p;
+  if (!o || o.src !== 'weapon' || !p || !p.weapon || !e) return;
+  const def = WEAPON[p.weapon.id];
+  if (!def) return;
+  const a = Math.atan2(e.y - p.y, e.x - p.x), x = e.x - Math.cos(a) * e.r * 0.7, y = e.y - (e.h || 10) * 0.45;
+  if (def.kind === 'melee') {
+    burst(x, y, crit ? 9 : 5, [weaponTrail(p.weapon), '#ffffff', '#ffe08a'], { ang: a, spread: 0.9, smin: 40, smax: 130, glow: true, lmin: 0.12, lmax: 0.3, z: 6 });
+    if (def.heavy || wpnFeel(def).carry === 'shoulder') { hitstop(0.03); shake(1.5); }
+  } else if (crit) burst(x, y, 4, ['#ffffff', '#ffe08a'], { smax: 70, glow: true, lmax: 0.2 });
+});
+
+/* ---------- the states a weapon can be in, as their own pictures ---------- */
+function wpnCopy(sp, padL, padT, padR, padB, paint) {
+  const c = mkCanvas(sp.w + padL + padR, sp.h + padT + padB), g = c.getContext('2d');
+  g.drawImage(sp.c, padL, padT);
+  paint(g, padL, padT);
+  return makeSprite(c, sp.ax + padL, sp.ay + padT);
+}
+const px1 = (g, x, y, col, w = 1, h = 1) => { g.fillStyle = col; g.fillRect(x, y, w, h); };
+// a bow drawn back: the string bends to the nock, an arrow lies along it
+for (let s = 0; s <= 3; s++) HELD['bow~' + s] = () => {
+  const base = heldWeapon('bow');
+  return wpnCopy(base, 4, 0, 12, 0, (g, ox) => {
+    g.clearRect(ox + 2, 1, 1, 15);
+    const nx = ox + 2 - s;
+    for (let y = 1; y <= 15; y++) { const k = 1 - Math.abs(y - 8) / 7; px1(g, Math.round(ox + 2 - s * k), y, '#e8e0cc'); }
+    if (s > 0) { px1(g, nx, 8, '#c8b48a', 15 + s, 1); px1(g, nx + 15 + s, 7, C.steel, 1, 3); px1(g, nx + 16 + s, 8, C.steel); px1(g, nx - 1, 7, '#e2434f', 1, 3); }
+  });
+};
+HELD['crossbow~L'] = () => wpnCopy(heldWeapon('crossbow'), 0, 0, 2, 0, (g) => { px1(g, 3, 5, '#c8b48a', 10, 1); px1(g, 13, 4, C.steel, 1, 3); px1(g, 14, 5, C.steel); });
+HELD['knives~3'] = () => {
+  const base = heldWeapon('knives'), c = mkCanvas(base.w + 6, base.h + 10), g = c.getContext('2d');
+  for (const a of [-0.45, 0.45, 0]) { g.save(); g.translate(base.ax + 3, base.ay + 5); g.rotate(a); g.drawImage(base.c, -base.ax, -base.ay); g.restore(); }
+  return makeSprite(c, base.ax + 3, base.ay + 5);
+};
+HELD['venomtome~open'] = () => {
+  const c = mkCanvas(14, 11), g = c.getContext('2d');
+  px1(g, 0, 3, '#1a3a18', 14, 6); px1(g, 1, 2, '#e8dcc0', 5, 6); px1(g, 8, 2, '#e8dcc0', 5, 6); px1(g, 6, 2, '#2f5a2a', 2, 7);
+  for (const y of [3, 5, 7]) { px1(g, 2, y, '#8a7a5a', 3, 1); px1(g, 9, y, '#8a7a5a', 3, 1); }
+  px1(g, 3, 0, '#a8ff6a'); px1(g, 10, 1, '#a8ff6a'); px1(g, 6, 0, '#e8ffd0');
+  return makeSprite(c, 1, 5);
+};
+// which picture the hand holds right now
+function wpnState(p) {
+  const id = p.weapon.id, k = clamp(1 - p.atkCd * attackRate(p), 0, 1);
+  if (id === 'bow') return 'bow~' + (wpnReady(p) ? Math.min(3, Math.floor(k * 4)) : 0);
+  if (id === 'crossbow') return k > 0.85 ? 'crossbow~L' : id;
+  if (id === 'knives') return k > 0.7 ? 'knives~3' : id;
+  if (id === 'venomtome') return p.atkPose > 0 ? 'venomtome~open' : id;
+  return id;
+}
+
+/* ---------- drawing it in the hand ---------- */
+const _drawHeldWpn = drawHeld;
+drawHeld = function (g, p, x, y) {
+  if (!p.weapon || p.wpnAng == null || p.beast) return _drawHeldWpn(g, p, x, y);
+  const w = p.weapon, id0 = w.id, a0 = p.aim, F = wpnFeel(WEAPON[id0]), sw = p.swing, swinging = sw && sw.t < sw.dur, k = clamp(1 - p.atkCd * attackRate(p), 0, 1);
+  // a boomerang in the air leaves the hand empty until it comes back
+  if (id0 === 'boomerang' && G.projs.some((q) => q.team === 'p' && q.boomerang)) { drawRigArm(g, p, x, y); return; }
+  try {
+    if (!swinging) p.aim = p.wpnAng;
+    w.id = wpnState(p);
+    // the swing smears behind itself
+    if (swinging && (sw.style === 'slash' || sw.style === 'spin' || sw.style === 'slam') && !CD.settings.lowFx) {
+      const t0 = sw.t;
+      for (const [dt, a] of [[0.05, 0.14], [0.025, 0.26]]) { if (t0 - dt <= 0) continue; sw.t = t0 - dt; g.globalAlpha = a; _drawHeldRig(g, p, x, y); }
+      sw.t = t0; g.globalAlpha = 1;
+    }
+    // twin blades and fists: the other hand carries the second
+    if (F.pair && !swinging) { const a1 = p.aim; p.aim = a1 + (p.face < 0 ? -0.55 : 0.55); g.globalAlpha = 0.92; _drawHeldRig(g, p, x - (p.face < 0 ? -5 : 5), y + 1); g.globalAlpha = 1; p.aim = a1; }
+    _drawHeldWpn(g, p, x, y);
+    if (F.pair && swinging && sw.t > sw.dur * 0.45) { const a1 = p.aim; p.aim = sw.ang + (p.face < 0 ? -0.3 : 0.3); _drawHeldRig(g, p, x - (p.face < 0 ? -5 : 5), y + 1); p.aim = a1; }
+    // a staff gathers light at its tip as it readies the next cast
+    if (F.magic && !CD.settings.lowFx) {
+      const sp = heldWeapon(w.id), ang = swinging ? a0 : p.aim, hp = handPos(p, ang), len = sp.w - sp.ax - 2;
+      const tx = x + hp.x - p.x + Math.cos(ang) * len, ty = y + (p.z || 0) + hp.y - p.y + Math.sin(ang) * len * 0.8 - (p.z || 0), r = 4 + k * 6 + Math.sin(G.t * 9) * 0.8;
+      g.globalCompositeOperation = 'lighter'; g.globalAlpha = 0.2 + k * 0.45;
+      g.drawImage(LightTex.get(F.magic, 0.3), Math.round(tx - r), Math.round(ty - r), Math.round(r * 2), Math.round(r * 2));
+      g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
+      if (k >= 1 && Math.random() < 0.25) G.parts.push({ x: tx + p.x - x + rnd(-2, 2), y: ty + p.y - y + 6, z: 6, vx: rnd(-6, 6), vy: rnd(-3, 3), vz: rnd(6, 16), grav: -10, drag: 1, life: 0.5, max: 0.5, color: F.magic, size: 1, glow: true, floor: false });
+    }
+  } finally { w.id = id0; p.aim = a0; g.globalAlpha = 1; }
+};
+CD.wpnStatus = () => { const p = G.p; return p ? { id: p.weapon.id, ang: p.wpnAng, aim: p.aim, ready: wpnReady(p), carry: wpnFeel(WEAPON[p.weapon.id]).carry, state: wpnState(p) } : null; };
+
+/* ============================================================
+   Cinderdeep — the small life of the world. Butterflies by day
+   and moths by night, birds that peck until you come close and
+   then take off, rabbits and lizards that bolt, frogs, crabs,
+   and rats and beetles below. Feet leave prints in snow, sand
+   and mud, shallow water rings where you wade, and chimneys
+   smoke.
+   ============================================================ */
+const CRIT_LAND = {
+  meadows: ['butterfly', 'bird', 'rabbit'], whisper: ['bird', 'rabbit'], sakura: ['butterfly', 'bird'], autumn: ['bird', 'rabbit'], savanna: ['bird', 'lizard'],
+  pine: ['bird', 'rabbit'], ossplains: ['crow'], murkmire: ['frog', 'frog', 'bird'], sporeveil: ['beetle'], elderwood: ['bird', 'rabbit', 'butterfly'],
+  mangrove: ['frog', 'crab', 'bird'], storm: ['bird'], coral: ['crab', 'crab', 'bird'], frostpeak: ['snowhare'], desert: ['lizard'], ashlands: ['lizard'],
+  canyon: ['lizard', 'bird'], jungle: ['butterfly', 'frog', 'bird'], feywild: ['butterfly', 'butterfly'], crystal: ['beetle'], shadowfen: ['frog'],
+  caldera: ['lizard'], glacier: ['snowhare'], saltflats: ['crab'], voidscar: [],
+  ossuary: ['rat'], grotto: ['beetle'], frost: [], core: ['lizard'],
+};
+const CRIT_FLY = { butterfly: 1, moth: 1 };
+const CRIT = { list: [], spawnT: 0 };
+const PRINT_LAND = { frostpeak: '#8aa4c0', glacier: '#8aa4c0', desert: '#a8865a', saltflats: '#b8b0a0', coral: '#b89a68', murkmire: '#3a3a26', mangrove: '#4a4630', ashlands: '#2a2424', savanna: '#9a7a4a' };
+const PRINTS = [], RIPPLES = [];
+function critLand() { return W.on && !W.inInst && W.Z ? W.Z.b.id : G.fl && G.fl.info && G.fl.info.act ? G.fl.info.act.id : ''; }
+function critSpawn(kind, x, y) {
+  const c = { kind, x, y, vx: 0, vy: 0, z: CRIT_FLY[kind] ? rnd(6, 14) : 0, st: 'idle', t: rnd(3), face: Math.random() < 0.5 ? -1 : 1, col: null, gone: false };
+  if (kind === 'butterfly') c.col = rndPick(['#ffd35c', '#ff8ad8', '#7fc8ff', '#ffffff', '#ff9a3c']);
+  if (kind === 'bird') c.col = rndPick(['#8a6a4a', '#6a6a72', '#a8784a']);
+  CRIT.list.push(c);
+}
+const critGround = (x, y) => G.fl && !hitsWall(G.fl, x, y, 2, false) && tileAt(G.fl, Math.floor(x / TS), Math.floor(y / TS)) !== TILE.WATER;
+hook('update', (dt) => {
+  const p = G.p;
+  if (!p || !G.fl || !dt) return;
+  if (CRIT.fl !== G.fl) { CRIT.fl = G.fl; CRIT.list = []; PRINTS.length = 0; RIPPLES.length = 0; }
+  const VW = R.VW, VH = R.VH, cx = G.cam.x, cy = G.cam.y, realm = W.on && !W.inInst && W.Z, night = realm ? daylight() < 0.3 : false;
+  // who lives here, at this hour
+  let kinds = (CRIT_LAND[critLand()] || []).slice();
+  if (night) kinds = kinds.filter((k) => k !== 'butterfly' && k !== 'bird' && k !== 'crow').concat(kinds.length ? ['moth'] : []);
+  const cap = CD.settings.lowFx ? 3 : realm ? 9 : 4;
+  if (kinds.length && CRIT.list.length < cap && (CRIT.spawnT -= dt) <= 0 && !G.combat) {
+    CRIT.spawnT = rnd(0.6, 1.6);
+    const kind = rndPick(kinds), x = cx + rnd(-VW * 0.48, VW * 0.48), y = cy + rnd(-VH * 0.45, VH * 0.45);
+    // never under your feet, never in a wall; below, only in rooms you can see
+    if (Math.hypot(x - p.x, y - p.y) > 70 && (CRIT_FLY[kind] || critGround(x, y)) && (realm || (G.room && insideInterior(G.room, x, y, 4)))) {
+      critSpawn(kind, x, y);
+      if (kind === 'bird' || kind === 'crow') for (let i = 0; i < 2; i++) if (critGround(x + 10, y + 6)) critSpawn(kind, x + rnd(-12, 12), y + rnd(-8, 8));
+    }
+  }
+  for (let i = CRIT.list.length - 1; i >= 0; i--) {
+    const c = CRIT.list[i], d = Math.hypot(c.x - p.x, c.y - p.y), ax = (c.x - p.x) / (d || 1), ay = (c.y - p.y) / (d || 1);
+    c.t += dt;
+    const fear = c.kind === 'butterfly' || c.kind === 'moth' ? 20 : c.kind === 'frog' || c.kind === 'beetle' ? 34 : 58;
+    if (c.st !== 'flee' && (d < fear || (p.swing && d < 80)) && !p.dead) {
+      c.st = 'flee';
+      if (c.kind === 'bird' || c.kind === 'crow') { c.vx = ax * rnd(70, 110); c.vy = ay * rnd(40, 70) - 20; Sound.play('swing', { p: 2.2, v: 0.12 }); }
+      else if (CRIT_FLY[c.kind]) { c.vx = ax * 30; c.vy = ay * 20; }
+      else { const sp = { rabbit: 110, snowhare: 110, lizard: 120, rat: 100, crab: 50, frog: 60, beetle: 30 }[c.kind] || 60; c.vx = ax * sp; c.vy = ay * sp; }
+      c.face = c.vx < 0 ? -1 : 1;
+    }
+    if (c.st === 'flee') {
+      if (c.kind === 'bird' || c.kind === 'crow') { c.z += dt * 40; c.vx *= 1 + dt * 0.4; }
+      const nx = c.x + c.vx * dt, ny = c.y + c.vy * dt;
+      if (CRIT_FLY[c.kind] || c.kind === 'bird' || c.kind === 'crow' || critGround(nx, ny)) { c.x = nx; c.y = ny; }
+      else { c.vx = -c.vy; c.vy = c.vx * 0.5; }
+      if (c.kind === 'frog' || c.kind === 'rabbit' || c.kind === 'snowhare') c.z = Math.abs(Math.sin(c.t * 9)) * (c.kind === 'frog' ? 4 : 3);
+      if (d > 140 && !CRIT_FLY[c.kind] && c.kind !== 'bird' && c.kind !== 'crow') { c.st = 'idle'; c.vx = c.vy = 0; c.z = 0; }
+    } else if (CRIT_FLY[c.kind]) {
+      // a flutter: wandering on the air, drawn toward light at night
+      if (Math.random() < dt * 1.5) { const a = rnd(TAU); c.vx = Math.cos(a) * 16; c.vy = Math.sin(a) * 10; }
+      if (c.kind === 'moth' && d < 120) { c.vx += -ax * 30 * dt; c.vy += -ay * 30 * dt; }
+      c.x += c.vx * dt; c.y += c.vy * dt; c.z = 9 + Math.sin(c.t * 3) * 4;
+    } else if (Math.random() < dt * 0.5) {
+      // pecking, nibbling, a little hop
+      const a = rnd(TAU), nx = c.x + Math.cos(a) * 4, ny = c.y + Math.sin(a) * 3;
+      if (critGround(nx, ny)) { c.x = nx; c.y = ny; c.face = Math.cos(a) < 0 ? -1 : 1; }
+    }
+    if (Math.abs(c.x - cx) > VW || Math.abs(c.y - cy) > VH) CRIT.list.splice(i, 1);
+  }
+  // prints and ripples where you walk
+  if (p.moving && !p.dead && !p.fly && (p.z || 0) < 1) {
+    CRIT.stepT = (CRIT.stepT || 0) - dt;
+    if (CRIT.stepT <= 0) {
+      CRIT.stepT = p.mounted ? 0.16 : 0.24; CRIT.foot = -(CRIT.foot || 1);
+      const tile = tileAt(G.fl, Math.floor(p.x / TS), Math.floor(p.y / TS)), land = critLand(), side = Math.atan2(p.vy || 0, p.vx || 1) + Math.PI / 2;
+      if (tile === TILE.SHALLOW) { if (RIPPLES.length < 24) RIPPLES.push({ x: p.x, y: p.y + 1, t: 0 }); }
+      else if (PRINT_LAND[land] && realm) {
+        if (PRINTS.length > 160) PRINTS.shift();
+        PRINTS.push({ x: p.x + Math.cos(side) * CRIT.foot * 2, y: p.y + Math.sin(side) * CRIT.foot, t: 0, c: PRINT_LAND[land], hoof: !!p.mounted });
+      }
+    }
+  }
+  for (let i = PRINTS.length - 1; i >= 0; i--) if ((PRINTS[i].t += dt) > 20) PRINTS.splice(i, 1);
+  for (let i = RIPPLES.length - 1; i >= 0; i--) if ((RIPPLES[i].t += dt) > 1.2) RIPPLES.splice(i, 1);
+  // chimneys smoke
+  if (realm && !CD.settings.lowFx && (CRIT.smokeT = (CRIT.smokeT || 0) - dt) <= 0) {
+    CRIT.smokeT = 0.35;
+    const Z = W.Z, c0x = Math.max(0, Math.floor((cx - VW) / TS / ZCH)), c1x = Math.min(ZCN - 1, Math.floor((cx + VW) / TS / ZCH)), c0y = Math.max(0, Math.floor((cy - VH) / TS / ZCH)), c1y = Math.min(ZCN - 1, Math.floor((cy + VH) / TS / ZCH));
+    for (let yy = c0y; yy <= c1y; yy++) for (let xx = c0x; xx <= c1x; xx++) for (const o of Z.objs[yy * ZCN + xx]) {
+      if (o.kind !== 'building' || !o.bld || Math.abs(o.x - cx) > VW * 0.6 || Math.abs(o.y - cy) > VH * 0.7) continue;
+      const H2 = HOUSE[o.bld.style] || {}, roof = H2.roof;
+      if (roof === 'tent' || roof === 'dome' || o.bld.type === 'tentshop' || hashU(o.x | 0, o.y | 0) < 0.35) continue;
+      const sp = objSprite(o, Z.b);
+      if (!sp) continue;
+      const w = windAt(o.x, o.y, o) * 6;
+      G.parts.push({ x: o.x - sp.ax + sp.w * 0.72, y: o.y, z: sp.ay - 3, vx: w + rnd(-2, 2), vy: rnd(-1, 1), vz: rnd(7, 12), grav: -2, drag: 0.4, life: 2.6, max: 2.6, color: rndPick(['#8a8a90', '#a8a8ae', '#6a6a72']), size: 2, glow: false, floor: false });
+    }
+  }
+});
+function drawCrit(g, c, cx, cy) {
+  const x = Math.round(c.x - cx), y = Math.round(c.y - cy - c.z), f = Math.floor(c.t * (c.st === 'flee' ? 14 : 6)) % 2, s = c.face;
+  const P = (dx, dy, col, w = 1, h = 1) => { g.fillStyle = col; g.fillRect(s > 0 ? x + dx : x - dx - w + 1, y + dy, w, h); };
+  if (c.z > 1) { g.fillStyle = 'rgba(0,0,0,0.18)'; g.fillRect(Math.round(c.x - cx) - 1, Math.round(c.y - cy), 3, 1); }
+  switch (c.kind) {
+    case 'butterfly': case 'moth': {
+      const col = c.kind === 'moth' ? '#e8dcc0' : c.col, w = f ? 2 : 1;
+      P(0, 0, '#2a2028', 1, 2); P(-w, -1, col, w, 2); P(1, -1, col, w, 2);
+      break;
+    }
+    case 'bird': case 'crow': {
+      const col = c.kind === 'crow' ? '#2a2430' : c.col;
+      if (c.st === 'flee' && c.z > 2) { P(-1, 0, col, 3, 1); P(-3, f ? -2 : 1, col, 2, 1); P(2, f ? -2 : 1, col, 2, 1); P(2, 0, '#ffb35e'); }
+      else { P(-1, -2, col, 3, 2); P(1, -3, col, 2, 1); P(3, -3, '#ffb35e'); P(0, 0, '#3a2a20', 1, 1); if (f && Math.random() < 0.3) P(2, -2, col); }
+      break;
+    }
+    case 'rabbit': case 'snowhare': {
+      const col = c.kind === 'snowhare' ? '#f0f4fa' : '#9a7a5a';
+      P(-2, -2, col, 3, 2); P(0, -4, col, 2, 2); P(0, -6, col, 1, 2); P(1, -6, shade(col, -0.15), 1, 2); P(-3, -2, '#ffffff'); P(1, -3, '#1a1214');
+      break;
+    }
+    case 'frog': P(-1, -2, '#5a8a3a', 3, 2); P(-1, -3, '#8ac85a'); P(1, -3, '#8ac85a'); P(0, -2, '#1a1214'); break;
+    case 'crab': P(-1, -2, '#d8402a', 3, 2); P(-2, -3, '#ff6a4a'); P(2, -3, '#ff6a4a'); P(-2, 0, '#a8301a'); P(2, 0, '#a8301a'); break;
+    case 'lizard': { const col = critLand() === 'ashlands' || critLand() === 'core' ? '#3a2a2a' : '#8a9a4a'; P(-2, -1, col, 4, 1); P(2, -2, col); P(-4, f ? -1 : 0, col, 2, 1); break; }
+    case 'rat': P(-1, -2, '#6a6070', 3, 2); P(2, -2, '#8a8090'); P(-3, -1, '#c8a0a0', 2, 1); P(2, -3, '#1a1214'); break;
+    case 'beetle': P(-1, -2, '#2a3a5a', 2, 2); P(-1, -2, '#5a7ad8'); P(-2, f ? 0 : -1, '#1a1214'); P(1, f ? -1 : 0, '#1a1214'); break;
+  }
+}
+hook('renderFloor', (g, cx, cy) => {
+  for (const q of PRINTS) {
+    const a = q.t < 14 ? 0.5 : 0.5 * (1 - (q.t - 14) / 6);
+    g.fillStyle = rgbaStr(q.c, a); g.fillRect(Math.round(q.x - cx), Math.round(q.y - cy), q.hoof ? 2 : 2, q.hoof ? 2 : 1);
+  }
+  g.lineWidth = 1;
+  for (const r of RIPPLES) { const k = r.t / 1.2; g.strokeStyle = `rgba(230,246,255,${(0.55 * (1 - k)).toFixed(3)})`; g.beginPath(); g.ellipse(Math.round(r.x - cx), Math.round(r.y - cy), 2 + k * 9, 1 + k * 4, 0, 0, TAU); g.stroke(); }
+  // what walks the ground walks under everything else
+  for (const c of CRIT.list) if (!CRIT_FLY[c.kind] && c.z < 3) drawCrit(g, c, cx, cy);
+});
+hook('renderWorld', (g, cx, cy) => { for (const c of CRIT.list) if (CRIT_FLY[c.kind] || c.z >= 3) drawCrit(g, c, cx, cy); });
+const _lightsCrit = lightSources;
+lightSources = function (vis) {
+  const L = _lightsCrit(vis);
+  for (const c of CRIT.list) if (c.kind === 'moth') L.push({ x: c.x, y: c.y - c.z, r: 6, c: '#fff6d8', a: 0.15 });
+  return L;
+};
+CD.critStatus = () => ({ crit: CRIT.list.map((c) => c.kind + ':' + c.st), prints: PRINTS.length, ripples: RIPPLES.length });
 
 /* ============================================================
    Cinderdeep — main loop, modes and boot
