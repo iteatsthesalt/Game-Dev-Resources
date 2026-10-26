@@ -10,7 +10,7 @@
    ============================================================ */
 const V3 = {
   renderer: null, scene: null, camera: null, ui: null, ug: null, frame: 0,
-  fl: null, level: null, rooms: [], doors: [], lights: [], cards: new Map(),
+  fl: null, level: null, rooms: [], doors: [], lights: [], cards: new Map(), casters: [],
   ground: null, fx: null, ambient: null, ray: null, plane: null, v: null, size: null,
 };
 // The camera looks straight ahead with its lens shifted down, as architects photograph
@@ -173,6 +173,61 @@ function v3Light(L, dark, tint) {
   });
 }
 
+/* ---------- cast shadows: the sun and moon in the Realm, the nearest flame below ground ---------- */
+// a standing card lays a dark copy of its own picture on the floor, from its feet away from the light,
+// longer the lower the light; it shares the card's texture, so it costs no painting. The picture is turned
+// to face the light, as a body would, so a shadow thrown sideways is a figure and not a sliver
+const V3_SHADE_M = new THREE.Matrix4();
+function v3Shade(c, dx, dz, len, a) {
+  if (!c.shade) {
+    c.shade = new THREE.Mesh(V3_QUAD, new THREE.MeshBasicMaterial({ map: c.tex, color: 0x000000, transparent: true, depthWrite: false, side: THREE.DoubleSide, alphaTest: 0.02 }));
+    c.shade.matrixAutoUpdate = false; c.shade.frustumCulled = false; c.shade.renderOrder = -1.5;
+    V3.scene.add(c.shade);
+  }
+  const { w, hgt, below } = c, x = c.mesh.position.x, z = c.mesh.position.z, mid = hgt / 2 - below;
+  // across the shadow, kept pointing east so the figure is never mirrored
+  const k = -dz > 0 || (dz === 0 && dx > 0) ? 1 : -1, rx = -dz * k * w, rz = dx * k * w;
+  V3_SHADE_M.set(rx, hgt * len * dx, 0, x + mid * len * dx, 0, 0, 1, 0.45, rz, hgt * len * dz, 0, z + mid * len * dz, 0, 0, 0, 1);
+  c.shade.matrix.copy(V3_SHADE_M); c.shade.matrixWorldNeedsUpdate = true;
+  c.shade.material.opacity = a; c.shade.visible = true; c.shadeF = V3.frame;
+}
+// the strongest nearby light that is not one the card carries; below ground the hero's light throws the monsters' shadows
+function v3NearLight(c, L, skipHero) {
+  const x = c.mesh.position.x, z = c.mesh.position.z;
+  let best = null, bs = 0;
+  for (let i = skipHero ? 1 : 0; i < Math.min(L.length, 8); i++) {
+    const s = L[i], d = Math.hypot(x - s.x, z - s.y), reach = s.r * 1.6;
+    if (d < 14 || d > reach) continue;
+    const k = (s.a + 0.3) * (1 - d / reach);
+    if (k > bs) { bs = k; best = { dx: (x - s.x) / d, dz: (z - s.y) / d, len: clamp(d / 22, 0.35, 2.2), a: clamp(k * 1.1, 0, 0.55) }; }
+  }
+  return best;
+}
+// a card is in the scene when its picture is, or the solid built from it (whose shape its canvas still holds)
+const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible);
+function v3Shadows(realm, dark) {
+  const on = !CD.settings.lowFx;
+  if (on) {
+    let sun = null;
+    if (realm) {
+      // the sun crosses from the east at dawn to the west at dusk, south of overhead; the moon takes the same road by night
+      const t = realmTime(), ph = (((t - 0.25) % 0.5) + 0.5) % 0.5 / 0.5, up = Math.sin(ph * Math.PI), day = daylight() > 0.5;
+      const el = up * (day ? 1.2 : 0.9), dx = -Math.cos(ph * Math.PI), dz = -0.45, n = Math.hypot(dx, dz);
+      sun = { dx: dx / n, dz: dz / n, len: clamp(1 / Math.tan(Math.max(0.05, el)), 0.45, 2.6), a: (day ? 0.4 : 0.14) * clamp((up - 0.06) * 5, 0, 1) };
+    }
+    for (const c of V3.casters) {
+      if (!v3Shown(c)) continue;
+      let s = sun;
+      // at night, and always below ground, the lamps and torches throw the shadows
+      if (!realm || dark > 0.3) { const near = v3NearLight(c, R.lights || [], realm); if (near && (!s || near.a > s.a)) s = near; }
+      if (s && s.a > 0.02) v3Shade(c, s.dx, s.dz, s.len, s.a);
+    }
+  }
+  let n = 0;
+  for (const c of V3.cards.values()) if (c.shade) { if (c.shadeF !== V3.frame || !v3Shown(c)) c.shade.visible = false; else n++; }
+  V3.shadeCount = n;
+}
+
 // distance fades into the dark below ground, and into a haze in the Realm that darkens with the night
 function v3Fog(color, near, far) {
   const D = R.VH * V3_BACK * Math.hypot(1, V3_TILT);
@@ -195,7 +250,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
     c = { cv, g: cv.getContext('2d'), tex, mesh, w, hgt, below, look: undefined };
     V3.cards.set(id, c);
   }
-  c.used = V3.frame;
+  c.used = V3.frame; c.below = below;
   c.mesh.position.set(x, hgt / 2 - below, y);
   c.mesh.visible = true;
   if (look !== undefined && look === c.look) return c;
@@ -210,14 +265,15 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); if (c.vox) V3.scene.remove(c.vox); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
   if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
-  R.VW = 512; R.VH = 512; R.shadows = [];
-  try { fn(); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
+  R.VW = 512; R.VH = 512; R.shadows = []; V3.casters = [];
+  // later modules stand their own things up here: card(id, x, y, w, hgt, below, paint)
+  try { fn(); runHooks('renderCards', v3Card); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
@@ -226,10 +282,12 @@ function v3PaintCards(fn) {
   }
   return shadows;
 }
-const v3HeroCard = (p) => v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
+// cards that throw a shadow of their shape across the floor (see v3Shadows)
+const v3Caster = (c) => { V3.casters.push(c); return c; };
+const v3HeroCard = (p) => v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
   if (p.mounted && !p.dead) { drawMount(g, p, cx, cy); const z0 = p.z; p.z = (z0 || 0) + 9; drawPlayer(g, p, cx, cy); p.z = z0; } else drawPlayer(g, p, cx, cy);
-});
-const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy)); };
+}));
+const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Caster(v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy))); };
 function v3DeepCards(vis) {
   const fl = G.fl, rid = G.room ? G.room.id : -1;
   return v3PaintCards(() => {
@@ -392,7 +450,8 @@ function v3PropCard(pr) {
   const L = v3PropLook(pr), el = !pr.npc && mycThingElem(pr);
   // a prop grown over a vein of the Mycelium wears its element
   if (L && L.sp && el) L.sp = elemSprite(L.sp, el);
-  if (!L || !L.sp) { v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy)); return; }
+  // a prop with no sprite of its own stays a card, and throws its shadow; a solid's card holds only its flames and sparkles
+  if (!L || !L.sp) { v3Caster(v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy))); return; }
   const c = v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => { const x = pr.x - cx, y = pr.y - cy; if (L.shadow) shadow(g, x, y, L.shadow); v3PropExtras(g, pr, x, y); });
   v3PlaceSolid(c, v3SpriteSolid(L.sp, L.shadeK || 1), pr.x + (L.dx || 0), pr.y, false, L.up || 0);
 }
@@ -420,10 +479,11 @@ function v3RealmCards(x0, y0, x1, y1) {
           const day1 = o.kind === 'building' ? day : '';
           const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
           if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
+          if (o.kind !== 'mark') v3Caster(c);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
-    for (const n of W.npcs) if (inView(n.x, n.y)) v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy));
-    if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy));
+    for (const n of W.npcs) if (inView(n.x, n.y)) v3Caster(v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy)));
+    if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Caster(v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy)));
     v3LootCards();
     v3ProjCards();
     v3GhostCards();
@@ -611,6 +671,9 @@ function v3Ui(realm, tone) {
     g.drawImage(c, Math.round(q.x - w2 / 2), Math.round(q.y - h2 / 2), w2, h2);
   }
   g.globalAlpha = 1;
+  // what later modules keep on the glass: the compass, speech, and the edges of strange places
+  runHooks('renderGlass', g);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   if (G.hurtFlash > 0) { const grd = g.createRadialGradient(VW / 2, VH / 2, VH * 0.2, VW / 2, VH / 2, VH * 0.8); grd.addColorStop(0, 'rgba(180,20,30,0)'); grd.addColorStop(1, `rgba(180,20,30,${(G.hurtFlash * 0.9).toFixed(3)})`); g.fillStyle = grd; g.fillRect(0, 0, VW, VH); }
   if (G.p.hp > 0 && G.p.hp / G.p.maxHp < 0.25) { const a = 0.18 + Math.sin(G.t * 6) * 0.08, grd = g.createRadialGradient(VW / 2, VH / 2, VH * 0.35, VW / 2, VH / 2, VH * 0.85); grd.addColorStop(0, 'rgba(120,0,10,0)'); grd.addColorStop(1, `rgba(120,0,10,${a.toFixed(3)})`); g.fillStyle = grd; g.fillRect(0, 0, VW, VH); }
   if (G.warp > 0) { g.fillStyle = 'rgba(255,220,120,0.08)'; g.fillRect(0, 0, VW, VH); }
@@ -686,12 +749,14 @@ function render() {
     const shadows = v3DeepCards(vis);
     v3Floor(rect, v3DeepGround(vis), shadows);
     v3Light(lightSources(vis), clamp(A.dark[3] * (CD.settings.bright ? 0.75 : 1) * (G.darkMul || 1), 0, 0.96), G.darkTint || '#b8b0c8');
+    v3Shadows(false, 1);
     v3Fog(V3.scene.background, 1.1, 2.6);
   } else {
     const shadows = v3RealmCards(rect.ox - 80, rect.oy - 40, rect.ox + rect.Wd + 80, rect.oy + rect.Hd + 140);
     v3Floor(rect, (g, ox, oy) => realmGround(g, ox, oy, R.VW, R.VH), shadows);
     const S = realmLights(rect.ox, rect.oy, rect.Wd, rect.Hd), [r, gg, b] = S.tint, k = S.dark;
     v3Light(S.L, S.dark, `rgb(${Math.round(255 - (255 - r * 4) * k)},${Math.round(255 - (255 - gg * 4) * k)},${Math.round(255 - (255 - b * 4) * k)})`);
+    v3Shadows(true, S.dark);
     if (S.dusk > 0) tone = `rgba(255,140,60,${(S.dusk * 0.1).toFixed(3)})`;
     const day = 1 - k, haze = (c, n) => Math.round(c * day + n * 4 * k * 0.4);
     v3Fog(`rgb(${haze(170 + S.dusk * 60, r)},${haze(184, gg)},${haze(200 - S.dusk * 50, b)})`, 1.2, 3.4);
@@ -701,4 +766,4 @@ function render() {
   v3Ui(realm, tone);
   v3Present();
 }
-CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible || (c.vox && c.vox.visible)).length, solids: [...V3.cards.values()].filter((c) => c.vox && c.vox.visible).length, models: V3_SOLIDS.size, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };
+CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible || (c.vox && c.vox.visible)).length, solids: [...V3.cards.values()].filter((c) => c.vox && c.vox.visible).length, models: V3_SOLIDS.size, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, shadows: V3.shadeCount || 0, revision: THREE.REVISION }; } };

@@ -92,6 +92,7 @@ function enterRealm(idx) {
   UI.clear();
   G.demo = false;
   W.on = true; W.ch = ch; W.inInst = false; W.inst = null; W.t = store.t || 300; W.playAcc = 0;
+  W.session = (W.session || 0) + 1; W.travelling = false; W.descending = false;
   const run = (G.run = newRunState({ cls: ch.cls, seed: 'realm', sheetId: ch.sheetId }));
   G.fl = { idx: 0, info: floorInfo(0), actIdx: 0 };
   run.realm = true; run.souls = 0; run.soulsBanked = 0; run.nemSeen = [];
@@ -110,10 +111,14 @@ function enterRealm(idx) {
     saveRealm(true);
   });
 }
-// a fade that waits its turn instead of being dropped when another is running
-function realmFade(fn) { if (typeof fading !== 'undefined' && fading) { setTimeout(() => realmFade(fn), 120); return; } fadeTransition(fn); }
+// a fade that waits its turn instead of being dropped when another is running; one queued in a visit that has ended does nothing
+function realmFade(fn, s = W.session) {
+  if (typeof fading !== 'undefined' && fading) { setTimeout(() => realmFade(fn, s), 120); return; }
+  fadeTransition(() => { if (W.on && W.session === s) fn(); });
+}
 function leaveRealm(toTitle = true) {
   saveRealm(true);
+  W.session = (W.session || 0) + 1;
   W.on = false; W.Z = null; W.inInst = false; W.inst = null; W.ch = null; W.cache.clear(); W.horde = null;
   W.blocks && W.blocks.clear();
   G.boss = null; $('bossbar').hidden = true;

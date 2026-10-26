@@ -269,6 +269,8 @@ const SHEET_ORDERS = {
 };
 function guessLayout(w, h0) {
   if (w === 832 && h0 === 1344) return { cols: 13, rows: 21, order: 'uldr', rowOffset: 8, frames: [1, 2, 3, 4, 5, 6, 7, 8] };
+  // a hero saved from the 8-Way Sprite Rig: 18×26 cells, rows facing down, left, right and up
+  if (h0 === 104 && w % 18 === 0 && w >= 72) return { cols: w / 18, rows: 4, order: 'dlru', rowOffset: 0 };
   const r = w / h0;
   if (Math.abs(r - 0.75) < 0.05) return { cols: 3, rows: 4, order: 'dlru', rowOffset: 0 };
   if (Math.abs(r - 1) < 0.05 && w >= 64) return { cols: 4, rows: 4, order: 'dlru', rowOffset: 0 };

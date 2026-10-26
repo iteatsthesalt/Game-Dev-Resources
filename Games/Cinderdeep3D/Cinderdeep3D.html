@@ -4860,7 +4860,7 @@ Object.assign(CD, { clamp, lerp, dist, RNG, hashStr, h, LS });
 /* ---------- hooks: later modules plug behaviour into the core loop ---------- */
 const HOOKS = {
   dmgMul: [], onHit: [], onKill: [], preHurt: [], onHurt: [], onRoomClear: [], onRoomEnter: [], preFloor: [], onFloor: [],
-  update: [], stats: [], spawned: [], projSpawn: [], projHit: [], deathSave: [], potion: [], bossStart: [], saveRun: [], loadRun: [], entOverlay: [], shopStock: [], death: [], renderFloor: [], onDash: [], onAbility: [], onAttack: [], onLevel: [], furnish: [], renderWorld: [], renderTop: [], hud: [], idle: [], runEnd: [], runStart: [],
+  update: [], stats: [], spawned: [], projSpawn: [], projHit: [], deathSave: [], potion: [], bossStart: [], saveRun: [], loadRun: [], entOverlay: [], shopStock: [], death: [], renderFloor: [], onDash: [], onAbility: [], onAttack: [], onLevel: [], furnish: [], renderWorld: [], renderTop: [], renderCards: [], renderGlass: [], hud: [], idle: [], runEnd: [], runStart: [],
 };
 const hook = (name, fn) => { HOOKS[name].push(fn); };
 function runHooks(name, a, b, c, d) { const L = HOOKS[name]; for (let i = 0; i < L.length; i++) { try { L[i](a, b, c, d); } catch (e) { console.error('hook ' + name, e); } } }
@@ -9842,6 +9842,8 @@ function shadowEllipse(g, x, y, rx, ry, a) {
 function shadow(g, x, y, r, z = 0) { shadowEllipse(g, x, y, Math.max(2, r - z * 0.08), Math.max(1, r * 0.42 - z * 0.03), 0.35 - Math.min(0.2, z * 0.006)); }
 function drawSprite(g, sp, x, y, flip, o = {}) {
   if (!sp) return;
+  // a sheet with its own left-facing row is never mirrored
+  if (sp.noFlip) flip = false;
   const sc = o.scale || 1, w = sp.w * sc, hh = sp.h * sc;
   const dx = Math.round(x - sp.ax * sc), dy = Math.round(y - sp.ay * sc);
   g.save();
@@ -10765,6 +10767,8 @@ const SHEET_ORDERS = {
 };
 function guessLayout(w, h0) {
   if (w === 832 && h0 === 1344) return { cols: 13, rows: 21, order: 'uldr', rowOffset: 8, frames: [1, 2, 3, 4, 5, 6, 7, 8] };
+  // a hero saved from the 8-Way Sprite Rig: 18×26 cells, rows facing down, left, right and up
+  if (h0 === 104 && w % 18 === 0 && w >= 72) return { cols: w / 18, rows: 4, order: 'dlru', rowOffset: 0 };
   const r = w / h0;
   if (Math.abs(r - 0.75) < 0.05) return { cols: 3, rows: 4, order: 'dlru', rowOffset: 0 };
   if (Math.abs(r - 1) < 0.05 && w >= 64) return { cols: 4, rows: 4, order: 'dlru', rowOffset: 0 };
@@ -13053,12 +13057,19 @@ hook('update', (dt) => {
     if (s.staticDash && p.sdHit) for (const e of foes()) if (!p.sdHit.has(e) && Math.hypot(e.x - p.x, e.y - p.y) < e.r + 12) { p.sdHit.add(e); applyShock(e, 12 * scaleF()); damageEnemy(e, 10 * scaleF(), { src: 'shock', noCrit: true, color: '#fff27a' }); }
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+// moons and the bat familiar circle the hero at chest height, standing up like everything else
+hook('renderCards', (card) => {
   const p = G.p;
   if (!p || p.dead) return;
   const s = p.stats;
-  if (s.moons) for (let k = 0; k < s.moons; k++) { const a = (p.moonA || 0) + (k * TAU) / s.moons, x = Math.round(p.x + Math.cos(a) * 20 - cx), y = Math.round(p.y - 14 + Math.sin(a) * 10 - cy); g.fillStyle = OUTLINE; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = k ? '#cfe9f7' : '#e8e0cc'; g.fillRect(x - 2, y - 2, 4, 4); g.fillStyle = '#ffffff'; g.fillRect(x - 2, y - 2, 1, 1); }
-  if (s.bat) { const x = p.x + Math.cos(p.batA || 0) * 24 - cx, y = p.y - 14 + Math.sin(p.batA || 0) * 12 - cy, sp = monsterFrames('bat', { tint: '#c43a5a' })[Math.floor(G.t * 8) % 2]; g.drawImage(sp.c, Math.round(x - sp.ax * 0.6), Math.round(y - sp.ay * 0.6), Math.round(sp.w * 0.6), Math.round(sp.h * 0.6)); }
+  if (s.moons) for (let k = 0; k < s.moons; k++) {
+    const a = (p.moonA || 0) + (k * TAU) / s.moons, mx = p.x + Math.cos(a) * 20, my = p.y + Math.sin(a) * 10;
+    card(`moon${k}`, mx, my, 16, 32, 4, (g, cx, cy) => { const x = Math.round(mx - cx), y = Math.round(my - 14 - cy); g.fillStyle = OUTLINE; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = k ? '#cfe9f7' : '#e8e0cc'; g.fillRect(x - 2, y - 2, 4, 4); g.fillStyle = '#ffffff'; g.fillRect(x - 2, y - 2, 1, 1); });
+  }
+  if (s.bat) {
+    const bx = p.x + Math.cos(p.batA || 0) * 24, by = p.y + Math.sin(p.batA || 0) * 12;
+    card('bat', bx, by, 48, 48, 4, (g, cx, cy) => { const x = bx - cx, y = by - 14 - cy, sp = monsterFrames('bat', { tint: '#c43a5a' })[Math.floor(G.t * 8) % 2]; g.drawImage(sp.c, Math.round(x - sp.ax * 0.6), Math.round(y - sp.ay * 0.6), Math.round(sp.w * 0.6), Math.round(sp.h * 0.6)); });
+  }
 });
 hook('entOverlay', (g, e, x, y) => {
   const top = Math.round(y - e.h * (e.scale || 1) - 10);
@@ -13903,20 +13914,20 @@ hook('renderFloor', (g, cx, cy, vis) => {
     g.restore();
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+hook('renderCards', (card) => {
   const r = G.room;
   if (!r || r.type !== 'dmt') return;
   // the well swirls with souls
   const well = r.props.map((i) => G.fl.props[i]).find((q) => q.soulwell);
-  if (well) for (let i = 0; i < 10; i++) { const a = G.t * 2.4 + i * 0.63, rr = 6 + ((G.t * 8 + i * 3) % 18), x = well.x + Math.cos(a) * rr * 0.5 - cx, y = well.y - 18 - ((G.t * 14 + i * 5) % 22) - cy; g.fillStyle = `hsl(${(G.t * 120 + i * 36) % 360},90%,70%)`; g.fillRect(Math.round(x), Math.round(y), 2, 2); }
+  if (well) card('soulwell-swirl', well.x, well.y + 1, 48, 64, 4, (g, cx, cy) => { for (let i = 0; i < 10; i++) { const a = G.t * 2.4 + i * 0.63, rr = 6 + ((G.t * 8 + i * 3) % 18), x = well.x + Math.cos(a) * rr * 0.5 - cx, y = well.y - 18 - ((G.t * 14 + i * 5) % 22) - cy; g.fillStyle = `hsl(${(G.t * 120 + i * 36) % 360},90%,70%)`; g.fillRect(Math.round(x), Math.round(y), 2, 2); } });
   // the machine elves
-  for (const el of r.elves || []) {
+  for (const el of r.elves || []) card(el, el.x, el.y, 40, 48, 8, (g, cx, cy) => {
     const sp = elfSprite(el.i, Math.floor(el.t * 5) % 2), x = el.x - cx, y = el.y - cy - Math.abs(Math.sin(el.t * 5)) * 3;
     shadow(g, x, el.y - cy, 4);
     drawSprite(g, sp, x, y, el.vx < 0);
-  }
+  });
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   const r = G.room;
   if (!r) return;
   const VW = R.VW, VH = R.VH;
@@ -13929,7 +13940,7 @@ hook('renderTop', (g, cx, cy) => {
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 3; i++) { const rr = ((G.t * 40 + i * 70) % 220); g.strokeStyle = `hsla(${(hue + i * 120) % 360},90%,60%,${(0.18 * (1 - rr / 220)).toFixed(3)})`; g.lineWidth = 2; g.beginPath(); g.ellipse(VW / 2, VH / 2, rr * 1.4, rr * 0.8, 0, 0, TAU); g.stroke(); }
     g.globalCompositeOperation = 'source-over';
-    for (const el of r.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); g.drawImage(t, Math.round(el.x - cx - t.width / 2), Math.round(el.y - cy - 26)); g.globalAlpha = 1; }
+    for (const el of r.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); const q = v3Project(el.x, el.y); g.drawImage(t, Math.round(q.x - t.width / 2), Math.round(q.y - 26)); g.globalAlpha = 1; }
   }
 });
 function soulWell(pr) {
@@ -17289,7 +17300,7 @@ function heroTurn(p) {
 }
 
 /* ---------- the skeleton: the Sprite Rig's clips, in rig units (legs 20 tall, arms 14 long) ---------- */
-const RIG_CLIPS = { idle: 4, walk: 8, run: 8, dash: 1, hurt: 1 };
+const RIG_CLIPS = { idle: 4, walk: 8, run: 8, dash: 1, hurt: 1, strike: 3, fall: 4 };
 const RIG_CE = Math.cos((28 * Math.PI) / 180), RIG_SE = Math.sin((28 * Math.PI) / 180);
 const rigBone = (ang, len) => [0, -len * Math.cos(ang), len * Math.sin(ang)];
 const v3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -17309,6 +17320,16 @@ function rigSkel(clip, t) {
     // knocked back on its heels, arms thrown up
     hy = 19.3; lean = -1.8;
     for (const s of ['L', 'R']) { Lg[s] = [0.12, 0.4]; Ar[s] = [-0.45, 1]; }
+  } else if (clip === 'strike') {
+    // wind up, lunge onto the near foot, settle; the weapon arm itself is drawn live
+    const f = Math.round(t * 3);
+    const P = [[20, -1, [0.15, 0.15], [-0.15, 0.05], [-0.3, 0.6]], [19, 2.6, [0.5, 0.55], [-0.4, 0.1], [-0.6, 0.4]], [19.6, 1.2, [0.3, 0.3], [-0.2, 0.05], [-0.2, 0.5]]][f] || [20, 0, [0, 0], [0, 0], [0, 0.3]];
+    hy = P[0]; lean = P[1]; Lg.R = P[2]; Lg.L = P[3]; Ar.L = P[4]; Ar.R = [P[4][0] * -0.5, 0.5];
+  } else if (clip === 'fall') {
+    // the knees go, the body folds over them
+    const k = Math.min(1, t * 1.34);
+    hy = 20 - 7.5 * k; lean = 3.2 * k;
+    for (const s of ['L', 'R']) { Lg[s] = [0.35 + 0.9 * k, 0.4 + 1.9 * k]; Ar[s] = [0.25 + 0.5 * k, 0.3 + 0.4 * k]; }
   } else {
     // breathing
     const ph = t * TAU;
@@ -17326,8 +17347,10 @@ function rigSkel(clip, t) {
 }
 // which clip and frame a hero shows right now
 function rigClipOf(p) {
-  if (p.dead) return ['idle', 0];
+  // the fall plays first; after it the body lies as it always has
+  if (p.dead) { const dt = p.deadT || 0; return dt < 0.5 ? ['fall', Math.min(3, Math.floor(dt / 0.12))] : ['idle', 0]; }
   if (p.dashT > 0 || p.leapT > 0 || p.bashT > 0) return ['dash', 0];
+  if (p.swing && p.swing.dur) { const k = clamp(p.swing.t / p.swing.dur, 0, 1); return ['strike', k < 0.22 ? 0 : k < 0.7 ? 1 : 2]; }
   if (p.hurtT > 0.1) return ['hurt', 0];
   if (p.moving && !p.mounted) { const run = W.on && !W.inInst && (p.realmSpd || 1) > 1.15; return [run ? 'run' : 'walk', Math.floor((p.anim || 0) * (run ? 2.2 : 2.7)) % 8]; }
   return ['idle', ((Math.floor((G.t || 0) * 2.2 + (p.x || 0) * 0.05) % 4) + 4) % 4];
@@ -17611,6 +17634,13 @@ hook('update', () => {
   }
   rigStepF = f;
 });
+// a fallen hero crumples before lying down
+hook('update', (dt) => { const p = G.p; if (p) p.deadT = p.dead ? (p.deadT || 0) + dt : 0; });
+const _drawPlayerRig = drawPlayer;
+drawPlayer = function (g, p, cx, cy) {
+  if (p.dead && (p.deadT || 0) < 0.5 && !p.beast && !p.sheet && CD.settings.turn8 !== false) { drawSprite(g, heroFrame(p), p.x - cx, p.y - cy, p.face < 0, { scale: p.sizeMul || 1 }); return; }
+  return _drawPlayerRig(g, p, cx, cy);
+};
 
 /* ---------- the turntable: your hero in all eight directions ---------- */
 const DIR_NAMES = ['South', 'South-east', 'East', 'North-east', 'North', 'North-west', 'West', 'South-west'];
@@ -19306,6 +19336,7 @@ function enterRealm(idx) {
   UI.clear();
   G.demo = false;
   W.on = true; W.ch = ch; W.inInst = false; W.inst = null; W.t = store.t || 300; W.playAcc = 0;
+  W.session = (W.session || 0) + 1; W.travelling = false; W.descending = false;
   const run = (G.run = newRunState({ cls: ch.cls, seed: 'realm', sheetId: ch.sheetId }));
   G.fl = { idx: 0, info: floorInfo(0), actIdx: 0 };
   run.realm = true; run.souls = 0; run.soulsBanked = 0; run.nemSeen = [];
@@ -19324,10 +19355,14 @@ function enterRealm(idx) {
     saveRealm(true);
   });
 }
-// a fade that waits its turn instead of being dropped when another is running
-function realmFade(fn) { if (typeof fading !== 'undefined' && fading) { setTimeout(() => realmFade(fn), 120); return; } fadeTransition(fn); }
+// a fade that waits its turn instead of being dropped when another is running; one queued in a visit that has ended does nothing
+function realmFade(fn, s = W.session) {
+  if (typeof fading !== 'undefined' && fading) { setTimeout(() => realmFade(fn, s), 120); return; }
+  fadeTransition(() => { if (W.on && W.session === s) fn(); });
+}
 function leaveRealm(toTitle = true) {
   saveRealm(true);
+  W.session = (W.session || 0) + 1;
   W.on = false; W.Z = null; W.inInst = false; W.inst = null; W.ch = null; W.cache.clear(); W.horde = null;
   W.blocks && W.blocks.clear();
   G.boss = null; $('bossbar').hidden = true;
@@ -20924,10 +20959,10 @@ async function mmoEmote(e) {
   W.mySay = { text: EMOTES[e], t: 3 };
   if (MMO.zr) { try { await MMO.zr.emit('emote', { e }); } catch (err) { /* local only */ } }
 }
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!W.on || W.inInst || !W.mySay) return;
-  const p = G.p, sp = heroFrame(p), t = speechText(W.mySay.text);
-  const x = Math.round(p.x - cx), y = Math.round(p.y - cy - sp.h - (p.mounted ? 9 : 0) - 6 - t.height);
+  const p = G.p, sp = heroFrame(p), t = speechText(W.mySay.text), q = v3Project(p.x, p.y);
+  const x = Math.round(q.x), y = Math.round(q.y - sp.h - (p.mounted ? 9 : 0) - 6 - t.height);
   g.fillStyle = 'rgba(244,236,216,0.95)'; g.fillRect(x - t.width / 2 - 3, y - 2, t.width + 6, t.height + 4); g.fillRect(x - 1, y + t.height + 2, 3, 2);
   g.drawImage(t, x - t.width / 2, y);
 });
@@ -21026,11 +21061,13 @@ hook('update', () => {
   const wp = W.ch.wp;
   if (wp.zone === W.Z.id && Math.hypot(wp.x - G.p.x, wp.y - G.p.y) < 3 * TS) { W.ch.wp = null; toast('Waypoint reached', '#7fe8ff'); Sound.play('pickup', { p: 1.3 }); }
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!W.on || W.inInst || !G.fl || !G.fl.realm || !G.p || G.p.dead || CD.settings.compass === false) return;
   const t = W.compassT && W.compassT.at > G.t - 0.25 ? W.compassT.t : (W.compassT = { at: G.t, t: trackedTarget() }).t;
   if (!t) return;
-  const VW = R.VW, VH = R.VH, sx = t.x - cx, sy = t.y - cy, col = t.wp ? '#7fe8ff' : '#ffd35c';
+  // the hero and the target, on the screen; a target behind the camera is taken as far below it
+  const hp = v3Project(G.p.x, G.p.y, 12), tq = v3Project(t.x, t.y);
+  const VW = R.VW, VH = R.VH, sx = tq.behind ? hp.x + (t.x - G.p.x) : tq.x, sy = tq.behind ? hp.y + Math.abs(t.y - G.p.y) + VH : tq.y, col = t.wp ? '#7fe8ff' : '#ffd35c';
   const dist = Math.round(Math.hypot(t.x - G.p.x, t.y - G.p.y) / TS);
   const label = pixelText(`${t.label.toUpperCase().slice(0, 22)} ${dist}M`, col);
   if (sx > 24 && sx < VW - 24 && sy > 40 && sy < VH - 24) {
@@ -21042,7 +21079,7 @@ hook('renderTop', (g, cx, cy) => {
     return;
   }
   // off screen: an arrow on the edge pointing the way
-  const px = G.p.x - cx, py = G.p.y - 12 - cy, a = Math.atan2(sy - py, sx - px), m = 16, top = 34, bottom = 30;
+  const px = hp.x, py = hp.y, a = Math.atan2(sy - py, sx - px), m = 16, top = 34, bottom = 30;
   const k = Math.max(20, Math.min(Math.abs((Math.cos(a) > 0 ? VW - m - px : px - m) / (Math.cos(a) || 1e-6)), Math.abs((Math.sin(a) > 0 ? VH - bottom - py : py - top) / (Math.sin(a) || 1e-6))));
   const ax = px + Math.cos(a) * k, ay = py + Math.sin(a) * k;
   g.save(); g.translate(Math.round(ax), Math.round(ay)); g.rotate(a);
@@ -21738,13 +21775,17 @@ function crigShardStep(f, dt) {
   f.x += f.vx * dt; f.y += f.vy * dt; f.z += f.vz * dt; f.vz -= 320 * dt; f.rot += f.vr * dt;
   if (f.z <= 0) { f.z = 0; f.vz = Math.abs(f.vz) > 30 ? -f.vz * 0.35 : 0; f.vx *= 0.55; f.vy *= 0.55; f.vr *= 0.5; }
 }
-hook('renderWorld', (g, cx, cy) => {
+// pieces of a broken thing tumble through the air as cards lifted to their height
+hook('renderCards', (card) => {
   for (const f of G.fx) {
     if (f.kind !== 'shard') continue;
-    g.save(); g.globalAlpha = clamp((f.life - f.t) / 0.35, 0, 1);
-    g.translate(Math.round(f.x - cx), Math.round(f.y - cy - f.z)); g.rotate(f.rot);
-    g.drawImage(f.c, -Math.round(f.w / 2), -Math.round(f.h / 2));
-    g.restore();
+    const s = Math.ceil(Math.hypot(f.w, f.h)) + 4;
+    card(f, f.x, f.y, s, s, s / 2 - f.z, (g, cx, cy) => {
+      g.save(); g.globalAlpha = clamp((f.life - f.t) / 0.35, 0, 1);
+      g.translate(Math.round(f.x - cx), Math.round(f.y - cy - f.z)); g.rotate(f.rot);
+      g.drawImage(f.c, -Math.round(f.w / 2), -Math.round(f.h / 2));
+      g.restore();
+    });
   }
 });
 const _breakPropRig = breakProp;
@@ -22493,15 +22534,15 @@ hook('renderFloor', (g, cx, cy) => {
     g.fillStyle = `hsl(${hue.toFixed(0)},80%,62%)`; g.fillRect(x - 2, y - 5, 5, 2); g.fillRect(x - 1, y - 6, 3, 1);
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+hook('renderCards', (card) => {
   if (!mycRealm() || !MYC.elves) return;
-  for (const el of MYC.elves) {
+  for (const el of MYC.elves) card(el, el.x, el.y, 40, 48, 8, (g, cx, cy) => {
     const sp = elfSprite(el.i, Math.floor(el.t * 5) % 2), x = el.x - cx, y = el.y - cy - Math.abs(Math.sin(el.t * 5)) * 3;
     shadow(g, x, el.y - cy, 4);
     drawSprite(g, sp, x, y, el.vx < 0);
-  }
+  });
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!mycRealm()) return;
   const VW = R.VW, VH = R.VH;
   if (MYC.inSite) {
@@ -22510,7 +22551,7 @@ hook('renderTop', (g, cx, cy) => {
     grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, `hsla(${hue.toFixed(0)},90%,60%,${(a * 2).toFixed(3)})`);
     g.fillStyle = grd; g.fillRect(0, 0, VW, VH);
   }
-  for (const el of MYC.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); g.drawImage(t, Math.round(el.x - cx - t.width / 2), Math.round(el.y - cy - 24)); g.globalAlpha = 1; }
+  for (const el of MYC.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); const q = v3Project(el.x, el.y); g.drawImage(t, Math.round(q.x - t.width / 2), Math.round(q.y - 24)); g.globalAlpha = 1; }
 });
 
 /* ---------- communing: what you are shown, and what you ask of it ---------- */
@@ -22932,7 +22973,8 @@ hook('renderFloor', (g, cx, cy) => {
   // what walks the ground walks under everything else
   for (const c of CRIT.list) if (!CRIT_FLY[c.kind] && c.z < 3) drawCrit(g, c, cx, cy);
 });
-hook('renderWorld', (g, cx, cy) => { for (const c of CRIT.list) if (CRIT_FLY[c.kind] || c.z >= 3) drawCrit(g, c, cx, cy); });
+// a card's foot is lifted to the critter's height, so a bird climbing away stays the same small card
+hook('renderCards', (card) => { for (const c of CRIT.list) if (CRIT_FLY[c.kind] || c.z >= 3) card(c, c.x, c.y, 24, 24, 6 - c.z, (g, cx, cy) => drawCrit(g, c, cx, cy)); });
 const _lightsCrit = lightSources;
 lightSources = function (vis) {
   const L = _lightsCrit(vis);
@@ -25146,7 +25188,8 @@ drawRealmObj = function(g,o,sp,cx,cy,faded){
   shadow(g,o.x-cx,o.y-cy,o.detail==='mentor'?5:11);drawSprite(g,sp,o.x-cx,o.y-cy,false);
   if(o.detail==='fire'){drawFlame(g,o.x-cx,o.y-cy-9,.65,o.x);}
   const s=W.ch.trail,stage=s?s.stage:0,target=SG_STEPS[stage][2];
-  if(o.detail===target&&Math.hypot(o.x-G.p.x,o.y-G.p.y)<180){const t=pixelText(stage===6?'REWARD':'!','#edd28a');g.drawImage(t,Math.round(o.x-cx-t.width/2),Math.round(o.y-cy-sp.ay-9));}
+  const shown=CD.settings.compass!==false&&W.compassT&&W.compassT.t&&Math.hypot(W.compassT.t.x-o.x,W.compassT.t.y-o.y)<24;
+  if(o.detail===target&&!shown&&Math.hypot(o.x-G.p.x,o.y-G.p.y)<180){const t=pixelText(stage===6?'REWARD':'!','#edd28a');g.drawImage(t,Math.round(o.x-cx-t.width/2),Math.round(o.y-cy-sp.ay-9));}
 };
 function sgDummy(){
   if(SG.dummy&&!SG.dummy.dead)return;const n=SG.nodes.dummy;if(!n)return;
@@ -26002,7 +26045,7 @@ CD.combat={open:()=>UI.steelChaos(),train:duelStartLesson,get status(){const s=G
    ============================================================ */
 const V3 = {
   renderer: null, scene: null, camera: null, ui: null, ug: null, frame: 0,
-  fl: null, level: null, rooms: [], doors: [], lights: [], cards: new Map(),
+  fl: null, level: null, rooms: [], doors: [], lights: [], cards: new Map(), casters: [],
   ground: null, fx: null, ambient: null, ray: null, plane: null, v: null, size: null,
 };
 // The camera looks straight ahead with its lens shifted down, as architects photograph
@@ -26165,6 +26208,61 @@ function v3Light(L, dark, tint) {
   });
 }
 
+/* ---------- cast shadows: the sun and moon in the Realm, the nearest flame below ground ---------- */
+// a standing card lays a dark copy of its own picture on the floor, from its feet away from the light,
+// longer the lower the light; it shares the card's texture, so it costs no painting. The picture is turned
+// to face the light, as a body would, so a shadow thrown sideways is a figure and not a sliver
+const V3_SHADE_M = new THREE.Matrix4();
+function v3Shade(c, dx, dz, len, a) {
+  if (!c.shade) {
+    c.shade = new THREE.Mesh(V3_QUAD, new THREE.MeshBasicMaterial({ map: c.tex, color: 0x000000, transparent: true, depthWrite: false, side: THREE.DoubleSide, alphaTest: 0.02 }));
+    c.shade.matrixAutoUpdate = false; c.shade.frustumCulled = false; c.shade.renderOrder = -1.5;
+    V3.scene.add(c.shade);
+  }
+  const { w, hgt, below } = c, x = c.mesh.position.x, z = c.mesh.position.z, mid = hgt / 2 - below;
+  // across the shadow, kept pointing east so the figure is never mirrored
+  const k = -dz > 0 || (dz === 0 && dx > 0) ? 1 : -1, rx = -dz * k * w, rz = dx * k * w;
+  V3_SHADE_M.set(rx, hgt * len * dx, 0, x + mid * len * dx, 0, 0, 1, 0.45, rz, hgt * len * dz, 0, z + mid * len * dz, 0, 0, 0, 1);
+  c.shade.matrix.copy(V3_SHADE_M); c.shade.matrixWorldNeedsUpdate = true;
+  c.shade.material.opacity = a; c.shade.visible = true; c.shadeF = V3.frame;
+}
+// the strongest nearby light that is not one the card carries; below ground the hero's light throws the monsters' shadows
+function v3NearLight(c, L, skipHero) {
+  const x = c.mesh.position.x, z = c.mesh.position.z;
+  let best = null, bs = 0;
+  for (let i = skipHero ? 1 : 0; i < Math.min(L.length, 8); i++) {
+    const s = L[i], d = Math.hypot(x - s.x, z - s.y), reach = s.r * 1.6;
+    if (d < 14 || d > reach) continue;
+    const k = (s.a + 0.3) * (1 - d / reach);
+    if (k > bs) { bs = k; best = { dx: (x - s.x) / d, dz: (z - s.y) / d, len: clamp(d / 22, 0.35, 2.2), a: clamp(k * 1.1, 0, 0.55) }; }
+  }
+  return best;
+}
+// a card is in the scene when its picture is, or the solid built from it (whose shape its canvas still holds)
+const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible);
+function v3Shadows(realm, dark) {
+  const on = !CD.settings.lowFx;
+  if (on) {
+    let sun = null;
+    if (realm) {
+      // the sun crosses from the east at dawn to the west at dusk, south of overhead; the moon takes the same road by night
+      const t = realmTime(), ph = (((t - 0.25) % 0.5) + 0.5) % 0.5 / 0.5, up = Math.sin(ph * Math.PI), day = daylight() > 0.5;
+      const el = up * (day ? 1.2 : 0.9), dx = -Math.cos(ph * Math.PI), dz = -0.45, n = Math.hypot(dx, dz);
+      sun = { dx: dx / n, dz: dz / n, len: clamp(1 / Math.tan(Math.max(0.05, el)), 0.45, 2.6), a: (day ? 0.4 : 0.14) * clamp((up - 0.06) * 5, 0, 1) };
+    }
+    for (const c of V3.casters) {
+      if (!v3Shown(c)) continue;
+      let s = sun;
+      // at night, and always below ground, the lamps and torches throw the shadows
+      if (!realm || dark > 0.3) { const near = v3NearLight(c, R.lights || [], realm); if (near && (!s || near.a > s.a)) s = near; }
+      if (s && s.a > 0.02) v3Shade(c, s.dx, s.dz, s.len, s.a);
+    }
+  }
+  let n = 0;
+  for (const c of V3.cards.values()) if (c.shade) { if (c.shadeF !== V3.frame || !v3Shown(c)) c.shade.visible = false; else n++; }
+  V3.shadeCount = n;
+}
+
 // distance fades into the dark below ground, and into a haze in the Realm that darkens with the night
 function v3Fog(color, near, far) {
   const D = R.VH * V3_BACK * Math.hypot(1, V3_TILT);
@@ -26187,7 +26285,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
     c = { cv, g: cv.getContext('2d'), tex, mesh, w, hgt, below, look: undefined };
     V3.cards.set(id, c);
   }
-  c.used = V3.frame;
+  c.used = V3.frame; c.below = below;
   c.mesh.position.set(x, hgt / 2 - below, y);
   c.mesh.visible = true;
   if (look !== undefined && look === c.look) return c;
@@ -26202,14 +26300,15 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); if (c.vox) V3.scene.remove(c.vox); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
   if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
-  R.VW = 512; R.VH = 512; R.shadows = [];
-  try { fn(); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
+  R.VW = 512; R.VH = 512; R.shadows = []; V3.casters = [];
+  // later modules stand their own things up here: card(id, x, y, w, hgt, below, paint)
+  try { fn(); runHooks('renderCards', v3Card); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
@@ -26218,10 +26317,12 @@ function v3PaintCards(fn) {
   }
   return shadows;
 }
-const v3HeroCard = (p) => v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
+// cards that throw a shadow of their shape across the floor (see v3Shadows)
+const v3Caster = (c) => { V3.casters.push(c); return c; };
+const v3HeroCard = (p) => v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
   if (p.mounted && !p.dead) { drawMount(g, p, cx, cy); const z0 = p.z; p.z = (z0 || 0) + 9; drawPlayer(g, p, cx, cy); p.z = z0; } else drawPlayer(g, p, cx, cy);
-});
-const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy)); };
+}));
+const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Caster(v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy))); };
 function v3DeepCards(vis) {
   const fl = G.fl, rid = G.room ? G.room.id : -1;
   return v3PaintCards(() => {
@@ -26384,7 +26485,8 @@ function v3PropCard(pr) {
   const L = v3PropLook(pr), el = !pr.npc && mycThingElem(pr);
   // a prop grown over a vein of the Mycelium wears its element
   if (L && L.sp && el) L.sp = elemSprite(L.sp, el);
-  if (!L || !L.sp) { v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy)); return; }
+  // a prop with no sprite of its own stays a card, and throws its shadow; a solid's card holds only its flames and sparkles
+  if (!L || !L.sp) { v3Caster(v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy))); return; }
   const c = v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => { const x = pr.x - cx, y = pr.y - cy; if (L.shadow) shadow(g, x, y, L.shadow); v3PropExtras(g, pr, x, y); });
   v3PlaceSolid(c, v3SpriteSolid(L.sp, L.shadeK || 1), pr.x + (L.dx || 0), pr.y, false, L.up || 0);
 }
@@ -26412,10 +26514,11 @@ function v3RealmCards(x0, y0, x1, y1) {
           const day1 = o.kind === 'building' ? day : '';
           const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
           if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
+          if (o.kind !== 'mark') v3Caster(c);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
-    for (const n of W.npcs) if (inView(n.x, n.y)) v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy));
-    if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy));
+    for (const n of W.npcs) if (inView(n.x, n.y)) v3Caster(v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy)));
+    if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Caster(v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy)));
     v3LootCards();
     v3ProjCards();
     v3GhostCards();
@@ -26603,6 +26706,9 @@ function v3Ui(realm, tone) {
     g.drawImage(c, Math.round(q.x - w2 / 2), Math.round(q.y - h2 / 2), w2, h2);
   }
   g.globalAlpha = 1;
+  // what later modules keep on the glass: the compass, speech, and the edges of strange places
+  runHooks('renderGlass', g);
+  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   if (G.hurtFlash > 0) { const grd = g.createRadialGradient(VW / 2, VH / 2, VH * 0.2, VW / 2, VH / 2, VH * 0.8); grd.addColorStop(0, 'rgba(180,20,30,0)'); grd.addColorStop(1, `rgba(180,20,30,${(G.hurtFlash * 0.9).toFixed(3)})`); g.fillStyle = grd; g.fillRect(0, 0, VW, VH); }
   if (G.p.hp > 0 && G.p.hp / G.p.maxHp < 0.25) { const a = 0.18 + Math.sin(G.t * 6) * 0.08, grd = g.createRadialGradient(VW / 2, VH / 2, VH * 0.35, VW / 2, VH / 2, VH * 0.85); grd.addColorStop(0, 'rgba(120,0,10,0)'); grd.addColorStop(1, `rgba(120,0,10,${a.toFixed(3)})`); g.fillStyle = grd; g.fillRect(0, 0, VW, VH); }
   if (G.warp > 0) { g.fillStyle = 'rgba(255,220,120,0.08)'; g.fillRect(0, 0, VW, VH); }
@@ -26678,12 +26784,14 @@ function render() {
     const shadows = v3DeepCards(vis);
     v3Floor(rect, v3DeepGround(vis), shadows);
     v3Light(lightSources(vis), clamp(A.dark[3] * (CD.settings.bright ? 0.75 : 1) * (G.darkMul || 1), 0, 0.96), G.darkTint || '#b8b0c8');
+    v3Shadows(false, 1);
     v3Fog(V3.scene.background, 1.1, 2.6);
   } else {
     const shadows = v3RealmCards(rect.ox - 80, rect.oy - 40, rect.ox + rect.Wd + 80, rect.oy + rect.Hd + 140);
     v3Floor(rect, (g, ox, oy) => realmGround(g, ox, oy, R.VW, R.VH), shadows);
     const S = realmLights(rect.ox, rect.oy, rect.Wd, rect.Hd), [r, gg, b] = S.tint, k = S.dark;
     v3Light(S.L, S.dark, `rgb(${Math.round(255 - (255 - r * 4) * k)},${Math.round(255 - (255 - gg * 4) * k)},${Math.round(255 - (255 - b * 4) * k)})`);
+    v3Shadows(true, S.dark);
     if (S.dusk > 0) tone = `rgba(255,140,60,${(S.dusk * 0.1).toFixed(3)})`;
     const day = 1 - k, haze = (c, n) => Math.round(c * day + n * 4 * k * 0.4);
     v3Fog(`rgb(${haze(170 + S.dusk * 60, r)},${haze(184, gg)},${haze(200 - S.dusk * 50, b)})`, 1.2, 3.4);
@@ -26693,7 +26801,7 @@ function render() {
   v3Ui(realm, tone);
   v3Present();
 }
-CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible || (c.vox && c.vox.visible)).length, solids: [...V3.cards.values()].filter((c) => c.vox && c.vox.visible).length, models: V3_SOLIDS.size, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };
+CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible || (c.vox && c.vox.visible)).length, solids: [...V3.cards.values()].filter((c) => c.vox && c.vox.visible).length, models: V3_SOLIDS.size, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, shadows: V3.shadeCount || 0, revision: THREE.REVISION }; } };
 /* ============================================================
    Cinderdeep — main loop, modes and boot
    ============================================================ */

@@ -137,6 +137,8 @@ function shadowEllipse(g, x, y, rx, ry, a) {
 function shadow(g, x, y, r, z = 0) { shadowEllipse(g, x, y, Math.max(2, r - z * 0.08), Math.max(1, r * 0.42 - z * 0.03), 0.35 - Math.min(0.2, z * 0.006)); }
 function drawSprite(g, sp, x, y, flip, o = {}) {
   if (!sp) return;
+  // a sheet with its own left-facing row is never mirrored
+  if (sp.noFlip) flip = false;
   const sc = o.scale || 1, w = sp.w * sc, hh = sp.h * sc;
   const dx = Math.round(x - sp.ax * sc), dy = Math.round(y - sp.ay * sc);
   g.save();

@@ -70,11 +70,13 @@ hook('update', () => {
   const wp = W.ch.wp;
   if (wp.zone === W.Z.id && Math.hypot(wp.x - G.p.x, wp.y - G.p.y) < 3 * TS) { W.ch.wp = null; toast('Waypoint reached', '#7fe8ff'); Sound.play('pickup', { p: 1.3 }); }
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!W.on || W.inInst || !G.fl || !G.fl.realm || !G.p || G.p.dead || CD.settings.compass === false) return;
   const t = W.compassT && W.compassT.at > G.t - 0.25 ? W.compassT.t : (W.compassT = { at: G.t, t: trackedTarget() }).t;
   if (!t) return;
-  const VW = R.VW, VH = R.VH, sx = t.x - cx, sy = t.y - cy, col = t.wp ? '#7fe8ff' : '#ffd35c';
+  // the hero and the target, on the screen; a target behind the camera is taken as far below it
+  const hp = v3Project(G.p.x, G.p.y, 12), tq = v3Project(t.x, t.y);
+  const VW = R.VW, VH = R.VH, sx = tq.behind ? hp.x + (t.x - G.p.x) : tq.x, sy = tq.behind ? hp.y + Math.abs(t.y - G.p.y) + VH : tq.y, col = t.wp ? '#7fe8ff' : '#ffd35c';
   const dist = Math.round(Math.hypot(t.x - G.p.x, t.y - G.p.y) / TS);
   const label = pixelText(`${t.label.toUpperCase().slice(0, 22)} ${dist}M`, col);
   if (sx > 24 && sx < VW - 24 && sy > 40 && sy < VH - 24) {
@@ -86,7 +88,7 @@ hook('renderTop', (g, cx, cy) => {
     return;
   }
   // off screen: an arrow on the edge pointing the way
-  const px = G.p.x - cx, py = G.p.y - 12 - cy, a = Math.atan2(sy - py, sx - px), m = 16, top = 34, bottom = 30;
+  const px = hp.x, py = hp.y, a = Math.atan2(sy - py, sx - px), m = 16, top = 34, bottom = 30;
   const k = Math.max(20, Math.min(Math.abs((Math.cos(a) > 0 ? VW - m - px : px - m) / (Math.cos(a) || 1e-6)), Math.abs((Math.sin(a) > 0 ? VH - bottom - py : py - top) / (Math.sin(a) || 1e-6))));
   const ax = px + Math.cos(a) * k, ay = py + Math.sin(a) * k;
   g.save(); g.translate(Math.round(ax), Math.round(ay)); g.rotate(a);

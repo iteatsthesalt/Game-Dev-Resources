@@ -546,12 +546,19 @@ hook('update', (dt) => {
     if (s.staticDash && p.sdHit) for (const e of foes()) if (!p.sdHit.has(e) && Math.hypot(e.x - p.x, e.y - p.y) < e.r + 12) { p.sdHit.add(e); applyShock(e, 12 * scaleF()); damageEnemy(e, 10 * scaleF(), { src: 'shock', noCrit: true, color: '#fff27a' }); }
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+// moons and the bat familiar circle the hero at chest height, standing up like everything else
+hook('renderCards', (card) => {
   const p = G.p;
   if (!p || p.dead) return;
   const s = p.stats;
-  if (s.moons) for (let k = 0; k < s.moons; k++) { const a = (p.moonA || 0) + (k * TAU) / s.moons, x = Math.round(p.x + Math.cos(a) * 20 - cx), y = Math.round(p.y - 14 + Math.sin(a) * 10 - cy); g.fillStyle = OUTLINE; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = k ? '#cfe9f7' : '#e8e0cc'; g.fillRect(x - 2, y - 2, 4, 4); g.fillStyle = '#ffffff'; g.fillRect(x - 2, y - 2, 1, 1); }
-  if (s.bat) { const x = p.x + Math.cos(p.batA || 0) * 24 - cx, y = p.y - 14 + Math.sin(p.batA || 0) * 12 - cy, sp = monsterFrames('bat', { tint: '#c43a5a' })[Math.floor(G.t * 8) % 2]; g.drawImage(sp.c, Math.round(x - sp.ax * 0.6), Math.round(y - sp.ay * 0.6), Math.round(sp.w * 0.6), Math.round(sp.h * 0.6)); }
+  if (s.moons) for (let k = 0; k < s.moons; k++) {
+    const a = (p.moonA || 0) + (k * TAU) / s.moons, mx = p.x + Math.cos(a) * 20, my = p.y + Math.sin(a) * 10;
+    card(`moon${k}`, mx, my, 16, 32, 4, (g, cx, cy) => { const x = Math.round(mx - cx), y = Math.round(my - 14 - cy); g.fillStyle = OUTLINE; g.fillRect(x - 3, y - 3, 6, 6); g.fillStyle = k ? '#cfe9f7' : '#e8e0cc'; g.fillRect(x - 2, y - 2, 4, 4); g.fillStyle = '#ffffff'; g.fillRect(x - 2, y - 2, 1, 1); });
+  }
+  if (s.bat) {
+    const bx = p.x + Math.cos(p.batA || 0) * 24, by = p.y + Math.sin(p.batA || 0) * 12;
+    card('bat', bx, by, 48, 48, 4, (g, cx, cy) => { const x = bx - cx, y = by - 14 - cy, sp = monsterFrames('bat', { tint: '#c43a5a' })[Math.floor(G.t * 8) % 2]; g.drawImage(sp.c, Math.round(x - sp.ax * 0.6), Math.round(y - sp.ay * 0.6), Math.round(sp.w * 0.6), Math.round(sp.h * 0.6)); });
+  }
 });
 hook('entOverlay', (g, e, x, y) => {
   const top = Math.round(y - e.h * (e.scale || 1) - 10);

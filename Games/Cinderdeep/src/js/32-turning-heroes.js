@@ -68,7 +68,7 @@ function heroTurn(p) {
 }
 
 /* ---------- the skeleton: the Sprite Rig's clips, in rig units (legs 20 tall, arms 14 long) ---------- */
-const RIG_CLIPS = { idle: 4, walk: 8, run: 8, dash: 1, hurt: 1 };
+const RIG_CLIPS = { idle: 4, walk: 8, run: 8, dash: 1, hurt: 1, strike: 3, fall: 4 };
 const RIG_CE = Math.cos((28 * Math.PI) / 180), RIG_SE = Math.sin((28 * Math.PI) / 180);
 const rigBone = (ang, len) => [0, -len * Math.cos(ang), len * Math.sin(ang)];
 const v3 = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
@@ -88,6 +88,16 @@ function rigSkel(clip, t) {
     // knocked back on its heels, arms thrown up
     hy = 19.3; lean = -1.8;
     for (const s of ['L', 'R']) { Lg[s] = [0.12, 0.4]; Ar[s] = [-0.45, 1]; }
+  } else if (clip === 'strike') {
+    // wind up, lunge onto the near foot, settle; the weapon arm itself is drawn live
+    const f = Math.round(t * 3);
+    const P = [[20, -1, [0.15, 0.15], [-0.15, 0.05], [-0.3, 0.6]], [19, 2.6, [0.5, 0.55], [-0.4, 0.1], [-0.6, 0.4]], [19.6, 1.2, [0.3, 0.3], [-0.2, 0.05], [-0.2, 0.5]]][f] || [20, 0, [0, 0], [0, 0], [0, 0.3]];
+    hy = P[0]; lean = P[1]; Lg.R = P[2]; Lg.L = P[3]; Ar.L = P[4]; Ar.R = [P[4][0] * -0.5, 0.5];
+  } else if (clip === 'fall') {
+    // the knees go, the body folds over them
+    const k = Math.min(1, t * 1.34);
+    hy = 20 - 7.5 * k; lean = 3.2 * k;
+    for (const s of ['L', 'R']) { Lg[s] = [0.35 + 0.9 * k, 0.4 + 1.9 * k]; Ar[s] = [0.25 + 0.5 * k, 0.3 + 0.4 * k]; }
   } else {
     // breathing
     const ph = t * TAU;
@@ -105,8 +115,10 @@ function rigSkel(clip, t) {
 }
 // which clip and frame a hero shows right now
 function rigClipOf(p) {
-  if (p.dead) return ['idle', 0];
+  // the fall plays first; after it the body lies as it always has
+  if (p.dead) { const dt = p.deadT || 0; return dt < 0.5 ? ['fall', Math.min(3, Math.floor(dt / 0.12))] : ['idle', 0]; }
   if (p.dashT > 0 || p.leapT > 0 || p.bashT > 0) return ['dash', 0];
+  if (p.swing && p.swing.dur) { const k = clamp(p.swing.t / p.swing.dur, 0, 1); return ['strike', k < 0.22 ? 0 : k < 0.7 ? 1 : 2]; }
   if (p.hurtT > 0.1) return ['hurt', 0];
   if (p.moving && !p.mounted) { const run = W.on && !W.inInst && (p.realmSpd || 1) > 1.15; return [run ? 'run' : 'walk', Math.floor((p.anim || 0) * (run ? 2.2 : 2.7)) % 8]; }
   return ['idle', ((Math.floor((G.t || 0) * 2.2 + (p.x || 0) * 0.05) % 4) + 4) % 4];
@@ -390,6 +402,13 @@ hook('update', () => {
   }
   rigStepF = f;
 });
+// a fallen hero crumples before lying down
+hook('update', (dt) => { const p = G.p; if (p) p.deadT = p.dead ? (p.deadT || 0) + dt : 0; });
+const _drawPlayerRig = drawPlayer;
+drawPlayer = function (g, p, cx, cy) {
+  if (p.dead && (p.deadT || 0) < 0.5 && !p.beast && !p.sheet && CD.settings.turn8 !== false) { drawSprite(g, heroFrame(p), p.x - cx, p.y - cy, p.face < 0, { scale: p.sizeMul || 1 }); return; }
+  return _drawPlayerRig(g, p, cx, cy);
+};
 
 /* ---------- the turntable: your hero in all eight directions ---------- */
 const DIR_NAMES = ['South', 'South-east', 'East', 'North-east', 'North', 'North-west', 'West', 'South-west'];

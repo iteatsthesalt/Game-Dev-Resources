@@ -348,15 +348,15 @@ hook('renderFloor', (g, cx, cy) => {
     g.fillStyle = `hsl(${hue.toFixed(0)},80%,62%)`; g.fillRect(x - 2, y - 5, 5, 2); g.fillRect(x - 1, y - 6, 3, 1);
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+hook('renderCards', (card) => {
   if (!mycRealm() || !MYC.elves) return;
-  for (const el of MYC.elves) {
+  for (const el of MYC.elves) card(el, el.x, el.y, 40, 48, 8, (g, cx, cy) => {
     const sp = elfSprite(el.i, Math.floor(el.t * 5) % 2), x = el.x - cx, y = el.y - cy - Math.abs(Math.sin(el.t * 5)) * 3;
     shadow(g, x, el.y - cy, 4);
     drawSprite(g, sp, x, y, el.vx < 0);
-  }
+  });
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!mycRealm()) return;
   const VW = R.VW, VH = R.VH;
   if (MYC.inSite) {
@@ -365,7 +365,7 @@ hook('renderTop', (g, cx, cy) => {
     grd.addColorStop(0, 'rgba(0,0,0,0)'); grd.addColorStop(1, `hsla(${hue.toFixed(0)},90%,60%,${(a * 2).toFixed(3)})`);
     g.fillStyle = grd; g.fillRect(0, 0, VW, VH);
   }
-  for (const el of MYC.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); g.drawImage(t, Math.round(el.x - cx - t.width / 2), Math.round(el.y - cy - 24)); g.globalAlpha = 1; }
+  for (const el of MYC.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); const q = v3Project(el.x, el.y); g.drawImage(t, Math.round(q.x - t.width / 2), Math.round(q.y - 24)); g.globalAlpha = 1; }
 });
 
 /* ---------- communing: what you are shown, and what you ask of it ---------- */
