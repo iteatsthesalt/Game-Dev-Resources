@@ -26,9 +26,24 @@ The same check and tests run on GitHub for every change under `Games/Cinderdeep/
   - `33`–`47`: the Realm: zones, art, creatures, play, people, other players, the rigged world, elementals, the Mycelium and small life.
   - `48`–`54`: progression: one life each, skill trees, the shared talent tree and DNA.
   - `55`–`59`: photo mode, the Living Realm, the Proving Trail, CinderFX and Steel & Chaos.
-  - `60`: the main loop and boot.
+  - `60`: the 3D view (below).
+  - `61`: the main loop and boot.
+- `src/vendor/`: third-party libraries, each inlined as its own script ahead of the game. Today that is three.js, with its license beside it.
 - `tests/`: `scenarios.js` holds the scenarios, `helpers.js` is loaded into the page for them, `run.js` runs them.
-- `tools/build.js`: the build.
+- `tools/build.js`: the build. `tools/bundle-three.sh` rebuilds `src/vendor/three.min.js` (see below).
+
+## The 3D view
+
+Dungeons draw in 3D with [three.js](https://threejs.org), on by default and switchable in Settings; the Realm still draws in 2D. It is a renderer only: the simulation, collision and saves are the 2D ones, so every system keeps working.
+
+- Each room's floor is its 2D room picture laid flat; wall tiles stand up as boxes, low on the near side of a room so they never hide it; shut doors are boxes across the gap.
+- Heroes, monsters, props and loot are painted by their 2D painters into small canvases that stand upright as cards, so held weapons, rigs, tints and elemental looks carry over.
+- What lies on the floor (lava, shadows, corpses, missiles, telegraphs, particles, CinderFX sparks) is painted into two canvases laid over the floor; numbers and health bars stay flat on the screen.
+- The camera looks straight ahead with its lens shifted down, so upright things stay upright anywhere on screen and sprites show at their painted size. `screenToWorld` casts the mouse onto the floor.
+- Lights come from the game's own `lightSources`: the nearest ten are real point lights.
+- CinderFX's grading and bloom work on the 2D picture, so they rest while the 3D view is on.
+
+three.js comes from the [CinderDeep](https://github.com/iteatsthesalt/CinderDeep) catalog, at the commit it pins for `upstream/mrdoob/three.js`. Only the classes listed in `tools/three-entry.js` are bundled. To add one, list it there and run `tools/bundle-three.sh /path/to/three.js` against a checkout of that commit.
 
 ## Extending the game
 

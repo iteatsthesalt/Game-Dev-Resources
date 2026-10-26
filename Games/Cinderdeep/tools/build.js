@@ -11,7 +11,10 @@ const read = (rel) => fs.readFileSync(path.join(src, rel), 'utf8');
 function build() {
   // modules run in file-name order; the number in front of each name is its place
   const mods = fs.readdirSync(path.join(src, 'js')).filter((f) => /^\d{2}-[a-z0-9-]+\.js$/.test(f)).sort();
+  // third-party libraries, each in its own script ahead of the game
+  const vendor = fs.existsSync(path.join(src, 'vendor')) ? fs.readdirSync(path.join(src, 'vendor')).filter((f) => f.endsWith('.js')).sort() : [];
   return read('page/head.html') + '<style>\n' + read('page/style.css') + '</style>\n' + read('page/body.html') +
+    vendor.map((f) => '<script>\n' + read('vendor/' + f).replace(/\n$/, '') + '\n</script>\n').join('') +
     '<script>\n' + mods.map((f) => read('js/' + f)).join('') + '</script>\n' + read('page/tail.html').replace(/\n$/, '');
 }
 

@@ -159,8 +159,9 @@ module.exports = [
     },
   },
   {
-    name: 'graphics: CinderFX renders on WebGL',
+    name: 'graphics: CinderFX renders on WebGL (2D view)',
     run: async () => {
+      CD.settings.view3d = false; // CinderFX grades the 2D picture; the 3D view has its own scenario
       await T.descent('storm');
       for (let i = 0; i < 20; i++) { T.sim(0.05); render(); }
       const st = CD.cinema.status;
@@ -169,6 +170,35 @@ module.exports = [
       T.check('the preview spawns effects', CD.cinema.status.particles > 0, CD.cinema.status);
       CD.settings.cinema = 'off'; render(); T.check('effects can be switched off', document.getElementById('cinderfx').hidden);
       CD.settings.cinema = 'cinematic';
+      return T.done();
+    },
+  },
+  {
+    name: '3d view: dungeon in three.js, aiming, the Realm in 2D, switching off',
+    run: async () => {
+      await T.descent('knight');
+      for (let k = 0; k < 3; k++) spawnEnemy('skeleton', G.p.x + 30 + k * 12, G.p.y - 20, {}).aggro = true;
+      T.sim(0.5); render();
+      const st = CD.view3d.status;
+      T.check('three.js is drawing the dungeon', st.available && st.live, st);
+      T.check('every room has a floor and walls', st.rooms === G.fl.rooms.length, st);
+      T.check('hero, monsters and props stand in the scene', st.cards >= 4, st);
+      T.check('torches and the hero light the scene', st.lights >= 1, st);
+      T.check('the 3D picture is on screen', getComputedStyle(document.getElementById('screen3d')).display === 'block');
+      // the middle of the screen points at the camera's target on the floor
+      const c = screenToWorld(R.cssW / 2, R.cssH / 2);
+      T.check('the mouse aims at the floor under it', Math.hypot(c.x - G.cam.x, c.y - G.cam.y) < 3, c);
+      const e = G.ents.find((q) => !q.dead && q.type === 'enemy');
+      const q = v3Project(e.x, e.y), back = screenToWorld((q.x / R.VW) * R.cssW, (q.y / R.VH) * R.cssH);
+      T.check('a point on screen and on the floor agree', Math.hypot(back.x - e.x, back.y - e.y) < 4, { e: [e.x, e.y], back });
+      for (let f = 0; f < 3; f++) { goFloor(G.fl.idx + 1); await T.wait(60); T.sim(0.5); render(); }
+      T.check('new floors rebuild the scene', CD.view3d.status.live && CD.view3d.status.rooms === G.fl.rooms.length);
+      CD.settings.view3d = false; render();
+      T.check('switching 3D off returns the 2D view', !CD.view3d.status.live && getComputedStyle(document.getElementById('screen3d')).display === 'none');
+      CD.settings.view3d = true; render();
+      T.check('and back on again', CD.view3d.status.live);
+      await T.realm('ranger'); render();
+      T.check('the Realm draws in 2D', W.on && !CD.view3d.status.live);
       return T.done();
     },
   },
