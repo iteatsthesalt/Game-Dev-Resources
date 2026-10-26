@@ -632,14 +632,3 @@ function lightSources(vis) {
   if (R.lavaLights) for (const [x, y] of R.lavaLights) L.push({ x, y, r: 30, c: '#ff7a2a', a: 0.12 });
   return L;
 }
-function drawGlow(g, cx, cy) {
-  if (CD.settings.lowFx || !R.lights) return;
-  g.globalCompositeOperation = 'lighter';
-  for (const l of R.lights) {
-    const tex = LightTex.get(l.c, 0.3), r2 = l.r * 0.8;
-    g.globalAlpha = l.a * 0.55;
-    g.drawImage(tex, Math.round(l.x - cx - r2), Math.round(l.y - cy - r2), r2 * 2, r2 * 2);
-  }
-  g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
-}
-

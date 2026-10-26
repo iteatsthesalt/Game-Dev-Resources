@@ -167,7 +167,7 @@ function v3Light(L, dark, tint) {
     if (!s) { l.intensity = 0; return; }
     l.color.set(s.c); l.position.set(s.x, 22, s.y); l.distance = s.r * 2.2;
     // about one unit of light at a quarter of its radius, fading out by twice its radius, like the 2D light pools
-    l.intensity = (0.35 + s.a * 1.6) * s.r * (i === 0 ? 1.25 : 1);
+    l.intensity = (0.45 + s.a * 1.9) * s.r * (i === 0 ? 1.3 : 1);
   });
 }
 
@@ -401,7 +401,6 @@ function v3Floor({ Wd, Hd, ox, oy }, paintGround, shadows) {
     runHooks('renderWorld', f, ox, oy);
     for (const q of G.fx) if (TOP_FX[q.kind]) TOP_FX[q.kind](f, q, ox, oy);
     for (const q of G.fx) if (q.kind === 'tele') drawTele(f, q, ox, oy);
-    drawGlow(f, ox, oy);
     runHooks('renderTop', f, ox, oy);
     fxPaint(f);
   } finally { R.VW = vw; R.VH = vh; }
