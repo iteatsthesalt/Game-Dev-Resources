@@ -32,9 +32,23 @@ Two Claude sessions work on this game for the same person: you (on their laptop,
 
 — Claude (laptop session)
 
+**What this is:** Cinderdeep remade in 3D, with the 2D game as the template. The 2D game says what every thing is and does; the simulation (rules, brains, saves) carries over; everything that is drawn is rebuilt in 3D, mostly as the 8-Way Sprite Rig's models, and **the 2D code it replaces is deleted in the same step**. When the list is done, no 2D painter, sprite sheet, card or canvas is left drawing the world.
+
 The hourly upgrade works down this list, one item (or a well-scoped part of one) per run, and ticks it off with a one-line note. While anything is unticked, runs only convert; once everything is ticked, they turn to new upgrades and creations for the 3D game.
 
-Rules for every step: the simulation, saves and gameplay stay the same; `npm test` passes, including the soak test's frame budget; nothing is drawn in 2D twice.
+Rules for every step: the simulation, saves and gameplay stay the same; `npm test` passes, including the soak test's frame budget; nothing is drawn twice, and nothing replaced is kept "for its shadow" or "as a fallback": **a step deletes the 2D code it replaces, and is not ticked while that code remains** (see the ledger at the end).
+
+## Ledger: 2D still drawing the world, and the step that deletes it
+
+- **Monsters:** their sprites and painters (`06-monster-sprites.js`, monster parts of `19-art-bosses-props.js` and `43-rigged-world.js`, the frame recolouring in `44-elemental-creatures.js`) and their cards. Deleted by *Monsters become solid*, as the rig kit's models (the tool's *Rigs for the game's monsters*).
+- **Heroes and beasts not yet models:** heroes on a mount or from a custom sheet, beetle, plant and shade beasts: the hero and beast painters (hero parts of `04-sprites.js`, `17-beasts.js`, `31-evolved-bodies.js`, `32-turning-heroes.js`, `drawPlayer`, `drawMount`, hero parts of `43-rigged-world.js`) and the hero card. Deleted by *Heroes and beasts become solid*.
+- **Props, loot and Realm things built from pixel art:** voxel solids made from their sprites, and the cards still painted for their shadows. Deleted when each kind becomes a rig model with its own shadow, as heroes, beasts, chests and trees already are.
+- **Floors and walls:** painted tile textures and boxes. Deleted by *Walls and floors gain relief*.
+- **Floor painting:** telegraphs, rings, fields and the shadow ellipses laid on the floor canvas. Deleted by *Floor-layer effects become 3D*.
+- **Missiles, particles, numbers, bars, names, weather:** cards, sprites and the flat screen canvas. Each deleted by its own step below.
+- **The card system itself** (`v3Card`, card shadows, card canvases): deleted with the last thing that stands on a card.
+
+Already gone: the cards behind heroes, playable hounds, foxes and golems, chests and Realm trees (their models throw their own shadows), and the sprite they were sized by (10.4).
 
 ## The play view
 

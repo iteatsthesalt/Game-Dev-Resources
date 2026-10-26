@@ -156,7 +156,8 @@ window.RigShapes = (() => {
       m.position.copy(at3(part.p)); orient(m, part.f);
     }
   }
-  function placer(group) {
+  // o.material: one material for every part (a shadow, say) in place of each part's own colours
+  function placer(group, o = {}) {
     const pool = { solid: [], quad: [] };
     const take = (kind, i, make) => {
       const list = pool[kind];
@@ -168,20 +169,19 @@ window.RigShapes = (() => {
     const place = (parts) => {
       let ns = 0, nq = 0;
       for (const part of parts) {
-        const o = { glow: part.glow, ghost: part.ghost };
         if (part.kind === "quad") {
-          const m = take("quad", nq++, () => new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat("#ffffff", { quad: true })));
+          const m = take("quad", nq++, () => new THREE.Mesh(new THREE.PlaneGeometry(1, 1), o.material || mat("#ffffff", { quad: true })));
           const pos = m.geometry.attributes.position, [a, b, c, d = c] = part.pts;
           // PlaneGeometry's corners run top-left, top-right, bottom-left, bottom-right
           for (const [i, q] of [[0, a], [1, b], [3, c], [2, d]]) pos.setXYZ(i, q[0], q[1], -q[2]);
           pos.needsUpdate = true;
           m.geometry.computeVertexNormals(); m.geometry.computeBoundingSphere();
-          m.material = mat(part.c, { ...o, quad: true });
+          m.material = o.material || mat(part.c, { glow: part.glow, ghost: part.ghost, quad: true });
           m.castShadow = !part.ghost;
           continue;
         }
-        const m = take("solid", ns++, () => new THREE.Mesh(limbGeo(1, 1, 0, 1), mat("#ffffff", {})));
-        m.material = mat(part.c, o);
+        const m = take("solid", ns++, () => new THREE.Mesh(limbGeo(1, 1, 0, 1), o.material || mat("#ffffff", {})));
+        m.material = o.material || mat(part.c, { glow: part.glow, ghost: part.ghost });
         m.castShadow = !part.ghost && !part.glow; m.receiveShadow = !part.ghost;
         fit(m, part, false);
       }

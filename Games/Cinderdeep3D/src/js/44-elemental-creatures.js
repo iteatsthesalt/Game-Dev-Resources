@@ -130,7 +130,6 @@ const FUSE = {};
 for (const [id, , a, b] of FUSED) FUSE[a + '+' + b] = FUSE[b + '+' + a] = id;
 // the element two primals make together, if they fuse
 const elemFuse = (a, b) => (a === b ? a : FUSE[a + '+' + b] || null);
-const elemHas = (el, primal) => !!(ELEM[el] && ELEM[el].of.includes(primal));
 // the share each primal has in an element: all of a primal, most of each of a fused pair
 const elemShare = (el) => (ELEM[el].of.length > 1 ? 0.7 : 1);
 // lands and depths that breed their own primal

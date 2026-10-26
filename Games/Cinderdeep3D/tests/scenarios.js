@@ -198,23 +198,23 @@ module.exports = [
       T.check('dungeon props stand as solid models', solidProps.length > 0 && st.solids >= solidProps.length, { solid: solidProps.length, st });
       // the hero stands as the sprite rig's 3D model: dressed for its class, turned to its aim, its card unseen but still casting
       render();
-      const hero = CD.rigModels.groups.get(G.p), hc = V3.cards.get(G.p);
-      T.check('the hero is the rig\'s 3D model', hero && hero.group.visible && hero.group.children.filter((m) => m.visible).length > 40 && !hc.mesh.visible && v3Shown(hc), hero && hero.group.children.length);
+      const hero = CD.rigModels.groups.get(G.p), heroCard = () => V3.cards.get(G.p);
+      T.check('the hero is the rig\'s 3D model, with no card behind it', hero && hero.group.visible && hero.group.children.filter((m) => m.visible).length > 40 && !(heroCard() && heroCard().mesh.visible), hero && hero.group.children.length);
       const look = CD.rigModels.look(G.p);
       T.check('dressed as a knight, sword in hand', look.head === 'helmet' && look.back === 'cape' && look.right === 'sword', look);
       G.p.aim = 0; render(); const yaw0 = hero.group.rotation.y;
       G.p.aim = Math.PI / 2; render();
       T.check('and turned to where it aims', Math.abs(hero.group.rotation.y - yaw0) > 1, [yaw0, hero.group.rotation.y]);
       CD.settings.rigModels = false; render();
-      T.check('with the models off, the hero is its card again', hc.mesh.visible && !hero.group.visible);
+      T.check('with the models off, the hero is its card again', heroCard() && heroCard().mesh.visible && !hero.group.visible);
       CD.settings.rigModels = true; render();
       // chests stand as the rig's chest, lid and all, and a mimic gives itself away no more than its sprite does
       const box = { id: 990, kind: 'chest', x: G.p.x + 30, y: G.p.y - 20, room: G.room.id, chest: 'gold', solid: true, r: 7, _el: null };
       G.fl.props.push(box); G.room.props.push(G.fl.props.length - 1); render();
-      const bc = V3.cards.get(box), shut = bc && bc.model && bc.model.children.filter((m) => m.visible).length;
-      T.check('a chest is the rig\'s chest model', bc && bc.model && bc.model.visible && !(bc.vox && bc.vox.visible) && shut > 20, shut);
+      const bm = CD.rigModels.groups.get(box), shut = bm && bm.group.children.filter((m) => m.visible).length;
+      T.check('a chest is the rig\'s chest model, with no card', bm && bm.group.visible && !V3.cards.get(box) && shut > 20, shut);
       box.mimic = true; render();
-      T.check('a mimic looks like a chest', bc.model.children.filter((m) => m.visible).length === shut);
+      T.check('a mimic looks like a chest', bm.group.children.filter((m) => m.visible).length === shut);
       G.room.props.pop(); G.fl.props.pop(); render();
       // loot floats over the floor as small solids that turn, never reaching in front of where it lies
       const t0 = G.t, loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
@@ -251,10 +251,10 @@ module.exports = [
       T.check('the dungeon is put away in the Realm', !V3.level.visible);
       T.check('distance fades into a haze', V3.scene.fog && V3.scene.fog.far > V3.scene.fog.near && V3.scene.fog.near > 0);
       W.t = Math.floor(W.t / DAY_LEN) * DAY_LEN + DAY_LEN * 0.3; render();
-      const sun = V3.cards.get(G.p).shade;
-      T.check('the morning sun throws long shadows to the west', sun && sun.visible && sun.matrixWorld.elements[4] < -40, sun && sun.matrixWorld.elements);
+      const sun = CD.rigModels.groups.get(G.p).shade;
+      T.check('the morning sun throws long shadows to the west', sun && sun.visible && sun.lean < -0.4, sun && sun.lean);
       W.t += DAY_LEN * 0.4; render();
-      T.check('and the evening sun to the east', sun.visible && sun.matrixWorld.elements[4] > 40, sun.matrixWorld.elements);
+      T.check('and the evening sun to the east', sun.visible && sun.lean > 0.4, sun.lean);
       // a waypoint far east: its arrow is drawn on the glass at the right edge of the screen
       W.ch.wp = { zone: W.Z.id, x: G.p.x + 2000, y: G.p.y }; W.compassT = null; render();
       const edge = V3.ug.getImageData(R.VW - 40, 0, 40, R.VH).data;
@@ -276,9 +276,10 @@ module.exports = [
       for (const L of W.Z.objs) for (const o of L) if (o.kind === 'tree' && RIGM_TREE[o.tree] && (!tree || Math.hypot(o.x - G.p.x, o.y - G.p.y) < Math.hypot(tree.x - G.p.x, tree.y - G.p.y))) tree = o;
       if (tree) {
         const home = [G.p.x, G.p.y]; G.p.x = tree.x + 30; G.p.y = tree.y + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; T.sim(0.2); render();
-        const tc = V3.cards.get(tree), hero = CD.rigModels.groups.get(G.p);
-        const tall = tc && tc.tree && tc.tree.visible && (tc.tree.geometry.boundingSphere.radius * tc.tree.scale.x) > 3 * hero.group.scale.x * 21;
-        T.check('a Realm tree is the rig\'s tree, towering over the hero', tall && !tc.mesh.visible, tree.tree);
+        const tm = CD.rigModels.trees.get(tree), hero = CD.rigModels.groups.get(G.p);
+        const tall = tm && tm.mesh.visible && (tm.mesh.geometry.boundingSphere.radius * tm.mesh.scale.x) > 3 * hero.group.scale.x * 21;
+        T.check('a Realm tree is the rig\'s tree, towering over the hero, with no card', tall && !V3.cards.get(tree), tree.tree);
+        T.check('and throws its own shadow', tm.shade.visible);
         [G.p.x, G.p.y] = home; G.cam.x = G.p.x; G.cam.y = G.p.y; T.sim(0.2); render();
       } else T.check('the Realm has trees to stand up', false);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
@@ -289,7 +290,7 @@ module.exports = [
       // a playable hound is the rig's beast, as tall as its sprite
       await T.descent('emberpup'); render();
       const pup = CD.rigModels.groups.get(G.p);
-      T.check('a playable hound is the rig\'s beast', pup && pup.group.visible && pup.group.children.filter((m) => m.visible).length > 40 && !V3.cards.get(G.p).mesh.visible, pup && pup.group.children.length);
+      T.check('a playable hound is the rig\'s beast', pup && pup.group.visible && pup.group.children.filter((m) => m.visible).length > 40 && !V3.cards.get(G.p), pup && pup.group.children.length);
       return T.done();
     },
   },

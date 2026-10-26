@@ -191,9 +191,8 @@ function v3Shade(c, dx, dz, len, a) {
   c.shade.matrix.copy(V3_SHADE_M); c.shade.matrixWorldNeedsUpdate = true;
   c.shade.material.opacity = a; c.shade.visible = true; c.shadeF = V3.frame;
 }
-// the strongest nearby light that is not one the card carries; below ground the hero's light throws the monsters' shadows
-function v3NearLight(c, L, skipHero) {
-  const x = c.mesh.position.x, z = c.mesh.position.z;
+// the strongest nearby light to a thing at (x, z) that is not one it carries; below ground the hero's light throws the monsters' shadows
+function v3NearLight(x, z, L, skipHero) {
   let best = null, bs = 0;
   for (let i = skipHero ? 1 : 0; i < Math.min(L.length, 8); i++) {
     const s = L[i], d = Math.hypot(x - s.x, z - s.y), reach = s.r * 1.6;
@@ -203,8 +202,8 @@ function v3NearLight(c, L, skipHero) {
   }
   return best;
 }
-// a card is in the scene when its picture is, or the solid or model built in its place (whose shape its canvas still holds)
-const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible) || !!(c.model && c.model.visible);
+// a card is in the scene when its picture is, or the solid built from it (whose shape its canvas still holds)
+const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible);
 function v3Shadows(realm, dark) {
   const on = !CD.settings.lowFx;
   if (on) {
@@ -215,16 +214,16 @@ function v3Shadows(realm, dark) {
       const el = up * (day ? 1.2 : 0.9), dx = -Math.cos(ph * Math.PI), dz = -0.45, n = Math.hypot(dx, dz);
       sun = { dx: dx / n, dz: dz / n, len: clamp(1 / Math.tan(Math.max(0.05, el)), 0.45, 2.6), a: (day ? 0.4 : 0.14) * clamp((up - 0.06) * 5, 0, 1) };
     }
-    for (const c of V3.casters) {
-      if (!v3Shown(c)) continue;
-      let s = sun;
-      // at night, and always below ground, the lamps and torches throw the shadows
-      if (!realm || dark > 0.3) { const near = v3NearLight(c, R.lights || [], realm); if (near && (!s || near.a > s.a)) s = near; }
-      if (s && s.a > 0.02) v3Shade(c, s.dx, s.dz, s.len, s.a);
-    }
+    // at night, and always below ground, the lamps and torches throw the shadows
+    const light = (x, z) => { let s = sun; if (!realm || dark > 0.3) { const near = v3NearLight(x, z, R.lights || [], realm); if (near && (!s || near.a > s.a)) s = near; } return s && s.a > 0.02 ? s : null; };
+    for (const c of V3.casters) { if (!v3Shown(c)) continue; const s = light(c.mesh.position.x, c.mesh.position.z); if (s) v3Shade(c, s.dx, s.dz, s.len, s.a); }
+    // the rig's models throw their own (59-rig-models.js)
+    for (const m of V3.modelCasters) { const s = light(m.x, m.z); if (s) m.cast(s); }
   }
   let n = 0;
   for (const c of V3.cards.values()) if (c.shade) { if (c.shadeF !== V3.frame || !v3Shown(c)) c.shade.visible = false; else n++; }
+  for (const g of CD.rigModels.groups.values()) if (g.shade.visible) n++;
+  for (const e of CD.rigModels.trees.values()) if (e.shade.visible) n++;
   V3.shadeCount = n;
 }
 
@@ -265,7 +264,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.tree) V3.scene.remove(c.tree); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
@@ -273,13 +272,13 @@ function v3PaintCards(fn) {
   // the rig's models give off a little of their own colour, as cards do, a little more for their deeper shading
   if (rigmOn()) { RigShapes.flush(); RigShapes.ownLight(Math.min(0.6, V3_OWN_GLOW.value + 0.2)); }
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
-  R.VW = 512; R.VH = 512; R.shadows = []; V3.casters = [];
+  R.VW = 512; R.VH = 512; R.shadows = []; V3.casters = []; V3.modelCasters = [];
   // later modules stand their own things up here: card(id, x, y, w, hgt, below, paint)
   try { fn(); runHooks('renderCards', v3Card); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
-    c.mesh.visible = false; if (c.vox) c.vox.visible = false; if (c.tree) c.tree.visible = false;
+    c.mesh.visible = false; if (c.vox) c.vox.visible = false;
     if (V3.frame - c.used > 240) v3DropCard(id, c);
   }
   rigmTidy();
@@ -287,10 +286,10 @@ function v3PaintCards(fn) {
 }
 // cards that throw a shadow of their shape across the floor (see v3Shadows)
 const v3Caster = (c) => { V3.casters.push(c); return c; };
-// the hero stands as the rig's 3D model where it has one (59-rig-models.js); its card is painted all the same, for its shadow
-const v3HeroCard = (p) => { const c = v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
+// the hero stands as the rig's 3D model (59-rig-models.js); a hero it has no model for yet is still a card
+const v3HeroCard = (p) => rigmHero(p) || v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
   if (p.mounted && !p.dead) { drawMount(g, p, cx, cy); const z0 = p.z; p.z = (z0 || 0) + 9; drawPlayer(g, p, cx, cy); p.z = z0; } else drawPlayer(g, p, cx, cy);
-})); rigmHero(c, p); return c; };
+}));
 const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Caster(v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy))); };
 function v3DeepCards(vis) {
   const fl = G.fl, rid = G.room ? G.room.id : -1;
@@ -452,14 +451,13 @@ function v3PropExtras(g, pr, x, y) {
 }
 function v3PropCard(pr) {
   const L = v3PropLook(pr), el = !pr.npc && mycThingElem(pr);
+  // a chest is the rig's chest model (59-rig-models.js), with no card
+  if (pr.kind === 'chest' && rigmChest(pr, (L && L.dx) || 0)) return;
   // a prop grown over a vein of the Mycelium wears its element
   if (L && L.sp && el) L.sp = elemSprite(L.sp, el);
   // a prop with no sprite of its own stays a card, and throws its shadow; a solid's card holds only its flames and sparkles
   if (!L || !L.sp) { v3Caster(v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => drawProp(g, pr, cx, cy))); return; }
   const c = v3Card(pr, pr.x, pr.y, 64, 72, 12, (g, cx, cy) => { const x = pr.x - cx, y = pr.y - cy; if (L.shadow) shadow(g, x, y, L.shadow); v3PropExtras(g, pr, x, y); });
-  // a chest stands as the rig's chest model (59-rig-models.js); anything else as the solid of its sprite
-  if (pr.kind === 'chest' && rigmChest(c, pr, L.dx || 0)) { if (c.vox) c.vox.visible = false; return; }
-  c.model = null;
   v3PlaceSolid(c, v3SpriteSolid(L.sp, L.shadeK || 1), pr.x + (L.dx || 0), pr.y, false, L.up || 0);
 }
 
@@ -481,12 +479,13 @@ function v3RealmCards(x0, y0, x1, y1) {
           const sp = objSprite(o, b);
           if (!sp) continue;
           const faded = (o.kind === 'tree' || o.kind === 'building' || o.kind === 'tower' || o.kind === 'mark') && near(o, sp);
+          // trees the rig has a model for stand as it (59-rig-models.js), with no card
+          if (rigmTree(o, sp, faded)) continue;
           const still = V3_STILL.has(o.kind) || (o.kind === 'lw' && !o.actor && !o.id);
           const w = 2 * Math.max(sp.ax, sp.w - sp.ax) + 8, below = Math.max(8, sp.h - sp.ay + 6);
           const day1 = o.kind === 'building' ? day : '';
           const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
-          // trees the rig has a model for stand as it (59-rig-models.js); other still things as their sprite's solid
-          if (!rigmTree(c, o, sp, faded) && still) { if (c.tree) c.tree.visible = false; c.model = null; v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded); }
+          if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
           if (o.kind !== 'mark') v3Caster(c);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
