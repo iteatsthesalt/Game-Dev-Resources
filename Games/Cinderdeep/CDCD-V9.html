@@ -6657,6 +6657,15 @@ UI.records = function () {
 };
 
 /* ---------- settings ---------- */
+// Modules add their own settings here instead of rewrapping UI.settings.
+// make(back) returns a node or null; 'top' entries sit under the heading,
+// the rest above the Done row, each group in order. Registering an id again replaces it.
+const SETTINGS_ROWS = [];
+function settingsRow(id, order, make, top = false) {
+  const i = SETTINGS_ROWS.findIndex((r) => r.id === id), r = { id, order, make, top };
+  if (i >= 0) SETTINGS_ROWS[i] = r; else SETTINGS_ROWS.push(r);
+}
+const settingsRows = (top, back) => SETTINGS_ROWS.filter((r) => r.top === top).sort((a, b) => a.order - b.order).map((r) => r.make(back)).filter(Boolean);
 UI.settings = function (back) {
   const S = CD.settings;
   const save = () => { CD.save.settings = { ...S }; persist(); Sound.vol.sfx = S.sfx; Sound.vol.music = S.music; Sound.setVolumes(); };
@@ -6671,6 +6680,7 @@ UI.settings = function (back) {
   }, 'small');
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
     h('h2', {}, 'Settings'),
+    ...settingsRows(true, back),
     range('set-music', 'Music', 'music'), range('set-sfx', 'Sound effects', 'sfx'),
     h('label', { class: 'set-row' }, 'Screen shake', shakeSel),
     h('label', { class: 'set-row' }, 'Camera', zoom),
@@ -6679,6 +6689,7 @@ UI.settings = function (back) {
     check('set-turn8', 'Rigged heroes: eight directions, full walk cycles', 'turn8'),
     check('set-rigworld', 'Rigged world: creatures turn and walk, trees and things move', 'rigWorld'),
     check('set-autofire', 'Gamepad: right stick also attacks', 'padAutoFire'),
+    ...settingsRows(false, back),
     h('div', { class: 'row' }, btn('Done', () => back ? back() : UI.close(), 'primary', { 'data-autofocus': true }), reset)));
   UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: () => (back ? back() : UI.close()) });
 };
@@ -6709,22 +6720,6 @@ UI.help = function (back) {
 };
 
 /* ---------- pause, map, build ---------- */
-UI.pause = function () {
-  if (G.mode !== 'play' || UI.top()) return;
-  Sound.play('ui', { p: 0.7 });
-  const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
-    h('h2', {}, 'Paused'),
-    h('p', {}, `${CLASS[G.p.cls].name} · level ${G.p.level} · ${floorLabel(G.fl.idx)} · ${fmtTime(G.run.t)} · seed ${G.run.seedText}`),
-    h('div', { class: 'menu', style: { width: '100%' } },
-      btn('Resume', () => UI.close(el), 'primary', { 'data-autofocus': true }),
-      btn('Map', () => { UI.close(el); UI.map(); }),
-      btn('Your build', () => { UI.close(el); UI.build(); }),
-      btn('Settings', () => UI.settings()),
-      btn('How to play', () => UI.help()),
-      btn('Save and quit', () => { saveCheckpoint(); UI.clear(); setMode('title'); UI.title(); toast('Saved at the start of this floor'); }),
-      btn('Abandon this run', () => UI.confirm('Abandon the run?', 'You keep the embers you have gathered so far.', 'Abandon', () => { UI.clear(); endRun(false); })))));
-  UI.open(el, { modal: true, replace: false });
-};
 UI.map = function () {
   if (UI.top()) return;
   const cv = h('canvas', { width: 360, height: 300 });
@@ -11894,25 +11889,37 @@ UI.records = function () {
 };
 
 /* ---------- pause and build ---------- */
+// Modules add their own pause entries here instead of rewrapping UI.pause.
+// make(el, p, run) returns a button, or null to leave the entry out this time;
+// entries are shown in order. Registering an id again replaces that entry.
+const PAUSE_ITEMS = [];
+function pauseItem(id, order, make) {
+  const i = PAUSE_ITEMS.findIndex((it) => it.id === id), it = { id, order, make };
+  if (i >= 0) PAUSE_ITEMS[i] = it; else PAUSE_ITEMS.push(it);
+}
+// the first line under "Paused"; the Realm says where you are instead
+let pauseWhere = (p, run) => `${playerName(p)} · level ${p.level} · ${floorLabel(G.fl.idx)} · ${fmtTime(run.t)} · seed ${run.seedText}${run.chaos ? ' · Chaos Mode' : ''}`;
 UI.pause = function () {
-  if (G.mode !== 'play' || UI.top()) return;
+  if (G.mode !== 'play' || UI.top() || (G.p && G.p.dead)) return; // the fall has to be faced
   Sound.play('ui', { p: 0.7 });
   const p = G.p, run = G.run, L = classLevelInfo(run.cls);
+  const menu = h('div', { class: 'menu', style: { width: '100%' } });
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
     h('h2', {}, 'Paused'),
-    h('p', {}, `${playerName(p)} · level ${p.level} · ${floorLabel(G.fl.idx)} · ${fmtTime(run.t)} · seed ${run.seedText}${run.chaos ? ' · Chaos Mode' : ''}`),
+    h('p', {}, pauseWhere(p, run)),
     h('p', {}, `Carrying ${run.souls || 0} souls · Talent Level ${L.lvl}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend` : ''}`),
-    h('div', { class: 'menu', style: { width: '100%' } },
-      btn('Resume', () => UI.close(el), 'primary', { 'data-autofocus': true }),
-      btn('Map', () => { UI.close(el); UI.map(); }),
-      btn('Your build', () => { UI.close(el); UI.build(); }),
-      btn(L.free ? `Talent tree · ${L.free} to spend` : 'Talent tree', () => { UI.close(el); UI.tree(run.cls, { inRun: true }); }),
-      btn('Settings', () => UI.settings()),
-      btn('How to play', () => UI.help()),
-      btn('Save and quit', () => { saveCheckpoint(); UI.clear(); setMode('title'); UI.title(); toast('Saved at the start of this floor'); }),
-      btn('Abandon this run', () => UI.confirm('Abandon the run?', `You keep the embers you have gathered so far.${run.souls ? ` The ${run.souls} souls you carry will be lost to the deep.` : ''}`, 'Abandon', () => { UI.clear(); endRun(false); })))));
+    menu));
+  for (const it of [...PAUSE_ITEMS].sort((a, b) => a.order - b.order)) { const b = it.make(el, p, run); if (b) menu.append(b); }
   UI.open(el, { modal: true, replace: false });
 };
+pauseItem('resume', 10, (el) => btn('Resume', () => UI.close(el), 'primary', { 'data-autofocus': true }));
+pauseItem('map', 60, (el) => btn('Map', () => { UI.close(el); UI.map(); }));
+pauseItem('build', 70, (el) => btn('Your build', () => { UI.close(el); UI.build(); }));
+pauseItem('talents', 80, (el, p, run) => { const L = classLevelInfo(run.cls); return btn(L.free ? `Talent tree · ${L.free} to spend` : 'Talent tree', () => { UI.close(el); UI.tree(run.cls, { inRun: true }); }); });
+pauseItem('settings', 100, () => btn('Settings', () => UI.settings()));
+pauseItem('help', 110, () => btn('How to play', () => UI.help()));
+pauseItem('savequit', 120, () => btn('Save and quit', () => { saveCheckpoint(); UI.clear(); setMode('title'); UI.title(); toast('Saved at the start of this floor'); }));
+pauseItem('abandon', 125, (el, p, run) => btn('Abandon this run', () => UI.confirm('Abandon the run?', `You keep the embers you have gathered so far.${run.souls ? ` The ${run.souls} souls you carry will be lost to the deep.` : ''}`, 'Abandon', () => { UI.clear(); endRun(false); })));
 const _build = UI.build;
 UI.build = function () {
   _build();
@@ -12519,24 +12526,10 @@ UI.controls = function (back, tab = 'touch') {
   UI.open(el, { modal: G.mode === 'play', replace: G.mode !== 'play', onBack: done });
 };
 // settings, pause and title link here
-const _settingsCtl = UI.settings;
-UI.settings = function (back) {
-  _settingsCtl(back);
-  const el = UI.top(), panel = el && el.querySelector('.panel');
-  if (!panel) return;
-  const rows = panel.querySelectorAll('.row'), last = rows[rows.length - 1];
-  panel.insertBefore(h('div', { class: 'menu', style: { width: '100%' } },
-    btn('Controls, layouts and gamepad', () => UI.controls(() => { if (G.mode !== 'play') UI.settings(back); })),
-    G.mode === 'play' ? null : btn('Move progress to another device', () => UI.saveTransfer(() => UI.settings(back)))), last);
-};
-const _pauseCtl = UI.pause;
-UI.pause = function () {
-  _pauseCtl();
-  const el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu) return;
-  const set = [...menu.children].find((b) => b.textContent === 'Settings');
-  menu.insertBefore(btn('Controls', () => { UI.close(el); UI.controls(() => UI.pause()); }), set || null);
-};
+settingsRow('controls', 10, (back) => h('div', { class: 'menu', style: { width: '100%' } },
+  btn('Controls, layouts and gamepad', () => UI.controls(() => { if (G.mode !== 'play') UI.settings(back); })),
+  G.mode === 'play' ? null : btn('Move progress to another device', () => UI.saveTransfer(() => UI.settings(back)))));
+pauseItem('controls', 90, (el) => btn('Controls', () => { UI.close(el); UI.controls(() => UI.pause()); }));
 const _titleCtl = UI.title;
 UI.title = function () {
   _titleCtl();
@@ -12964,14 +12957,7 @@ hook('renderWorld', () => {
   if (Math.random() < 0.12 + st * 0.05) (ASC_FX[A.fx] || ASC_FX.light)(p, A);
 });
 // an evolution put off for later can be taken from the pause menu
-const _pauseAsc = UI.pause;
-UI.pause = function () {
-  _pauseAsc();
-  const p = G.p, el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu || !p || !p.ascPending || ascDue(p) <= 0) return;
-  const first = menu.firstChild;
-  menu.insertBefore(btn(`Evolve now · evolution ${ascStage(p) + 1} of ${ASC_MAX}`, () => { UI.close(el); p.ascLater = false; UI.ascend(true); }, 'primary'), first ? first.nextSibling : null);
-};
+pauseItem('evolve', 58, (el, p) => (p && p.ascPending && ascDue(p) > 0 ? btn(`Evolve now · evolution ${ascStage(p) + 1} of ${ASC_MAX}`, () => { UI.close(el); p.ascLater = false; UI.ascend(true); }, 'primary') : null));
 
 /* ============================================================
    Cinderdeep — evolved bodies. Heroes are repainted at every
@@ -14094,14 +14080,7 @@ UI.heroView = function (back) {
   UI.open(el, { modal: true, replace: false, onBack: close });
   requestAnimationFrame(tick);
 };
-const _pauseTurn = UI.pause;
-UI.pause = function () {
-  _pauseTurn();
-  const el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu || !G.p) return;
-  const set = [...menu.children].find((b) => b.textContent === 'Settings');
-  menu.insertBefore(btn('Your hero', () => { UI.close(el); UI.heroView(() => UI.pause()); }), set || null);
-};
+pauseItem('hero', 95, (el, p) => (p ? btn('Your hero', () => { UI.close(el); UI.heroView(() => UI.pause()); }) : null));
 
 /* ============================================================
    Cinderdeep — the Realm: 25 biome zones on a 5×5 map. Each zone
@@ -17278,21 +17257,15 @@ updateHUD = function (dt) {
 };
 
 /* ---------- pause, map key and the title ---------- */
-const _pauseRealm = UI.pause;
-UI.pause = function () {
-  if (W.on && G.p && G.p.dead) return; // the fall has to be faced
-  _pauseRealm();
-  if (!W.on) return;
-  const el = UI.top(), panel = el && el.querySelector('.panel'), menu = el && el.querySelector('.menu');
-  if (!menu) return;
-  const p = G.p;
-  panel.querySelector('p').textContent = `${ascTitle(p) || playerName(p)} · level ${p.level} · ${W.inInst && W.inst ? W.inst.name : W.Z ? W.Z.b.name : ''} · ${fmtTime(W.ch.play || 0)} played`;
-  for (const b2 of [...menu.children]) { const t = b2.textContent; if (t === 'Save and quit' || t === 'Abandon this run') b2.remove(); }
-  const mapBtn = [...menu.children].find((b2) => b2.textContent === 'Map');
-  if (mapBtn && !W.inInst) { const nb = btn('Map and quests', () => { UI.close(el); UI.realmMap(); }); menu.replaceChild(nb, mapBtn); }
-  if (W.inInst) menu.append(btn('Leave the dungeon', () => UI.confirm('Leave the dungeon?', 'You walk back out to the world. Anything you found is yours to keep.', 'Leave', () => { UI.clear(); exitInstance(false); })));
-  menu.append(btn('Save and return to title', () => { UI.clear(); leaveRealm(); toast('Your hero is saved in the Realm'); }));
-};
+// in the Realm the pause menu says where you are and leaves the descent's own exits out
+const pauseWhereDeep = pauseWhere;
+pauseWhere = (p, run) => (W.on ? `${ascTitle(p) || playerName(p)} · level ${p.level} · ${W.inInst && W.inst ? W.inst.name : W.Z ? W.Z.b.name : ''} · ${fmtTime(W.ch.play || 0)} played` : pauseWhereDeep(p, run));
+for (const id of ['map', 'savequit', 'abandon']) {
+  const deep = PAUSE_ITEMS.find((it) => it.id === id).make;
+  pauseItem(id, PAUSE_ITEMS.find((it) => it.id === id).order, (el, p, run) => (!W.on ? deep(el, p, run) : id === 'map' ? (W.inInst ? deep(el, p, run) : btn('Map and quests', () => { UI.close(el); UI.realmMap(); })) : null));
+}
+pauseItem('leaveinst', 130, () => (W.on && W.inInst ? btn('Leave the dungeon', () => UI.confirm('Leave the dungeon?', 'You walk back out to the world. Anything you found is yours to keep.', 'Leave', () => { UI.clear(); exitInstance(false); })) : null));
+pauseItem('leaverealm', 135, () => (W.on ? btn('Save and return to title', () => { UI.clear(); leaveRealm(); toast('Your hero is saved in the Realm'); }) : null));
 const _mapRealm = UI.map;
 UI.map = function () { if (W.on && !W.inInst && W.Z) return UI.realmMap(); return _mapRealm(); };
 const _titleRealm = UI.title;
@@ -17550,15 +17523,7 @@ window.addEventListener('keydown', (e) => {
   e.preventDefault();
   UI.chat();
 });
-const _pauseMmo = UI.pause;
-UI.pause = function () {
-  _pauseMmo();
-  if (!W.on) return;
-  const el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu) return;
-  const set = [...menu.children].find((b) => b.textContent === 'Controls' || b.textContent === 'Settings');
-  menu.insertBefore(btn(MMO.zr ? `Chat and emotes · ${mmoCount()} here` : 'Chat and emotes', () => { UI.close(el); UI.chat(); }), set || null);
-};
+pauseItem('chat', 85, (el) => (W.on ? btn(MMO.zr ? `Chat and emotes · ${mmoCount()} here` : 'Chat and emotes', () => { UI.close(el); UI.chat(); }) : null));
 
 /* ============================================================
    Cinderdeep — Realm quality of life: a compass to your tracked
@@ -19940,13 +19905,7 @@ UI.levelUp = function (rarities, title) {
   p.skFree = (p.skFree || 0) + (p.pendingLevels || 0); p.pendingLevels = 0;
   UI.skillTree(null, { levelUp: true });
 };
-const _pauseSk = UI.pause;
-UI.pause = function () {
-  _pauseSk();
-  const p = G.p, el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu || !p || !skTree(p.cls)) return;
-  menu.insertBefore(btn(`Skill tree${p.skFree ? ` · ${p.skFree} to spend` : ''}`, () => { UI.close(el); UI.skillTree(null, {}); }, p.skFree ? 'primary' : ''), menu.firstChild ? menu.firstChild.nextSibling : null);
-};
+pauseItem('skills', 50, (el, p) => (p && skTree(p.cls) ? btn(`Skill tree${p.skFree ? ` · ${p.skFree} to spend` : ''}`, () => { UI.close(el); UI.skillTree(null, {}); }, p.skFree ? 'primary' : '') : null));
 
 /* ---------- the tree on screen ---------- */
 UI.skillTree = function (ch, opts = {}) {
@@ -20961,14 +20920,7 @@ UI.skillTree = function (ch, opts = {}) {
   const p = !ch ? G.p : null;
   row.insertBefore(btn(`DNA${p && p.dnaFree ? ` · ${p.dnaFree} to spend` : ''}`, () => { UI.close(el); UI.dnaTree(ch, opts); }, p && p.dnaFree ? 'small primary' : 'small'), row.lastChild);
 };
-const _pauseDna = UI.pause;
-UI.pause = function () {
-  _pauseDna();
-  const p = G.p, el = UI.top(), menu = el && el.querySelector('.menu');
-  if (!menu || !p || !runChar()) return;
-  const sk = [...menu.children].find((b) => /^Skill tree/.test(b.textContent));
-  menu.insertBefore(btn(`DNA${p.dnaFree ? ` · ${p.dnaFree} to spend` : ''}`, () => { UI.close(el); UI.dnaTree(null, {}); }, p.dnaFree ? 'primary' : ''), sk ? sk.nextSibling : menu.firstChild);
-};
+pauseItem('dna', 55, (el, p) => (p && runChar() ? btn(`DNA${p.dnaFree ? ` · ${p.dnaFree} to spend` : ''}`, () => { UI.close(el); UI.dnaTree(null, {}); }, p.dnaFree ? 'primary' : '') : null));
 const _realmDna = UI.realm;
 UI.realm = function () {
   _realmDna();
@@ -21036,22 +20988,9 @@ const _closeDiorama = UI.close;
 UI.close = function (el) { if (DIORAMA.active && (el || UI.top()) === DIORAMA.el) dioramaStop(); return _closeDiorama.call(this, el); };
 const _clearDiorama = UI.clear;
 UI.clear = function () { dioramaStop(); return _clearDiorama.call(this); };
-const _pauseDiorama = UI.pause;
-UI.pause = function () {
-  _pauseDiorama();
-  if (!DIORAMA.enabled || !dioramaRealm()) return;
-  const menu = UI.top() && UI.top().querySelector('.menu');
-  if (menu && !menu.querySelector('[data-diorama]')) menu.append(btn('Turn the World · photo mode', () => UI.diorama(), '', { 'data-diorama': '' }));
-};
-const _settingsDiorama = UI.settings;
-UI.settings = function (back) {
-  _settingsDiorama(back);
-  const panel = UI.top() && UI.top().querySelector('.panel');
-  if (panel) {
-    const input = h('input', { type: 'checkbox', checked: DIORAMA.enabled, onchange: (e) => { DIORAMA.enabled = e.target.checked; if (!DIORAMA.enabled) dioramaStop(); } });
-    panel.append(h('label', { style: { display: 'block', margin: '12px 0' } }, input, ' Realm photo camera (this session)'));
-  }
-};
+pauseItem('photo', 140, () => (DIORAMA.enabled && dioramaRealm() ? btn('Turn the World · photo mode', () => UI.diorama()) : null));
+settingsRow('photo', 20, () => h('label', { class: 'set-row' }, 'Realm photo camera (this session)',
+  h('input', { type: 'checkbox', checked: DIORAMA.enabled, onchange: (e) => { DIORAMA.enabled = e.target.checked; if (!DIORAMA.enabled) dioramaStop(); } })));
 window.addEventListener('keydown', (e) => {
   if (!DIORAMA.active || e.repeat || !['KeyQ', 'KeyE'].includes(e.code)) return;
   if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target && e.target.tagName)) return;
@@ -21724,25 +21663,14 @@ UI.livingJournal = function () {
     h('div', { class: 'row' }, btn('Back to the Realm', close, 'primary'))));
   UI.open(el, { modal: true, replace: false, onBack: close });
 };
-const _pauseLW = UI.pause;
-UI.pause = function () {
-  _pauseLW(); if (!lwOn()) return;
-  const el = UI.top(), menu = el && el.querySelector('.menu');
-  if (menu && !menu.querySelector('[data-living]')) menu.insertBefore(btn('Field Journal · Living Realm', () => { UI.close(el); UI.livingJournal(); }, '', { 'data-living': '' }), menu.firstChild.nextSibling);
-};
-const _settingsLW = UI.settings;
-UI.settings = function (back) {
-  _settingsLW(back); const panel = UI.top() && UI.top().querySelector('.panel'); if (!panel) return;
-  for (const [key, label] of [['livingWorld', 'Living Realm: scenery, wildlife and discoveries'], ['livingBrains', 'Living Realm: ten intelligent behaviors']]) {
-    const input = h('input', { type: 'checkbox', checked: CD.settings[key] !== false, onchange: (e) => {
-      CD.settings[key] = e.target.checked; CD.save.settings = { ...CD.settings }; persist();
-      if (LW.ribbon) LW.ribbon.hidden = !lwOn();
-      if (!e.target.checked) for (const n of W.npcs || []) { n._lwSocial = null; n._lwSpeech = null; n._lwChoice = 0; }
-      if (key === 'livingWorld' && e.target.checked && W.Z && lwOn()) lwReset(W.Z);
-    } });
-    panel.append(h('label', { class: 'set-row' }, label, input));
-  }
-};
+pauseItem('journal', 40, (el) => (lwOn() ? btn('Field Journal · Living Realm', () => { UI.close(el); UI.livingJournal(); }) : null));
+[['livingWorld', 'Living Realm: scenery, wildlife and discoveries'], ['livingBrains', 'Living Realm: ten intelligent behaviors']].forEach(([key, label], i) => settingsRow(key, 30 + i, () => h('label', { class: 'set-row' }, label,
+  h('input', { type: 'checkbox', checked: CD.settings[key] !== false, onchange: (e) => {
+    CD.settings[key] = e.target.checked; CD.save.settings = { ...CD.settings }; persist();
+    if (LW.ribbon) LW.ribbon.hidden = !lwOn();
+    if (!e.target.checked) for (const n of W.npcs || []) { n._lwSocial = null; n._lwSpeech = null; n._lwChoice = 0; }
+    if (key === 'livingWorld' && e.target.checked && W.Z && lwOn()) lwReset(W.Z);
+  } }))));
 CD.living = { get brains() { return LW_BRAINS.map(([id, name]) => ({ id, name, observed: !!LW.stats[id] })); }, get details() { return LW.objects.size; }, get actors() { return LW.actors.length; }, journal: () => UI.livingJournal() };
 
 /* ============================================================
@@ -22092,12 +22020,9 @@ trackedTarget=function(){
     if(n)return{x:n.x,y:n.y,label:SG.trial?'Watch Trial':SG_STEPS[stage][0],quest:true};
   }return _targetSG();
 };
-const _pauseSG=UI.pause;
-UI.pause=function(){_pauseSG();if(!sgOn())return;const el=UI.top(),menu=el&&el.querySelector('.menu');if(menu)menu.insertBefore(btn('Journey · Proving Trail',()=>{UI.close(el);UI.provingTrail();}),menu.firstChild.nextSibling);};
+pauseItem('journey',30,(el)=>sgOn()?btn('Journey · Proving Trail',()=>{UI.close(el);UI.provingTrail();}):null);
 const _shopSG=UI.realmShop;
 UI.realmShop=function(role,n){_shopSG(role,n);if(!sgOn()||!['smith','general','tentshop','inn'].includes(role))return;const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(btn('Trail supplies & salvage',()=>UI.fieldWorkbench()));};
-const _settingsSG=UI.settings;
-UI.settings=function(back){_settingsSG(back);const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(h('label',{class:'set-row'},'Combat flow: stagger, precision dodges and momentum',h('input',{type:'checkbox',checked:CD.settings.combatFlow!==false,onchange:e=>{CD.settings.combatFlow=e.target.checked;CD.save.settings={...CD.settings};persist();SG.focus=0;SG.counterUntil=0;}})));};
 
 document.head.append(h('style',{},'.sg-hud{position:absolute;top:116px;left:10px;max-width:240px;padding:8px 10px;background:rgba(21,29,27,.85);border-left:2px solid #c6b57c;border-radius:3px;color:#e5d7b2;font:11px/1.4 sans-serif;pointer-events:auto}.sg-hud button{background:transparent;border:0;color:#efcf86;font:inherit;padding:0;cursor:pointer;text-align:left;min-height:0;box-shadow:none;clip-path:none}.sg-hud small{display:block;color:#b8c5a3}.sg-hud .sg-momentum{height:3px;background:#405647;margin-top:5px}.sg-hud .sg-momentum i{display:block;height:3px;background:#a8dfca}@media(max-width:600px){.sg-hud{top:195px;max-width:210px;font-size:10px;padding:6px 8px}}'));
 function sgHud(){
@@ -22409,10 +22334,8 @@ UI.cinema=function(){
   UI.open(el,{modal:G.mode==='play',replace:false,onBack:close});
 };
 document.head.append(h('style',{},'#ui .cfx-panel{width:min(760px,100%);min-width:0;overflow-x:hidden}#ui .cfx-panel h2{font-size:clamp(30px,5vw,46px);line-height:1.08;overflow-wrap:break-word}#ui .cfx-panel p{min-width:0;white-space:normal;overflow-wrap:break-word}#ui .cfx-panel .set-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.1fr);gap:10px;min-width:0}#ui .cfx-panel select,#ui .cfx-panel input[type=range]{width:100%;max-width:100%;min-width:0;font-size:16px}#ui .cfx-panel input[type=checkbox]{justify-self:end}#ui .cfx-panel .row{flex-wrap:wrap}#ui .cfx-panel .row .btn{flex:1 1 160px;min-width:0;white-space:normal;text-align:center}@media(max-width:600px){#ui .cfx-panel .set-row{grid-template-columns:minmax(0,1fr);gap:7px}#ui .cfx-panel input[type=checkbox]{justify-self:start}#ui .cfx-panel .row .btn{flex-basis:100%}}'));
-const _settingsCFX=UI.settings;
-UI.settings=function(back){_settingsCFX(back);const el=UI.top(),panel=el&&el.querySelector('.panel');if(panel)panel.insertBefore(btn('CinderFX · Cinema & upscaling',()=>UI.cinema(),'primary'),panel.children[1]||null);};
-const _pauseCFX=UI.pause;
-UI.pause=function(){_pauseCFX();const menu=UI.top()&&UI.top().querySelector('.menu');if(menu&&!menu.querySelector('[data-cinderfx]'))menu.append(btn('CinderFX · Cinema & upscaling',()=>UI.cinema(),'',{'data-cinderfx':''}));};
+settingsRow('cinema',10,()=>btn('CinderFX · Cinema & upscaling',()=>UI.cinema(),'primary'),true);
+pauseItem('cinema',150,()=>btn('CinderFX · Cinema & upscaling',()=>UI.cinema()));
 CD.cinema={open:()=>UI.cinema(),preview:cfxPreview,get status(){return{backend:CFX.backend,profile:CD.settings.cinema,resolution:Math.round(CFX.stats.scale*100),upscaling:CD.settings.fxUpscale,particles:CFX.stats.particles,passes:CFX.stats.passes,reduced:!!cfxReduced()};}};
 
 /* ============================================================
@@ -22879,10 +22802,8 @@ UI.steelChaos=function(){
   if(DUEL.lesson&&DUEL.lesson.active)panel.append(btn('End sparring',()=>{DUEL.lesson.active=false;UI.close(el);}));
   panel.prepend(btn('Close manual',()=>UI.close(el),'',{'data-autofocus':true}));panel.append(btn('Back',()=>UI.close(el)));const el=h('div',{class:'modal'},panel);UI.open(el,{modal:G.mode==='play',replace:false,onBack:()=>UI.close(el)});return el;
 };
-const _pauseDuel=UI.pause;
-UI.pause=function(){_pauseDuel();const menu=UI.top()&&UI.top().querySelector('.menu');if(menu)menu.insertBefore(btn('Steel & Chaos · Combat & training',()=>UI.steelChaos()),menu.children[1]||null);};
-const _settingsDuel=UI.settings;
-UI.settings=function(back){_settingsDuel(back);for(const l of UI.top()?.querySelectorAll('.set-row')||[])if(l.textContent.startsWith('Combat flow:'))l.remove();const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(btn('Steel & Chaos · Combat, sound & music',()=>UI.steelChaos()));};
+pauseItem('combat',20,()=>btn('Steel & Chaos · Combat & training',()=>UI.steelChaos()));
+settingsRow('combat',40,()=>btn('Steel & Chaos · Combat, sound & music',()=>UI.steelChaos()));
 const _journeyDuel=UI.provingTrail;
 UI.provingTrail=function(){_journeyDuel();const panel=UI.top()&&UI.top().querySelector('.panel');if(panel)panel.append(btn('Rowan’s combat lessons & mastery',()=>UI.steelChaos()));};
 hook('renderTop',(g,cx,cy)=>{const l=DUEL.lesson;if(!l||!l.active||!l.attack)return;const a=l.attack,q=cfxPoint(a.x,a.y),k=clamp((a.at-G.t)/.85,0,1);g.save();g.strokeStyle=a.kind==='crush'?'#ffb286':'#c5ecff';g.lineWidth=1;g.beginPath();g.ellipse(q.x,q.y,20,12,0,0,TAU);g.stroke();g.beginPath();g.ellipse(q.x,q.y,20*k,12*k,0,0,TAU);g.stroke();g.font='6px sans-serif';g.textAlign='center';g.fillStyle=g.strokeStyle;g.fillText(a.kind==='crush'?'◇ DODGE':'× DEFLECT',q.x,q.y-30);g.restore();});
