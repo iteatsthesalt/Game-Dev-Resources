@@ -10893,7 +10893,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '9.4';
+const VERSION = '9.5';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -26236,7 +26236,8 @@ function v3PropCard(pr) {
 // objects that look the same frame to frame; the rest (fires, glowing stones, things you can use) repaint
 // a short name for each sprite, so a card can tell whether its picture changed
 const V3_SPRITE_IDS = new WeakMap();
-const v3SpriteId = (sp) => V3_SPRITE_IDS.get(sp) || (V3_SPRITE_IDS.set(sp, V3_SPRITE_IDS.size + 1), V3_SPRITE_IDS.get(sp));
+let v3SpriteCount = 0;
+const v3SpriteId = (sp) => V3_SPRITE_IDS.get(sp) || (V3_SPRITE_IDS.set(sp, ++v3SpriteCount), v3SpriteCount);
 const V3_STILL = new Set(['tree', 'boulder', 'building', 'mark', 'menhir', 'stall', 'tower', 'well', 'lamp', 'chest', 'fence', 'rock', 'bush', 'grave', 'statue']);
 function v3RealmCards(x0, y0, x1, y1) {
   const Z = W.Z, b = Z.b, p = G.p, day = Math.round(daylight() * 8);

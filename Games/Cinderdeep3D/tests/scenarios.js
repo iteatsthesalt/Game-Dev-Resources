@@ -196,6 +196,8 @@ module.exports = [
       T.check('torches and the hero light the scene', st.lights >= 1, st);
       const solidProps = G.fl.props.filter((pr) => V3.cards.get(pr) && V3.cards.get(pr).vox && V3.cards.get(pr).vox.visible);
       T.check('dungeon props stand as solid models', solidProps.length > 0 && st.solids >= solidProps.length, { solid: solidProps.length, st });
+      const spA = { w: 1 }, spB = { w: 1 };
+      T.check('different pictures get different models', v3SpriteId(spA) !== v3SpriteId(spB) && v3SpriteId(spA) === v3SpriteId(spA) && Number.isFinite(v3SpriteId(spB)), [v3SpriteId(spA), v3SpriteId(spB)]);
       T.check('hot colours glow by themselves in the dark', V3_SELF_GLOW.value > 0.3, V3_SELF_GLOW.value);
       const c = screenToWorld(R.cssW / 2, R.cssH / 2);
       T.check('the middle of the screen is the camera target', Math.hypot(c.x - G.cam.x, c.y - G.cam.y) < 3, c);

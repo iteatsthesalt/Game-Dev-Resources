@@ -367,7 +367,8 @@ function v3PropCard(pr) {
 // objects that look the same frame to frame; the rest (fires, glowing stones, things you can use) repaint
 // a short name for each sprite, so a card can tell whether its picture changed
 const V3_SPRITE_IDS = new WeakMap();
-const v3SpriteId = (sp) => V3_SPRITE_IDS.get(sp) || (V3_SPRITE_IDS.set(sp, V3_SPRITE_IDS.size + 1), V3_SPRITE_IDS.get(sp));
+let v3SpriteCount = 0;
+const v3SpriteId = (sp) => V3_SPRITE_IDS.get(sp) || (V3_SPRITE_IDS.set(sp, ++v3SpriteCount), v3SpriteCount);
 const V3_STILL = new Set(['tree', 'boulder', 'building', 'mark', 'menhir', 'stall', 'tower', 'well', 'lamp', 'chest', 'fence', 'rock', 'bush', 'grave', 'statue']);
 function v3RealmCards(x0, y0, x1, y1) {
   const Z = W.Z, b = Z.b, p = G.p, day = Math.round(daylight() * 8);
