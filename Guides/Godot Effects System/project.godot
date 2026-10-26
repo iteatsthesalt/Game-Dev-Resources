@@ -1,0 +1,21 @@
+; Engine configuration file.
+; Open this folder in Godot 4.3 or later to run the demo and tests.
+
+config_version=5
+
+[application]
+
+config/name="Godot Effects System"
+config/description="Living effects for 3D Godot games: strains that grow, fight and scar the world, status effects and game feel."
+run/main_scene="res://demo/demo.tscn"
+config/features=PackedStringArray("4.3")
+
+[display]
+
+window/size/viewport_width=1600
+window/size/viewport_height=900
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"

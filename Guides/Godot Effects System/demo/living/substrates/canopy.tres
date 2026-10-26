@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/substrates/air.tres" id="1_wp4fm"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="2_v71uj"]
+
+[resource]
+script = ExtResource("2_v71uj")
+id = &"canopy"
+display_name = "Dry Canopy"
+nutrients = {
+&"fuel": 18.0,
+&"organic": 6.0
+}
+residues = {
+&"blight": ExtResource("1_wp4fm"),
+&"fire": ExtResource("1_wp4fm")
+}
+color = Color(0.24705882, 0.2, 0.13333334, 1)

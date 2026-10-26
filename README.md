@@ -59,6 +59,7 @@ Check each repository's license and any separate notices for bundled media and t
 ## Guides
 
 - [Mobile Voxel Agent](./Guides/Mobile%20Voxel%20Agent/): set up Termux, Godot 4 and a local or remote AI model on an Android phone to generate voxel assets, without giving the model a shell. Includes the controller, boundary tests, and a headless Godot builder.
+- [Godot Effects System](./Guides/Godot%20Effects%20System/): living effects for 3D Godot games, built on the Hive cellular system. Fire, frost, blight and mycelium live as cells in a voxel world. They grow by mitosis, fight through reactions, infect and ride on characters, scar the ground they burn, evolve when judged, and conserve every unit of energy. Includes a full status-effect system, 3D game-feel helpers, the playable Cinder Caldera demo and 79 headless tests.
 
 ## Assets and reference collections
 

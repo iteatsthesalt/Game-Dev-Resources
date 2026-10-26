@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_nuqtj"]
+
+[resource]
+script = ExtResource("1_nuqtj")
+id = &"loam"
+display_name = "Loam"
+nutrients = {
+&"fuel": 10.0,
+&"organic": 10.0
+}
+color = Color(0.2509804, 0.34509805, 0.18431373, 1)
+shape = 2

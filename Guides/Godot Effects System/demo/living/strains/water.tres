@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/soaked.tres" id="1_oviuf"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="2_pbtab"]
+
+[resource]
+script = ExtResource("2_pbtab")
+id = &"water"
+display_name = "Water"
+tags = Array[StringName]([&"water"])
+seed_energy = 6.0
+max_energy = 8.0
+metabolism = 3.0
+rest_energy = 0.5
+wake_energy = 1.0
+mature_time = 0.0
+split_energy = 4.0
+division_cost = 0.5
+spread_up = 0.0
+spread_down = 2.0
+infection_effect = ExtResource("1_oviuf")
+infection_cost = 0.5
+host_capacity = 2.0
+shed_energy = 0.0
+color = Color(0.18431373, 0.43529412, 0.8392157, 1)
+hot_color = Color(0.62352943, 0.8156863, 1, 1)
+emission = 0.7
+cell_scale = 0.8
+bob = 0.2

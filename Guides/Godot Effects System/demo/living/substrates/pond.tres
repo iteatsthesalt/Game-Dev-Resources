@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_w5iwc"]
+
+[resource]
+script = ExtResource("1_w5iwc")
+id = &"pond"
+display_name = "Pond"
+nutrients = {
+&"water": 40.0
+}
+blocks_tags = Array[StringName]([&"fire"])
+color = Color(0.12941177, 0.2509804, 0.36862746, 1)
+shape = 2
+slab_height = 0.2
+emission = 0.15

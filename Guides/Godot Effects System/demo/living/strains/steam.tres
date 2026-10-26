@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/scald.tres" id="1_k3jv0"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="2_dejjm"]
+
+[resource]
+script = ExtResource("2_dejjm")
+id = &"steam"
+display_name = "Steam"
+tags = Array[StringName]([&"steam"])
+seed_energy = 6.0
+max_energy = 8.0
+metabolism = 2.2
+rest_energy = 0.5
+wake_energy = 1.0
+mature_time = 0.0
+split_energy = 3.5
+division_cost = 0.4
+spread_up = 3.0
+spread_down = 0.0
+wind_factor = 0.6
+infection_effect = ExtResource("1_k3jv0")
+infection_cost = 0.5
+host_capacity = 2.0
+shed_energy = 0.0
+shape = 1
+color = Color(0.5411765, 0.5803922, 0.6156863, 1)
+hot_color = Color(0.9411765, 0.95686275, 0.972549, 1)
+emission = 0.45
+cell_scale = 0.85
+bob = 0.6

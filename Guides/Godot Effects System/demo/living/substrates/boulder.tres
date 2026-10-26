@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_f2x7h"]
+
+[resource]
+script = ExtResource("1_f2x7h")
+id = &"boulder"
+display_name = "Boulder"
+solid = true
+color = Color(0.31764707, 0.27450982, 0.2509804, 1)
