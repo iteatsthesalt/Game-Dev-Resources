@@ -23,15 +23,21 @@ window.RigModels = (() => {
 
   // ---------- people: the character, and the Golem built heavier ----------
   const ENCHANT = { fire: "#ff7a28", frost: "#78dcff", storm: "#fff064", venom: "#82eb50", void: "#be64ff" };
+  // look.bones: a skeleton; look.robe: a robe to the ground; look.float: no legs, the body trailing off into a wisp
   function figure(j, look, M, o) {
-    const pal = look.pal, heavy = !!o.heavy, w = heavy ? 1.35 : 1, hk = o.hk || 1, { STEEL, CREST, VISOR } = o;
+    const pal = look.pal, heavy = !!o.heavy, bones = !!look.bones, w = heavy ? 1.35 : bones ? 0.45 : 1, hk = o.hk || 1, { STEEL, CREST, VISOR } = o;
     const up = norm(sub(j.neck, j.hip)), fwd = norm(sub(j.visor, j.head));
     const B = frameYZ(up, fwd.map((v, i) => (i === 1 ? 0 : v)));
     const P = frameYZ(up, cross(norm(sub(j.hpR, j.hpL)), up));
     const cloth = heavy ? "metal" : "cloth", skin = heavy ? { pat: "stone" } : { pat: "skin" };
     const boot = heavy ? shade(pal.pants, 0.7) : "#3a2a22", sole = "#1e1612", leather = "#5a3d24";
     const core = ENCHANT[look.enchant] || "#00e5ff";
-    // hips, tunic, belly, chest, collar and belt
+    // hips, tunic, belly, chest, collar and belt; a skeleton has a spine, ribs and a pelvis instead
+    if (bones) {
+      M.limb(j.hip, j.neck, 0.7, 0.6, pal.skin, { pat: "stone" });
+      M.ellipsoid(off(j.hip, P, 0, 0.8, 0), P, [2.6, 1.2, 1.6], pal.skin, { pat: "stone" });
+      for (let i = 0; i < 4; i++) { const at = lerp(j.hip, j.chest, 0.45 + i * 0.17); M.ellipsoid(off(at, B, 0, 0, 0.6), B, [3.6 - i * 0.2, 0.45, 2.2], pal.skin, { pat: "stone" }); }
+    } else {
     M.block(off(j.hip, P, 0, 1, 0), P, [4.3 * w, 2.7, 2.7 * w], 1.4, pal.pants, { pat: cloth });
     if (!heavy) M.limb(off(j.hip, P, 0, -3.4, 0), off(j.hip, P, 0, 1.6, 0), 4.7, 4.3, shade(pal.shirt, 0.88), { flat: 0.04, flatTop: 0.04, pat: "cloth" });
     M.block(lerp(j.hip, j.chest, 0.38), B, [3.9 * w, 3.4, 2.5 * w], 1.6, pal.shirt, { pat: cloth });
@@ -43,25 +49,32 @@ window.RigModels = (() => {
     M.block(off(j.hip, P, 0, 2.6, 0), P, [4.3 * w, 0.75, 2.85 * w], 0.5, heavy ? pal.gear : leather, { pat: "cloth" });
     M.block(off(j.hip, P, 0, 2.6, 2.85 * w), P, [1, 0.9, 0.3], 0.2, "#ffd35c", { pat: "metal" });
     if (!heavy) M.block(off(j.hip, P, 3.6, 1.4, 1.2), P, [1, 1.3, 0.9], 0.5, leather, { pat: "cloth" });
-    M.limb(off(j.chest, B, 0, 2, 0), off(j.neck, B, 0, 1, 0), 1.4 * w, 1.3 * w, heavy ? pal.skin : pal.skin, skin);
+    M.limb(off(j.chest, B, 0, 2, 0), off(j.neck, B, 0, 1, 0), 1.4 * w, 1.3 * w, pal.skin, skin);
+    }
+    // a robe falls from the hips to the ground; a floating body trails off below them
+    if (look.robe) M.limb([j.hip[0], 0.6, j.hip[2]], off(j.hip, P, 0, 2.4, 0), 6, 4.2, shade(pal.shirt, 0.9), { flat: 0.05, flatTop: 0.3, pat: "cloth" });
+    if (look.float) M.limb([j.hip[0], 3, j.hip[2] - 1.5], off(j.hip, P, 0, 2, 0), 0.6, 4.4, pal.shirt, { flat: 0.3, pat: "cloth" });
     // arms: shoulder, sleeve, cuff, bare forearm, fist and thumb
     for (const s of ["L", "R"]) {
       const sh = j["sh" + s], el = j["el" + s], ha = j["ha" + s], fa = norm(sub(ha, el)), Hf = frameYZ(fa, B.z);
-      M.ball(sh, 2.1 * w, pal.shirt, { pat: cloth });
-      M.limb(sh, el, 1.85 * w, 1.5 * w, pal.shirt, { pat: cloth });
+      M.ball(sh, 2.1 * w, bones ? pal.skin : pal.shirt, { pat: bones ? "stone" : cloth });
+      M.limb(sh, el, 1.85 * w, 1.5 * w, bones ? pal.skin : pal.shirt, { pat: bones ? "stone" : cloth });
       if (heavy) M.ball(el, 1.75 * w, pal.gear, { pat: "metal" });
-      else M.limb(lerp(sh, el, 0.82), lerp(sh, el, 1.04), 1.62, 1.62, shade(pal.shirt, 0.8), { flat: 0.4, flatTop: 0.4, pat: "cloth" });
+      else if (!bones) M.limb(lerp(sh, el, 0.82), lerp(sh, el, 1.04), 1.62, 1.62, shade(pal.shirt, 0.8), { flat: 0.4, flatTop: 0.4, pat: "cloth" });
       M.limb(el, ha, 1.45 * w, 1.15 * w, heavy ? pal.gear : pal.skin, heavy ? { pat: "metal" } : skin);
-      if (!heavy) M.limb(lerp(el, ha, 0.45), lerp(el, ha, 0.9), 1.4, 1.3, leather, { flat: 0.5, flatTop: 0.5, pat: "cloth" });
+      if (!heavy && !bones) M.limb(lerp(el, ha, 0.45), lerp(el, ha, 0.9), 1.4, 1.3, leather, { flat: 0.5, flatTop: 0.5, pat: "cloth" });
       M.block(add(ha, mul(fa, 0.5)), Hf, [1.15 * w, 1.35 * w, 1.25 * w], 0.6 * w, heavy ? pal.gear : pal.skin, heavy ? { pat: "metal" } : skin);
       M.limb(off(ha, Hf, 0, 0, 0.9 * w), off(ha, Hf, 0, 1.2 * w, 1.5 * w), 0.45 * w, 0.4 * w, heavy ? pal.gear : pal.skin, skin);
     }
     // legs: thigh, shin, knee, boot with its cuff and sole, pointing where the body faces
     const toe = norm([B.z[0], 0, B.z[2]]), F = frameYZ(UPV, toe);
     for (const s of ["L", "R"]) {
+      if (look.float) break;
       const hp = j["hp" + s], kn = j["kn" + s], ft = j["ft" + s];
-      M.limb(hp, kn, 2.35 * w, 1.85 * w, pal.pants, { pat: cloth });
-      M.limb(kn, ft, 1.8 * w, 1.35 * w, pal.pants, { pat: cloth });
+      const leg = bones ? pal.skin : pal.pants, legPat = bones ? "stone" : cloth;
+      M.limb(hp, kn, 2.35 * w, 1.85 * w, leg, { pat: legPat });
+      M.limb(kn, ft, 1.8 * w, 1.35 * w, leg, { pat: legPat });
+      if (bones) continue;
       M.ball(kn, 1.95 * w, heavy ? pal.gear : shade(pal.pants, 0.9), { pat: heavy ? "metal" : "cloth" });
       M.limb(add(ft, [0, 1.6, 0]), add(ft, [0, 4.2, 0]), 1.75 * w, 1.85 * w, boot, { flat: 0.4, flatTop: 0.3, pat: "cloth" });
       M.block(off(ft, F, 0, 1.25, 0.9 * w), F, [1.6 * w, 1.25, 2.8 * w], 0.85, boot, { pat: "cloth" });
@@ -70,6 +83,12 @@ window.RigModels = (() => {
     // the head: skull, ears, eyes with brows, nose and mouth, hair; then whatever is worn on it
     const head = j.head, H = frameYZ(norm(sub(j.head, j.neck)), fwd), h = (v) => v * hk;
     const face = (x, y, z) => off(head, H, h(x), h(y), h(z));
+    if (bones) {
+      // a skull: dark sockets with a light in them, a jaw; whatever is worn goes on as on anyone
+      M.block(head, H, [h(3), h(3.2), h(3.1)], h(2.2), pal.skin, { pat: "stone" });
+      for (const sx of [-1, 1]) { M.ball(face(sx * 1.2, 0.2, 2.6), h(0.9), "#1a0a10"); M.ball(face(sx * 1.2, 0.2, 3.1), h(0.4), look.eye || "#ff4a4a", { glow: true }); }
+      M.block(face(0, -2.6, 0.9), H, [h(2.1), h(0.8), h(1.8)], h(0.4), shade(pal.skin, 0.85), { pat: "stone" });
+    } else {
     M.block(head, H, [h(3.1), h(3.4), h(3.2)], h(2.1), pal.skin, skin);
     for (const sx of [-1, 1]) {
       M.ellipsoid(face(sx * 3.1, -0.1, -0.3), H, [h(0.55), h(1.05), h(0.8)], pal.skin, skin);
@@ -82,6 +101,7 @@ window.RigModels = (() => {
     }
     M.limb(face(0, 0.1, 3), face(0, -0.8, 3.75), h(0.4), h(0.55), shade(pal.skin, 0.92), skin);
     if (!heavy) M.block(face(0, -1.75, 3.05), H, [h(0.9), h(0.16), h(0.2)], h(0.1), shade(pal.skin, 0.55));
+    }
     const hair = () => {
       M.block(face(0, 1.05, -0.55), H, [h(3.35), h(2.6), h(3.2)], h(2.2), pal.hair, { pat: "fur" });
       M.block(face(0, 2.2, 2.4), H, [h(2.9), h(0.75), h(1)], h(0.6), pal.hair, { pat: "fur" });
@@ -121,7 +141,7 @@ window.RigModels = (() => {
     } else if (hd === "horns") {
       hair();
       for (const sx of [-1, 1]) { const b = face(sx * 2.4, 2.6, 0.4), m = face(sx * 4.6, 4.6, -0.6); M.limb(b, m, h(0.95), h(0.6), "#3a1a20", { pat: "stone" }); M.limb(m, face(sx * 5.4, 7, -2), h(0.6), h(0.1), "#3a1a20", { pat: "stone" }); }
-    } else hair();
+    } else if (!bones) hair();
     if (hd === "halo") for (let i = 0; i < 12; i++) { const a = (i / 12) * Math.PI * 2; M.ball(off(j.hat1, H, h(Math.cos(a) * 4.8), 0, h(Math.sin(a) * 4.8)), h(0.5), "#fff27a", { glow: true }); }
     // pauldrons
     const pd = look.pauldron;
@@ -480,5 +500,116 @@ window.RigModels = (() => {
     }
   }
 
-  return { figure, beast, dragon, tree, chest };
+  /* ---------- creatures with bodies of their own. look.pal: main, dark, light, eye, accent; look.build: sizes ---------- */
+  const FWD = { x: [1, 0, 0], y: [0, 1, 0], z: [0, 0, 1] };
+  // two eyes looking forward from a point, w apart
+  const eyes = (M, at, w, r, col, white) => { for (const sx of [-1, 1]) { const e = add(at, [sx * w, 0, 0]); if (white) M.ball(e, r * 1.5, "#f4f1ea"); M.ball(add(e, [0, 0, white ? r * 1.1 : 0]), r, col, { glow: !white }); } };
+  // slimes, bloats, sporelings, bombers: a squashing body with a face; a cap, a fuse or a molten core as the look says
+  function blob(j, look, M) {
+    const pal = look.pal, R = (look.build && look.build.r) || 6, sq = j.sq[0], wide = 1 / Math.sqrt(sq), c = add(j.c, [0, R * 0.8 * sq, j.lunge[0]]);
+    M.ellipsoid(c, FWD, [R * wide, R * 0.8 * sq, R * wide], pal.main, { pat: "skin" });
+    M.ellipsoid(add(c, [0, -R * 0.45 * sq, 0]), FWD, [R * wide * 1.02, R * 0.4 * sq, R * wide * 1.02], pal.dark, { pat: "skin" });
+    M.ball(add(c, [-R * 0.35, R * 0.4 * sq, R * 0.5]), R * 0.18, pal.light);
+    eyes(M, add(c, [0, R * 0.15 * sq, R * 0.78 * wide]), R * 0.32, R * 0.14, look.mean ? pal.eye : "#1a1214", !look.mean);
+    M.block(add(c, [0, -R * 0.2 * sq, R * 0.86 * wide]), FWD, [R * 0.28, R * 0.07, R * 0.08], R * 0.05, "#2a0a10");
+    if (look.cap) {
+      M.ellipsoid(add(c, [0, R * 0.75 * sq, 0]), FWD, [R * 1.25, R * 0.45, R * 1.25], look.cap, { pat: "skin" });
+      for (let i = 0; i < 6; i++) { const a = i * 2.4; M.ball(add(c, [Math.cos(a) * R * 0.75, R * 1.05 * sq, Math.sin(a) * R * 0.75]), R * 0.13, "#f4e8d8"); }
+    }
+    if (look.fuse) { const top = add(c, [0, R * 0.8 * sq, 0]); M.limb(top, add(top, [R * 0.3, R * 0.5, 0]), R * 0.08, R * 0.06, "#3a2a1e"); M.ball(add(top, [R * 0.32, R * 0.55, 0]), R * 0.14, "#ffd35c", { glow: true }); }
+    if (look.molten) for (let i = 0; i < 5; i++) { const a = i * 1.3; M.ball(add(c, [Math.cos(a) * R * 0.7, (i % 3 - 1) * R * 0.3, Math.sin(a) * R * 0.7]), R * 0.12, "#ffd08a", { glow: true }); }
+  }
+  // bats and fireflies: a body, a head, and wings that beat
+  function flyer(j, look, M) {
+    const pal = look.pal, R = (look.build && look.build.r) || 2.6, c = j.c, f = j.flap[0];
+    M.ellipsoid(c, FWD, [R, R * 1.1, R * 1.2], pal.main, { pat: "fur" });
+    const head = add(c, [0, R * 0.9, R * 0.6]);
+    M.ball(head, R * 0.75, pal.main, { pat: "fur" });
+    eyes(M, add(head, [0, R * 0.1, R * 0.6]), R * 0.3, R * 0.16, pal.eye, false);
+    if (look.insect) M.ellipsoid(add(c, [0, -R * 0.3, -R * 1.6]), FWD, [R * 0.9, R * 0.9, R * 1.3], pal.accent, { glow: true });
+    else for (const sx of [-1, 1]) M.limb(add(head, [sx * R * 0.4, R * 0.5, 0]), add(head, [sx * R * 0.7, R * 1.3, -R * 0.2]), R * 0.25, R * 0.05, pal.dark);
+    for (const sx of [-1, 1]) {
+      const root = add(c, [sx * R * 0.7, R * 0.3, 0]), W = R * (look.insect ? 2.4 : 3.2), tip = add(root, [sx * W * Math.cos(f), W * Math.sin(f), -R * 0.3]), back = add(root, [sx * W * 0.6 * Math.cos(f), W * 0.6 * Math.sin(f) - R * 0.8, -R * 1.1]);
+      M.quad([root, tip, back, add(root, [0, -R * 0.4, -R * 0.4])], look.insect ? pal.light : pal.dark);
+      if (!look.insect) M.limb(root, tip, R * 0.12, R * 0.05, pal.main);
+    }
+  }
+  // spiders and crawlers: a head, a swollen abdomen, eight jointed legs, a cluster of eyes
+  function spider(j, look, M) {
+    const pal = look.pal, c = j.c;
+    M.ellipsoid(add(c, [0, 0.6, 1.5]), FWD, [3.2, 2.4, 3], pal.main, { pat: "fur" });
+    M.ellipsoid(add(c, [0, 1.8, -4]), FWD, [4.4, 3.8, 5], pal.dark, { pat: "fur" });
+    M.ellipsoid(add(c, [0, 3.4, -4.6]), FWD, [2.4, 0.9, 3], pal.accent, { pat: "skin" });
+    for (let i = 0; i < 4; i++) M.ball(add(c, [(i - 1.5) * 0.8, 1.6 + (i % 2) * 0.5, 4.1]), 0.42, pal.eye, { glow: true });
+    for (const sx of [-1, 1]) M.limb(add(c, [sx * 0.8, -0.4, 4]), add(c, [sx * 0.6, -1.6, 5.2]), 0.45, 0.12, pal.dark);
+    for (let i = 0; i < 8; i++) { const hip = add(c, [i < 4 ? -2.2 : 2.2, 0.4, ((i % 4) - 1.5) * 1.1 + 1]); M.limb(hip, j["knee" + i], 0.55, 0.42, pal.main, { pat: "fur" }); M.limb(j["knee" + i], j["foot" + i], 0.42, 0.12, pal.main, { pat: "fur" }); }
+  }
+  // beetles: a shell in two halves, a horned head with mandibles, six short legs
+  function bug(j, look, M) {
+    const pal = look.pal, c = j.c, sn = j.snap[0];
+    for (const sx of [-1, 1]) M.ellipsoid(add(c, [sx * 1.9, 1.4, -0.8]), FWD, [2.3, 2.6, 5], pal.main, { pat: "scale" });
+    M.limb(add(c, [0, 3.8, 3.4]), add(c, [0, 3.9, -5.4]), 0.25, 0.25, pal.dark);
+    const head = add(c, [0, 0.8, 4.6]);
+    M.ellipsoid(head, FWD, [2.3, 1.8, 2], pal.dark, { pat: "scale" });
+    eyes(M, add(head, [0, 0.6, 1.6]), 1.3, 0.38, pal.eye, false);
+    if (look.horn) { const b = add(head, [0, 1.2, 1]); M.limb(b, add(b, [0, 3.6, 2.4]), 0.8, 0.12, pal.accent, { pat: "stone" }); }
+    for (const sx of [-1, 1]) M.limb(add(head, [sx * 1, -0.6, 1.8]), add(head, [sx * (0.4 + sn * 1.2), -0.8, 3.6]), 0.4, 0.08, pal.accent);
+    for (let i = 0; i < 6; i++) { const hip = add(c, [i < 3 ? -2 : 2, 0, ((i % 3) - 1) * 2.4]); M.limb(hip, j["knee" + i], 0.42, 0.34, pal.dark); M.limb(j["knee" + i], j["foot" + i], 0.34, 0.1, pal.dark); }
+  }
+  // thornvines and carnivorous plants: a swaying thorned stalk from a root ball, leaves, and a head that gapes
+  function plant(j, look, M) {
+    const pal = look.pal, k = (look.build && look.build.k) || 1, sc = (p) => mul(p, k);
+    M.ellipsoid([0, 1.2 * k, 0], FWD, [4 * k, 1.8 * k, 4 * k], pal.dark, { pat: "bark" });
+    for (let i = 0; i < 5; i++) { const a = i * 1.26, l = 4.5 * k; M.quad([[0, 1.5 * k, 0], [Math.cos(a + 0.35) * l, 0.6 * k, Math.sin(a + 0.35) * l], [Math.cos(a) * l * 1.4, 0.2, Math.sin(a) * l * 1.4], [Math.cos(a - 0.35) * l, 0.6 * k, Math.sin(a - 0.35) * l]], i % 2 ? pal.main : pal.light); }
+    for (let i = 0; i < 5; i++) {
+      const a = sc(j["s" + i]), b = sc(j["s" + (i + 1)]);
+      M.limb(a, b, (1.3 - i * 0.15) * k, (1.15 - i * 0.15) * k, pal.main, { pat: "bark" });
+      M.limb(lerp(a, b, 0.5), add(lerp(a, b, 0.5), [(i % 2 ? 1 : -1) * 1.6 * k, 0.6 * k, 0.4 * k]), 0.3 * k, 0.04, pal.accent);
+    }
+    const h = sc(j.head), o = j.open[0];
+    M.ellipsoid(add(h, [0, 0.9 * k * (1 + o * 0.4), 0]), FWD, [2.6 * k, 1.4 * k, 2.4 * k], look.bloom || pal.accent, { pat: "skin" });
+    M.ellipsoid(add(h, [0, -0.9 * k * (1 + o * 0.4), 0]), FWD, [2.4 * k, 1.2 * k, 2.2 * k], look.bloom || pal.accent, { pat: "skin" });
+    M.ellipsoid(h, FWD, [2 * k, 0.6 * k * (0.3 + o), 2 * k], "#3a0a14");
+    for (let i = 0; i < 6; i++) { const a = (i / 6) * Math.PI * 2; M.limb(add(h, [Math.cos(a) * 1.7 * k, 0.2 * k, Math.sin(a) * 1.7 * k]), add(h, [Math.cos(a) * 1.5 * k, -0.6 * k * o, Math.sin(a) * 1.5 * k]), 0.25 * k, 0.04, "#f4ead8"); }
+  }
+  // elementals and crystals: a glowing heart, shards turning round it; a crystal stands its shards in the ground
+  function elemental(j, look, M) {
+    const pal = look.pal, c = j.c, spin = j.spin[0], sp = j.spread[0];
+    if (look.rooted) {
+      for (let i = 0; i < 7; i++) { const a = i * 0.9, r = i ? 2.4 : 0, b = [Math.cos(a) * r, 0, Math.sin(a) * r], h = i ? 6 + (i % 3) * 2 : 12; M.limb(b, add(b, [Math.cos(a) * r * 0.4, h, Math.sin(a) * r * 0.4]), i ? 1.2 : 2, 0.2, i % 2 ? pal.main : pal.light, { pat: "metal" }); }
+      M.ball([0, 7, 0], 1.5, pal.eye, { glow: true });
+      return;
+    }
+    M.ball(c, 2.6, pal.eye, { glow: true });
+    M.ball(c, 3.4, pal.main, { pat: "stone" });
+    for (let i = 0; i < 6; i++) {
+      const a = spin + (i / 6) * Math.PI * 2, y = Math.sin(spin * 0.7 + i) * 2, p = add(c, [Math.cos(a) * 5.5 * sp, y, Math.sin(a) * 5.5 * sp]);
+      M.block(p, frameYZ(norm([Math.cos(a), 0.6, Math.sin(a)]), [0, 0, 1]), [1.3, 2.2, 1.1], 0.4, i % 2 ? pal.dark : pal.light, { pat: "stone" });
+    }
+  }
+  // turrets: a block on a post, a head that turns and a barrel that kicks
+  function turret(j, look, M) {
+    const pal = look.pal;
+    M.block([0, 2, 0], FWD, [4, 2, 4], 0.6, pal.dark, { pat: "stone" });
+    M.limb([0, 4, 0], [0, 8, 0], 1.4, 1.2, pal.main, { pat: "metal" });
+    const H = frameYZ([0, 1, 0], [Math.sin(j.aim[0]), 0, Math.cos(j.aim[0])]), head = [0, 10, 0];
+    M.block(head, H, [3, 2.4, 3], 0.8, pal.main, { pat: "metal" });
+    M.limb(off(head, H, 0, 0, 1.5 - j.recoil[0]), off(head, H, 0, 0, 6 - j.recoil[0]), 0.9, 0.8, pal.dark, { pat: "metal" });
+    M.ball(off(head, H, 0, 0.9, 2.9), 0.7, pal.eye, { glow: true });
+  }
+  // serpents: a chain of segments tapering to the tail, a horned head that rears
+  function serpent(j, look, M) {
+    const pal = look.pal;
+    for (let i = 8; i >= 0; i--) {
+      const p = j["s" + i], r = 3.4 - i * 0.25;
+      M.ball(p, r, i % 2 ? pal.main : pal.dark, { pat: "scale" });
+      M.limb(add(p, [0, r * 0.7, 0]), add(p, [0, r * 1.5, -1]), 0.6, 0.08, pal.light);
+    }
+    const h = j.head, H = frameZY(sub(h, j.s0), [0, 1, 0]);
+    M.ellipsoid(h, H, [3, 2.6, 3.6], pal.main, { pat: "scale" });
+    eyes(M, off(h, H, 0, 1, 2.2), 1.5, 0.5, pal.eye, false);
+    for (const sx of [-1, 1]) M.limb(off(h, H, sx * 1.6, 1.8, -1), off(h, H, sx * 3.4, 4.6, -3), 0.6, 0.08, pal.light);
+  }
+
+  return { figure, beast, dragon, tree, chest, blob, flyer, spider, bug, plant, elemental, turret, serpent };
 })();

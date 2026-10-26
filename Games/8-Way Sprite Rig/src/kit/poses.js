@@ -308,7 +308,64 @@ window.RigKit = (() => {
     magma: { name: "Magma Golem", pal: { shirt: "#4a221e", pants: "#2a1412", skin: "#ff6a28", hair: "#ffd35c", gear: "#ff3d20" }, head: "horns", back: "pack", right: "axe", left: "torch", pauldron: "spikes", enchant: "fire" },
   };
 
+  /* -- creatures with bodies of their own: blobs, flyers, spiders, bugs, plants, elementals, turrets, serpents.
+     Each pose is joints plus a few numbers kept as one-element arrays (squash, flap, sway), all in pose units. -- */
+  const CREATURE_CLIPS = {
+    idle: { name: "Idle", rate: 0.5, sym: true, shift: 0 },
+    walk: { name: "Move", rate: 1.2, sym: true, shift: 0 },
+    attack: { name: "Attack", rate: 1.2, sym: true, shift: 0, loop: false },
+  };
+  // how hard it is working: 0 at rest, 1 moving, the attack peaking mid-clip
+  const effort = (clip, t) => (clip === "attack" ? Math.sin(Math.PI * clamp(t, 0, 1)) : clip === "walk" ? 1 : 0.25);
+  function blobPose(clip, t) {
+    const ph = t * TAU, e = effort(clip, t), hop = clip === "walk" ? Math.max(0, Math.sin(ph)) * 2.2 : 0;
+    const sq = clip === "attack" ? 1 - 0.25 * e : 1 + 0.12 * Math.sin(ph * (clip === "walk" ? 1 : 2)) * (clip === "walk" ? -1 : 0.6);
+    return { c: [0, hop, 0], sq: [sq], lunge: [clip === "attack" ? e * 2.5 : 0] };
+  }
+  function flyerPose(clip, t) {
+    const ph = t * TAU, rate = clip === "idle" ? 2 : 3;
+    return { c: [0, 9 + Math.sin(ph * rate) * 0.8, clip === "attack" ? Math.sin(Math.PI * t) * 4 : 0], flap: [Math.sin(ph * rate * 2) * 0.9] };
+  }
+  function spiderPose(clip, t) {
+    const ph = t * TAU, j = { c: [0, 3.6 + (clip === "walk" ? Math.abs(Math.sin(ph * 2)) * 0.3 : 0), clip === "attack" ? Math.sin(Math.PI * t) * 2.5 : 0] };
+    for (let i = 0; i < 8; i++) {
+      const side = i < 4 ? -1 : 1, k = i % 4, a = (k - 1.5) * 0.55, step = clip === "walk" ? Math.sin(ph * 2 + (k + (side > 0 ? 1 : 0)) * Math.PI / 2) : 0;
+      const fx = side * (7.5 + Math.cos(a) * 1.5), fz = Math.sin(a) * 8 + step * 1.6;
+      j["knee" + i] = [side * 5, 6.5 + Math.max(0, step) * 1.2, Math.sin(a) * 5]; j["foot" + i] = [fx, Math.max(0, step) * 1.2, fz];
+    }
+    return j;
+  }
+  function bugPose(clip, t) {
+    const ph = t * TAU, j = { c: [0, 3.2, clip === "attack" ? Math.sin(Math.PI * t) * 2 : 0], snap: [clip === "attack" ? Math.sin(Math.PI * t) : 0.15] };
+    for (let i = 0; i < 6; i++) {
+      const side = i < 3 ? -1 : 1, k = i % 3, step = clip === "walk" ? Math.sin(ph * 2 + (k + (side > 0 ? 1 : 0)) * Math.PI) : 0;
+      j["knee" + i] = [side * 5.5, 4.5, (k - 1) * 3.5]; j["foot" + i] = [side * 7.5, 0, (k - 1) * 4 + step * 1.4];
+    }
+    return j;
+  }
+  function plantPose(clip, t) {
+    const ph = t * TAU, lash = clip === "attack" ? Math.sin(Math.PI * t) : 0, j = {};
+    for (let i = 0; i <= 5; i++) {
+      const y = i * 3.4, w = Math.sin(ph + i * 0.6) * 0.5 * (i / 5);
+      j["s" + i] = [w * 2, y, lash * Math.pow(i / 5, 2) * 7];
+    }
+    j.head = [j.s5[0], j.s5[1] + 2.4, j.s5[2] + 1]; j.open = [0.2 + lash * 0.8];
+    return j;
+  }
+  function elementalPose(clip, t) {
+    const ph = t * TAU, e = effort(clip, t);
+    return { c: [0, 11 + Math.sin(ph) * 1.2, 0], spin: [ph * (clip === "idle" ? 1 : 2)], spread: [1 + e * 0.35] };
+  }
+  function turretPose(clip, t) { return { aim: [clip === "attack" ? Math.sin(Math.PI * t) * 0.3 : 0], recoil: [clip === "attack" ? Math.max(0, Math.sin(Math.PI * t * 2)) : 0] }; }
+  function serpentPose(clip, t, n = 9) {
+    const ph = t * TAU, j = {};
+    for (let i = 0; i < n; i++) { const z = -i * 5.5; j["s" + i] = [Math.sin(ph + i * 0.7) * (2 + i * 0.4), 6 + Math.sin(ph * 0.5 + i) * 0.6 - i * 0.2, z]; }
+    j.head = add(j.s0, [0, 2.5 + (clip === "attack" ? Math.sin(Math.PI * t) * 4 : 0), 5]);
+    return j;
+  }
+
   return {
+    CREATURE_CLIPS, blobPose, flyerPose, spiderPose, bugPose, plantPose, elementalPose, turretPose, serpentPose,
     CHAR_CLIPS, charPose, PRESETS, STEEL, CREST, VISOR,
     BEAST_CLIPS, beastPose, BEAST_PRESETS, TREE_CLIPS, treePose, TREE_PRESETS, WIND,
     CHEST_CLIPS, chestPose, CHEST_PRESETS, BOX, DRAGON_CLIPS, dragonPose, DRAGON_PRESETS, GOLEM_PRESETS,
