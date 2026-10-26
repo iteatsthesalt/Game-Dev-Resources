@@ -505,4 +505,22 @@ module.exports = [
       return T.done();
     },
   },
+  {
+    name: 'screens: the camp and the title in 3D',
+    run: async () => {
+      UI.title(); await T.wait(300);
+      const lit = (cv) => { const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data; let n = 0; for (let i = 0; i < d.length; i += 4 * 61) if (d[i] + d[i + 1] + d[i + 2] > 60) n++; return n; };
+      let cv = document.querySelector('.title .camp-scene');
+      T.check('the title stands on the camp', !!cv && cv.width > 100 && lit(cv) > 30, cv && { w: cv.width, lit: lit(cv) });
+      T.check('with a party at the fire', CD.camp3d().party.length >= 4, CD.camp3d().party);
+      T.check('and the game behind it is not drawn', [...C3.covers].some((c) => c.isConnected));
+      T.click(/^Camp/); await T.until(() => document.querySelector('.camp-scene:not(.title .camp-scene)')); await T.wait(300);
+      cv = document.querySelector('.camp-scene');
+      T.check('the camp screen has the fire as its banner', !!cv && lit(cv) > 30, cv && lit(cv));
+      T.click(/^Back$/); await T.wait(300);
+      await T.descent('knight');
+      T.check('leaving the title lets the game draw again', ![...C3.covers].some((c) => c.isConnected));
+      return T.done();
+    },
+  },
 ];

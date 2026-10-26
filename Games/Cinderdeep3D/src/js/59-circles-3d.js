@@ -9,7 +9,7 @@
    point on the glass falls on the floor, and which node is under
    it. Nothing here touches the game's own renderer.
    ============================================================ */
-const C3 = { gl: null, live: 0, last: null, tex: {}, colors: new Map(), dims: new Map() };
+const C3 = { gl: null, live: 0, last: null, tex: {}, colors: new Map(), dims: new Map(), covers: new Set() };
 const C3_FOV = 40; // degrees, vertical
 const C3_SEG = 8; // most boxes along one hypha
 const C3_BASE = '#1e171a'; // what unlit things fade toward
@@ -258,7 +258,7 @@ function circle3d(nodes, edges, o = {}) {
   C3.live++; C3.last = C;
   return C;
 }
-// a circle fills the screen, so the game behind it is not drawn while one is open
+// a circle fills the screen, and the title's camp covers it, so the game behind is not drawn while either is on the page
 const _renderC3 = render;
-render = function () { if (!C3.live) _renderC3(); };
+render = function () { if (!C3.live && ![...C3.covers].some((cv) => cv.isConnected)) _renderC3(); };
 CD.circles = () => ({ gl: !!C3.gl, live: C3.live, nodes: C3.last ? C3.last.nodes.length : 0, edges: C3.last ? C3.last.edges.length : 0 });
