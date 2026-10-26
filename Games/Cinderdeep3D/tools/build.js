@@ -7,15 +7,18 @@ const fs = require('fs'), path = require('path');
 const root = path.join(__dirname, '..'), src = path.join(root, 'src');
 const OUT = path.join(root, 'Cinderdeep3D.html');
 const read = (rel) => fs.readFileSync(path.join(src, rel), 'utf8');
+const KIT_DIR = path.join(root, '..', '8-Way Sprite Rig', 'src', 'kit'), RIG_KIT = ['poses.js', 'shapes.js', 'models.js'];
 
 function build() {
   // modules run in file-name order; the number in front of each name is its place
   const mods = fs.readdirSync(path.join(src, 'js')).filter((f) => /^\d{2}-[a-z0-9-]+\.js$/.test(f)).sort();
   // third-party libraries, each in its own script ahead of the game
   const vendor = fs.existsSync(path.join(src, 'vendor')) ? fs.readdirSync(path.join(src, 'vendor')).filter((f) => f.endsWith('.js')).sort() : [];
+  // the rig kit (skeletons, shapes and models) is the 8-Way Sprite Rig's own, so what the tool makes the game draws
+  const kit = RIG_KIT.map((f) => fs.readFileSync(path.join(KIT_DIR, f), 'utf8')).join('');
   return read('page/head.html') + '<style>\n' + read('page/style.css') + '</style>\n' + read('page/body.html') +
     vendor.map((f) => '<script>\n' + read('vendor/' + f).replace(/\n$/, '') + '\n</script>\n').join('') +
-    '<script>\n' + mods.map((f) => read('js/' + f)).join('') + '</script>\n' + read('page/tail.html').replace(/\n$/, '');
+    '<script>\n' + kit + mods.map((f) => read('js/' + f)).join('') + '</script>\n' + read('page/tail.html').replace(/\n$/, '');
 }
 
 const html = build();

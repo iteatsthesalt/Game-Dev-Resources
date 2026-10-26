@@ -1,6 +1,7 @@
-// ---------- 3D models: each subject's skeleton dressed in solid shapes ----------
+// ---------- the rig kit: 3D models, each subject's skeleton dressed in solid shapes ----------
+// Shared by the 8-Way Sprite Rig and Cinderdeep 3D.
 // A model reads the pose's joints (pose units, y up, z forward) and the look, and builds into M,
-// a Preview3D builder. o carries the head size (hk), the rig's metal colours, and heavy for the Golem.
+// a RigShapes builder. o carries the head size (hk), the rig's metal colours, and heavy for the Golem.
 window.RigModels = (() => {
   const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
   const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];

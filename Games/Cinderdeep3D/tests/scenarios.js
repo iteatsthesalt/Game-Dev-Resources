@@ -196,6 +196,18 @@ module.exports = [
       T.check('torches and the hero light the scene', st.lights >= 1, st);
       const solidProps = G.fl.props.filter((pr) => V3.cards.get(pr) && V3.cards.get(pr).vox && V3.cards.get(pr).vox.visible);
       T.check('dungeon props stand as solid models', solidProps.length > 0 && st.solids >= solidProps.length, { solid: solidProps.length, st });
+      // the hero stands as the sprite rig's 3D model: dressed for its class, turned to its aim, its card unseen but still casting
+      render();
+      const hero = CD.rigModels.groups.get(G.p), hc = V3.cards.get(G.p);
+      T.check('the hero is the rig\'s 3D model', hero && hero.group.visible && hero.group.children.filter((m) => m.visible).length > 40 && !hc.mesh.visible && v3Shown(hc), hero && hero.group.children.length);
+      const look = CD.rigModels.look(G.p);
+      T.check('dressed as a knight, sword in hand', look.head === 'helmet' && look.back === 'cape' && look.right === 'sword', look);
+      G.p.aim = 0; render(); const yaw0 = hero.group.rotation.y;
+      G.p.aim = Math.PI / 2; render();
+      T.check('and turned to where it aims', Math.abs(hero.group.rotation.y - yaw0) > 1, [yaw0, hero.group.rotation.y]);
+      CD.settings.rigModels = false; render();
+      T.check('with the models off, the hero is its card again', hc.mesh.visible && !hero.group.visible);
+      CD.settings.rigModels = true; render();
       // loot floats over the floor as small solids that turn, never reaching in front of where it lies
       const t0 = G.t, loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
       dropPickup('gold', G.p.x + 50, G.p.y + 40, 5);

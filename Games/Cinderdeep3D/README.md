@@ -27,7 +27,8 @@ The same check and tests run on GitHub for every change under `Games/Cinderdeep3
 - **The twenty-four elements.** Eight primal (fire, frost, storm, venom, shadow, earth, chaos, luck) and sixteen fused, each a pair one or two steps apart on the skill wheel, named as the wheel names it (`44-elemental-creatures.js`). A fused element does what both its primals do. The Mycelium carries them (`45-mycelium.js`): it runs in veins of a primal, veins fuse where neighbouring primals meet, and monsters, dungeon props, trees and stones, and fallen weapons take the element of the vein under them.
   - `48`–`54`: progression: one life each, skill trees, the shared talent tree and DNA.
   - `55`–`58`: the Living Realm, the Proving Trail, effects and Steel & Chaos.
-  - `59`: the 3D renderer.
+  - `59`: the 3D renderer, and the sprite rig's 3D models in the game (`59-rig-models.js`): heroes stand as the rig's models, dressed for their class, holding their weapon, posed by what they are doing and turned to their aim.
+- The rig kit (skeletons, shapes and models) is the 8-Way Sprite Rig's `src/kit/`; the build includes it ahead of the game, so what the tool makes the game draws.
   - `60`: the main loop and boot.
 - `tests/`: `scenarios.js` holds the scenarios, `helpers.js` is loaded into the page for them, `run.js` runs them.
 - `tools/build.js`: the build. `tools/bundle-three.sh` rebuilds `src/vendor/three.min.js`.

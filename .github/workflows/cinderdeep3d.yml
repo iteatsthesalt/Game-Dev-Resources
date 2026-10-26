@@ -1,9 +1,9 @@
 name: Cinderdeep 3D
 on:
   push:
-    paths: ['Games/Cinderdeep3D/**', '.github/workflows/cinderdeep3d.yml']
+    paths: ['Games/Cinderdeep3D/**', 'Games/8-Way Sprite Rig/src/kit/**', '.github/workflows/cinderdeep3d.yml']
   pull_request:
-    paths: ['Games/Cinderdeep3D/**', '.github/workflows/cinderdeep3d.yml']
+    paths: ['Games/Cinderdeep3D/**', 'Games/8-Way Sprite Rig/src/kit/**', '.github/workflows/cinderdeep3d.yml']
 jobs:
   test:
     runs-on: ubuntu-latest

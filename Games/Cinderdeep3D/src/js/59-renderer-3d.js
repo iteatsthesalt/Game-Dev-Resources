@@ -203,8 +203,8 @@ function v3NearLight(c, L, skipHero) {
   }
   return best;
 }
-// a card is in the scene when its picture is, or the solid built from it (whose shape its canvas still holds)
-const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible);
+// a card is in the scene when its picture is, or the solid or model built in its place (whose shape its canvas still holds)
+const v3Shown = (c) => c.mesh.visible || !!(c.vox && c.vox.visible) || !!(c.model && c.model.visible);
 function v3Shadows(realm, dark) {
   const on = !CD.settings.lowFx;
   if (on) {
@@ -270,6 +270,8 @@ function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose();
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
   if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
+  // the rig's models give off a little of their own colour, as cards do, a little more for their deeper shading
+  if (rigmOn()) { RigShapes.flush(); RigShapes.ownLight(Math.min(0.6, V3_OWN_GLOW.value + 0.2)); }
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
   R.VW = 512; R.VH = 512; R.shadows = []; V3.casters = [];
   // later modules stand their own things up here: card(id, x, y, w, hgt, below, paint)
@@ -280,13 +282,15 @@ function v3PaintCards(fn) {
     c.mesh.visible = false; if (c.vox) c.vox.visible = false;
     if (V3.frame - c.used > 240) v3DropCard(id, c);
   }
+  rigmTidy();
   return shadows;
 }
 // cards that throw a shadow of their shape across the floor (see v3Shadows)
 const v3Caster = (c) => { V3.casters.push(c); return c; };
-const v3HeroCard = (p) => v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
+// the hero stands as the rig's 3D model where it has one (59-rig-models.js); its card is painted all the same, for its shadow
+const v3HeroCard = (p) => { const c = v3Caster(v3Card(p, p.x, p.y, 128, 128, 18, (g, cx, cy) => {
   if (p.mounted && !p.dead) { drawMount(g, p, cx, cy); const z0 = p.z; p.z = (z0 || 0) + 9; drawPlayer(g, p, cx, cy); p.z = z0; } else drawPlayer(g, p, cx, cy);
-}));
+})); rigmHero(c, p); return c; };
 const v3EntCard = (e) => { const s = e.boss ? 320 : e.big || (e.scale || 1) > 1.3 ? 192 : 112; v3Caster(v3Card(e, e.x, e.y, s, s, e.boss ? 48 : 14, (g, cx, cy) => drawEnt(g, e, cx, cy))); };
 function v3DeepCards(vis) {
   const fl = G.fl, rid = G.room ? G.room.id : -1;
