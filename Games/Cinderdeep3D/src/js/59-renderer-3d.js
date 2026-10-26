@@ -140,8 +140,12 @@ function v3Project(x, y, up = 0) {
 
 /* ---------- light ---------- */
 function v3Light(L, dark, tint) {
-  V3.ambient.intensity = 0.35 + (1 - dark) * 1.1;
+  // the dark falls off steeply, so night and deep dungeons belong to the lights; cards keep a little of their own glow
+  const lit = Math.pow(1 - dark, 1.6);
+  V3.ambient.intensity = 0.06 + lit * 1.4;
   V3.ambient.color.set(tint);
+  const own = 0.06 + lit * 0.24;
+  if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) c.mesh.material.emissiveIntensity = own; }
   const p = G.p;
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
   R.lights = L;
@@ -149,7 +153,8 @@ function v3Light(L, dark, tint) {
     const s = L[i];
     if (!s) { l.intensity = 0; return; }
     l.color.set(s.c); l.position.set(s.x, 22, s.y); l.distance = s.r * 2.2;
-    l.intensity = (0.9 + s.a * 4) * s.r * (i === 0 ? 1.4 : 1);
+    // about one unit of light at a quarter of its radius, fading out by twice its radius, like the 2D light pools
+    l.intensity = (0.35 + s.a * 1.6) * s.r * (i === 0 ? 1.25 : 1);
   });
 }
 
@@ -161,7 +166,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   if (!c || c.w !== w || c.hgt !== hgt) {
     if (c) v3DropCard(id, c);
     const cv = mkCanvas(w, hgt), tex = v3Tex(cv);
-    const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.04, depthWrite: false, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: 0.28 });
+    const mat = new THREE.MeshLambertMaterial({ map: tex, transparent: true, alphaTest: 0.04, depthWrite: false, emissive: '#ffffff', emissiveMap: tex, emissiveIntensity: V3.ownGlow ?? 0.28 });
     const mesh = new THREE.Mesh(V3_QUAD, mat);
     mesh.scale.set(w, hgt, 1);
     V3.scene.add(mesh);
@@ -326,6 +331,54 @@ function v3Ui(realm, tone) {
   if (G.warp > 0) { g.fillStyle = 'rgba(255,220,120,0.08)'; g.fillRect(0, 0, VW, VH); }
 }
 
+/* ---------- glow and grade: the scene, its bright parts blurred twice, then composed ---------- */
+DEFAULT_SETTINGS.glow = true;
+const V3_POST_VS = 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy * 2.0, 0.0, 1.0); }';
+const V3_BRIGHT_FS = 'uniform sampler2D map; varying vec2 vUv; void main() { vec3 c = texture2D(map, vUv).rgb; float l = max(c.r, max(c.g, c.b)); gl_FragColor = vec4(c * smoothstep(0.55, 1.0, l), 1.0); }';
+// a 9-tap gaussian along one direction
+const V3_BLUR_FS = 'uniform sampler2D map; uniform vec2 step; varying vec2 vUv; void main() { vec3 c = texture2D(map, vUv).rgb * 0.227027; c += (texture2D(map, vUv + step * 1.384615).rgb + texture2D(map, vUv - step * 1.384615).rgb) * 0.316216; c += (texture2D(map, vUv + step * 3.230769).rgb + texture2D(map, vUv - step * 3.230769).rgb) * 0.070270; gl_FragColor = vec4(c, 1.0); }';
+// glow added over the scene, highlights rolled off softly, a touch of saturation and a vignette
+const V3_COMPOSE_FS = `uniform sampler2D map; uniform sampler2D near; uniform sampler2D wide; uniform float glow; varying vec2 vUv;
+void main() {
+  vec3 c = texture2D(map, vUv).rgb + (texture2D(near, vUv).rgb * 0.7 + texture2D(wide, vUv).rgb * 0.9) * glow;
+  c = mix(c, 1.0 - exp(-c * 1.6), smoothstep(0.7, 1.4, max(c.r, max(c.g, c.b))));
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722)); c = mix(vec3(l), c, 1.06);
+  vec2 q = vUv * (1.0 - vUv); c *= 0.8 + 0.2 * clamp(pow(q.x * q.y * 16.0, 0.25), 0.0, 1.0);
+  gl_FragColor = linearToOutputTexel(vec4(clamp(c, 0.0, 1.0), 1.0));
+}`;
+function v3PostInit() {
+  // the glow is soft, so its small buffers can be eight-bit; only the scene keeps its highlights above one
+  const rt = (w, h) => new THREE.WebGLRenderTarget(w, h, { depthBuffer: false });
+  const pass = (fs, uniforms) => new THREE.ShaderMaterial({ vertexShader: V3_POST_VS, fragmentShader: fs, uniforms, depthTest: false, depthWrite: false });
+  V3.post = {
+    scene: new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType }), near: [rt(1, 1), rt(1, 1)], wide: [rt(1, 1), rt(1, 1)],
+    bright: pass(V3_BRIGHT_FS, { map: { value: null } }), blur: pass(V3_BLUR_FS, { map: { value: null }, step: { value: new THREE.Vector2() } }),
+    compose: pass(V3_COMPOSE_FS, { map: { value: null }, near: { value: null }, wide: { value: null }, glow: { value: 0.8 } }),
+    quad: new THREE.Mesh(V3_QUAD), cam: new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1), w: 0, h: 0,
+  };
+}
+function v3PostPass(material, target) { const P = V3.post; P.quad.material = material; V3.renderer.setRenderTarget(target); V3.renderer.render(P.quad, P.cam); }
+function v3Present() {
+  const r = V3.renderer;
+  if (!CD.settings.glow || CD.settings.lowFx) { r.setRenderTarget(null); r.render(V3.scene, V3.camera); return; }
+  if (!V3.post) v3PostInit();
+  const P = V3.post, w = R.VW * V3_RES, hh = R.VH * V3_RES;
+  if (P.w !== w || P.h !== hh) {
+    P.w = w; P.h = hh; P.scene.setSize(w, hh);
+    for (const t of P.near) t.setSize(w >> 2, hh >> 2);
+    for (const t of P.wide) t.setSize(w >> 3, hh >> 3);
+  }
+  r.setRenderTarget(P.scene); r.render(V3.scene, V3.camera);
+  P.bright.uniforms.map.value = P.scene.texture; v3PostPass(P.bright, P.near[0]);
+  const blur = (from, to, dx, dy) => { P.blur.uniforms.map.value = from.texture; P.blur.uniforms.step.value.set(dx / from.width, dy / from.height); v3PostPass(P.blur, to); };
+  blur(P.near[0], P.near[1], 1, 0); blur(P.near[1], P.near[0], 0, 1);
+  blur(P.near[0], P.wide[0], 2, 0); blur(P.wide[0], P.wide[1], 0, 1.5);
+  const U = P.compose.uniforms; U.map.value = P.scene.texture; U.near.value = P.near[0].texture; U.wide.value = P.wide[1].texture;
+  v3PostPass(P.compose, null);
+}
+settingsRow('glow', 6, () => h('label', { class: 'set-row' }, 'Glow and colour (turn off on slow devices)',
+  h('input', { type: 'checkbox', checked: CD.settings.glow !== false, onchange: (e) => { CD.settings.glow = e.target.checked; CD.save.settings = { ...CD.settings }; persist(); } })), true);
+
 /* ---------- the frame ---------- */
 function render() {
   if (!V3.renderer && !v3Init()) return;
@@ -357,6 +410,6 @@ function render() {
   }
   R.ox = Math.round(G.cam.x - R.VW / 2); R.oy = Math.round(G.cam.y - R.VH / 2);
   v3Ui(realm, tone);
-  V3.renderer.render(V3.scene, V3.camera);
+  v3Present();
 }
-CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible).length, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };
+CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible).length, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };

@@ -193,6 +193,10 @@ module.exports = [
       const cards = st.cards; render();
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
+      T.check('glow and colour are on by default', CD.renderer.status.glow === true, CD.renderer.status);
+      CD.settings.glow = false; render();
+      T.check('glow can be turned off', CD.renderer.status.glow === false);
+      CD.settings.glow = true;
       return T.done();
     },
   },
@@ -215,6 +219,8 @@ module.exports = [
   {
     name: 'soak: random play through six floors and the Realm',
     run: async () => {
+      // the headless browser draws in software, where full-screen glow passes cost more than the game; the 3d scenario covers glow
+      CD.settings.glow = false;
       const keys = ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'KeyJ', 'KeyV', 'Space', 'KeyB', 'KeyQ', 'KeyE', 'KeyR'];
       let seed = 7; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
       const play = (secs) => {
