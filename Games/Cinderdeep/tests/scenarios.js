@@ -31,8 +31,8 @@ module.exports = [
       T.check('three floors descended', G.fl.idx === 3, G.fl.idx);
       G.p.hp = 1; hurtPlayer(999, {});
       UI.pause(); T.check('no pause menu on a fallen hero', !UI.top() || !/Paused/.test(UI.top().textContent));
-      T.sim(2); await T.wait(2200);
-      T.check('death is final', G.p.dead && G.mode === 'menu', { dead: G.p.dead, mode: G.mode });
+      T.sim(2);
+      T.check('death is final', await T.until(() => G.p.dead && G.mode === 'menu'), { dead: G.p.dead, mode: G.mode });
       return T.done();
     },
   },
@@ -92,12 +92,11 @@ module.exports = [
       const chaos0 = chaosInfo().xp;
       G.run.won = true; G.run.floorIdx = TOTAL_FLOORS - 1; endRun(true); await T.wait(300);
       T.check('victory offers to descend again', T.click(/Descend again/), T.buttons());
-      await T.wait(4000);
-      T.check('the DNA rite is offered', UI.top() && /DNA rite/.test(UI.top().textContent));
+      T.check('the DNA rite is offered', await T.until(() => UI.top() && /DNA rite/.test(UI.top().textContent)));
       T.click(/Sacrifice/); await T.wait(300);
       T.check('sacrificed DNA raises Chaos', chaosInfo().xp > chaos0, chaosInfo());
       T.check('the next descent starts fresh', G.mode === 'play' && G.p.level === 1, G.p.level);
-      saveCheckpoint(); UI.title(); await T.wait(200); continueRun(); await T.wait(1500);
+      saveCheckpoint(); UI.title(); await T.wait(200); continueRun(); await T.until(() => G.mode === 'play' && G.p && !fading);
       T.check('a saved descent continues', G.mode === 'play' && G.p && !G.p.dead);
       return T.done();
     },
@@ -121,7 +120,7 @@ module.exports = [
       T.check('photo mode closes', !DIORAMA.active);
       for (let i = 0; i < 30; i++) { G.p.x += 40; T.sim(0.25); render(); }
       T.check('scenery stays bounded while travelling', CD.living.details < 1500, CD.living.details);
-      G.p.hp = 1; hurtPlayer(999, {}); for (let i = 0; i < 30; i++) CD.sim(0.1); await T.wait(2500);
+      G.p.hp = 1; hurtPlayer(999, {}); for (let i = 0; i < 30; i++) CD.sim(0.1); await T.until(() => CD.chars().alive.length === 0);
       T.check('death in the Realm is final', G.p.dead && CD.chars().alive.length === 0, CD.chars());
       return T.done();
     },
