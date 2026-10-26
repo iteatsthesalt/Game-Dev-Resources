@@ -101,3 +101,50 @@ function renderTree(C, g, W, H, dpr, view, cls, o) {
     }
   }
 }
+
+/* ---------- the skill wheel: eight arms rising from the core like a crown ---------- */
+const SK_RISE = 30; // how much higher each step of an arm stands than the one before
+const skNodeR = (n) => (n.kind === 'core' ? 16 : n.kind === 'heart' ? 12 : n.kind === 'att' || n.kind === 'focus' || n.kind === 'mastery' || n.kind === 'bridge' ? 7 : 10);
+const skStepH = (n) => (n.kind === 'core' ? 0 : n.kind === 'bridge' ? 16 + 2 * SK_RISE : 16 + SK_STEP.indexOf(n.kind) * SK_RISE);
+// the wheel of one skill tree T as a circle of its own; the nodes keep T's order in circle.nodes, and circle.idx finds one by id
+function skillCircle(T) {
+  const list = Object.values(T.nodes), idx = {};
+  list.forEach((n, i) => { idx[n.id] = i; });
+  const rot = WHEEL.indexOf(T.native);
+  const ground = (g, size) => {
+    const k = size / (330 * 1.25 * 2), bg = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.5);
+    bg.addColorStop(0, '#1a1418'); bg.addColorStop(1, '#060406');
+    g.fillStyle = bg; g.fillRect(0, 0, size, size);
+    g.globalCompositeOperation = 'lighter';
+    WHEEL.forEach((pid, i) => {
+      const a = -Math.PI / 2 + ((i - rot) * TAU) / 8, x = size / 2 + Math.cos(a) * 190 * k, y = size / 2 + Math.sin(a) * 190 * k, r = 150 * k, gr = g.createRadialGradient(x, y, 0, x, y, r);
+      gr.addColorStop(0, rgbaStr(PATH[pid].col, 0.22)); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      g.fillStyle = gr; g.fillRect(x - r, y - r, r * 2, r * 2);
+    });
+  };
+  const c = circle3d(list, T.edges.map(([a, b]) => [idx[a], idx[b]]), { radius: 330, seed: (ei) => ei * 7907 + 3, height: skStepH, radiusOf: (i) => skNodeR(list[i]), ground });
+  if (c) c.idx = idx;
+  return c;
+}
+// draws the wheel into the screen's canvas. o: { T, A the taken ids, can(id), hover, colOf(n) }
+function renderSkill(C, g, W, H, dpr, view, o) {
+  const t = performance.now() / 1000, T = o.T;
+  C.draw(g, W, H, dpr, view, {
+    t, groundKey: 0,
+    edge: (ei) => {
+      const [a, b] = C.edges[ei], na = C.nodes[a], nb = C.nodes[b], on = o.A.has(na.id) && o.A.has(nb.id), col = on ? o.colOf(nb.kind === 'core' ? na : nb) : '#3a3236';
+      return { col, w: on ? 6 : 3, key: col, bead: on };
+    },
+    node: (i) => {
+      const n = C.nodes[i], on = o.A.has(n.id), can = !on && o.can(n.id), col = o.colOf(n), big = n.kind === 'core' || n.kind === 'heart';
+      return {
+        r: skNodeR(n), col: on ? col : c3Dim(col, can ? 0.6 : 0.28), shape: big ? 'gem' : n.kind === 'acc' || n.kind === 'bridge' ? 'slab' : 'cube',
+        glow: on ? (big ? 0.6 : 0.25) : 0, stem: n.kind === 'heart',
+        ring: can ? c3Dim('#ffd35c', 0.55 + Math.sin(t * 5) * 0.3, '#000000') : null, mark: n === o.hover ? '#ffffff' : null,
+      };
+    },
+    extras: (C2) => { C2.glow(0, 20, 0, 190 + Math.sin(t * 2) * 14, '#ffd35c', 0.22); },
+  });
+  g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = `${Math.round(15 * dpr)}px var(--f-ui), sans-serif`;
+  for (const P of PATHS) { const i = C.idx[`${P.id}:heart`], p = C.project(i); if (p.behind) continue; g.fillStyle = P.col; g.fillText(P.name.toUpperCase(), p.x * dpr, (p.y - 18) * dpr); }
+}

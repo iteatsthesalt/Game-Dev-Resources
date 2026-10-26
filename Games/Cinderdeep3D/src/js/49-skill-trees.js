@@ -360,68 +360,48 @@ UI.skillTree = function (ch, opts = {}) {
   const target = ch || G.p, H0 = skHolder(target), T = skTree(H0.cls);
   if (!T) return;
   const name = ch ? charLabel(ch) : G.run && G.run.charId && charById(G.run.charId) ? charLabel(charById(G.run.charId)) : CLASS[H0.cls].name;
-  const W = Math.min(window.innerWidth - 32, 860), Hh = Math.min(window.innerHeight - 230, 640), S = Math.min(W, Hh) / 840;
-  const cv = h('canvas', { width: W, height: Hh, class: 'sk-cv', style: { width: W + 'px', height: Hh + 'px', touchAction: 'none', cursor: 'pointer', background: 'rgba(8,6,10,0.6)' } });
+  const W = Math.min(window.innerWidth - 32, 860), Hh = Math.min(window.innerHeight - 230, 640), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cv = h('canvas', { width: Math.round(W * dpr), height: Math.round(Hh * dpr), class: 'sk-cv', style: { width: W + 'px', height: Hh + 'px', touchAction: 'none', cursor: 'pointer', background: 'rgba(8,6,10,0.6)' } });
   const tip = h('div', { class: 'sk-tip', style: { position: 'absolute', pointerEvents: 'none', display: 'none', maxWidth: '280px', padding: '8px 10px', background: 'rgba(16,12,16,0.96)', boxShadow: 'inset 0 0 0 2px var(--soot-4)', font: '400 16px/1.25 var(--f-ui)', color: 'var(--bone-2)', zIndex: 5 } });
   const head = h('div', { class: 'lv-head' }), formLine = h('p', { class: 'asc-why', style: { margin: 0 } });
-  const g = cv.getContext('2d'), X = (n) => W / 2 + n.x * S, Y = (n) => Hh / 2 + n.y * S;
-  let hover = null;
+  const g = cv.getContext('2d'), view = { x: 0, y: 0, z: Math.min(W, Hh) / 720, yaw: 0, tilt: 0.85 }, circle = skillCircle(T);
+  let hover = null, drag = null, dragged = false;
   const allocSet = () => new Set([...H0.alloc, ...T.free, 'core']);
-  const nodeR = (n) => (n.kind === 'core' ? 16 : n.kind === 'heart' ? 12 : n.kind === 'att' || n.kind === 'focus' || n.kind === 'mastery' || n.kind === 'bridge' ? 7 : 10) * Math.max(0.8, S);
   const colOf = (n) => (n.kind === 'core' ? '#ffd35c' : PATH[n.path].col);
-  const draw = () => {
-    const A = allocSet();
-    g.clearRect(0, 0, W, Hh);
-    T.edges.forEach(([a, b], i) => {
-      const na = T.nodes[a], nb = T.nodes[b], on = A.has(a) && A.has(b);
-      mycHypha(g, X(na), Y(na), X(nb), Y(nb), i * 7907 + 3, { lit: on, col: colOf(nb.kind === 'core' ? na : nb), t: performance.now() / 1000, width: on ? 3 : 2 });
-    });
-    for (const id in T.nodes) {
-      const n = T.nodes[id], on = A.has(id), can = !on && skCanTake(T, H0.alloc, id) && H0.free() > 0 && !H0.ro, r = nodeR(n), c = colOf(n);
-      g.fillStyle = on ? c : '#120e14'; g.strokeStyle = on || can ? c : 'rgba(200,190,170,0.35)'; g.lineWidth = can ? 2.5 : 1.5;
-      g.beginPath();
-      if (n.kind === 'heart' || n.kind === 'acc') { for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU; g.lineTo(X(n) + Math.cos(a) * r, Y(n) + Math.sin(a) * r); } g.closePath(); }
-      else if (n.kind === 'bridge') { g.moveTo(X(n), Y(n) - r); g.lineTo(X(n) + r, Y(n)); g.lineTo(X(n), Y(n) + r); g.lineTo(X(n) - r, Y(n)); g.closePath(); }
-      else g.arc(X(n), Y(n), r, 0, TAU);
-      g.fill(); g.stroke();
-      if (can) { g.globalAlpha = 0.35 + Math.sin(performance.now() / 260) * 0.2; g.beginPath(); g.arc(X(n), Y(n), r + 4, 0, TAU); g.stroke(); g.globalAlpha = 1; }
-      if (n === hover) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(X(n), Y(n), r + 3, 0, TAU); g.stroke(); }
-    }
-    // path names at the rim
-    g.font = `400 ${Math.round(15 * Math.max(0.8, S))}px var(--f-ui), sans-serif`; g.textAlign = 'center';
-    for (const P of PATHS) { const n = T.nodes[`${P.id}:heart`], d = Math.hypot(n.x, n.y) || 1, k = (d + 30) / d; g.fillStyle = P.col; g.fillText(P.name.toUpperCase(), W / 2 + n.x * k * S, Hh / 2 + n.y * k * S + 5); }
-  };
+  const draw = () => renderSkill(circle, g, cv.width, cv.height, dpr, view, { T, A: allocSet(), can: (id) => skCanTake(T, H0.alloc, id) && H0.free() > 0 && !H0.ro, hover, colOf });
   const refresh = () => {
     const p = H0.p || (ch ? restorePlayer(ch, { souls: 0 }) : null), F = p ? skForm(p) : null;
     head.replaceChildren(h('b', {}, `${name} · skill tree`), h('small', {}, H0.ro ? 'Gain a level in a descent to earn skill points' : `${H0.free()} point${H0.free() === 1 ? '' : 's'} to spend · one per level`));
     formLine.textContent = F ? `You are becoming: ${F.pure ? `${F.name} (pure ${PATH[F.path].name.toLowerCase()})` : `${F.name} (hybrid of ${PATH[F.path].name} and ${PATH[F.path2].name})`} · ${F.order.slice(0, 3).map((q) => `${PATH[q].name} ${F.sc[q].toFixed(1)}`).join(' · ')}` : '';
     draw();
   };
-  const pick = (ev) => {
-    const r = cv.getBoundingClientRect(), mx = (ev.clientX - r.left) * (W / r.width), my = (ev.clientY - r.top) * (Hh / r.height);
-    let best = null, bd = 18;
-    for (const id in T.nodes) { const n = T.nodes[id], d = Math.hypot(X(n) - mx, Y(n) - my); if (d < bd) { bd = d; best = n; } }
-    return best;
-  };
+  const pick = (ev) => { const r = cv.getBoundingClientRect(), i = circle.pick(ev.clientX - r.left, ev.clientY - r.top, view, r.width, r.height); return i < 0 ? null : circle.nodes[i]; };
+  cv.addEventListener('pointerdown', (ev) => { drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, yaw: view.yaw, tilt: view.tilt, moved: 0 }; try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* a pointer that is gone */ } });
+  const drop = () => { dragged = !!drag && drag.moved > 5; drag = null; };
+  cv.addEventListener('pointerup', drop); cv.addEventListener('pointercancel', drop);
+  cv.addEventListener('wheel', (ev) => { ev.preventDefault(); view.z = clamp(view.z * (ev.deltaY > 0 ? 0.9 : 1.1), 0.4, 3); }, { passive: false });
   cv.addEventListener('pointermove', (ev) => {
+    if (drag && ev.pointerId === drag.id) {
+      drag.moved = Math.max(drag.moved, Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y));
+      if (drag.moved > 5) { view.yaw = drag.yaw + (ev.clientX - drag.x) * 0.006; view.tilt = clamp(drag.tilt + (ev.clientY - drag.y) * 0.006, 0.1, 1.3); hover = null; tip.style.display = 'none'; return; }
+    }
     hover = pick(ev);
-    if (!hover) { tip.style.display = 'none'; draw(); return; }
+    if (!hover) { tip.style.display = 'none'; return; }
     const A = allocSet(), on = A.has(hover.id);
     tip.replaceChildren(h('b', { style: { display: 'block', color: colOf(hover), fontWeight: 400 } }, hover.name), hover.desc, h('small', { style: { display: 'block', marginTop: '4px', color: 'var(--bone-3)' } }, on ? 'Taken' : skCanTake(T, H0.alloc, hover.id) ? (H0.free() > 0 ? 'Click to take' : 'No points to spend') : 'Take a node next to it first'));
     const r = cv.getBoundingClientRect();
     tip.style.display = 'block'; tip.style.left = `${Math.min(r.width - 290, ev.clientX - r.left + 14)}px`; tip.style.top = `${ev.clientY - r.top + 14}px`;
-    draw();
   });
-  cv.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; draw(); });
-  cv.addEventListener('click', (ev) => { const n = pick(ev); if (n && skTake(target, n.id)) { Sound.play('pickup', { p: 1.2 }); refresh(); } });
+  cv.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; });
+  cv.addEventListener('click', (ev) => { if (dragged) { dragged = false; return; } const n = pick(ev); if (n && skTake(target, n.id)) { Sound.play('pickup', { p: 1.2 }); refresh(); } });
   const close = () => { alive = false; UI.close(el); if (opts.back) opts.back(); };
   const reset = btn('Reset · 25 embers', () => UI.confirm('Reset this skill tree?', 'Every point comes back to spend again. Accessories from the tree come off.', 'Reset', () => { if ((CD.save.embers || 0) < 25) { toast('Not enough embers'); return; } CD.save.embers -= 25; skReset(target); refresh(); }), 'small');
   const el = h('div', { class: opts.back ? 'screen dim' : 'modal' }, h('div', { style: { display: 'grid', gap: '10px', justifyItems: 'center', width: 'min(100%, 900px)' } },
-    head, h('div', { style: { position: 'relative' } }, cv, tip), formLine,
+    head, h('div', { style: { position: 'relative' } }, cv, tip), formLine, h('small', { style: { color: 'var(--bone-3)' } }, 'Drag to turn the wheel · scroll to zoom'),
     h('div', { class: 'row' }, H0.ro ? null : reset, btn('Done', close, 'primary', { 'data-autofocus': true }))));
   el._skill = true;
   let alive = true;
-  const tick = () => { if (!alive || !el.isConnected) return; draw(); requestAnimationFrame(tick); };
+  const tick = () => { if (!alive || !el.isConnected) { circle.dispose(); return; } draw(); requestAnimationFrame(tick); };
   refresh(); requestAnimationFrame(tick);
   UI.open(el, opts.back ? { onBack: close } : { modal: true, replace: false, onBack: close });
 };

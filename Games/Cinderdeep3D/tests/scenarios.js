@@ -429,4 +429,32 @@ module.exports = [
       return T.done();
     },
   },
+  {
+    name: 'screens: the skill wheel in 3D',
+    run: async () => {
+      await T.descent('knight');
+      G.p.skFree = 4;
+      UI.skillTree(null, {});
+      await T.until(() => CD.circles().live === 1 && document.querySelector('.sk-cv'));
+      await T.wait(300);
+      const T0 = CD.skills.tree(G.p.cls), cv = document.querySelector('.sk-cv'), C = C3.last;
+      T.check('the wheel stands in its own 3D scene', CD.circles().nodes === Object.keys(T0.nodes).length && CD.circles().edges === T0.edges.length, CD.circles());
+      T.check('and its arms climb toward their hearts', C.hs[C.idx['earth:heart']] > C.hs[C.idx['earth:att']] && C.hs[C.idx['earth:att']] > C.hs[C.idx.core]);
+      const core = C.project(C.idx.core);
+      T.check('the node under a point on the glass is picked from there', C.pick(core.x, core.y) === C.idx.core, C.pick(core.x, core.y));
+      // a click on the glass takes the node there; dragging turns the wheel instead
+      const r = cv.getBoundingClientRect(), p = C.project(C.idx['earth:weapon']);
+      cv.setPointerCapture = () => {};
+      const at = { pointerId: 5, pointerType: 'mouse', button: 0, bubbles: true, clientX: r.left + p.x, clientY: r.top + p.y };
+      cv.dispatchEvent(new PointerEvent('pointerdown', at)); cv.dispatchEvent(new PointerEvent('pointerup', at)); cv.dispatchEvent(new MouseEvent('click', at));
+      T.check('clicking a node on the glass takes it', G.p.sk.includes('earth:weapon'), G.p.sk);
+      const yaw = C.view.yaw;
+      cv.dispatchEvent(new PointerEvent('pointerdown', at)); cv.dispatchEvent(new PointerEvent('pointermove', { ...at, clientX: at.clientX + 80 })); cv.dispatchEvent(new PointerEvent('pointerup', { ...at, clientX: at.clientX + 80 }));
+      cv.dispatchEvent(new MouseEvent('click', { ...at, clientX: at.clientX + 80 }));
+      T.check('dragging turns the wheel without taking anything', C.view.yaw !== yaw && G.p.sk.length === 1, { yaw: C.view.yaw, sk: G.p.sk });
+      T.click(/^Done$/); await T.wait(300);
+      T.check('closing the wheel puts its scene away', CD.circles().live === 0, CD.circles());
+      return T.done();
+    },
+  },
 ];
