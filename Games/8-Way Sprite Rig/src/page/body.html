@@ -1,0 +1,231 @@
+</head><body>
+<div class="wrap">
+  <header>
+    <p class="label">Cinderdeep 9 · sprite tool</p>
+    <h1>8-Way Sprite Rig</h1>
+    <p>A hidden 3D skeleton drives the game. Each frame, the sprite picks its row from the angle between the character and the camera, and its column from the skeleton's clip time. Gear is baked into the atlas; anything held in a hand rides on a projected 3D bone. The same rig works for a beast on four legs, a tree in the wind and a chest on its hinge. Cinderdeep's heroes walk on this skeleton, and its creatures, trees and chests follow the same rules. Walk the result around the playground, then take the atlas with you.</p>
+  </header>
+
+  <section class="top">
+    <div class="panel">
+      <div class="panel-head">
+        <p class="label">3D Game view &amp; top-down radar</p>
+        <div class="seg" role="tablist" aria-label="Stage mode">
+          <button id="modeTurn" type="button" role="tab" aria-selected="true">Turntable</button>
+          <button id="modePlay" type="button" role="tab" aria-selected="false">Playground</button>
+        </div>
+        <div class="seg" id="renderModeSeg" aria-label="3D Render Mode">
+          <button type="button" data-rmode="sprite3d" aria-pressed="true" title="Baked 8/16/32-way 3D normal-shaded sprite + 3D bone props">3D Sprite</button>
+          <button type="button" data-rmode="mesh3d" aria-pressed="false" title="True 3D Volumetric Capsule/Mesh Renderer">True 3D Mesh</button>
+          <button type="button" data-rmode="split3d" aria-pressed="false" title="Split View: True 3D Mesh vs Baked Sprite">Split 3D/2D</button>
+          <button type="button" data-rmode="voxel3d" aria-pressed="false" title="3D Extruded Voxel Depth Mesh">3D Voxel</button>
+          <button type="button" data-rmode="normlit" aria-pressed="false" title="Real-time Point-Light Relighting on Baked 3D Normal Map">Normal Lit</button>
+        </div>
+      </div>
+      <figure class="views">
+        <div>
+          <canvas id="stage" tabindex="0" aria-label="Game camera view of the sprite"></canvas>
+          <figcaption id="stageCap">Sprite from the baked atlas. Turn on the skeleton overlay to see the 3D rig it was baked from.</figcaption>
+          <div class="playbar" id="playbar" hidden>
+            <button id="orbitL" type="button" aria-label="Orbit camera left">⟲ Orbit</button>
+            <button id="orbitR" type="button" aria-label="Orbit camera right">Orbit ⟳</button>
+            <button id="attackBtn" type="button">Pounce</button>
+            <button id="dashBtn" type="button" title="3D Dash / Roll (Shift+Space)">⚡ Dash</button>
+            <button id="mountBtn" type="button" aria-pressed="false" title="Toggle 3D Beast Mount (M)">🐎 Mount</button>
+            <button id="todBtn" type="button" title="Cycle 3D Courtyard Lighting">☀ Day</button>
+            <button id="resetYardBtn" type="button" title="Respawn 3D Crates, Dummies & Loot">↻ Yard</button>
+            <span class="hint"><kbd>WASD</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> attack · <kbd>Q</kbd><kbd>E</kbd> orbit · <kbd>M</kbd> mount · or drag on the stage</span>
+          </div>
+          <div class="playbar" id="turnbar">
+            <button id="onionBtn" type="button" aria-pressed="false" title="Onion-skin previous/next frames">◎ Onion</button>
+            <button id="axesBtn" type="button" aria-pressed="true" title="Show 3D Floor Compass & Socket Gizmos">⌖ 3D Gizmos</button>
+            <button id="voxelFloorBtn" type="button" aria-pressed="true" title="Toggle 3D Volumetric Courtyard Pedestal">❖ 3D Pedestal</button>
+            <button id="snapBtn" type="button" title="Download Stage PNG Snapshot">📷 Snapshot</button>
+            <span class="hint" id="perfHud">60 FPS · 3D Z-Buffer + Normal Baker Active</span>
+          </div>
+        </div>
+        <div>
+          <canvas id="map" aria-label="Top-down map of character and camera"></canvas>
+          <figcaption>Wedges are the direction sectors, measured from the camera. The lit one is in use.</figcaption>
+        </div>
+      </figure>
+    </div>
+
+    <div class="panel controls">
+      <div class="group">
+        <p class="label">Subject</p>
+        <div class="seg" id="subjectSeg" aria-label="What is on the bench"></div>
+      </div>
+      <div class="group">
+        <p class="label">Clip</p>
+        <div class="seg" id="clipSeg" aria-label="Animation clip"></div>
+      </div>
+      <div class="group">
+        <p class="label" id="lookLabel">Beast</p>
+        <div class="seg chips" id="presetSeg" aria-label="Beast preset"></div>
+        <div class="swatches" id="swatches"></div>
+        <div class="seg" id="lookTools">
+          <button id="randLook" type="button" title="Randomize 3D Look, Gear & Harmony Palette (R)">🎲 Randomize</button>
+          <button id="harmBtn" type="button" title="Generate Harmonious Palette">🎨 Harmony</button>
+          <button id="undoBtn" type="button" title="Undo Look Change (Ctrl+Z)">↶ Undo</button>
+          <button id="redoBtn" type="button" title="Redo Look Change (Ctrl+Y)">↷ Redo</button>
+          <button id="saveSlotBtn" type="button" title="Keep this look in this browser, ready for a game bridge to read">★ Save look</button>
+        </div>
+        <div class="fields" id="gearFields" hidden>
+          <label for="gHead">Head (3D)<select id="gHead"><option value="none">Goggles</option><option value="helmet">Helmet</option><option value="hood">Hood</option><option value="hat">Wizard hat</option><option value="crown">Royal Crown</option><option value="horns">Demon Horns</option><option value="plague">Plague Mask</option><option value="halo">Seraph Halo</option><option value="viking">Viking Helm</option></select></label>
+          <label for="gBack">Back (3D)<select id="gBack"><option value="pack">Backpack</option><option value="cape">Cape</option><option value="wings">Angel Wings</option><option value="dwings">Demon Wings</option><option value="quiver">Bow &amp; Quiver</option><option value="banner">War Banner</option><option value="crystal">Crystal Core</option><option value="none">Nothing</option></select></label>
+          <label for="gRight">Right hand (3D)<select id="gRight"><option value="torch">Torch</option><option value="sword">Sword</option><option value="staff">Staff</option><option value="lantern">Lantern</option><option value="axe">Greataxe</option><option value="hammer">Warhammer</option><option value="spear">Runic Spear</option><option value="bow">Longbow</option><option value="scythe">Reaper Scythe</option><option value="frostblade">Frostblade</option><option value="none">Empty</option></select></label>
+          <label for="gLeft">Left hand (3D)<select id="gLeft"><option value="none">Empty</option><option value="shield">Shield</option><option value="lantern">Lantern</option><option value="tshield">Tower Shield</option><option value="tome">Spell Tome</option><option value="dagger">Parrying Dagger</option><option value="skull">Skull Focus</option><option value="torch">Off-hand Torch</option></select></label>
+          <label for="gPauldron">Shoulders (3D)<select id="gPauldron"><option value="none">None</option><option value="plate">Plate Pauldrons</option><option value="spikes">Spiked Spaulders</option><option value="fur">Fur Mantle</option><option value="orbs">Arcane Orbs</option></select></label>
+          <label for="gEnchant">3D Enchant<select id="gEnchant"><option value="none">Physical</option><option value="fire">Ember Fire</option><option value="frost">Rime Frost</option><option value="storm">Storm Arc</option><option value="venom">Blight Venom</option><option value="void">Void Shadow</option></select></label>
+        </div>
+        <div class="fields" id="morphFields">
+          <label for="propHeight">3D Height (<output id="propHeightOut">1.0×</output>)<input id="propHeight" type="range" min="0.7" max="1.4" step="0.05" value="1"></label>
+          <label for="propBulk">3D Bulk (<output id="propBulkOut">1.0×</output>)<input id="propBulk" type="range" min="0.7" max="1.5" step="0.05" value="1"></label>
+          <label for="propHead">Head Scale (<output id="propHeadOut">1.0×</output>)<input id="propHead" type="range" min="0.7" max="1.6" step="0.05" value="1"></label>
+          <label for="weathering">3D Weathering<select id="weathering"><option value="none">Clean</option><option value="battle">Battle-Scarred</option><option value="frost">Frost-Rimed</option><option value="moss">Ancient Moss</option><option value="ember">Cinder-Scorched</option><option value="gilded">Gold-Filigree</option></select></label>
+        </div>
+      </div>
+      <div class="group">
+        <p class="label">Rig</p>
+        <div class="ctl">
+          <div class="row"><label for="cam">Camera orbit (yaw)</label><output id="camOut">200°</output></div>
+          <input id="cam" type="range" min="0" max="359" value="200">
+        </div>
+        <div class="ctl" id="faceCtl">
+          <div class="row"><label for="face" id="faceLabel">Beast facing (yaw)</label><output id="faceOut">96°</output></div>
+          <input id="face" type="range" min="0" max="359" value="20">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="speed">Clip speed</label><output id="speedOut">1.0×</output></div>
+          <input id="speed" type="range" min="0" max="2.5" step="0.1" value="1">
+        </div>
+        <div class="ctl">
+          <div class="row"><label for="hyst">Hysteresis margin</label><output id="hystOut">6°</output></div>
+          <input id="hyst" type="range" min="0" max="20" value="6">
+        </div>
+        <div class="fields">
+          <label for="dirs">Directions<select id="dirs"><option value="4">4</option><option value="8" selected>8</option><option value="16">16</option><option value="24">24 (Smooth 3D)</option><option value="32">32 (Ultra 3D)</option></select></label>
+          <label for="frames">Frames per clip<select id="frames"><option value="6">6</option><option value="8" selected>8</option><option value="12">12</option><option value="16">16 (60fps)</option></select></label>
+          <label for="elev">3D Pitch (<output id="elevOut">28°</output>)<input id="elev" type="range" min="8" max="68" value="28"></label>
+          <label for="lightAz">3D Light Angle (<output id="lightAzOut">310°</output>)<input id="lightAz" type="range" min="0" max="359" value="310"></label>
+          <label for="bevelDepth">3D Bevel Depth<select id="bevelDepth"><option value="0.6">Soft (0.6×)</option><option value="1" selected>Standard (1.0×)</option><option value="1.5">Deep Sculpt (1.5×)</option><option value="2.2">Hyper 3D (2.2×)</option></select></label>
+          <label for="shaderMode">3D Shader Style<select id="shaderMode"><option value="pbr" selected>PBR Volumetric</option><option value="cel">Cel-Shaded Toon</option><option value="dither">Bayer 3D Dither</option><option value="metallic">Chrome / Forged</option><option value="grimdark">Cinderdeep Grim</option></select></label>
+        </div>
+        <div class="checks">
+          <label><input id="turn" type="checkbox" checked> Auto-turn</label>
+          <label><input id="mirror" type="checkbox" checked> Mirror the far side</label>
+          <label><input id="skel" type="checkbox"> Overlay true 3D skeleton</label>
+        </div>
+        <div class="seg"><button id="stepBack" type="button" aria-label="Previous frame">◀ Frame</button><button id="play" type="button">Pause</button><button id="stepFwd" type="button" aria-label="Next frame">Frame ▶</button></div>
+      </div>
+
+      <dl class="readout">
+        <dt>clip</dt><dd id="rClip">Trot</dd>
+        <dt>relative angle</dt><dd id="rRel">256.3°</dd>
+        <dt>direction</dt><dd id="rDir" class="big">6  (270°)</dd>
+        <dt>atlas row used</dt><dd id="rRow">2 <span class="pill">flipped</span></dd>
+        <dt>clip time</dt><dd id="rT">0.644</dd>
+        <dt>frame (column)</dt><dd id="rFrame" class="big">5 → 1</dd>
+        <dt>rows baked</dt><dd id="rArt">5 of 8</dd>
+      </dl>
+    </div>
+  </section>
+
+  <section class="panel">
+    <div class="panel-head">
+      <p class="label" id="atlasLabel">Baked atlas · Trot · 8 directions × 8 frames · 48×40 px cells</p>
+      <div class="export">
+        <div class="seg" id="atlasChanSeg" aria-label="Baked 3D Atlas Channel">
+          <button type="button" id="chanPbr" data-chan="pbr" aria-pressed="true">Lit 3D PBR</button>
+          <button type="button" id="chanNorm" data-chan="normal" aria-pressed="false">3D Normal Map</button>
+          <button type="button" id="chanDepth" data-chan="depth" aria-pressed="false">3D Depth (Z)</button>
+          <button type="button" id="chanSpec" data-chan="spec" aria-pressed="false">Specular/AO</button>
+          <button type="button" id="chanEmis" data-chan="emissive" aria-pressed="false">Emissive</button>
+        </div>
+        <button id="savePng" type="button">Save atlas PNG</button>
+        <button id="saveNormPng" type="button">Save Normal PNG</button>
+        <button id="saveJson" type="button">Save atlas JSON</button>
+        <button id="copyJson" type="button">Copy JSON</button>
+        <small id="exportSize">20 rows · 384×800 px</small>
+      </div>
+    </div>
+    <div id="cellInspector">
+      <span>▸ Click any cell below to pin/inspect its 3D bone sockets &amp; surface normals</span>
+      <span id="cellInspectReadout"></span>
+    </div>
+    <div class="atlas-scroll"><canvas id="atlas" aria-label="Baked sprite atlas for the current clip"></canvas></div>
+    <p class="atlas-note" id="atlasNote">Every cell was rendered from the same skeleton by a virtual camera at that row's angle, then pixel-thresholded and outlined. With mirroring on, rows past 180° are never sampled: the runtime flips the row on the other side and shifts the frame by half a cycle so the stride stays on the correct leg.</p>
+    <div class="cinder" hidden>
+      <img id="cinderImg" alt="Your character as a Cinderdeep hero: an eight-frame walk facing down, left, right and up">
+      <div class="cinder-text">
+        <p class="label">Play it in Cinderdeep</p>
+        <p>The same skeleton and gear, baked at game size: an eight-frame walk facing down, left, right and up. In Cinderdeep, start a new descent, drop this image on <b>Play as your own character</b>, save it, and pick it under <b>Look</b>.</p>
+        <p class="hint" id="cinderSave">Right-click the strip and save the image (saving from this page works inside the Claude viewer).</p>
+        <div><button id="saveCinder" type="button" hidden>Save Cinderdeep hero PNG</button></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="bottom">
+    <div class="panel">
+      <div class="code-head"><p class="label">Runtime wiring</p><button id="copy" type="button">Copy</button></div>
+<pre id="code">// Runs every frame, after the 3D skeleton has animated.
+function spriteFor(skel, camYaw, state) {
+  const rel = wrap360(skel.facingYaw - camYaw);     // 0° = we see its back
+  state.dir = pickDir(rel, state.dir, HYST, DIRS);  // sticky near sector edges
+  const clip = CLIPS[skel.clip];
+  let col = Math.floor(skel.clipTime * FRAMES);     // clipTime is 0..1
+  let row = state.dir, flip = false;
+  if (MIRROR &amp;&amp; clip.symmetric &amp;&amp; row &gt; DIRS / 2) {
+    row = DIRS - row; flip = true;                  // reuse the row facing the other way
+    col = (col + clip.mirrorShift) % FRAMES;        // walk: half a cycle swaps the leading leg
+  }
+  return { sheet: clip.sheet, row, col, flip };
+}
+
+function pickDir(rel, cur, hyst, dirs) {
+  const step = 360 / dirs;
+  const snap = Math.floor((rel + step / 2) / step) % dirs;
+  if (cur == null) return snap;
+  return Math.abs(wrap180(rel - cur * step)) &lt;= step / 2 + hyst ? cur : snap;
+}
+
+// Props: project the hand bone with the SNAPPED angle and frame, so the prop
+// sticks to the drawn hand; draw it behind the sprite when the hand is farther
+// from the camera than the chest.
+const snapped = skel.poseAt(col / FRAMES);
+const hand = project(snapped["hand.R"], state.dir * (360 / DIRS));
+const behind = hand.depth &gt; project(snapped.chest, state.dir * (360 / DIRS)).depth;</pre>
+    </div>
+    <div class="panel">
+      <p class="label">How the pieces connect</p>
+      <ol class="steps">
+        <li><b>The skeleton is the truth.</b> Movement, animation state, hitboxes and bone positions all live on the 3D rig. The sprite never drives gameplay.</li>
+        <li><b>Row from angle.</b> Subtract the camera's yaw from the character's yaw, then quantize to sectors. Hysteresis keeps the row from flickering when the angle sits on a sector edge.</li>
+        <li><b>Column from clip time.</b> Each clip is baked at even steps, so <code>floor(t × frames)</code> keeps sprite and skeleton in lockstep through blends and speed changes.</li>
+        <li><b>Gear is baked, props are attached.</b> Helmets, hoods, capes and packs move with the body, so they go into the atlas. A sword or a torch changes during play, so it is drawn from the projected hand bone and sorted against the chest.</li>
+        <li><b>Mirroring is free art, sometimes.</b> A flipped walk is the same walk half a cycle later, so fewer than half the rows need baking. An attack swings one arm: flipped, it swings the other, so asymmetric clips bake every row.</li>
+        <li><b>Anything with joints.</b> A beast's four legs, a tree's trunk and canopy, a chest's hinged lid: only the skeleton and the painter change. Rows still come from the angle and columns from clip time. Whatever can be flipped without lying (a trot, a shut lid) mirrors; a tree in a one-way wind cannot.</li>
+        <li><b>Export the contract.</b> The JSON lists each clip's rows, which directions flip, and where the hands are in every cell, so a game engine can attach props without the skeleton.</li>
+      </ol>
+    </div>
+  </section>
+</div>
+
+<button id="sfxToggle" aria-pressed="true" title="Sound on/off">♪ SFX ON</button>
+<div id="bootScreen"><pre id="bootLog"></pre></div>
+<canvas id="cursorFx"></canvas>
+<div id="weatherBar"><button id="up100Btn" type="button" title="Explore all 100 3D Upgrades">★ 100 3D UPGRADES</button><button id="themeBtn" type="button" title="Cycle Workbench Visual Theme">◈ THEME: CYBER</button><button id="metroBtn" type="button" aria-pressed="false" title="Frame Metronome Tick">⏱ TICK OFF</button><button id="wxBtn">☼ CLEAR</button><button id="shakeBtn" aria-pressed="true">⇋ SHAKE ON</button></div>
+<div id="up100Modal" hidden>
+  <div class="panel">
+    <div class="panel-head">
+      <p class="label">Cinderdeep 9 · 3D Volumetric Pipeline &amp; 100 Upgrades</p>
+      <div class="seg">
+        <input id="up100Search" type="search" placeholder="Filter 100 3D upgrades..." aria-label="Filter the upgrades">
+        <button id="up100Close" type="button">✕ Close</button>
+      </div>
+    </div>
+    <div id="up100Grid"></div>
+  </div>
+</div>
