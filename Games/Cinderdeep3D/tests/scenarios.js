@@ -98,6 +98,8 @@ module.exports = [
       T.check('the next descent starts fresh', G.mode === 'play' && G.p.level === 1, G.p.level);
       saveCheckpoint(); UI.title(); await T.wait(200); continueRun(); await T.until(() => G.mode === 'play' && G.p && !fading);
       T.check('a saved descent continues', G.mode === 'play' && G.p && !G.p.dead);
+      const c1 = chaosInfo().xp; G.p.dnaPts = 8; playerDie();
+      T.check("a fallen character's DNA returns to the Mycelium", chaosInfo().xp === c1 + 2, { before: c1, after: chaosInfo().xp });
       return T.done();
     },
   },

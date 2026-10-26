@@ -287,6 +287,16 @@ endRun = function (won) {
   if (ch && p && !p.dead && G.run && !G.run.ended) { const D = chDna(ch); D.last = (p.dnaPts || 0) > 0 ? { pts: p.dnaPts, alloc: [...(p.dna || [])] } : null; }
   return _endRunDna(won);
 };
+// a character who falls gives a quarter of the DNA they carried back to the Mycelium, and the heart grows
+const DNA_FALL_SHARE = 0.25;
+const _charFallDna = charFall;
+charFall = function (ch, where) {
+  const D = ch && !ch.fell ? chDna(ch) : null, p = G.p;
+  const pts = D ? (p && runChar() === ch ? p.dnaPts || 0 : 0) || (D.last ? D.last.pts : 0) : 0;
+  _charFallDna(ch, where);
+  const back = Math.ceil(pts * DNA_FALL_SHARE);
+  if (back > 0) { D.last = null; chaosAdd(back); later(1.6, () => toast(`The Mycelium takes back ${back} of ${charLabel(ch)}'s DNA`, '#ff4ad0'), true); }
+};
 // which genes fit in what is kept, in the order they were first expressed
 function dnaKeepPlan(p, D, alloc, pts) {
   const genes = dnaGenes(p.cls, D), L = dnaLayout(genes), sim = { ...p, dna: [], dnaFree: pts, relics: p.relics };
