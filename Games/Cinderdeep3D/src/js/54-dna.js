@@ -350,58 +350,16 @@ UI.dnaTree = function (ch, opts = {}) {
   if (!D) return;
   const p = inRun ? G.p : null, cls = ch.cls;
   const view = p || { cls, dna: (D.last && D.last.alloc) || [], dnaFree: 0, relics: [] };
-  const W = Math.min(window.innerWidth - 32, 860), Hh = Math.max(260, Math.min(window.innerHeight - 330, 600)), S = Math.min(W, Hh) / 1000;
-  const cv = h('canvas', { width: W, height: Hh, class: 'sk-cv', style: { width: W + 'px', height: Hh + 'px', touchAction: 'none', cursor: 'pointer', background: 'rgba(6,8,12,0.7)' } });
+  const W = Math.min(window.innerWidth - 32, 860), Hh = Math.max(260, Math.min(window.innerHeight - 330, 600)), dpr = Math.min(2, window.devicePixelRatio || 1);
+  const cv = h('canvas', { width: Math.round(W * dpr), height: Math.round(Hh * dpr), class: 'sk-cv', style: { width: W + 'px', height: Hh + 'px', touchAction: 'none', cursor: 'pointer', background: 'rgba(6,8,12,0.7)' } });
   const tip = h('div', { class: 'sk-tip', style: { position: 'absolute', pointerEvents: 'none', display: 'none', maxWidth: '280px', padding: '8px 10px', background: 'rgba(12,14,20,0.96)', boxShadow: 'inset 0 0 0 2px var(--soot-4)', font: '400 16px/1.25 var(--f-ui)', color: 'var(--bone-2)', zIndex: 5 } });
   const head = h('div', { class: 'lv-head' }), miles = h('div', { class: 'row', style: { flexWrap: 'wrap', justifyContent: 'center', gap: '6px' } }), memo = h('p', { class: 'asc-why', style: { margin: 0 } });
   const splBox = h('div', { class: 'panel', hidden: true, style: { width: 'min(100%, 720px)', display: 'grid', gap: '8px' } });
-  const g = cv.getContext('2d'), X = (q) => W / 2 + q.x * S, Y = (q) => Hh / 2 + q.y * S;
-  let genes, L, hover = null;
-  const build = () => { genes = dnaGenes(cls, D); L = dnaLayout(genes); };
+  const g = cv.getContext('2d'), cam = { x: 0, y: 0, z: Math.min(W, Hh) / 560, yaw: 0, tilt: 0.85 };
+  let genes, L, circle, hover = null, drag = null, dragged = false;
+  const build = () => { genes = dnaGenes(cls, D); L = dnaLayout(genes); if (circle) circle.dispose(); circle = dnaCircle(L, genes); };
   const colOf = (id) => (id === 'core' ? DNA_COL.core : DNA_COL[genes[id].strand]);
-  const nodeR = (id) => (id === 'core' ? 20 : genes[id].spl ? 12 : genes[id].lib ? 9 : 10) * Math.max(0.75, S * 1.6);
-  const draw = () => {
-    const t = performance.now() / 1000, on = new Set(['core', ...view.dna]);
-    g.clearRect(0, 0, W, Hh);
-    // a faint double helix down each strand
-    g.globalCompositeOperation = 'lighter';
-    for (const s of ['ab', 'wp', 'acc']) {
-      const A = DNA_ANG[s], ux = Math.cos(A), uy = Math.sin(A), vx = -uy, vy = ux;
-      for (const ph of [0, Math.PI]) {
-        g.strokeStyle = rgbaStr(DNA_COL[s], 0.22); g.lineWidth = 1.5; g.beginPath();
-        for (let r = 20; r <= 300; r += 6) { const off = Math.sin(r / 22 + ph + t * 1.4) * 14, x = W / 2 + (ux * r + vx * off) * S, y = Hh / 2 + (uy * r + vy * off) * S; if (r === 20) g.moveTo(x, y); else g.lineTo(x, y); }
-        g.stroke();
-      }
-    }
-    g.globalCompositeOperation = 'source-over';
-    [[350, 'REMEMBERED'], [440, 'REARRANGED']].forEach(([r, label], k) => {
-      g.setLineDash([3, 7]); g.strokeStyle = 'rgba(127,232,255,0.16)'; g.lineWidth = 1.2;
-      g.beginPath(); g.arc(W / 2, Hh / 2, r * S, 0, TAU); g.stroke(); g.setLineDash([]);
-      g.fillStyle = 'rgba(127,232,255,0.4)'; g.font = `400 ${Math.round(11 * Math.max(0.8, S * 1.6))}px var(--f-ui), sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-      g.fillText(label, W / 2, Hh / 2 + r * S + 10 + k * 2);
-    });
-    L.edges.forEach(([a, b], i) => {
-      const A0 = L.pos[a], B0 = L.pos[b], lit = on.has(a) && on.has(b), col = colOf(b === 'core' ? a : b);
-      mycHypha(g, X(A0), Y(A0), X(B0), Y(B0), i * 7919 + 13, { lit, col, t, width: lit ? 2.6 : 1.4 });
-    });
-    for (const id in L.pos) {
-      const q = L.pos[id], x = X(q), y = Y(q), r = nodeR(id), c = colOf(id), isOn = on.has(id), gi = genes[id];
-      const can = !isOn && p && gi && !dnaWhyNot(p, genes, L, id);
-      if (isOn) { g.globalCompositeOperation = 'lighter'; const lg = g.createRadialGradient(x, y, 0, x, y, r * 2.4); lg.addColorStop(0, rgbaStr(c, 0.45)); lg.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = lg; g.fillRect(x - r * 2.4, y - r * 2.4, r * 4.8, r * 4.8); g.globalCompositeOperation = 'source-over'; }
-      g.fillStyle = isOn ? c : '#0e1016'; g.strokeStyle = isOn || can ? c : rgbaStr(c, 0.45); g.lineWidth = can ? 2.5 : 1.5;
-      g.beginPath();
-      if (gi && gi.spl) { for (let i = 0; i < 6; i++) { const a = (i / 6) * TAU + t * 0.4; g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); } g.closePath(); }
-      else if (gi && gi.lib) { g.rect(x - r * 0.85, y - r * 0.85, r * 1.7, r * 1.7); }
-      else g.arc(x, y, r, 0, TAU);
-      g.fill(); g.stroke();
-      if (gi && gi.spl) { g.strokeStyle = rgbaStr(c, 0.6); g.lineWidth = 1; g.beginPath(); g.arc(x, y, r + 4, 0, TAU); g.stroke(); }
-      if (id === 'core') { g.strokeStyle = '#0e1016'; g.lineWidth = 2; for (const ph of [0, Math.PI]) { g.beginPath(); for (let k = -10; k <= 10; k++) { const yy = y + k * 1.4, xx = x + Math.sin(k * 0.6 + ph + t * 2) * 6; if (k === -10) g.moveTo(xx, yy); else g.lineTo(xx, yy); } g.stroke(); } }
-      if (can) { g.globalAlpha = 0.35 + Math.sin(t * 4) * 0.2; g.strokeStyle = c; g.beginPath(); g.arc(x, y, r + 5, 0, TAU); g.stroke(); g.globalAlpha = 1; }
-      if (id === hover) { g.strokeStyle = '#ffffff'; g.lineWidth = 2; g.beginPath(); g.arc(x, y, r + 3, 0, TAU); g.stroke(); }
-    }
-    g.font = `400 ${Math.round(15 * Math.max(0.8, S * 1.6))}px var(--f-ui), sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const s of ['ab', 'wp', 'acc']) { const A = DNA_ANG[s]; g.fillStyle = DNA_COL[s]; g.fillText(DNA_STRAND[s].toUpperCase(), clamp(W / 2 + Math.cos(A) * 480 * S, 60, W - 60), clamp(Hh / 2 + Math.sin(A) * 480 * S, 12, Hh - 12)); }
-  };
+  const draw = () => renderDna(circle, g, cv.width, cv.height, dpr, cam, { genes, on: new Set(['core', ...view.dna]), can: (id) => !!p && !!genes[id] && !dnaWhyNot(p, genes, L, id) && !view.dna.includes(id), hover, colOf });
   const refresh = () => {
     build();
     head.replaceChildren(h('b', {}, `${charLabel(ch)} · DNA`), h('small', {}, p ? `${p.dnaFree || 0} DNA point${p.dnaFree === 1 ? '' : 's'} to spend · one per level` : D.last && D.last.pts ? `${D.last.pts} DNA points waiting for the rite at the start of the next descent` : 'Gain a level in a descent to earn DNA points'));
@@ -413,15 +371,18 @@ UI.dnaTree = function (ch, opts = {}) {
     splBtn.disabled = !DNA_MILES.slice(0, 3).some((M) => dnaMile(D, M.id));
     draw();
   };
-  const pick = (ev) => {
-    const r = cv.getBoundingClientRect(), mx = (ev.clientX - r.left) * (W / r.width), my = (ev.clientY - r.top) * (Hh / r.height);
-    let best = null, bd = 20;
-    for (const id in L.pos) { const d = Math.hypot(X(L.pos[id]) - mx, Y(L.pos[id]) - my); if (d < bd) { bd = d; best = id; } }
-    return best;
-  };
+  const pick = (ev) => { const r = cv.getBoundingClientRect(), i = circle.pick(ev.clientX - r.left, ev.clientY - r.top, cam, r.width, r.height); return i < 0 ? null : circle.nodes[i].id; };
+  cv.addEventListener('pointerdown', (ev) => { drag = { id: ev.pointerId, x: ev.clientX, y: ev.clientY, yaw: cam.yaw, tilt: cam.tilt, moved: 0 }; try { cv.setPointerCapture(ev.pointerId); } catch (e) { /* a pointer that is gone */ } });
+  const drop = () => { dragged = !!drag && drag.moved > 5; drag = null; };
+  cv.addEventListener('pointerup', drop); cv.addEventListener('pointercancel', drop);
+  cv.addEventListener('wheel', (ev) => { ev.preventDefault(); cam.z = clamp(cam.z * (ev.deltaY > 0 ? 0.9 : 1.1), 0.3, 3); }, { passive: false });
   cv.addEventListener('pointermove', (ev) => {
+    if (drag && ev.pointerId === drag.id) {
+      drag.moved = Math.max(drag.moved, Math.hypot(ev.clientX - drag.x, ev.clientY - drag.y));
+      if (drag.moved > 5) { cam.yaw = drag.yaw + (ev.clientX - drag.x) * 0.006; cam.tilt = clamp(drag.tilt + (ev.clientY - drag.y) * 0.006, 0.1, 1.3); hover = null; tip.style.display = 'none'; return; }
+    }
     hover = pick(ev);
-    if (!hover) { tip.style.display = 'none'; draw(); return; }
+    if (!hover) { tip.style.display = 'none'; return; }
     const gi = genes[hover], why = gi && p ? dnaWhyNot(p, genes, L, hover) : '';
     tip.replaceChildren(
       h('b', { style: { display: 'block', color: colOf(hover), fontWeight: 400 } }, hover === 'core' ? `${charLabel(ch)}'s DNA` : gi.name),
@@ -429,10 +390,9 @@ UI.dnaTree = function (ch, opts = {}) {
       hover === 'core' ? null : h('small', { style: { display: 'block', marginTop: '4px', color: 'var(--bone-3)' } }, `${gi.cost} DNA · ${!p ? 'express it during a descent' : why === 'Expressed' ? 'expressed' : why || 'click to express'}`));
     const r = cv.getBoundingClientRect();
     tip.style.display = 'block'; tip.style.left = `${Math.min(r.width - 290, ev.clientX - r.left + 14)}px`; tip.style.top = `${ev.clientY - r.top + 14}px`;
-    draw();
   });
-  cv.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; draw(); });
-  cv.addEventListener('click', (ev) => { const id = pick(ev); if (!id || id === 'core' || !p) return; if (dnaTake(p, id)) { Sound.play('pickup', { p: 1.3 }); refresh(); } else { const why = dnaWhyNot(p, genes, L, id); if (why && why !== 'Expressed') toast(why); Sound.play('deny', { v: 0.5 }); } });
+  cv.addEventListener('pointerleave', () => { hover = null; tip.style.display = 'none'; });
+  cv.addEventListener('click', (ev) => { if (dragged) { dragged = false; return; } const id = pick(ev); if (!id || id === 'core' || !p) return; if (dnaTake(p, id)) { Sound.play('pickup', { p: 1.3 }); refresh(); } else { const why = dnaWhyNot(p, genes, L, id); if (why && why !== 'Expressed') toast(why); Sound.play('deny', { v: 0.5 }); } });
   // rearranging
   const splPanel = () => {
     const kinds = DNA_MILES.slice(0, 3).filter((M) => dnaMile(D, M.id));
@@ -463,13 +423,13 @@ UI.dnaTree = function (ch, opts = {}) {
   }), 'small');
   const close = () => { alive = false; UI.close(el); if (opts.back) opts.back(); };
   const el = h('div', { class: opts.back ? 'screen dim' : 'modal' }, h('div', { style: { display: 'grid', gap: '10px', justifyItems: 'center', width: 'min(100%, 900px)', maxHeight: '100%', overflowY: 'auto', overscrollBehavior: 'contain' } },
-    head, h('div', { style: { position: 'relative' } }, cv, tip), miles, memo, splBox,
+    head, h('div', { style: { position: 'relative' } }, cv, tip), h('small', { style: { color: 'var(--bone-3)' } }, 'Drag to turn the circle · scroll to zoom'), miles, memo, splBox,
     h('div', { class: 'row', style: { flexWrap: 'wrap' } }, splBtn, p ? resetBtn : null,
       p && typeof UI.skillTree === 'function' ? btn('Skill tree', () => { alive = false; UI.close(el); UI.skillTree(null, opts); }, 'small') : null,
       btn('Done', close, 'primary', { 'data-autofocus': true }))));
   el._skill = true;
   let alive = true;
-  const tick = () => { if (!alive || !el.isConnected) return; draw(); requestAnimationFrame(tick); };
+  const tick = () => { if (!alive || !el.isConnected) { circle.dispose(); return; } draw(); requestAnimationFrame(tick); };
   refresh(); requestAnimationFrame(tick);
   UI.open(el, opts.back ? { onBack: close } : { modal: true, replace: false, onBack: close });
 };

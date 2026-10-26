@@ -148,3 +148,55 @@ function renderSkill(C, g, W, H, dpr, view, o) {
   g.textAlign = 'center'; g.textBaseline = 'bottom'; g.font = `${Math.round(15 * dpr)}px var(--f-ui), sans-serif`;
   for (const P of PATHS) { const i = C.idx[`${P.id}:heart`], p = C.project(i); if (p.behind) continue; g.fillStyle = P.col; g.fillText(P.name.toUpperCase(), p.x * dpr, (p.y - 18) * dpr); }
 }
+
+/* ---------- the DNA circle: three strands, each a double helix of light with its genes along it ---------- */
+const dnaNodeR = (id, genes) => (id === 'core' ? 20 : genes[id].spl ? 12 : genes[id].lib ? 9 : 10);
+// L is the layout (dnaLayout); the nodes keep the order of its positions, and circle.idx finds one by gene id
+function dnaCircle(L, genes) {
+  const list = Object.keys(L.pos).map((id) => ({ id, x: L.pos[id].x, y: L.pos[id].y })), idx = {};
+  list.forEach((n, i) => { idx[n.id] = i; });
+  const ground = (g, size) => {
+    const k = size / (500 * 1.25 * 2), bg = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size * 0.5);
+    bg.addColorStop(0, '#10151c'); bg.addColorStop(1, '#060406');
+    g.fillStyle = bg; g.fillRect(0, 0, size, size);
+    [[350, 'REMEMBERED'], [440, 'REARRANGED']].forEach(([r, label]) => {
+      g.setLineDash([6, 12]); g.strokeStyle = 'rgba(127,232,255,0.3)'; g.lineWidth = 2;
+      g.beginPath(); g.arc(size / 2, size / 2, r * k, 0, TAU); g.stroke(); g.setLineDash([]);
+      g.fillStyle = 'rgba(127,232,255,0.7)'; g.font = '18px var(--f-ui), sans-serif'; g.textAlign = 'center'; g.textBaseline = 'top';
+      g.fillText(label, size / 2, size / 2 + r * k + 4);
+    });
+  };
+  const c = circle3d(list, L.edges.map(([a, b]) => [idx[a], idx[b]]), { radius: 500, seed: (ei) => ei * 7919 + 13, height: (n) => (n.id === 'core' ? 70 : 34 + Math.hypot(n.x, n.y) * 0.05), radiusOf: (i) => dnaNodeR(list[i].id, genes), ground });
+  if (c) c.idx = idx;
+  return c;
+}
+// draws the circle into the screen's canvas. o: { genes, on the held ids, can(id), hover id, colOf(id) }
+function renderDna(C, g, W, H, dpr, cam, o) {
+  const t = performance.now() / 1000;
+  C.draw(g, W, H, dpr, cam, {
+    t, groundKey: 0,
+    edge: (ei) => {
+      const [a, b] = C.edges[ei], ia = C.nodes[a].id, ib = C.nodes[b].id, lit = o.on.has(ia) && o.on.has(ib), col = lit ? o.colOf(ib === 'core' ? ia : ib) : '#2c3138';
+      return { col, w: lit ? 5 : 2.6, key: col, bead: lit };
+    },
+    node: (i) => {
+      const id = C.nodes[i].id, gi = o.genes[id], isOn = o.on.has(id), can = !isOn && o.can(id), c = o.colOf(id);
+      return {
+        r: dnaNodeR(id, o.genes), col: isOn ? c : c3Dim(c, can ? 0.6 : 0.3), shape: id === 'core' || (gi && gi.spl) ? 'gem' : 'cube',
+        glow: isOn ? 0.5 : 0, ring: can ? c3Dim(c, 0.55 + Math.sin(t * 4) * 0.3, '#000000') : gi && gi.spl ? c3Dim(c, 0.6) : null, mark: id === o.hover ? '#ffffff' : null,
+      };
+    },
+    // a double helix of light turning down each strand
+    extras: (C2) => {
+      for (const s of ['ab', 'wp', 'acc']) {
+        const A = DNA_ANG[s], ux = Math.cos(A), uy = Math.sin(A), vx = -uy, vy = ux;
+        for (const ph of [0, Math.PI]) for (let r = 20; r <= 300; r += 7) {
+          const a = r / 22 + ph + t * 1.4, off = Math.sin(a) * 16;
+          C2.glow(ux * r + vx * off, 44 + r * 0.05 + Math.cos(a) * 16, uy * r + vy * off, 15, DNA_COL[s], 0.5);
+        }
+      }
+    },
+  });
+  g.font = `${Math.round(15 * dpr)}px var(--f-ui), sans-serif`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (const s of ['ab', 'wp', 'acc']) { const p = C.at(Math.cos(DNA_ANG[s]) * 470, Math.sin(DNA_ANG[s]) * 470, 40); if (!p.behind) { g.fillStyle = DNA_COL[s]; g.fillText(DNA_STRAND[s].toUpperCase(), clamp(p.x * dpr, 60, W - 60), clamp(p.y * dpr, 12, H - 12)); } }
+}

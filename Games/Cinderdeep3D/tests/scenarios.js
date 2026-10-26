@@ -457,4 +457,29 @@ module.exports = [
       return T.done();
     },
   },
+  {
+    name: 'screens: the DNA circle in 3D',
+    run: async () => {
+      await T.descent('knight');
+      G.p.dnaFree = 5; chDna(runChar()).bosses = 3;
+      UI.dnaTree(null, {});
+      await T.until(() => CD.circles().live === 1 && document.querySelector('.sk-cv'));
+      await T.wait(300);
+      const cv = document.querySelector('.sk-cv'), C = C3.last;
+      T.check('the strands stand in their own 3D scene', CD.circles().nodes >= 10 && C.idx.core !== undefined, CD.circles());
+      const core = C.project(C.idx.core);
+      T.check('the node under a point on the glass is picked from there', C.pick(core.x, core.y) === C.idx.core, C.pick(core.x, core.y));
+      // clicking a gene on the glass expresses it
+      const r = cv.getBoundingClientRect(), id = ['ab:1', 'wp:1', 'acc:1'].find((q) => C.idx[q] !== undefined), p = C.project(C.idx[id]);
+      cv.setPointerCapture = () => {};
+      const at = { pointerId: 6, pointerType: 'mouse', button: 0, bubbles: true, clientX: r.left + p.x, clientY: r.top + p.y };
+      cv.dispatchEvent(new PointerEvent('pointerdown', at)); cv.dispatchEvent(new PointerEvent('pointerup', at)); cv.dispatchEvent(new MouseEvent('click', at));
+      T.check('clicking a gene on the glass expresses it', G.p.dna.length === 1, { id, dna: G.p.dna });
+      // spending a point lays the circle out again, and the old scene goes
+      T.check('the circle is rebuilt, not piled up', CD.circles().live === 1, CD.circles());
+      T.click(/^Done$/); await T.wait(300);
+      T.check('closing the circle puts its scene away', CD.circles().live === 0, CD.circles());
+      return T.done();
+    },
+  },
 ];
