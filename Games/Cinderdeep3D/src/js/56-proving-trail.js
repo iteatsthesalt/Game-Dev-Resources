@@ -97,7 +97,8 @@ drawRealmObj = function(g,o,sp,cx,cy,faded){
   shadow(g,o.x-cx,o.y-cy,o.detail==='mentor'?5:11);drawSprite(g,sp,o.x-cx,o.y-cy,false);
   if(o.detail==='fire'){drawFlame(g,o.x-cx,o.y-cy-9,.65,o.x);}
   const s=W.ch.trail,stage=s?s.stage:0,target=SG_STEPS[stage][2];
-  if(o.detail===target&&Math.hypot(o.x-G.p.x,o.y-G.p.y)<180){const t=pixelText(stage===6?'REWARD':'!','#edd28a');g.drawImage(t,Math.round(o.x-cx-t.width/2),Math.round(o.y-cy-sp.ay-9));}
+  const shown=CD.settings.compass!==false&&W.compassT&&W.compassT.t&&Math.hypot(W.compassT.t.x-o.x,W.compassT.t.y-o.y)<24;
+  if(o.detail===target&&!shown&&Math.hypot(o.x-G.p.x,o.y-G.p.y)<180){const t=pixelText(stage===6?'REWARD':'!','#edd28a');g.drawImage(t,Math.round(o.x-cx-t.width/2),Math.round(o.y-cy-sp.ay-9));}
 };
 function sgDummy(){
   if(SG.dummy&&!SG.dummy.dead)return;const n=SG.nodes.dummy;if(!n)return;

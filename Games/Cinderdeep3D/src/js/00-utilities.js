@@ -89,7 +89,7 @@ Object.assign(CD, { clamp, lerp, dist, RNG, hashStr, h, LS });
 /* ---------- hooks: later modules plug behaviour into the core loop ---------- */
 const HOOKS = {
   dmgMul: [], onHit: [], onKill: [], preHurt: [], onHurt: [], onRoomClear: [], onRoomEnter: [], preFloor: [], onFloor: [],
-  update: [], stats: [], spawned: [], projSpawn: [], projHit: [], deathSave: [], potion: [], bossStart: [], saveRun: [], loadRun: [], entOverlay: [], shopStock: [], death: [], renderFloor: [], onDash: [], onAbility: [], onAttack: [], onLevel: [], furnish: [], renderWorld: [], renderTop: [], hud: [], idle: [], runEnd: [], runStart: [],
+  update: [], stats: [], spawned: [], projSpawn: [], projHit: [], deathSave: [], potion: [], bossStart: [], saveRun: [], loadRun: [], entOverlay: [], shopStock: [], death: [], renderFloor: [], onDash: [], onAbility: [], onAttack: [], onLevel: [], furnish: [], renderWorld: [], renderTop: [], renderCards: [], renderGlass: [], hud: [], idle: [], runEnd: [], runStart: [],
 };
 const hook = (name, fn) => { HOOKS[name].push(fn); };
 function runHooks(name, a, b, c, d) { const L = HOOKS[name]; for (let i = 0; i < L.length; i++) { try { L[i](a, b, c, d); } catch (e) { console.error('hook ' + name, e); } } }

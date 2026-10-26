@@ -615,13 +615,17 @@ function crigShardStep(f, dt) {
   f.x += f.vx * dt; f.y += f.vy * dt; f.z += f.vz * dt; f.vz -= 320 * dt; f.rot += f.vr * dt;
   if (f.z <= 0) { f.z = 0; f.vz = Math.abs(f.vz) > 30 ? -f.vz * 0.35 : 0; f.vx *= 0.55; f.vy *= 0.55; f.vr *= 0.5; }
 }
-hook('renderWorld', (g, cx, cy) => {
+// pieces of a broken thing tumble through the air as cards lifted to their height
+hook('renderCards', (card) => {
   for (const f of G.fx) {
     if (f.kind !== 'shard') continue;
-    g.save(); g.globalAlpha = clamp((f.life - f.t) / 0.35, 0, 1);
-    g.translate(Math.round(f.x - cx), Math.round(f.y - cy - f.z)); g.rotate(f.rot);
-    g.drawImage(f.c, -Math.round(f.w / 2), -Math.round(f.h / 2));
-    g.restore();
+    const s = Math.ceil(Math.hypot(f.w, f.h)) + 4;
+    card(f, f.x, f.y, s, s, s / 2 - f.z, (g, cx, cy) => {
+      g.save(); g.globalAlpha = clamp((f.life - f.t) / 0.35, 0, 1);
+      g.translate(Math.round(f.x - cx), Math.round(f.y - cy - f.z)); g.rotate(f.rot);
+      g.drawImage(f.c, -Math.round(f.w / 2), -Math.round(f.h / 2));
+      g.restore();
+    });
   }
 });
 const _breakPropRig = breakProp;

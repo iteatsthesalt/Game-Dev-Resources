@@ -119,20 +119,20 @@ hook('renderFloor', (g, cx, cy, vis) => {
     g.restore();
   }
 });
-hook('renderWorld', (g, cx, cy) => {
+hook('renderCards', (card) => {
   const r = G.room;
   if (!r || r.type !== 'dmt') return;
   // the well swirls with souls
   const well = r.props.map((i) => G.fl.props[i]).find((q) => q.soulwell);
-  if (well) for (let i = 0; i < 10; i++) { const a = G.t * 2.4 + i * 0.63, rr = 6 + ((G.t * 8 + i * 3) % 18), x = well.x + Math.cos(a) * rr * 0.5 - cx, y = well.y - 18 - ((G.t * 14 + i * 5) % 22) - cy; g.fillStyle = `hsl(${(G.t * 120 + i * 36) % 360},90%,70%)`; g.fillRect(Math.round(x), Math.round(y), 2, 2); }
+  if (well) card('soulwell-swirl', well.x, well.y + 1, 48, 64, 4, (g, cx, cy) => { for (let i = 0; i < 10; i++) { const a = G.t * 2.4 + i * 0.63, rr = 6 + ((G.t * 8 + i * 3) % 18), x = well.x + Math.cos(a) * rr * 0.5 - cx, y = well.y - 18 - ((G.t * 14 + i * 5) % 22) - cy; g.fillStyle = `hsl(${(G.t * 120 + i * 36) % 360},90%,70%)`; g.fillRect(Math.round(x), Math.round(y), 2, 2); } });
   // the machine elves
-  for (const el of r.elves || []) {
+  for (const el of r.elves || []) card(el, el.x, el.y, 40, 48, 8, (g, cx, cy) => {
     const sp = elfSprite(el.i, Math.floor(el.t * 5) % 2), x = el.x - cx, y = el.y - cy - Math.abs(Math.sin(el.t * 5)) * 3;
     shadow(g, x, el.y - cy, 4);
     drawSprite(g, sp, x, y, el.vx < 0);
-  }
+  });
 });
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   const r = G.room;
   if (!r) return;
   const VW = R.VW, VH = R.VH;
@@ -145,7 +145,7 @@ hook('renderTop', (g, cx, cy) => {
     g.globalCompositeOperation = 'lighter';
     for (let i = 0; i < 3; i++) { const rr = ((G.t * 40 + i * 70) % 220); g.strokeStyle = `hsla(${(hue + i * 120) % 360},90%,60%,${(0.18 * (1 - rr / 220)).toFixed(3)})`; g.lineWidth = 2; g.beginPath(); g.ellipse(VW / 2, VH / 2, rr * 1.4, rr * 0.8, 0, 0, TAU); g.stroke(); }
     g.globalCompositeOperation = 'source-over';
-    for (const el of r.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); g.drawImage(t, Math.round(el.x - cx - t.width / 2), Math.round(el.y - cy - 26)); g.globalAlpha = 1; }
+    for (const el of r.elves || []) if (el.sayT > 0 && el.say) { const t = pixelText(el.say, `hsl(${(G.t * 100 + el.i * 70) % 360},90%,75%)`); g.globalAlpha = Math.min(1, el.sayT * 2); const q = v3Project(el.x, el.y); g.drawImage(t, Math.round(q.x - t.width / 2), Math.round(q.y - 26)); g.globalAlpha = 1; }
   }
 });
 function soulWell(pr) {

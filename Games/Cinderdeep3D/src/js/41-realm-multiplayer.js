@@ -163,10 +163,10 @@ async function mmoEmote(e) {
   W.mySay = { text: EMOTES[e], t: 3 };
   if (MMO.zr) { try { await MMO.zr.emit('emote', { e }); } catch (err) { /* local only */ } }
 }
-hook('renderTop', (g, cx, cy) => {
+hook('renderGlass', (g) => {
   if (!W.on || W.inInst || !W.mySay) return;
-  const p = G.p, sp = heroFrame(p), t = speechText(W.mySay.text);
-  const x = Math.round(p.x - cx), y = Math.round(p.y - cy - sp.h - (p.mounted ? 9 : 0) - 6 - t.height);
+  const p = G.p, sp = heroFrame(p), t = speechText(W.mySay.text), q = v3Project(p.x, p.y);
+  const x = Math.round(q.x), y = Math.round(q.y - sp.h - (p.mounted ? 9 : 0) - 6 - t.height);
   g.fillStyle = 'rgba(244,236,216,0.95)'; g.fillRect(x - t.width / 2 - 3, y - 2, t.width + 6, t.height + 4); g.fillRect(x - 1, y + t.height + 2, 3, 2);
   g.drawImage(t, x - t.width / 2, y);
 });

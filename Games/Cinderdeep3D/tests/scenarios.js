@@ -197,6 +197,10 @@ module.exports = [
       spawnProj({ team: 'p', x: G.p.x, y: G.p.y, ang: -1, speed: 60, dmg: 0, kind: 'fireball', color: '#ff9a4a' }); render();
       const shot = V3.cards.get('proj0');
       T.check('missiles fly upright above the floor', shot && shot.mesh.visible && shot.mesh.position.y > 0 && shot.selfLit, shot && shot.mesh.position);
+      T.check('the hero\'s light throws the monsters\' shadows across the floor', CD.renderer.status.shadows >= 3, CD.renderer.status);
+      G.p.stats.moons = 2; G.p.stats.bat = true; render();
+      T.check('moons and the bat familiar stand up beside the hero', ['moon0', 'moon1', 'bat'].every((k) => V3.cards.get(k) && V3.cards.get(k).mesh.visible));
+      G.p.stats.moons = 0; G.p.stats.bat = false;
       for (let f = 0; f < 3; f++) { goFloor(G.fl.idx + 1); await T.wait(60); T.sim(0.5); render(); }
       T.check('new floors rebuild the scene', CD.renderer.status.rooms === G.fl.rooms.length);
       await T.realm('ranger'); T.sim(1); render();
@@ -204,6 +208,17 @@ module.exports = [
       T.check('the Realm stands up in 3D: trees, houses, people', W.on && st.cards > 30, st);
       T.check('the dungeon is put away in the Realm', !V3.level.visible);
       T.check('distance fades into a haze', V3.scene.fog && V3.scene.fog.far > V3.scene.fog.near && V3.scene.fog.near > 0);
+      W.t = Math.floor(W.t / DAY_LEN) * DAY_LEN + DAY_LEN * 0.3; render();
+      const sun = V3.cards.get(G.p).shade;
+      T.check('the morning sun throws long shadows to the west', sun && sun.visible && sun.matrixWorld.elements[4] < -40, sun && sun.matrixWorld.elements);
+      W.t += DAY_LEN * 0.4; render();
+      T.check('and the evening sun to the east', sun.visible && sun.matrixWorld.elements[4] > 40, sun.matrixWorld.elements);
+      // a waypoint far east: its arrow is drawn on the glass at the right edge of the screen
+      W.ch.wp = { zone: W.Z.id, x: G.p.x + 2000, y: G.p.y }; W.compassT = null; render();
+      const edge = V3.ug.getImageData(R.VW - 40, 0, 40, R.VH).data;
+      let cyan = 0; for (let i = 0; i < edge.length; i += 4) if (edge[i] === 127 && edge[i + 1] === 232 && edge[i + 2] === 255) cyan++;
+      T.check('the compass arrow for a far waypoint sits on the edge of the screen', cyan > 10, cyan);
+      W.ch.wp = null; W.compassT = null;
       const cards = st.cards; render();
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);

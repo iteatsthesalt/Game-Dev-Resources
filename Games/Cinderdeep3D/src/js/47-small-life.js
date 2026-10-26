@@ -142,7 +142,8 @@ hook('renderFloor', (g, cx, cy) => {
   // what walks the ground walks under everything else
   for (const c of CRIT.list) if (!CRIT_FLY[c.kind] && c.z < 3) drawCrit(g, c, cx, cy);
 });
-hook('renderWorld', (g, cx, cy) => { for (const c of CRIT.list) if (CRIT_FLY[c.kind] || c.z >= 3) drawCrit(g, c, cx, cy); });
+// a card's foot is lifted to the critter's height, so a bird climbing away stays the same small card
+hook('renderCards', (card) => { for (const c of CRIT.list) if (CRIT_FLY[c.kind] || c.z >= 3) card(c, c.x, c.y, 24, 24, 6 - c.z, (g, cx, cy) => drawCrit(g, c, cx, cy)); });
 const _lightsCrit = lightSources;
 lightSources = function (vis) {
   const L = _lightsCrit(vis);
