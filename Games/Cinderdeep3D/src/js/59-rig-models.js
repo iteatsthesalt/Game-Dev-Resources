@@ -5,7 +5,8 @@
    hero becomes that model: its class gives the look, its weapon
    what it holds, its state the clip and the moment in it, its
    aim the way it faces. Its card is still painted, unseen, so
-   its shadow still falls. Chests stand as the rig's chest. Heroes
+   its shadow still falls. Chests stand as the rig's chest, Realm
+   trees as the rig's trees, each merged into one mesh. Heroes
    drawn from a custom sheet, heroes on a mount, and beasts stay
    on their cards for now.
    ============================================================ */
@@ -93,6 +94,56 @@ function rigmChest(c, pr, dx = 0) {
   g.group.rotation.y = rigmYaw(Math.PI / 2);
   g.group.visible = true;
   c.model = g.group;
+  return true;
+}
+
+/* ---------- trees: the rig's trees at their real height, merged into one mesh each and shared ---------- */
+// which of the rig's trees a Realm tree is, and how tall it grows (m); kinds not here keep their solid
+const RIGM_TREE = {
+  oak: ['oak', 10], bigoak: ['oak', 14], birch: ['oak', 11], autumn: ['oak', 9], acacia: ['oak', 8], baobab: ['oak', 12], jungle: ['oak', 14], voidtree: ['oak', 9],
+  cherry: ['blossom', 6], feytree: ['blossom', 8], pine: ['pine', 16], snowpine: ['pine', 14], stormpine: ['pine', 15],
+  willow: ['willow', 9], mangrove: ['willow', 8], palm: ['palm', 12],
+};
+// a tree's colours, taken from its own sprite so lands, seasons and elements carry over: leaves from the top, bark from the foot
+function rigmTreePal(sp) {
+  const d = sp.c.getContext('2d').getImageData(0, 0, sp.w, sp.h).data, leaf = [0, 0, 0, 0], bark = [0, 0, 0, 0];
+  for (let y = 0; y < sp.h; y++) for (let x = 0; x < sp.w; x++) {
+    const i = (y * sp.w + x) * 4;
+    if (d[i + 3] < 128 || d[i] + d[i + 1] + d[i + 2] < 60) continue;
+    const to = y < sp.h * 0.55 ? leaf : y > sp.h * 0.8 && Math.abs(x - sp.ax) < 3 ? bark : null;
+    if (to) { to[0] += d[i]; to[1] += d[i + 1]; to[2] += d[i + 2]; to[3]++; }
+  }
+  const hex = (a, k, or) => (a[3] ? '#' + [0, 1, 2].map((j) => Math.min(255, Math.round((a[j] / a[3]) * k)).toString(16).padStart(2, '0')).join('') : or);
+  return { trunk: hex(bark, 1, '#6a4a2a'), leaf: hex(leaf, 1, '#3e8a3a'), light: hex(leaf, 1.3, '#6cb85a'), accent: null };
+}
+const RIGM_TREES = new Map();
+function rigmTreeModel(o, sp) {
+  const [kind, metres] = RIGM_TREE[o.tree], key = `${o.tree}:${v3SpriteId(sp)}`;
+  let T = RIGM_TREES.get(key);
+  if (!T) {
+    const P = RigKit.TREE_PRESETS[kind], pal = rigmTreePal(sp), look = { ...P, pal: { ...pal, accent: kind === 'blossom' ? '#ffffff' : null } };
+    const M = RigShapes.builder(1);
+    RigModels.tree(RigKit.treePose('sway', 0, look), look, M);
+    T = { geo: RigShapes.merge(M.parts), h: M.bounds.h, metres };
+    RIGM_TREES.set(key, T);
+  }
+  return T;
+}
+// stands a Realm tree as its model in its card's place; false for kinds the rig has no tree for
+function rigmTree(c, o, sp, faded) {
+  if (!rigmOn() || o.kind !== 'tree' || !RIGM_TREE[o.tree]) return false;
+  const T = rigmTreeModel(o, sp);
+  if (!c.tree) { c.tree = new THREE.Mesh(T.geo, V3_SOLID_MAT[0]); V3.scene.add(c.tree); }
+  // each tree its own size and turn, and a slow sway in the wind
+  const k = (T.metres * rigmMetre() * (0.85 + 0.3 * hashU(o.x | 0, o.y | 0, 3))) / T.h;
+  c.tree.geometry = T.geo; c.tree.material = V3_SOLID_MAT[faded ? 1 : 0];
+  c.tree.scale.setScalar(k);
+  c.tree.position.set(o.x, 0, o.y);
+  c.tree.rotation.set(0, hashU(o.x | 0, o.y | 0, 4) * Math.PI * 2, Math.sin(G.t * 0.9 + o.x * 0.05) * 0.025);
+  c.tree.visible = true;
+  c.model = c.tree;
+  c.mesh.visible = false;
+  if (c.vox) c.vox.visible = false;
   return true;
 }
 

@@ -49,15 +49,16 @@ window.RigShapes = (() => {
     return g;
   }
   // a subdivided box whose shared edges are welded, so bumps and normals do not split along the box's seams
-  const ball = (fine) => { const s = fine ? 14 : 8; return new THREE.BoxGeometry(1, 1, 1, s, s + 1, s); };
+  // low: a few facets only, for models merged into one mesh and drawn many times (trees in the game)
+  const ball = (fine, low) => { const s = low ? 2 : fine ? 14 : 8; return new THREE.BoxGeometry(1, 1, 1, s, s + 1, s); };
 
   // ---------- shapes, each made once and shared ----------
   const shape = (key, make) => { let g = geos.get(key); if (!g) { g = make(); g.computeBoundingSphere(); geos.set(key, g); } return g; };
   // a tapered capsule along Y: a subdivided box pushed onto a sphere, its halves given their own radius and
   // pulled apart. An odd number of rows keeps every vertex off the equator. flat and flatTop squash the caps
   // (0.02 makes a cylinder's flat end); normals follow the squash.
-  const limbGeo = (r1, r2, half, flat = 1, flatTop = 1, pat = "plain") => shape(`L${r1.toFixed(2)}:${r2.toFixed(2)}:${half.toFixed(1)}:${flat}:${flatTop}:${pat}`, () => {
-    const g = ball((PATTERNS[pat] || PATTERNS.plain).fine), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), m = new THREE.Vector3();
+  const limbGeo = (r1, r2, half, flat = 1, flatTop = 1, pat = "plain", low = false) => shape(`L${r1.toFixed(2)}:${r2.toFixed(2)}:${half.toFixed(1)}:${flat}:${flatTop}:${pat}:${low}`, () => {
+    const g = ball((PATTERNS[pat] || PATTERNS.plain).fine, low), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), m = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).normalize();
       const top = v.y > 0, r = top ? r2 : r1, f = top ? flatTop : flat;
@@ -68,8 +69,8 @@ window.RigShapes = (() => {
     return surface(weld(g), pat, Math.max(r1, r2));
   });
   // a box with rounded edges: each point is pulled onto the inner box and pushed back out by the radius
-  const blockGeo = (hx, hy, hz, r, pat = "plain") => shape(`B${hx.toFixed(1)}:${hy.toFixed(1)}:${hz.toFixed(1)}:${r.toFixed(1)}:${pat}`, () => {
-    const g = new THREE.BoxGeometry(1, 1, 1, 6, 6, 6), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
+  const blockGeo = (hx, hy, hz, r, pat = "plain", low = false) => shape(`B${hx.toFixed(1)}:${hy.toFixed(1)}:${hz.toFixed(1)}:${r.toFixed(1)}:${pat}:${low}`, () => {
+    const s = low ? 2 : 6, g = new THREE.BoxGeometry(1, 1, 1, s, s, s), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
     const size = new THREE.Vector3(hx * 2, hy * 2, hz * 2), k = [hx, hy, hz].map((e) => Math.max(0, e - r));
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).multiply(size);
@@ -138,6 +139,23 @@ window.RigShapes = (() => {
     m.quaternion.setFromRotationMatrix(basis.makeBasis(bx, by, bz));
   };
 
+  // a solid part's shape and where it sits, set on a mesh (or any Object3D with a geometry)
+  function fit(m, part, low) {
+    m.scale.set(1, 1, 1);
+    if (part.kind === "limb") {
+      const p = at3(part.p), q = at3(part.q), len = p.distanceTo(q);
+      m.geometry = limbGeo(part.r1, part.r2, len / 2, part.flat, part.flatTop, part.pat, low);
+      m.position.copy(p).add(q).multiplyScalar(0.5);
+      if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
+      else m.quaternion.identity();
+    } else if (part.kind === "ellipsoid") {
+      m.geometry = limbGeo(1, 1, 0, 1, 1, part.pat, low);
+      m.position.copy(at3(part.p)); m.scale.set(...part.rad); orient(m, part.f);
+    } else {
+      m.geometry = blockGeo(...part.half, Math.min(part.r, ...part.half), part.pat, low);
+      m.position.copy(at3(part.p)); orient(m, part.f);
+    }
+  }
   function placer(group) {
     const pool = { solid: [], quad: [] };
     const take = (kind, i, make) => {
@@ -165,20 +183,7 @@ window.RigShapes = (() => {
         const m = take("solid", ns++, () => new THREE.Mesh(limbGeo(1, 1, 0, 1), mat("#ffffff", {})));
         m.material = mat(part.c, o);
         m.castShadow = !part.ghost && !part.glow; m.receiveShadow = !part.ghost;
-        m.scale.set(1, 1, 1);
-        if (part.kind === "limb") {
-          const p = at3(part.p), q = at3(part.q), len = p.distanceTo(q);
-          m.geometry = limbGeo(part.r1, part.r2, len / 2, part.flat, part.flatTop, part.pat);
-          m.position.copy(p).add(q).multiplyScalar(0.5);
-          if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
-          else m.quaternion.identity();
-        } else if (part.kind === "ellipsoid") {
-          m.geometry = limbGeo(1, 1, 0, 1, 1, part.pat);
-          m.position.copy(at3(part.p)); m.scale.set(...part.rad); orient(m, part.f);
-        } else {
-          m.geometry = blockGeo(...part.half, Math.min(part.r, ...part.half), part.pat);
-          m.position.copy(at3(part.p)); orient(m, part.f);
-        }
+        fit(m, part, false);
       }
       for (let i = ns; i < pool.solid.length; i++) pool.solid[i].visible = false;
       for (let i = nq; i < pool.quad.length; i++) pool.quad[i].visible = false;
@@ -189,5 +194,36 @@ window.RigShapes = (() => {
   // the shape cache, emptied by its owner between frames, before any placer of the frame has taken a shape from it
   function flush() { if (geos.size > 600) { for (const g of geos.values()) g.dispose(); geos.clear(); } }
 
-  return { builder, placer, flush, ownLight };
+  // a whole model as one low-detail geometry: every part's triangles in place, each vertex coloured by its part's
+  // colour and surface (in linear light), quads given both faces. Draw it with any material that reads vertex colours.
+  function merge(parts) {
+    const pos = [], nor = [], col = [], m = new THREE.Mesh(), v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color();
+    const tri = (a, b, d, nx, ny, nz) => { for (const q of [a, b, d]) { pos.push(q[0], q[1], -q[2]); nor.push(nx, ny, nz); col.push(c.r, c.g, c.b); } };
+    for (const part of parts) {
+      c.set(part.c);
+      if (part.kind === "quad") {
+        const [a, b, d, e = d] = part.pts, u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+        n.set(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]).normalize();
+        tri(a, b, d, n.x, n.y, -n.z); tri(a, d, e, n.x, n.y, -n.z); tri(a, d, b, -n.x, -n.y, n.z); tri(a, e, d, -n.x, -n.y, n.z);
+        continue;
+      }
+      fit(m, part, true); m.updateMatrix(); m.normalMatrix.getNormalMatrix(m.matrix);
+      const g = m.geometry, P = g.attributes.position, N = g.attributes.normal, T = g.attributes.color, idx = g.index.array;
+      for (let i = 0; i < idx.length; i++) {
+        const k = idx[i];
+        v.fromBufferAttribute(P, k).applyMatrix4(m.matrix); n.fromBufferAttribute(N, k).applyNormalMatrix(m.normalMatrix);
+        const t = T ? T.getX(k) : 1;
+        pos.push(v.x, v.y, v.z); nor.push(n.x, n.y, n.z); col.push(c.r * t, c.g * t, c.b * t);
+      }
+    }
+    // the bundle carries no geometry class of its own to build from, so a box is emptied and given these buffers
+    const geo = new THREE.BoxGeometry(1, 1, 1), Attr = geo.attributes.position.constructor;
+    geo.setIndex(null); geo.clearGroups(); geo.deleteAttribute("uv");
+    geo.setAttribute("position", new Attr(new Float32Array(pos), 3));
+    geo.setAttribute("normal", new Attr(new Float32Array(nor), 3));
+    geo.setAttribute("color", new Attr(new Float32Array(col), 3));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+  return { builder, placer, flush, ownLight, merge };
 })();

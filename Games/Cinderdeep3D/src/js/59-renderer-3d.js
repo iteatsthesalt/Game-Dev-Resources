@@ -265,7 +265,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.tree) V3.scene.remove(c.tree); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
@@ -279,7 +279,7 @@ function v3PaintCards(fn) {
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
-    c.mesh.visible = false; if (c.vox) c.vox.visible = false;
+    c.mesh.visible = false; if (c.vox) c.vox.visible = false; if (c.tree) c.tree.visible = false;
     if (V3.frame - c.used > 240) v3DropCard(id, c);
   }
   rigmTidy();
@@ -485,7 +485,8 @@ function v3RealmCards(x0, y0, x1, y1) {
           const w = 2 * Math.max(sp.ax, sp.w - sp.ax) + 8, below = Math.max(8, sp.h - sp.ay + 6);
           const day1 = o.kind === 'building' ? day : '';
           const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
-          if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
+          // trees the rig has a model for stand as it (59-rig-models.js); other still things as their sprite's solid
+          if (!rigmTree(c, o, sp, faded) && still) { if (c.tree) c.tree.visible = false; c.model = null; v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded); }
           if (o.kind !== 'mark') v3Caster(c);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);

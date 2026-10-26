@@ -271,6 +271,16 @@ module.exports = [
       render();
       T.check('a full model cache empties between frames, without bare solids on show', !V3_SOLIDS.has('pad0') && V3_SOLIDS.size <= CD.renderer.status.solids && [...V3.cards.values()].every((k) => !k.vox || !k.vox.visible || k.vox.geometry), V3_SOLIDS.size);
       T.check('and the frame builds its models again', CD.renderer.status.solids > 10, CD.renderer.status);
+      // trees the rig has a model for stand as it, towering over the hero at their real height
+      let tree = null;
+      for (const L of W.Z.objs) for (const o of L) if (o.kind === 'tree' && RIGM_TREE[o.tree] && (!tree || Math.hypot(o.x - G.p.x, o.y - G.p.y) < Math.hypot(tree.x - G.p.x, tree.y - G.p.y))) tree = o;
+      if (tree) {
+        const home = [G.p.x, G.p.y]; G.p.x = tree.x + 30; G.p.y = tree.y + 40; G.cam.x = G.p.x; G.cam.y = G.p.y; T.sim(0.2); render();
+        const tc = V3.cards.get(tree), hero = CD.rigModels.groups.get(G.p);
+        const tall = tc && tc.tree && tc.tree.visible && (tc.tree.geometry.boundingSphere.radius * tc.tree.scale.x) > 3 * hero.group.scale.x * 21;
+        T.check('a Realm tree is the rig\'s tree, towering over the hero', tall && !tc.mesh.visible, tree.tree);
+        [G.p.x, G.p.y] = home; G.cam.x = G.p.x; G.cam.y = G.p.y; T.sim(0.2); render();
+      } else T.check('the Realm has trees to stand up', false);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
       T.check('glow and colour are on by default', CD.renderer.status.glow === true, CD.renderer.status);
       CD.settings.glow = false; render();

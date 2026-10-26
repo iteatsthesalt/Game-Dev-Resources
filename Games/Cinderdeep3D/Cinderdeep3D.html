@@ -5136,15 +5136,16 @@ window.RigShapes = (() => {
     return g;
   }
   // a subdivided box whose shared edges are welded, so bumps and normals do not split along the box's seams
-  const ball = (fine) => { const s = fine ? 14 : 8; return new THREE.BoxGeometry(1, 1, 1, s, s + 1, s); };
+  // low: a few facets only, for models merged into one mesh and drawn many times (trees in the game)
+  const ball = (fine, low) => { const s = low ? 2 : fine ? 14 : 8; return new THREE.BoxGeometry(1, 1, 1, s, s + 1, s); };
 
   // ---------- shapes, each made once and shared ----------
   const shape = (key, make) => { let g = geos.get(key); if (!g) { g = make(); g.computeBoundingSphere(); geos.set(key, g); } return g; };
   // a tapered capsule along Y: a subdivided box pushed onto a sphere, its halves given their own radius and
   // pulled apart. An odd number of rows keeps every vertex off the equator. flat and flatTop squash the caps
   // (0.02 makes a cylinder's flat end); normals follow the squash.
-  const limbGeo = (r1, r2, half, flat = 1, flatTop = 1, pat = "plain") => shape(`L${r1.toFixed(2)}:${r2.toFixed(2)}:${half.toFixed(1)}:${flat}:${flatTop}:${pat}`, () => {
-    const g = ball((PATTERNS[pat] || PATTERNS.plain).fine), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), m = new THREE.Vector3();
+  const limbGeo = (r1, r2, half, flat = 1, flatTop = 1, pat = "plain", low = false) => shape(`L${r1.toFixed(2)}:${r2.toFixed(2)}:${half.toFixed(1)}:${flat}:${flatTop}:${pat}:${low}`, () => {
+    const g = ball((PATTERNS[pat] || PATTERNS.plain).fine, low), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), m = new THREE.Vector3();
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).normalize();
       const top = v.y > 0, r = top ? r2 : r1, f = top ? flatTop : flat;
@@ -5155,8 +5156,8 @@ window.RigShapes = (() => {
     return surface(weld(g), pat, Math.max(r1, r2));
   });
   // a box with rounded edges: each point is pulled onto the inner box and pushed back out by the radius
-  const blockGeo = (hx, hy, hz, r, pat = "plain") => shape(`B${hx.toFixed(1)}:${hy.toFixed(1)}:${hz.toFixed(1)}:${r.toFixed(1)}:${pat}`, () => {
-    const g = new THREE.BoxGeometry(1, 1, 1, 6, 6, 6), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
+  const blockGeo = (hx, hy, hz, r, pat = "plain", low = false) => shape(`B${hx.toFixed(1)}:${hy.toFixed(1)}:${hz.toFixed(1)}:${r.toFixed(1)}:${pat}:${low}`, () => {
+    const s = low ? 2 : 6, g = new THREE.BoxGeometry(1, 1, 1, s, s, s), p = g.attributes.position, n = g.attributes.normal, v = new THREE.Vector3(), c = new THREE.Vector3();
     const size = new THREE.Vector3(hx * 2, hy * 2, hz * 2), k = [hx, hy, hz].map((e) => Math.max(0, e - r));
     for (let i = 0; i < p.count; i++) {
       v.fromBufferAttribute(p, i).multiply(size);
@@ -5225,6 +5226,23 @@ window.RigShapes = (() => {
     m.quaternion.setFromRotationMatrix(basis.makeBasis(bx, by, bz));
   };
 
+  // a solid part's shape and where it sits, set on a mesh (or any Object3D with a geometry)
+  function fit(m, part, low) {
+    m.scale.set(1, 1, 1);
+    if (part.kind === "limb") {
+      const p = at3(part.p), q = at3(part.q), len = p.distanceTo(q);
+      m.geometry = limbGeo(part.r1, part.r2, len / 2, part.flat, part.flatTop, part.pat, low);
+      m.position.copy(p).add(q).multiplyScalar(0.5);
+      if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
+      else m.quaternion.identity();
+    } else if (part.kind === "ellipsoid") {
+      m.geometry = limbGeo(1, 1, 0, 1, 1, part.pat, low);
+      m.position.copy(at3(part.p)); m.scale.set(...part.rad); orient(m, part.f);
+    } else {
+      m.geometry = blockGeo(...part.half, Math.min(part.r, ...part.half), part.pat, low);
+      m.position.copy(at3(part.p)); orient(m, part.f);
+    }
+  }
   function placer(group) {
     const pool = { solid: [], quad: [] };
     const take = (kind, i, make) => {
@@ -5252,20 +5270,7 @@ window.RigShapes = (() => {
         const m = take("solid", ns++, () => new THREE.Mesh(limbGeo(1, 1, 0, 1), mat("#ffffff", {})));
         m.material = mat(part.c, o);
         m.castShadow = !part.ghost && !part.glow; m.receiveShadow = !part.ghost;
-        m.scale.set(1, 1, 1);
-        if (part.kind === "limb") {
-          const p = at3(part.p), q = at3(part.q), len = p.distanceTo(q);
-          m.geometry = limbGeo(part.r1, part.r2, len / 2, part.flat, part.flatTop, part.pat);
-          m.position.copy(p).add(q).multiplyScalar(0.5);
-          if (len > 1e-4) m.quaternion.setFromUnitVectors(UP, dir.copy(q).sub(p).normalize());
-          else m.quaternion.identity();
-        } else if (part.kind === "ellipsoid") {
-          m.geometry = limbGeo(1, 1, 0, 1, 1, part.pat);
-          m.position.copy(at3(part.p)); m.scale.set(...part.rad); orient(m, part.f);
-        } else {
-          m.geometry = blockGeo(...part.half, Math.min(part.r, ...part.half), part.pat);
-          m.position.copy(at3(part.p)); orient(m, part.f);
-        }
+        fit(m, part, false);
       }
       for (let i = ns; i < pool.solid.length; i++) pool.solid[i].visible = false;
       for (let i = nq; i < pool.quad.length; i++) pool.quad[i].visible = false;
@@ -5276,7 +5281,38 @@ window.RigShapes = (() => {
   // the shape cache, emptied by its owner between frames, before any placer of the frame has taken a shape from it
   function flush() { if (geos.size > 600) { for (const g of geos.values()) g.dispose(); geos.clear(); } }
 
-  return { builder, placer, flush, ownLight };
+  // a whole model as one low-detail geometry: every part's triangles in place, each vertex coloured by its part's
+  // colour and surface (in linear light), quads given both faces. Draw it with any material that reads vertex colours.
+  function merge(parts) {
+    const pos = [], nor = [], col = [], m = new THREE.Mesh(), v = new THREE.Vector3(), n = new THREE.Vector3(), c = new THREE.Color();
+    const tri = (a, b, d, nx, ny, nz) => { for (const q of [a, b, d]) { pos.push(q[0], q[1], -q[2]); nor.push(nx, ny, nz); col.push(c.r, c.g, c.b); } };
+    for (const part of parts) {
+      c.set(part.c);
+      if (part.kind === "quad") {
+        const [a, b, d, e = d] = part.pts, u = [b[0] - a[0], b[1] - a[1], b[2] - a[2]], w = [d[0] - a[0], d[1] - a[1], d[2] - a[2]];
+        n.set(u[1] * w[2] - u[2] * w[1], u[2] * w[0] - u[0] * w[2], u[0] * w[1] - u[1] * w[0]).normalize();
+        tri(a, b, d, n.x, n.y, -n.z); tri(a, d, e, n.x, n.y, -n.z); tri(a, d, b, -n.x, -n.y, n.z); tri(a, e, d, -n.x, -n.y, n.z);
+        continue;
+      }
+      fit(m, part, true); m.updateMatrix(); m.normalMatrix.getNormalMatrix(m.matrix);
+      const g = m.geometry, P = g.attributes.position, N = g.attributes.normal, T = g.attributes.color, idx = g.index.array;
+      for (let i = 0; i < idx.length; i++) {
+        const k = idx[i];
+        v.fromBufferAttribute(P, k).applyMatrix4(m.matrix); n.fromBufferAttribute(N, k).applyNormalMatrix(m.normalMatrix);
+        const t = T ? T.getX(k) : 1;
+        pos.push(v.x, v.y, v.z); nor.push(n.x, n.y, n.z); col.push(c.r * t, c.g * t, c.b * t);
+      }
+    }
+    // the bundle carries no geometry class of its own to build from, so a box is emptied and given these buffers
+    const geo = new THREE.BoxGeometry(1, 1, 1), Attr = geo.attributes.position.constructor;
+    geo.setIndex(null); geo.clearGroups(); geo.deleteAttribute("uv");
+    geo.setAttribute("position", new Attr(new Float32Array(pos), 3));
+    geo.setAttribute("normal", new Attr(new Float32Array(nor), 3));
+    geo.setAttribute("color", new Attr(new Float32Array(col), 3));
+    geo.computeBoundingSphere();
+    return geo;
+  }
+  return { builder, placer, flush, ownLight, merge };
 })();
 // ---------- the rig kit: 3D models, each subject's skeleton dressed in solid shapes ----------
 // Shared by the 8-Way Sprite Rig and Cinderdeep 3D.
@@ -11878,7 +11914,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '10.1';
+const VERSION = '10.2';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -27293,7 +27329,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); if (c.vox) V3.scene.remove(c.vox); if (c.tree) V3.scene.remove(c.tree); if (c.shade) { V3.scene.remove(c.shade); c.shade.material.dispose(); } c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
@@ -27307,7 +27343,7 @@ function v3PaintCards(fn) {
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
-    c.mesh.visible = false; if (c.vox) c.vox.visible = false;
+    c.mesh.visible = false; if (c.vox) c.vox.visible = false; if (c.tree) c.tree.visible = false;
     if (V3.frame - c.used > 240) v3DropCard(id, c);
   }
   rigmTidy();
@@ -27513,7 +27549,8 @@ function v3RealmCards(x0, y0, x1, y1) {
           const w = 2 * Math.max(sp.ax, sp.w - sp.ax) + 8, below = Math.max(8, sp.h - sp.ay + 6);
           const day1 = o.kind === 'building' ? day : '';
           const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
-          if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
+          // trees the rig has a model for stand as it (59-rig-models.js); other still things as their sprite's solid
+          if (!rigmTree(c, o, sp, faded) && still) { if (c.tree) c.tree.visible = false; c.model = null; v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded); }
           if (o.kind !== 'mark') v3Caster(c);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
@@ -27809,7 +27846,8 @@ CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.ca
    hero becomes that model: its class gives the look, its weapon
    what it holds, its state the clip and the moment in it, its
    aim the way it faces. Its card is still painted, unseen, so
-   its shadow still falls. Chests stand as the rig's chest. Heroes
+   its shadow still falls. Chests stand as the rig's chest, Realm
+   trees as the rig's trees, each merged into one mesh. Heroes
    drawn from a custom sheet, heroes on a mount, and beasts stay
    on their cards for now.
    ============================================================ */
@@ -27897,6 +27935,56 @@ function rigmChest(c, pr, dx = 0) {
   g.group.rotation.y = rigmYaw(Math.PI / 2);
   g.group.visible = true;
   c.model = g.group;
+  return true;
+}
+
+/* ---------- trees: the rig's trees at their real height, merged into one mesh each and shared ---------- */
+// which of the rig's trees a Realm tree is, and how tall it grows (m); kinds not here keep their solid
+const RIGM_TREE = {
+  oak: ['oak', 10], bigoak: ['oak', 14], birch: ['oak', 11], autumn: ['oak', 9], acacia: ['oak', 8], baobab: ['oak', 12], jungle: ['oak', 14], voidtree: ['oak', 9],
+  cherry: ['blossom', 6], feytree: ['blossom', 8], pine: ['pine', 16], snowpine: ['pine', 14], stormpine: ['pine', 15],
+  willow: ['willow', 9], mangrove: ['willow', 8], palm: ['palm', 12],
+};
+// a tree's colours, taken from its own sprite so lands, seasons and elements carry over: leaves from the top, bark from the foot
+function rigmTreePal(sp) {
+  const d = sp.c.getContext('2d').getImageData(0, 0, sp.w, sp.h).data, leaf = [0, 0, 0, 0], bark = [0, 0, 0, 0];
+  for (let y = 0; y < sp.h; y++) for (let x = 0; x < sp.w; x++) {
+    const i = (y * sp.w + x) * 4;
+    if (d[i + 3] < 128 || d[i] + d[i + 1] + d[i + 2] < 60) continue;
+    const to = y < sp.h * 0.55 ? leaf : y > sp.h * 0.8 && Math.abs(x - sp.ax) < 3 ? bark : null;
+    if (to) { to[0] += d[i]; to[1] += d[i + 1]; to[2] += d[i + 2]; to[3]++; }
+  }
+  const hex = (a, k, or) => (a[3] ? '#' + [0, 1, 2].map((j) => Math.min(255, Math.round((a[j] / a[3]) * k)).toString(16).padStart(2, '0')).join('') : or);
+  return { trunk: hex(bark, 1, '#6a4a2a'), leaf: hex(leaf, 1, '#3e8a3a'), light: hex(leaf, 1.3, '#6cb85a'), accent: null };
+}
+const RIGM_TREES = new Map();
+function rigmTreeModel(o, sp) {
+  const [kind, metres] = RIGM_TREE[o.tree], key = `${o.tree}:${v3SpriteId(sp)}`;
+  let T = RIGM_TREES.get(key);
+  if (!T) {
+    const P = RigKit.TREE_PRESETS[kind], pal = rigmTreePal(sp), look = { ...P, pal: { ...pal, accent: kind === 'blossom' ? '#ffffff' : null } };
+    const M = RigShapes.builder(1);
+    RigModels.tree(RigKit.treePose('sway', 0, look), look, M);
+    T = { geo: RigShapes.merge(M.parts), h: M.bounds.h, metres };
+    RIGM_TREES.set(key, T);
+  }
+  return T;
+}
+// stands a Realm tree as its model in its card's place; false for kinds the rig has no tree for
+function rigmTree(c, o, sp, faded) {
+  if (!rigmOn() || o.kind !== 'tree' || !RIGM_TREE[o.tree]) return false;
+  const T = rigmTreeModel(o, sp);
+  if (!c.tree) { c.tree = new THREE.Mesh(T.geo, V3_SOLID_MAT[0]); V3.scene.add(c.tree); }
+  // each tree its own size and turn, and a slow sway in the wind
+  const k = (T.metres * rigmMetre() * (0.85 + 0.3 * hashU(o.x | 0, o.y | 0, 3))) / T.h;
+  c.tree.geometry = T.geo; c.tree.material = V3_SOLID_MAT[faded ? 1 : 0];
+  c.tree.scale.setScalar(k);
+  c.tree.position.set(o.x, 0, o.y);
+  c.tree.rotation.set(0, hashU(o.x | 0, o.y | 0, 4) * Math.PI * 2, Math.sin(G.t * 0.9 + o.x * 0.05) * 0.025);
+  c.tree.visible = true;
+  c.model = c.tree;
+  c.mesh.visible = false;
+  if (c.vox) c.vox.visible = false;
   return true;
 }
 
