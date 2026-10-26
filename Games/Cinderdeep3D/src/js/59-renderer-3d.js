@@ -3,8 +3,9 @@
    game goes: dungeon rooms become floors with walls standing up,
    shut doors block their gaps, the Realm's land lies under its
    trees, buildings and people, and torches, lava, lamps and spells
-   cast real light. Heroes, monsters, props and loot are painted by
-   their pixel painters onto cards that stand upright in the scene.
+   cast real light. Still things, props and loot are built from their
+   pixel art into solid models; heroes and monsters are still painted
+   onto cards that stand upright in the scene.
    The simulation is the same one either way: this only draws it.
    ============================================================ */
 const V3 = {
@@ -235,8 +236,7 @@ function v3DeepCards(vis) {
       if (!pr.decal && pr.kind !== 'stairs' && pr.kind !== 'spikes' && !pr.broken) v3PropCard(pr);
     }
     for (const e of G.ents) if (!e.dead && (e.room === rid || e.boss)) v3EntCard(e);
-    for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
-    for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3LootCards();
     v3ProjCards();
     v3GhostCards();
     v3HeroCard(G.p);
@@ -337,6 +337,24 @@ function v3SpriteSolid(sp, shadeK = 1) {
     return v3SolidGeo(cv, sp.w, sp.h, sp.h - sp.ay, sp.ax, shadeK);
   });
 }
+/* ---------- loot: weapons, relics, potions, gold, souls and keys as small spinning solids over a glow ---------- */
+function v3SpinSolid(c, sp, x, y, up, spin) {
+  v3PlaceSolid(c, v3SpriteSolid(sp), x, y, false, up);
+  c.vox.rotation.y = spin;
+  return c;
+}
+function v3LootCards() {
+  for (const it of G.items) {
+    const c = v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItemGround(g, it, cx, cy));
+    // an icon is anchored at its middle: lift it by half its height to stand it over the floor
+    const ic = itemIcon(it);
+    v3SpinSolid(c, ic, it.x, it.y, itemBob(it) + ic.h - ic.ay, G.t * 1.6 + it.x);
+  }
+  for (const k of G.picks) {
+    const c = v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => shadow(g, k.x - cx, k.y - cy, 3, k.z)), sp = pickSprite(k);
+    v3SpinSolid(c, sp, k.x, k.y, k.z - pickBob(k) + sp.h - sp.ay, G.t * 3 + k.x);
+  }
+}
 /* ---------- dungeon props: the thing itself solid, what moves on it (flames, sparkles, drips, runes) on a card ---------- */
 function v3PropLook(pr) {
   if (pr.npc) return null;
@@ -391,8 +409,7 @@ function v3RealmCards(x0, y0, x1, y1) {
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
     for (const n of W.npcs) if (inView(n.x, n.y)) v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy));
     if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy));
-    for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
-    for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3LootCards();
     v3ProjCards();
     v3GhostCards();
     v3HeroCard(p);

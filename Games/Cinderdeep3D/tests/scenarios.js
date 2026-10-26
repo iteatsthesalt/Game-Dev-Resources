@@ -196,6 +196,15 @@ module.exports = [
       T.check('torches and the hero light the scene', st.lights >= 1, st);
       const solidProps = G.fl.props.filter((pr) => V3.cards.get(pr) && V3.cards.get(pr).vox && V3.cards.get(pr).vox.visible);
       T.check('dungeon props stand as solid models', solidProps.length > 0 && st.solids >= solidProps.length, { solid: solidProps.length, st });
+      // loot floats over the floor as small solids that turn
+      const loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
+      dropPickup('gold', G.p.x + 50, G.p.y + 40, 5);
+      const coin = G.picks[G.picks.length - 1];
+      render();
+      const lootVox = [loot, coin].map((o) => V3.cards.get(o) && V3.cards.get(o).vox), turn0 = lootVox.map((v) => v && v.rotation.y);
+      G.t += 0.25; render();
+      T.check('loot and pickups float as solid models', lootVox.every((v) => v && v.visible && v.geometry.attributes.position.count > 0 && v.position.y > 0), lootVox.map((v) => v && { vis: v.visible, y: v.position.y }));
+      T.check('and they turn', lootVox.every((v, i) => v.rotation.y !== turn0[i]), turn0);
       const spA = { w: 1 }, spB = { w: 1 };
       T.check('different pictures get different models', v3SpriteId(spA) !== v3SpriteId(spB) && v3SpriteId(spA) === v3SpriteId(spA) && Number.isFinite(v3SpriteId(spB)), [v3SpriteId(spA), v3SpriteId(spB)]);
       T.check('hot colours glow by themselves in the dark', V3_SELF_GLOW.value > 0.3, V3_SELF_GLOW.value);

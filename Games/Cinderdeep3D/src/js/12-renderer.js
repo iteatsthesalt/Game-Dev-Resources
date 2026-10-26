@@ -262,23 +262,19 @@ function itemIcon(it) {
   if (it.type === 'heart') return miscIcon('heart');
   return miscIcon(it.type === 'key' ? 'key' : 'potion');
 }
-function drawItem(g, it, cx, cy) {
+// items and pickups float over the floor as solids (59-renderer-3d.js); these say how high, and what they look like
+const itemBob = (it) => 6 - Math.sin(G.t * 2.4 + it.x) * 2;
+const pickBob = (k) => (k.z <= 0 ? Math.sin(G.t * 5 + k.x) * 1 : 0);
+const pickSprite = (k) => pickupSprite(k.kind === 'gold' && k.value >= 5 ? 'gold5' : k.kind);
+// what lies on the floor under an item: its glow, a ring when it is better than common, and its price in a shop
+function drawItemGround(g, it, cx, cy) {
   it.t += 1 / 60;
-  const x = it.x - cx, y = it.y - cy - 6 + Math.sin(G.t * 2.4 + it.x) * 2;
-  const col = itemColor(it);
+  const x = it.x - cx, col = itemColor(it);
   g.fillStyle = rgbaStr(col, 0.18); g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 9, 3, 0, 0, TAU); g.fill();
-  const ic = itemIcon(it);
-  if (it.type === 'weapon' && it.w.rar !== 'common') { const sil = tintOf(ic, col, 'ol' + col); for (const [ox, oy] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) g.drawImage(sil, Math.round(x - 8 + ox), Math.round(y - 8 + oy)); }
-  g.drawImage(ic.c, Math.round(x - 8), Math.round(y - 8));
+  if (itemRare(it)) { g.strokeStyle = rgbaStr(col, 0.75); g.lineWidth = 1; g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 11, 4, 0, 0, TAU); g.stroke(); }
   if (it.shop) { const tc = pixelText(it.price + 'G', G.p.gold >= it.price ? '#ffd35c' : '#a87a6a'); g.drawImage(tc, Math.round(x - tc.width / 2), Math.round(it.y - cy + 10)); }
 }
-function drawPick(g, k, cx, cy) {
-  const sp = pickupSprite(k.kind === 'gold' && k.value >= 5 ? 'gold5' : k.kind);
-  const x = k.x - cx, y = k.y - cy - k.z;
-  shadow(g, x, k.y - cy, 3, k.z);
-  const bob = k.z <= 0 ? Math.sin(G.t * 5 + k.x) * 1 : 0;
-  g.drawImage(sp.c, Math.round(x - sp.ax), Math.round(y - sp.ay + bob));
-}
+const itemRare = (it) => it.type === 'weapon' && it.w.rar !== 'common';
 
 /* ---------- characters ---------- */
 function heroFrame(p) {
