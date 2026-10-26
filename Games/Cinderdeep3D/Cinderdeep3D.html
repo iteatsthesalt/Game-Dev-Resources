@@ -9971,14 +9971,6 @@ function itemIcon(it) {
 const itemBob = (it) => 6 - Math.sin(G.t * 2.4 + it.x) * 2;
 const pickBob = (k) => (k.z <= 0 ? Math.sin(G.t * 5 + k.x) * 1 : 0);
 const pickSprite = (k) => pickupSprite(k.kind === 'gold' && k.value >= 5 ? 'gold5' : k.kind);
-// what lies on the floor under an item: its glow, a ring when it is better than common, and its price in a shop
-function drawItemGround(g, it, cx, cy) {
-  it.t += 1 / 60;
-  const x = it.x - cx, col = itemColor(it);
-  g.fillStyle = rgbaStr(col, 0.18); g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 9, 3, 0, 0, TAU); g.fill();
-  if (itemRare(it)) { g.strokeStyle = rgbaStr(col, 0.75); g.lineWidth = 1; g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 11, 4, 0, 0, TAU); g.stroke(); }
-  if (it.shop) { const tc = pixelText(it.price + 'G', G.p.gold >= it.price ? '#ffd35c' : '#a87a6a'); g.drawImage(tc, Math.round(x - tc.width / 2), Math.round(it.y - cy + 10)); }
-}
 const itemRare = (it) => it.type === 'weapon' && it.w.rar !== 'common';
 
 /* ---------- characters ---------- */
@@ -10889,7 +10881,7 @@ function sheetDrop(onDone) {
    ============================================================ */
 const SAVE_KEY = 'cinderdeep.save.v1';
 // the release shown on the title screen; saves keep their own key above
-const VERSION = '9.7';
+const VERSION = '9.8';
 const DEFAULT_SETTINGS = { music: 0.45, sfx: 0.75, shake: 1, zoom: 1, bright: false, lowFx: false, padAutoFire: true, turn8: true, rigWorld: true };
 function defaultSave() {
   return {
@@ -26078,6 +26070,8 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
 function v3DropCard(id, c) { V3.scene.remove(c.mesh); if (c.vox) V3.scene.remove(c.vox); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
+  // too many models kept: let them go now, before this frame places any, and the solids that held them rebuild
+  if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
   R.VW = 512; R.VH = 512; R.shadows = [];
   try { fn(); } finally { R.VW = vw; R.VH = vh; R.ox = ox; R.oy = oy; }
@@ -26173,7 +26167,6 @@ function v3SolidGeo(cv, w, hgt, below, ax = w / 2, shadeK = 1) {
 function v3SolidFor(key, build) {
   let geo = V3_SOLIDS.get(key);
   if (!geo) {
-    if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) { k.vox.geometry = null; k.vox.visible = false; } }
     geo = build(); V3_SOLIDS.set(key, geo);
   }
   return geo;
@@ -26202,22 +26195,34 @@ function v3SpriteSolid(sp, shadeK = 1) {
     return v3SolidGeo(cv, sp.w, sp.h, sp.h - sp.ay, sp.ax, shadeK);
   });
 }
-/* ---------- loot: weapons, relics, potions, gold, souls and keys as small spinning solids over a glow ---------- */
+/* ---------- loot: weapons, relics, potions, gold, souls and keys as small spinning solids ---------- */
+// A turning solid reaches out by half its width every way, so its pivot sits that far behind its anchor: it never
+// comes in front of whatever stands where it lies. up is the height of the sprite's foot; the anchor is lifted to it.
+const v3LootBack = (sp) => sp.w / 2;
 function v3SpinSolid(c, sp, x, y, up, spin) {
-  v3PlaceSolid(c, v3SpriteSolid(sp), x, y, false, up);
+  v3PlaceSolid(c, v3SpriteSolid(sp), x, y - v3LootBack(sp) + V3_SOLID_DEPTH, false, up + sp.h - sp.ay);
   c.vox.rotation.y = spin;
   return c;
 }
 function v3LootCards() {
   for (const it of G.items) {
-    const c = v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItemGround(g, it, cx, cy));
-    // an icon is anchored at its middle: lift it by half its height to stand it over the floor
-    const ic = itemIcon(it);
-    v3SpinSolid(c, ic, it.x, it.y, itemBob(it) + ic.h - ic.ay, G.t * 1.6 + it.x);
+    it.t += 1 / 60;
+    // behind the model, at its height: a halo in the item's colour, ringed when better than common; its price above
+    const ic = itemIcon(it), col = itemColor(it), rare = itemRare(it), price = it.shop ? `${it.price}:${G.p.gold >= it.price}` : '';
+    const c = v3Card(it, it.x, it.y - v3LootBack(ic), 48, 48, 10, (g, cx, cy) => {
+      const x = it.x - cx, y = it.y - v3LootBack(ic) - cy - 6 - ic.h / 2;
+      g.fillStyle = rgbaStr(col, 0.22); g.beginPath(); g.arc(Math.round(x), Math.round(y), 10, 0, TAU); g.fill();
+      if (rare) { g.strokeStyle = rgbaStr(col, 0.85); g.lineWidth = 1; g.beginPath(); g.arc(Math.round(x), Math.round(y), 11, 0, TAU); g.stroke(); }
+      if (it.shop) { const tc = pixelText(it.price + 'G', G.p.gold >= it.price ? '#ffd35c' : '#a87a6a'); g.drawImage(tc, Math.round(x - tc.width / 2), Math.round(y - 20)); }
+    }, `${col}:${rare}:${price}`);
+    v3SpinSolid(c, ic, it.x, it.y, itemBob(it), G.t * 1.6 + it.x);
   }
   for (const k of G.picks) {
-    const c = v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => shadow(g, k.x - cx, k.y - cy, 3, k.z)), sp = pickSprite(k);
-    v3SpinSolid(c, sp, k.x, k.y, k.z - pickBob(k) + sp.h - sp.ay, G.t * 3 + k.x);
+    // a pickup is only its solid and its shadow on the floor; the card holds the solid and is never drawn
+    const sp = pickSprite(k), c = v3Card(k, k.x, k.y, 2, 2, 0, () => {}, 'pick');
+    c.mesh.visible = false;
+    R.ox = R.oy = 0; shadow(null, k.x, k.y - v3LootBack(sp), 3, k.z);
+    v3SpinSolid(c, sp, k.x, k.y, k.z - pickBob(k), G.t * 3 + k.x);
   }
 }
 /* ---------- dungeon props: the thing itself solid, what moves on it (flames, sparkles, drips, runes) on a card ---------- */

@@ -196,15 +196,18 @@ module.exports = [
       T.check('torches and the hero light the scene', st.lights >= 1, st);
       const solidProps = G.fl.props.filter((pr) => V3.cards.get(pr) && V3.cards.get(pr).vox && V3.cards.get(pr).vox.visible);
       T.check('dungeon props stand as solid models', solidProps.length > 0 && st.solids >= solidProps.length, { solid: solidProps.length, st });
-      // loot floats over the floor as small solids that turn
-      const loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
+      // loot floats over the floor as small solids that turn, never reaching in front of where it lies
+      const t0 = G.t, loot = spawnItem({ type: 'relic', id: RELICS.find((r) => !r.acc).id }, G.p.x - 40, G.p.y + 30);
       dropPickup('gold', G.p.x + 50, G.p.y + 40, 5);
       const coin = G.picks[G.picks.length - 1];
       render();
       const lootVox = [loot, coin].map((o) => V3.cards.get(o) && V3.cards.get(o).vox), turn0 = lootVox.map((v) => v && v.rotation.y);
       G.t += 0.25; render();
       T.check('loot and pickups float as solid models', lootVox.every((v) => v && v.visible && v.geometry.attributes.position.count > 0 && v.position.y > 0), lootVox.map((v) => v && { vis: v.visible, y: v.position.y }));
-      T.check('and they turn', lootVox.every((v, i) => v.rotation.y !== turn0[i]), turn0);
+      T.check('and they turn', lootVox.every((v, i) => v && v.rotation.y !== turn0[i]), turn0);
+      T.check('a turning solid stays behind where it lies', lootVox.every((v, i) => v && v.position.z + [itemIcon(loot), pickSprite(coin)][i].w / 2 <= [loot, coin][i].y + 0.01), lootVox.map((v) => v && v.position.z));
+      T.check('a pickup draws no empty card', !V3.cards.get(coin).mesh.visible);
+      G.items.splice(G.items.indexOf(loot), 1); G.picks.splice(G.picks.indexOf(coin), 1); G.t = t0; render();
       const spA = { w: 1 }, spB = { w: 1 };
       T.check('different pictures get different models', v3SpriteId(spA) !== v3SpriteId(spB) && v3SpriteId(spA) === v3SpriteId(spA) && Number.isFinite(v3SpriteId(spB)), [v3SpriteId(spA), v3SpriteId(spB)]);
       T.check('hot colours glow by themselves in the dark', V3_SELF_GLOW.value > 0.3, V3_SELF_GLOW.value);
@@ -227,11 +230,12 @@ module.exports = [
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
       const sol = CD.renderer.status, vox = [...V3.cards.values()].find((k) => k.vox && k.vox.visible);
       T.check('the Realm\'s still things are solid models, not cards', sol.solids > 10 && sol.models > 0 && sol.models <= sol.solids && vox.vox.geometry.attributes.position.count > 0 && !vox.mesh.visible, sol);
+      // an overfull cache is let go between frames: the next frame starts empty, rebuilds only what it shows, and
+      // never shows a solid without its shape
       for (let i = 0; V3_SOLIDS.size <= 600; i++) V3_SOLIDS.set(`pad${i}`, new THREE.BoxGeometry(1, 1, 1));
-      v3SolidFor('rollover', () => new THREE.BoxGeometry(1, 1, 1));
-      T.check('a full model cache empties without leaving bare solids on show', V3_SOLIDS.size === 1 && [...V3.cards.values()].every((k) => !k.vox || !k.vox.visible || k.vox.geometry), V3_SOLIDS.size);
       render();
-      T.check('and the next frame builds its models again', CD.renderer.status.solids > 10, CD.renderer.status);
+      T.check('a full model cache empties between frames, without bare solids on show', !V3_SOLIDS.has('pad0') && V3_SOLIDS.size <= CD.renderer.status.solids && [...V3.cards.values()].every((k) => !k.vox || !k.vox.visible || k.vox.geometry), V3_SOLIDS.size);
+      T.check('and the frame builds its models again', CD.renderer.status.solids > 10, CD.renderer.status);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
       T.check('glow and colour are on by default', CD.renderer.status.glow === true, CD.renderer.status);
       CD.settings.glow = false; render();

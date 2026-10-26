@@ -266,14 +266,6 @@ function itemIcon(it) {
 const itemBob = (it) => 6 - Math.sin(G.t * 2.4 + it.x) * 2;
 const pickBob = (k) => (k.z <= 0 ? Math.sin(G.t * 5 + k.x) * 1 : 0);
 const pickSprite = (k) => pickupSprite(k.kind === 'gold' && k.value >= 5 ? 'gold5' : k.kind);
-// what lies on the floor under an item: its glow, a ring when it is better than common, and its price in a shop
-function drawItemGround(g, it, cx, cy) {
-  it.t += 1 / 60;
-  const x = it.x - cx, col = itemColor(it);
-  g.fillStyle = rgbaStr(col, 0.18); g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 9, 3, 0, 0, TAU); g.fill();
-  if (itemRare(it)) { g.strokeStyle = rgbaStr(col, 0.75); g.lineWidth = 1; g.beginPath(); g.ellipse(Math.round(x), Math.round(it.y - cy + 4), 11, 4, 0, 0, TAU); g.stroke(); }
-  if (it.shop) { const tc = pixelText(it.price + 'G', G.p.gold >= it.price ? '#ffd35c' : '#a87a6a'); g.drawImage(tc, Math.round(x - tc.width / 2), Math.round(it.y - cy + 10)); }
-}
 const itemRare = (it) => it.type === 'weapon' && it.w.rar !== 'common';
 
 /* ---------- characters ---------- */
