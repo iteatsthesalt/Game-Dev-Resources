@@ -171,6 +171,13 @@ function v3Light(L, dark, tint) {
   });
 }
 
+// distance fades into the dark below ground, and into a haze in the Realm that darkens with the night
+function v3Fog(color, near, far) {
+  const D = R.VH * V3_BACK * Math.hypot(1, V3_TILT);
+  if (!V3.scene.fog) V3.scene.fog = new THREE.Fog(color, 1, 2);
+  V3.scene.fog.color.set(color); V3.scene.fog.near = D * near; V3.scene.fog.far = D * far;
+}
+
 /* ---------- cards: things stood upright ---------- */
 // each is painted by its pixel painter onto a canvas of its own. A card whose look has not changed
 // since the last frame (same key) is only moved, not repainted.
@@ -521,12 +528,15 @@ function render() {
     const shadows = v3DeepCards(vis);
     v3Floor(rect, v3DeepGround(vis), shadows);
     v3Light(lightSources(vis), clamp(A.dark[3] * (CD.settings.bright ? 0.75 : 1) * (G.darkMul || 1), 0, 0.96), G.darkTint || '#b8b0c8');
+    v3Fog(V3.scene.background, 1.1, 2.6);
   } else {
     const shadows = v3RealmCards(rect.ox - 80, rect.oy - 40, rect.ox + rect.Wd + 80, rect.oy + rect.Hd + 140);
     v3Floor(rect, (g, ox, oy) => realmGround(g, ox, oy, R.VW, R.VH), shadows);
     const S = realmLights(rect.ox, rect.oy, rect.Wd, rect.Hd), [r, gg, b] = S.tint, k = S.dark;
     v3Light(S.L, S.dark, `rgb(${Math.round(255 - (255 - r * 4) * k)},${Math.round(255 - (255 - gg * 4) * k)},${Math.round(255 - (255 - b * 4) * k)})`);
     if (S.dusk > 0) tone = `rgba(255,140,60,${(S.dusk * 0.1).toFixed(3)})`;
+    const day = 1 - k, haze = (c, n) => Math.round(c * day + n * 4 * k * 0.4);
+    v3Fog(`rgb(${haze(170 + S.dusk * 60, r)},${haze(184, gg)},${haze(200 - S.dusk * 50, b)})`, 1.2, 3.4);
   }
   v3AirFx(true);
   R.ox = Math.round(G.cam.x - R.VW / 2); R.oy = Math.round(G.cam.y - R.VH / 2);

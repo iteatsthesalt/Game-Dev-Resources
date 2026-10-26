@@ -203,6 +203,7 @@ module.exports = [
       st = CD.renderer.status;
       T.check('the Realm stands up in 3D: trees, houses, people', W.on && st.cards > 30, st);
       T.check('the dungeon is put away in the Realm', !V3.level.visible);
+      T.check('distance fades into a haze', V3.scene.fog && V3.scene.fog.far > V3.scene.fog.near && V3.scene.fog.near > 0);
       const cards = st.cards; render();
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
