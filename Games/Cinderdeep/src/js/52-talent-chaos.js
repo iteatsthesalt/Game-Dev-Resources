@@ -95,6 +95,7 @@ for (const n of TREE.nodes) if (n.chaos) Object.defineProperty(n, 'def', { get()
 
 /* ---------- chaos in the deep ---------- */
 const CHAOS_HUES = ['#ff4ad0', '#7fe8ff', '#ffd35c', '#8fe05c', '#b98cff'];
+const CHAOS_STRAND_CH = 0.12;
 const chaosTouchCh = () => Math.min(0.22, 0.025 * chaosLevel());
 hook('spawned', (e) => { e._chaosRoll = true; });
 hook('update', () => {
@@ -113,6 +114,12 @@ hook('onKill', (e) => {
   if (!e || !e.chaosT) return;
   burst(e.x, e.y - 6, 18, CHAOS_HUES, { smax: 110, glow: true });
   if (typeof dropPickup === 'function') dropPickup('soul', e.x, e.y, 1);
+  // now and then the chaos in it is a strand of DNA, and the one who slew it takes it in
+  const p = G.p;
+  if (p && !p.dead && typeof runChar === 'function' && runChar() && Math.random() < CHAOS_STRAND_CH) {
+    p.dnaFree = (p.dnaFree || 0) + 1; p.dnaPts = (p.dnaPts || 0) + 1;
+    toast('A strand of chaos DNA · +1 DNA point', '#ff4ad0');
+  }
 });
 hook('entOverlay', (g, e, x, y) => {
   if (!e.chaosT || e.dead) return;

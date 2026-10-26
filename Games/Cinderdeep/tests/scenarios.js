@@ -52,6 +52,10 @@ module.exports = [
       T.check('the pack is beaten', G.run.stats.kills >= 4, G.run.stats.kills);
       T.check('guard engages when held', guarded > 0, guarded);
       T.check('attacks spent stamina', s.stamina < 100 || G.run.stats.kills >= 4, s.stamina);
+      const foe = spawnEnemy('skeleton', G.p.x + 40, G.p.y, {}), dna0 = G.p.dnaPts || 0, rnd0 = Math.random;
+      foe.chaosT = true; Math.random = () => 0;
+      try { killEnemy(foe); } finally { Math.random = rnd0; }
+      T.check('a chaos-touched foe can leave a strand of DNA', (G.p.dnaPts || 0) === dna0 + 1, { before: dna0, after: G.p.dnaPts });
       return T.done();
     },
   },
