@@ -95,6 +95,13 @@ input[type="color"] { width: 34px; height: 26px; padding: 0; border: 1px solid v
 .atlas-note { font-size: 13px; color: var(--muted); margin: 10px 0 0; max-width: 74ch; }
 .export { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .export small { font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.cinder { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 16px; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--line); }
+.cinder img { width: 432px; max-width: 100%; image-rendering: pixelated; background: var(--stage); border-radius: 6px; }
+.cinder-text { display: grid; gap: 6px; min-width: 0; font-size: 13.5px; }
+.cinder-text p { margin: 0; max-width: 60ch; }
+.cinder-text .label { margin: 0; }
+.cinder-text .hint { color: var(--muted); font-size: 12.5px; }
+@media (max-width: 760px) { .cinder { grid-template-columns: minmax(0, 1fr); } }
 .bottom { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 18px; }
 @media (max-width: 880px) { .bottom { grid-template-columns: minmax(0, 1fr); } }
 pre { margin: 0; overflow-x: auto; font-family: var(--mono); font-size: 12.5px; line-height: 1.6; background: var(--bg); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; }
@@ -182,7 +189,7 @@ code { font-family: var(--mono); font-size: 0.9em; }
           <label><input id="mirror" type="checkbox" checked> Mirror the far side</label>
           <label><input id="skel" type="checkbox"> Overlay true 3D skeleton</label>
         </div>
-        <div><button id="play" type="button">Pause</button></div>
+        <div class="seg"><button id="stepBack" type="button" aria-label="Previous frame">◀ Frame</button><button id="play" type="button">Pause</button><button id="stepFwd" type="button" aria-label="Next frame">Frame ▶</button></div>
       </div>
 
       <dl class="readout">
@@ -209,6 +216,15 @@ code { font-family: var(--mono); font-size: 0.9em; }
     </div>
     <div class="atlas-scroll"><canvas id="atlas" aria-label="Baked sprite atlas for the current clip"></canvas></div>
     <p class="atlas-note" id="atlasNote"></p>
+    <div class="cinder">
+      <img id="cinderImg" alt="Your character as a Cinderdeep hero: an eight-frame walk facing down, left, right and up">
+      <div class="cinder-text">
+        <p class="label">Play it in Cinderdeep</p>
+        <p>The same skeleton and gear, baked at game size: an eight-frame walk facing down, left, right and up. In Cinderdeep, start a new descent, drop this image on <b>Play as your own character</b>, save it, and pick it under <b>Look</b>.</p>
+        <p class="hint" id="cinderSave">Right-click the strip and save the image.</p>
+        <div><button id="saveCinder" type="button" hidden>Save Cinderdeep hero PNG</button></div>
+      </div>
+    </div>
   </section>
 
   <section class="bottom">
@@ -369,7 +385,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   };
 
   // Draws the figure at origin (ox, oy) in screen space, scale sc. `mono` draws a flat silhouette of the true skeleton.
-  function drawFigure(ctx, j, rel, ox, oy, sc, look, mono) {
+  function drawFigure(ctx, j, rel, ox, oy, sc, look, mono, hk = 1) {
     const P = {}; for (const k in j) P[k] = project(j[k], rel);
     const pal = look.pal, farSide = P.shL.d > P.shR.d ? "L" : "R", back = P.visor.d > P.head.d;
     const X = (q) => ox + q.x * sc, Y = (q) => oy - q.y * sc;
@@ -391,26 +407,26 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
       ctx.beginPath(); for (const k of ["capeTL", "capeTR", "capeBR", "capeBL"]) ctx.lineTo(X(P[k]), Y(P[k])); ctx.closePath(); ctx.fill();
     } });
     items.push({ d: P.head.d, draw: () => {
-      const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc, dx = X(P.visor) - hx, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
+      const hx = X(P.head), hy = Y(P.head), r = 3.7 * sc * hk, dx = (X(P.visor) - hx) * hk, front = Math.max(0, 1 - Math.abs(dx) / (r * 0.95));
       if (mono) return disc(hx, hy, r, mono);
       if (look.head === "helmet") {
         disc(hx, hy, r * 1.06, STEEL);
         if (!back) { const w = Math.max(1.1 * sc, 4.8 * sc * front), x0 = clamp(hx + dx * 0.62, hx - r, hx + r); ctx.fillStyle = VISOR; ctx.fillRect(x0 - w / 2, hy - 0.6 * sc, w, 1.2 * sc); }
       } else if (look.head === "hood") {
         disc(hx, hy, r * 1.1, pal.gear);
-        if (!back) { disc(hx + dx * 0.45, hy + 0.5 * sc, r * 0.62, pal.skin); disc(lerp(hx, X(P.visor), 0.72), hy, 0.65 * sc, VISOR); }
+        if (!back) { disc(hx + dx * 0.45, hy + 0.5 * sc, r * 0.62, pal.skin); disc(hx + dx * 0.72, hy, 0.65 * sc * hk, VISOR); }
       } else {
         disc(hx, hy, r, pal.skin);
         ctx.fillStyle = pal.hair; ctx.beginPath();
         ctx.arc(hx, hy - 0.6 * sc, r, Math.PI * (back ? 0 : 1.05), Math.PI * (back ? 2 : 1.95)); ctx.fill();
-        if (look.head === "none" && !back) disc(X(P.visor), Y(P.visor), 1.3 * sc, VISOR);
+        if (look.head === "none" && !back) disc(hx + dx, Y(P.visor), 1.3 * sc * hk, VISOR);
       }
     } });
     if (!mono && look.head === "helmet") bone("crest0", "crest1", 1.8, CREST);
     if (!mono && look.head === "hood") bone("hood0", "hood1", 2.6, pal.gear);
     if (!mono && look.head === "hat") {
       items.push({ d: P.hat0.d, draw: () => {
-        ctx.fillStyle = shade(pal.gear, 0.8); ctx.beginPath(); ctx.ellipse(X(P.hat0), Y(P.hat0), 6.4 * sc, 6.4 * Math.sin(ELEV) * sc, 0, 0, TAU); ctx.fill();
+        ctx.fillStyle = shade(pal.gear, 0.8); ctx.beginPath(); ctx.ellipse(X(P.hat0), Y(P.hat0), 6.4 * sc * hk, 6.4 * Math.sin(ELEV) * sc * hk, 0, 0, TAU); ctx.fill();
       } });
       bone("hat0", "hat1", 5.2, pal.gear); bone("hat1", "hat2", 2.4, pal.gear);
     }
@@ -419,18 +435,20 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   }
 
   // ---------- bake: every direction × frame of one clip, then pixel-threshold and outline ----------
-  function bakeClip(look, clip, N, FR) {
+  // o: cell size, origin, scale, head size and row angles, for sheets other than the atlas (the Cinderdeep hero)
+  function bakeClip(look, clip, N, FR, o = {}) {
+    const cw = o.cw || CW, ch = o.ch || CH, angles = o.angles || Array.from({ length: N }, (_, d) => (d * 360) / N);
     const cv = document.createElement("canvas");
-    cv.width = CW * FR; cv.height = CH * N;
+    cv.width = cw * FR; cv.height = ch * angles.length;
     const c = cv.getContext("2d");
-    for (let d = 0; d < N; d++) for (let f = 0; f < FR; f++) drawFigure(c, pose(clip, f / FR), (d * 360 / N) * D2R, f * CW + OX, d * CH + OY, 1, look);
+    for (let d = 0; d < angles.length; d++) for (let f = 0; f < FR; f++) drawFigure(c, pose(clip, f / FR), angles[d] * D2R, f * cw + (o.ox ?? OX), d * ch + (o.oy ?? OY), o.sc || 1, look, undefined, o.head || 1);
     const img = c.getImageData(0, 0, cv.width, cv.height), px = img.data, W = cv.width, H = cv.height;
     const solid = new Uint8Array(W * H);
     for (let i = 0; i < W * H; i++) { solid[i] = px[i * 4 + 3] > 100 ? 1 : 0; px[i * 4 + 3] = solid[i] ? 255 : 0; }
     for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
       const i = y * W + x; if (solid[i]) continue;
       const n = (x > 0 && solid[i - 1]) || (x < W - 1 && solid[i + 1]) || (y > 0 && solid[i - W]) || (y < H - 1 && solid[i + W]);
-      if (n && (x % CW) !== 0 && (x % CW) !== CW - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
+      if (n && (x % cw) !== 0 && (x % cw) !== cw - 1) { px[i * 4] = 21; px[i * 4 + 1] = 24; px[i * 4 + 2] = 36; px[i * 4 + 3] = 255; }
     }
     c.putImageData(img, 0, 0);
     return cv;
@@ -506,7 +524,9 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   const remember = () => { try { localStorage.setItem("spriteRig.v2", JSON.stringify({ look: st.look, preset: st.preset, clip: st.clip, N: st.N, FR: st.FR })); } catch (e) { /* no storage here */ } };
   let playing = !reduce, t = 0.1, dir = null, last = performance.now(), faceVal = +ui.face.value, camVal = +ui.cam.value;
   if (reduce) { ui.turn.checked = false; $("play").textContent = "Play"; }
-  let atlas = {};
+  let atlas = {}, cinder = null;
+  // Cinderdeep reads hero sheets of 18×26 cells, rows facing down, left, right and up
+  const CINDER = { cw: 18, ch: 26, ox: 9, oy: 24, sc: 0.55, head: 1.3, angles: [180, 270, 90, 0] };
 
   function pickDir(rel, cur, hyst, N) {
     const step = 360 / N, snap = Math.floor((rel + step / 2) / step) % N;
@@ -799,7 +819,8 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   let downloads = null;
   (async () => {
     try { downloads = window.claude && typeof window.claude.use === "function" ? await window.claude.use("downloads") : null; } catch (e) { downloads = null; }
-    $("savePng").hidden = $("saveJson").hidden = !downloads;
+    $("savePng").hidden = $("saveJson").hidden = $("saveCinder").hidden = !downloads;
+    $("cinderSave").textContent = downloads ? "Save it with the button, or right-click the strip and save the image." : "Right-click the strip and save the image (saving from this page works inside the Claude viewer).";
   })();
   const flash = (btn, text) => { const t0 = btn.dataset.label || (btn.dataset.label = btn.textContent); btn.textContent = text; setTimeout(() => (btn.textContent = t0), 1600); };
   async function save(btn, filename, data) {
@@ -809,6 +830,7 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   }
   $("savePng").addEventListener("click", (e) => { const btn = e.currentTarget; buildExport().cv.toBlob((b) => b && save(btn, "sprite-rig-atlas.png", b), "image/png"); });
   $("saveJson").addEventListener("click", (e) => save(e.currentTarget, "sprite-rig-atlas.json", buildExport().json));
+  $("saveCinder").addEventListener("click", (e) => { const btn = e.currentTarget; cinder.toBlob((b) => b && save(btn, "cinderdeep-hero.png", b), "image/png"); });
   async function copyText(btn, text, fallbackEl) {
     try { await navigator.clipboard.writeText(text); flash(btn, "Copied"); }
     catch (e) {
@@ -824,6 +846,8 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
     atlas = {};
     for (const c in CLIPS) atlas[c] = bakeClip(st.look, c, st.N, st.FR);
     bakeNpcs();
+    cinder = bakeClip(st.look, "walk", 4, 8, CINDER);
+    $("cinderImg").src = cinder.toDataURL("image/png");
     dir = null; world.p.dir = null; for (const n of world.npcs) n.dir = null;
     describeAtlas(); remember();
   }
@@ -951,6 +975,10 @@ const behind = hand.depth > project(snapped.chest, state.dir * (360 / DIRS)).dep
   ui.face.addEventListener("input", () => { ui.turn.checked = false; faceVal = +ui.face.value; });
   ui.cam.addEventListener("input", () => { camVal = +ui.cam.value; });
   $("play").addEventListener("click", (e) => { playing = !playing; e.currentTarget.textContent = playing ? "Pause" : "Play"; });
+  // step one baked frame at a time, paused, to read the cells
+  const stepFrame = (k) => { playing = false; $("play").textContent = "Play"; t = ((Math.floor(t * st.FR + 0.001) + k + st.FR) % st.FR) / st.FR + 0.001; };
+  $("stepBack").addEventListener("click", () => stepFrame(-1));
+  $("stepFwd").addEventListener("click", () => stepFrame(1));
   setupNpcs();
   syncControls();
   rebake();
