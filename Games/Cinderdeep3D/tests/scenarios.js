@@ -157,15 +157,22 @@ module.exports = [
     },
   },
   {
-    name: 'effects: sparks, rings and trails',
+    name: 'effects: sparks, rings, beams, bolts and trails',
     run: async () => {
       await T.descent('storm');
-      fxSparks(G.p.x, G.p.y, '#ffffff', 12); fxRing(G.p.x, G.p.y, 60); fxAdd('rune', G.p.x, G.p.y, { r: 30, life: 1 });
+      const p = G.p;
+      fxSparks(p.x, p.y, '#ffffff', 12); fxRing(p.x, p.y, 60); fxAdd('rune', p.x, p.y, { r: 30, life: 1 });
+      runHooks('onLevel', p); lightningStrike(p.x + 40, p.y, 1);
+      p.dashT = 0.2; FX.dashAt = -99; runHooks('update'); p.dashT = 0;
       T.check('effects are made', FX.particles.length >= 3, FX.particles.length);
       render();
-      T.check('and painted with the frame', FX.particles.length >= 3);
+      const A = V3.air, n = (m) => m.count;
+      T.check('sparks and glows stand in the air', n(A.dot) >= 12, n(A.dot));
+      T.check('the level-up beam and the bolt stand up', n(A.beam) === 1 && A.bolts.reduce((s, m) => s + n(m), 0) === 1, { beam: n(A.beam), bolts: A.bolts.map(n) });
+      T.check('a dash leaves an after-image', [...V3.cards.entries()].some(([id, c]) => /^ghost/.test(id) && c.mesh.visible));
       T.sim(2); render();
       T.check('and fade away', FX.particles.length === 0, FX.particles.length);
+      T.check('and leave the air', V3.air.dot.count === 0 && V3.air.beam.count === 0);
       return T.done();
     },
   },

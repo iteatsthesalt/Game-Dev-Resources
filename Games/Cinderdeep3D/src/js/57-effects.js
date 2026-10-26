@@ -1,7 +1,8 @@
 /* ============================================================
    Cinderdeep — effects: sparks, rings, runes, dash trails, slash
-   crescents and lightning. Short-lived and drawn on the 3D floor
-   with the rest of the effects; nothing here touches the game.
+   crescents, beams and lightning. Short-lived: what lies flat is
+   painted on the floor here, what stands in the air is drawn by
+   the renderer. Nothing here touches the game.
    ============================================================ */
 const FX = { particles: [], hitAt: -99, dashAt: -99, motion: window.matchMedia('(prefers-reduced-motion: reduce)') };
 let fxSeed = 0x6d2b79f5;
@@ -82,28 +83,28 @@ lightningStrike = function (x, y, dmg) {
   return result;
 };
 
-/* ---------- painting them ---------- */
+/* ---------- where they are ---------- */
+// what stands up in the air is drawn by the renderer; the rest lies on the floor
+const FX_UPRIGHT = new Set(['spark', 'glow', 'impact', 'pillar', 'bolt', 'ghost']);
+// one particle now: its world position and height, how far through its life it is, and how faded
+function fxState(q, t = G.t) {
+  const age = t - q.born, k = clamp(age / q.life, 0, 1), drag = q.type === 'spark' ? 4 : 0, d = drag ? (1 - Math.exp(-age * drag)) / drag : age;
+  const z = Math.max(0, (q.z || 0) + (q.vz || 0) * age - (q.grav || 0) * age * age * 0.5);
+  return { age, k, fade: Math.pow(1 - k, 1.4), x: q.x + (q.vx || 0) * d, y: q.y + (q.vy || 0) * d, z };
+}
+function fxLive() { const t = G.t; return (FX.particles = FX.particles.filter((q) => t - q.born < q.life && t >= q.born)); }
+
+/* ---------- painting what lies on the floor ---------- */
 // onto a canvas laid over the floor; R.ox and R.oy are that canvas's corner in the world
 function fxPaint(g) {
-  const t = G.t;
-  FX.particles = FX.particles.filter((q) => t - q.born < q.life && t >= q.born);
-  for (const q of FX.particles) {
-    const age = t - q.born, k = clamp(age / q.life, 0, 1), fade = Math.pow(1 - k, 1.4), drag = q.type === 'spark' ? 4 : 0, d = drag ? (1 - Math.exp(-age * drag)) / drag : age;
-    const z = Math.max(0, (q.z || 0) + (q.vz || 0) * age - (q.grav || 0) * age * age * 0.5), pt = fxPoint(q.x + (q.vx || 0) * d, q.y + (q.vy || 0) * d, z), x = pt.x, y = pt.y;
+  for (const q of fxLive()) {
+    if (FX_UPRIGHT.has(q.type)) continue;
+    const { age, k, fade, ...w } = fxState(q), pt = fxPoint(w.x, w.y, w.z), x = pt.x, y = pt.y;
     g.save();
     g.globalAlpha = fade; g.globalCompositeOperation = q.type === 'smoke' ? 'source-over' : 'lighter'; g.strokeStyle = q.color; g.fillStyle = q.color;
-    if (q.type === 'spark') {
-      const a = Math.atan2((q.vy || 0) * 0.6 - (q.vz || 0) + (q.grav || 0) * age, q.vx || 1), len = 2 + Math.hypot(q.vx || 0, q.vy || 0) * 0.025 * (1 - k);
-      g.lineWidth = q.size || 0.8; g.lineCap = 'round'; g.beginPath(); g.moveTo(x, y); g.lineTo(x - Math.cos(a) * len, y - Math.sin(a) * len); g.stroke();
-      g.globalAlpha = fade * 0.35; g.drawImage(LightTex.get(q.color, 0.35), x - 4, y - 4, 8, 8);
-    } else if (q.type === 'glow' || q.type === 'smoke') {
-      const r = q.r * (q.type === 'smoke' ? 0.6 + k : 1);
-      g.globalAlpha = fade * (q.type === 'smoke' ? 0.13 : 0.38); g.drawImage(LightTex.get(q.color, 0.25), x - r, y - r, r * 2, r * 2);
-    } else if (q.type === 'impact') {
-      const r = q.r * (0.4 + k);
-      g.globalAlpha = fade * 0.65; g.drawImage(LightTex.get(q.color, 0.3), x - r * 2, y - r * 2, r * 4, r * 4);
-      g.globalAlpha = fade; g.lineWidth = 1.1;
-      for (let i = 0; i < 7; i++) { const a = (i * TAU) / 7 + q.seed; g.beginPath(); g.moveTo(x + Math.cos(a) * r * 0.2, y + Math.sin(a) * r * 0.2); g.lineTo(x + Math.cos(a) * r, y + Math.sin(a) * r); g.stroke(); }
+    if (q.type === 'smoke') {
+      const r = q.r * (0.6 + k);
+      g.globalAlpha = fade * 0.13; g.drawImage(LightTex.get(q.color, 0.25), x - r, y - r, r * 2, r * 2);
     } else if (q.type === 'ring' || q.type === 'rune') {
       const r = q.r * (q.type === 'ring' ? 0.15 + 0.85 * (1 - Math.pow(1 - k, 3)) : 1);
       g.globalAlpha = fade * 0.7; g.lineWidth = q.type === 'rune' ? 0.8 : 1; g.beginPath(); g.ellipse(x, y, r, r * 0.5, 0, 0, TAU); g.stroke();
@@ -111,22 +112,12 @@ function fxPaint(g) {
         const a = (i * TAU) / 8 + (fxReduced() ? 0 : age * 0.45);
         g.save(); g.translate(x + Math.cos(a) * r, y + Math.sin(a) * r * 0.5); g.rotate(a); g.strokeRect(-2, -2, 4, 4); g.beginPath(); g.moveTo(-1, 0); g.lineTo(4, 0); g.stroke(); g.restore();
       }
-    } else if (q.type === 'pillar') {
-      const r = q.r * (1 - k * 0.5), hh = q.height * (0.5 + 0.5 * (1 - k)), grad = g.createLinearGradient(x, y, x, y - hh);
-      grad.addColorStop(0, rgbaStr(q.color, 0.45 * fade)); grad.addColorStop(1, rgbaStr(q.color, 0));
-      g.fillStyle = grad; g.globalAlpha = 1; g.beginPath(); g.moveTo(x - r, y); g.lineTo(x - r * 0.2, y - hh); g.lineTo(x + r * 0.2, y - hh); g.lineTo(x + r, y); g.fill();
     } else if (q.type === 'crescent') {
       g.lineWidth = 1.8 * (1 - k) + 0.4; g.lineCap = 'round'; g.beginPath(); g.ellipse(x, y, q.r, q.r * 0.7, 0, q.a - 0.8 + k * 0.8, q.a + 0.5 + k * 0.8); g.stroke();
       g.lineWidth = 0.5; g.globalAlpha = fade * 0.5; g.beginPath(); g.ellipse(x, y, q.r + 3, q.r * 0.7 + 2, 0, q.a - 0.7 + k * 0.8, q.a + 0.4 + k * 0.8); g.stroke();
     } else if (q.type === 'dash') {
       g.lineWidth = 2 * (1 - k);
       for (let i = -1; i <= 1; i++) { g.beginPath(); g.moveTo(x + Math.cos(q.a + Math.PI / 2) * i * 4, y + Math.sin(q.a + Math.PI / 2) * i * 4); g.lineTo(x - Math.cos(q.a) * (12 + k * 24) + i * 4, y - Math.sin(q.a) * (12 + k * 24)); g.stroke(); }
-    } else if (q.type === 'ghost') {
-      g.globalCompositeOperation = 'screen'; g.globalAlpha = fade * 0.28; drawSprite(g, q.sp, x, y, q.flip, { alpha: fade * 0.28, scale: q.scale, tint: q.color, tintA: 0.8 });
-    } else if (q.type === 'bolt') {
-      g.lineJoin = 'round'; g.lineCap = 'round';
-      const points = []; for (let i = 0; i < 10; i++) points.push([x + (i === 9 ? 0 : Math.sin(q.seed + i * 17.1) * 8), y - q.height * (1 - i / 9)]);
-      for (const [width, alpha] of [[7, 0.08], [3, 0.28], [0.8, 1]]) { g.lineWidth = width; g.globalAlpha = fade * alpha; g.beginPath(); points.forEach(([xx, yy], i) => (i ? g.lineTo(xx, yy) : g.moveTo(xx, yy))); g.stroke(); }
     }
     g.restore();
   }

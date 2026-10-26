@@ -145,7 +145,7 @@ function v3Light(L, dark, tint) {
   V3.ambient.intensity = 0.06 + lit * 1.4;
   V3.ambient.color.set(tint);
   const own = 0.06 + lit * 0.24;
-  if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) c.mesh.material.emissiveIntensity = own; }
+  if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) if (!c.ghost) c.mesh.material.emissiveIntensity = own; }
   const p = G.p;
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
   R.lights = L;
@@ -176,7 +176,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.used = V3.frame;
   c.mesh.position.set(x, hgt / 2 - below, y);
   c.mesh.visible = true;
-  if (look !== undefined && look === c.look) return;
+  if (look !== undefined && look === c.look) return c;
   c.look = look;
   const g = c.g, cx = x - w / 2, cy = y - (hgt - below);
   g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
@@ -186,6 +186,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   paint(g, cx, cy);
   g.globalAlpha = 1; g.globalCompositeOperation = 'source-over';
   c.tex.needsUpdate = true;
+  return c;
 }
 function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
@@ -215,6 +216,7 @@ function v3DeepCards(vis) {
     for (const e of G.ents) if (!e.dead && (e.room === rid || e.boss)) v3EntCard(e);
     for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
     for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3GhostCards();
     v3HeroCard(G.p);
   });
 }
@@ -244,8 +246,95 @@ function v3RealmCards(x0, y0, x1, y1) {
     if (typeof mmoGhosts === 'function') for (const q of mmoGhosts()) if (inView(q.x, q.y)) v3Card(q, q.x, q.y, 128, 128, 18, (g, cx, cy) => drawGhostPlayer(g, q, cx, cy));
     for (const it of G.items) v3Card(it, it.x, it.y, 48, 48, 10, (g, cx, cy) => drawItem(g, it, cx, cy));
     for (const k of G.picks) v3Card(k, k.x, k.y, 32, 32, 8, (g, cx, cy) => drawPick(g, k, cx, cy));
+    v3GhostCards();
     v3HeroCard(p);
   });
+}
+
+/* ---------- effects in the air: sparks, glows, bursts, beams, bolts and after-images ---------- */
+// soft white pictures, tinted per particle and added onto the scene as light
+function v3FxTex(w, hgt, paint) {
+  const c = mkCanvas(w, hgt); paint(c.getContext('2d'), w, hgt);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.generateMipmaps = false; t.minFilter = t.magFilter = THREE.LinearFilter;
+  return t;
+}
+function v3PaintDot(g, w, hgt) {
+  const r = g.createRadialGradient(w / 2, hgt / 2, 0, w / 2, hgt / 2, w / 2);
+  r.addColorStop(0, '#fff'); r.addColorStop(0.2, 'rgba(255,255,255,0.65)'); r.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = r; g.fillRect(0, 0, w, hgt);
+}
+// seven rays around a hot centre
+function v3PaintBurst(g, w) {
+  g.strokeStyle = '#fff'; g.lineCap = 'round'; g.lineWidth = w / 40;
+  for (let i = 0; i < 7; i++) { const a = (i * TAU) / 7; g.beginPath(); g.moveTo(w / 2 + Math.cos(a) * w * 0.1, w / 2 + Math.sin(a) * w * 0.1); g.lineTo(w / 2 + Math.cos(a) * w * 0.48, w / 2 + Math.sin(a) * w * 0.48); g.stroke(); }
+}
+// a shaft of light, wide and bright at the floor, narrowing and fading as it rises
+function v3PaintBeam(g, w, hgt) {
+  for (let i = 0; i < 8; i++) {
+    const s = 1 - i / 8, gr = g.createLinearGradient(0, hgt, 0, 0);
+    gr.addColorStop(0, 'rgba(255,255,255,0.13)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.beginPath(); g.moveTo(w / 2 - (w / 2) * s, hgt); g.lineTo(w / 2 - w * 0.1 * s, 0); g.lineTo(w / 2 + w * 0.1 * s, 0); g.lineTo(w / 2 + (w / 2) * s, hgt); g.fill();
+  }
+}
+// a forked stroke from the sky, 48 by 150 world pixels; a few shapes are enough
+const v3PaintBolt = (seed) => (g, w, hgt) => {
+  g.scale(w / 48, hgt / 150); g.strokeStyle = '#fff'; g.lineJoin = g.lineCap = 'round';
+  const pts = []; for (let i = 0; i < 10; i++) pts.push([24 + (i === 9 ? 0 : Math.sin(seed + i * 17.1) * 8), 150 * (i / 9)]);
+  for (const [width, alpha] of [[7, 0.1], [3, 0.35], [1, 1]]) { g.lineWidth = width; g.globalAlpha = alpha; g.beginPath(); pts.forEach(([x, y], i) => (i ? g.lineTo(x, y) : g.moveTo(x, y))); g.stroke(); }
+};
+// one draw for every particle sharing a picture
+function v3Batch(tex, cap) {
+  const mesh = new THREE.InstancedMesh(V3_QUAD, new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }), cap);
+  mesh.setColorAt(0, new THREE.Color()); mesh.frustumCulled = false; mesh.renderOrder = 5; mesh.count = 0;
+  V3.scene.add(mesh);
+  return mesh;
+}
+const V3_M = new THREE.Matrix4(), V3_C = new THREE.Color();
+// an upright picture w by hgt centred up off the floor at x, y, turned by rot and lit by colour times a
+function v3Put(mesh, x, up, y, w, hgt, rot, color, a) {
+  const i = mesh.count;
+  if (i >= mesh.instanceMatrix.count || a <= 0.01) return;
+  const c = Math.cos(rot), s = Math.sin(rot);
+  V3_M.set(c * w, -s * hgt, 0, x, s * w, c * hgt, 0, up, 0, 0, 1, y, 0, 0, 0, 1);
+  mesh.setMatrixAt(i, V3_M); mesh.setColorAt(i, V3_C.set(color).multiplyScalar(a));
+  mesh.count = i + 1;
+}
+function v3AirFx(on) {
+  if (!V3.air) V3.air = {
+    dot: v3Batch(v3FxTex(64, 64, v3PaintDot), 420), burst: v3Batch(v3FxTex(64, 64, v3PaintBurst), 40),
+    beam: v3Batch(v3FxTex(64, 256, v3PaintBeam), 16), bolts: [1, 2, 3, 4].map((seed) => v3Batch(v3FxTex(64, 256, v3PaintBolt(seed)), 6)),
+  };
+  const A = V3.air, all = [A.dot, A.burst, A.beam, ...A.bolts];
+  for (const m of all) m.count = 0;
+  if (on) for (const q of fxLive()) {
+    if (!FX_UPRIGHT.has(q.type)) continue;
+    const { age, k, fade, x, y, z } = fxState(q);
+    if (q.type === 'spark') {
+      // a streak along the way it is flying; going away from the camera reads as going up
+      const sp = Math.exp(-age * 4), up = (q.vz || 0) - (q.grav || 0) * age - (q.vy || 0) * sp * 0.6, len = 3 + Math.hypot(q.vx || 0, q.vy || 0) * sp * 0.05;
+      v3Put(A.dot, x, z, y, len * 2, (q.size || 0.8) * 3, Math.atan2(up, (q.vx || 0) * sp), q.color, fade);
+    } else if (q.type === 'glow') v3Put(A.dot, x, z, y, q.r * 2, q.r * 2, 0, q.color, fade * 0.45);
+    else if (q.type === 'impact') {
+      const r = q.r * (0.4 + k);
+      v3Put(A.dot, x, z, y, r * 4, r * 4, 0, q.color, fade * 0.6);
+      v3Put(A.burst, x, z, y, r * 2, r * 2, q.seed, q.color, fade);
+    } else if (q.type === 'pillar') {
+      const r = q.r * (1 - k * 0.5), hh = q.height * (0.5 + 0.5 * (1 - k));
+      v3Put(A.beam, x, hh / 2 - 3, y + 0.5, r * 2.4, hh, 0, q.color, fade);
+      v3Put(A.dot, x, 4, y + 0.5, r * 3, r * 2, 0, q.color, fade * 0.5);
+    } else if (q.type === 'bolt') v3Put(A.bolts[Math.floor(q.seed) % 4], x, q.height / 2, y, 48, q.height, 0, q.color, fade * 1.4);
+  }
+  for (const m of all) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; }
+}
+// a dash leaves after-images: cards of the hero's frame, added on as light and fading
+function v3GhostCards() {
+  let i = 0;
+  for (const q of FX.particles) {
+    if (q.type !== 'ghost' || G.t - q.born >= q.life || i >= 12) continue;
+    const c = v3Card(`ghost${i++}`, q.x, q.y - 1, 128, 128, 18, (g) => { const pt = fxPoint(q.x, q.y, q.z); drawSprite(g, q.sp, pt.x, pt.y, q.flip, { scale: q.scale, tint: q.color, tintA: 0.8 }); }, q.seed);
+    const m = c.mesh.material;
+    c.ghost = true; m.blending = THREE.AdditiveBlending; m.emissiveIntensity = 1; m.opacity = fxState(q).fade * 0.28;
+  }
 }
 
 /* ---------- what lies on the floor: the ground, then effects ---------- */
@@ -388,7 +477,7 @@ function render() {
   const realm = !!(W.on && !W.inInst && fl && fl.realm && W.Z && G.p), deep = !realm && !!(fl && fl.rooms && G.p);
   if (V3.level) V3.level.visible = deep;
   v3SyncDoors(deep);
-  if (!realm && !deep) { for (const c of V3.cards.values()) c.mesh.visible = false; V3.ground.mesh.visible = V3.fx.mesh.visible = false; V3.ug && V3.ug.clearRect(0, 0, V3.ui.width, V3.ui.height); V3.renderer.render(V3.scene, V3.camera); return; }
+  if (!realm && !deep) { v3AirFx(false); for (const c of V3.cards.values()) c.mesh.visible = false; V3.ground.mesh.visible = V3.fx.mesh.visible = false; V3.ug && V3.ug.clearRect(0, 0, V3.ui.width, V3.ui.height); V3.renderer.render(V3.scene, V3.camera); return; }
   V3.ground.mesh.visible = V3.fx.mesh.visible = true;
   R.camX = G.cam.x; R.camY = G.cam.y;
   v3Camera();
@@ -408,6 +497,7 @@ function render() {
     v3Light(S.L, S.dark, `rgb(${Math.round(255 - (255 - r * 4) * k)},${Math.round(255 - (255 - gg * 4) * k)},${Math.round(255 - (255 - b * 4) * k)})`);
     if (S.dusk > 0) tone = `rgba(255,140,60,${(S.dusk * 0.1).toFixed(3)})`;
   }
+  v3AirFx(true);
   R.ox = Math.round(G.cam.x - R.VW / 2); R.oy = Math.round(G.cam.y - R.VH / 2);
   v3Ui(realm, tone);
   v3Present();
