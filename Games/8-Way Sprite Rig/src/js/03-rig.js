@@ -600,12 +600,12 @@
   const BEAST_PRESETS = {
     wolf: { name: "Wolf", metres: 0.9, pal: { coat: "#8d96a3", belly: "#d9dde3", mane: "#6d7480", eye: "#e8c04a" }, build: { len: 11, body: 6.2, leg: 4.6, legW: 2, tail: 7, tailW: 2.2, snout: 3.6, ear: "point" }, mane: true },
     fox: { name: "Fox", metres: 0.5, pal: { coat: "#d8752e", belly: "#f4ead8", mane: "#c4602a", eye: "#2a1f1a" }, build: { len: 9.5, body: 5.2, leg: 4, legW: 1.6, tail: 8.5, tailW: 3.2, snout: 3.4, ear: "point" }, tip: true },
-    bear: { name: "Bear", metres: 1.6, pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
-    boar: { name: "Boar", metres: 0.95, pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
-    tiger: { name: "Dire Tiger", metres: 1.25, pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
-    stag: { name: "Runic Stag", metres: 1.9, pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
+    bear: { name: "Bear", metres: 1.6, hump: true, pal: { coat: "#6b4a30", belly: "#8a6a48", mane: "#5a3e28", eye: "#1b1416" }, build: { len: 12, body: 9, leg: 4.2, legW: 3, tail: 2, tailW: 2, snout: 2.6, ear: "round" } },
+    boar: { name: "Boar", metres: 0.95, feet: "hoof", pal: { coat: "#5a4238", belly: "#7a6052", mane: "#3a2a24", eye: "#1b1416" }, build: { len: 10.5, body: 7.6, leg: 3.4, legW: 2.2, tail: 2.6, tailW: 1, snout: 3, ear: "point" }, mane: true, tusks: true },
+    tiger: { name: "Dire Tiger", metres: 1.25, stripes: true, pal: { coat: "#e07a28", belly: "#f8ecd8", mane: "#2a1810", eye: "#7cf9ff" }, build: { len: 12.5, body: 6.8, leg: 4.8, legW: 2.3, tail: 8.5, tailW: 1.8, snout: 3.2, ear: "round" }, mane: true, tusks: true },
+    stag: { name: "Runic Stag", metres: 1.9, feet: "hoof", antlers: true, pal: { coat: "#8a6240", belly: "#decbb4", mane: "#ffd35c", eye: "#00e5ff" }, build: { len: 11.5, body: 5.8, leg: 6.0, legW: 1.6, tail: 3.0, tailW: 1.5, snout: 3.8, ear: "point" }, mane: true },
     drake: { name: "Cinder Drake", metres: 1.5, pal: { coat: "#a82820", belly: "#ffb35e", mane: "#ff5a20", eye: "#fff27a" }, build: { len: 13.0, body: 7.2, leg: 4.4, legW: 2.5, tail: 10.0, tailW: 2.6, snout: 4.2, ear: "point" }, mane: true, tusks: true },
-    hound: { name: "Hellhound", metres: 1.1, pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
+    hound: { name: "Hellhound", metres: 1.1, ember: true, pal: { coat: "#281c24", belly: "#ff6a28", mane: "#ff2a4a", eye: "#fff27a" }, build: { len: 11.2, body: 6.5, leg: 4.7, legW: 2.1, tail: 6.5, tailW: 2.0, snout: 3.8, ear: "point" }, mane: true, tusks: true },
   };
 
   /* -- the tree: a trunk that bends from its foot, a canopy that rides its top, fronds and strands that swing further -- */
@@ -920,28 +920,44 @@
     }
     return sizes.get(key);
   }
-  // the model where the sprite would stand; held props are drawn round it as on the sprite.
-  // world: true sizes it with a grey person beside it for scale. S is pixels per world unit. Returns the props.
+  // the stone pedestal the model stands on, so its shadows fall on something, with the direction rose on top.
+  // f: { R, H } its radius and depth, U the floor's scale, and when gizmos show, N directions, dir the chosen one and cam
+  function buildFloor(f, rel) {
+    // a disc whose top is at top: a limb with its ends squashed flat (each cap adds r * 0.005)
+    const F = window.Preview3D.builder(), disc = (r, top, depth, c, o = {}) => F.limb([0, top - depth + r * 0.005, 0], [0, top - r * 0.005, 0], r, r, c, { flat: 0.005, flatTop: 0.005, ...o });
+    if (f.pedestal) {
+      disc(f.R, -0.4 * f.U, f.H, tok("--stone"), { pat: "slab" });
+      disc(f.R * 0.86, -0.15 * f.U, 1.2 * f.U, tok("--accent"), { glow: true });
+      disc(f.R * 0.82, 0, 1.2 * f.U, tok("--tile-a"), { pat: "slab" });
+    }
+    // a point at angle a (degrees on screen, as the 2D rose draws it) and radius r, in pose space
+    const at = (a, r) => { const b = a * D2R - rel; return [Math.sin(b) * r, 0.2, Math.cos(b) * r]; };
+    if (f.N) for (let d = 0; d < f.N; d++) {
+      const a = (d * 360) / f.N + f.cam, on = d === f.dir;
+      F.limb(at(a, 14 * f.U), at(a, 22 * f.U), (on ? 0.45 : 0.22) * f.U, (on ? 0.45 : 0.22) * f.U, on ? tok("--hot") : tok("--stone-top"), { glow: on });
+    }
+    return F;
+  }
+  // the model where the sprite would stand. world: true sizes it with a grey person beside it for scale; floor adds the
+  // 3D pedestal. S is pixels per world unit. Returns the held props' sprite placements, for the hand-socket marks.
   let preview = null;
-  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT, world) {
+  function drawPreview3D(ctx, w, h, cx, cy, S, rel, clipT, world, floor) {
     const z = world ? worldSize(SUBJ, st.look, st.preset) : { k: 1, h: 0, r: 0 }, k = z.k, M = buildModel(window.Preview3D.builder(k), SUBJ, st.look, st.clip, clipT);
     let parts = M.parts, reach = Math.max(M.bounds.h, M.bounds.r);
-    if (world && SUBJ !== SUBJECTS.character) {
+    if (floor) { const F = buildFloor(floor, rel); parts = parts.concat(F.parts); reach = Math.max(reach, floor.R); }
+    const ghost = world && SUBJ !== SUBJECTS.character;
+    if (ghost) {
       // the person stands to the subject's right on screen, whichever way the camera turns
       const d = z.r + 10, G = window.Preview3D.builder(1, [d * Math.cos(rel), 0, d * Math.sin(rel)], true);
       window.RigModels.figure(charPose("idle", 0), GHOST, G, { hk: 1, STEEL, CREST, VISOR });
       parts = parts.concat(G.parts); reach = Math.max(reach, d + 6);
     }
     const pic = window.Preview3D.render(parts, { w, h, cx, cy, S, rel, elev: ELEV, az: RIG.shader.az, reach });
-    preview = { cx, cy, S: S * k, k, metres: z.metres, height: z.h, ghost: parts.length > M.parts.length };
-    const pose = SUBJ.pose(st.clip, clipT, st.look);
-    const props = SUBJ.gear ? propsFor(st.look, pose, rel, cx, cy, S * k, ctx) : [];
-    const chest = SUBJ.gear ? project(pose.chest, rel) : null;
-    for (const p of props) if (p.d > chest.d) p.draw();
+    preview = { cx, cy, S: S * k, k, metres: z.metres, height: z.h, ghost };
     if (pic) ctx.drawImage(pic, 0, 0, w, h);
     else { ctx.fillStyle = tok("--hot"); ctx.font = `600 12px ${tok("--mono")}`; ctx.fillText("The 3D view needs WebGL, which this browser has turned off.", 12, h - 16); }
-    for (const p of props) if (p.d <= chest.d) p.draw();
-    return props;
+    // the props are part of the model; their sprites are only placed, for the hand-socket marks
+    return SUBJ.gear ? propsFor(st.look, SUBJ.pose(st.clip, clipT, st.look), rel, cx, cy, S * k, ctx) : [];
   }
 
   function drawVoxel3D(ctx, sheet, cell, cx, cy, S, camR) {
@@ -1005,7 +1021,7 @@
     const camR = -s.cam * D2R;
 
     // 3D Stone Pedestal & Rotating Grid
-    if (pedestalOn) {
+    if (pedestalOn && !world) {
       const pR = 26 * U * S, pH = 4.2 * U * S, ry = pR * Math.sin(ELEV);
       const grd = ctx.createLinearGradient(cx - pR, cy, cx + pR, cy + pH);
       grd.addColorStop(0, tok("--stone")); grd.addColorStop(0.5, tok("--stone-top")); grd.addColorStop(1, "#0b141d");
@@ -1025,7 +1041,7 @@
     }
 
     // 3D Direction Sector Compass Rose on the floor
-    if (gizmosOn) {
+    if (gizmosOn && !world) {
       ctx.save();
       for (let d = 0; d < st.N; d++) {
         const a = (d * 360 / st.N) * D2R - camR;
@@ -1039,9 +1055,11 @@
     }
 
     // Dynamic 3D ground shadow cast from light angle
-    const lAz = (RIG.shader.az * Math.PI) / 180;
-    const shX = cx - Math.cos(lAz) * 2.2 * S, shY = cy + Math.sin(lAz) * 0.8 * S;
-    ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * kS, SUBJ.shadow * 0.32 * kS, 0, 0, TAU); ctx.fill();
+    if (!world) {
+      const lAz = (RIG.shader.az * Math.PI) / 180;
+      const shX = cx - Math.cos(lAz) * 2.2 * S, shY = cy + Math.sin(lAz) * 0.8 * S;
+      ctx.fillStyle = "rgba(0,0,0,0.34)"; ctx.beginPath(); ctx.ellipse(shX, shY, SUBJ.shadow * S, SUBJ.shadow * 0.32 * S, 0, 0, TAU); ctx.fill();
+    }
 
     // Onion-skinning previous & next frames
     if (onionOn && atlas[st.clip]) {
@@ -1055,7 +1073,7 @@
 
     let props = [];
     if (renderMode === "mesh3d") {
-      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t, true);
+      props = drawPreview3D(ctx, w, h, cx, cy, S, s.rel * D2R, t, true, { pedestal: pedestalOn, R: 26 * U, H: 4.2 * U, U, ...(gizmosOn ? { N: st.N, dir: s.dir, cam: s.cam } : {}) });
     } else if (renderMode === "split3d") {
       drawPreview3D(ctx, w, h, cx - 18 * S, cy, S * 0.88, s.rel * D2R, t, false);
       ({ props } = drawActor(ctx, SUBJ, st.look, atlas[st.clip], st.clip, s.dir, s.frame, s, cx + 18 * S, cy, S * 0.88));

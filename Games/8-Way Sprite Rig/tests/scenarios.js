@@ -91,7 +91,7 @@ module.exports = [
     run: inPage(async () => {
       await T.press('[data-rmode="mesh3d"]');
       const tall = {};
-      for (const [sub, least] of [['character', 20], ['beast', 40], ['dragon', 60], ['golem', 40], ['tree', 40], ['chest', 30]]) {
+      for (const [sub, least] of [['character', 60], ['beast', 100], ['dragon', 150], ['golem', 120], ['tree', 120], ['chest', 60]]) {
         await T.press(`#subjectSeg [data-subject="${sub}"]`);
         await T.until(() => T.state().preview && T.state().preview.parts >= least, 3000);
         const p = T.state().preview;
