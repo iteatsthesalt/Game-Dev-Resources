@@ -229,6 +229,8 @@ function shadow(g, x, y, r, z = 0) {
 }
 function drawSprite(g, sp, x, y, flip, o = {}) {
   if (!sp) return;
+  // a sheet with its own left-facing row is never mirrored
+  if (sp.noFlip) flip = false;
   const sc = o.scale || 1, w = sp.w * sc, hh = sp.h * sc;
   const dx = Math.round(x - sp.ax * sc), dy = Math.round(y - sp.ay * sc);
   g.save();
