@@ -212,6 +212,8 @@ module.exports = [
       T.check('distance fades into a haze', V3.scene.fog && V3.scene.fog.far > V3.scene.fog.near && V3.scene.fog.near > 0);
       const cards = st.cards; render();
       T.check('still things are not repainted every frame', [...V3.cards.values()].filter((k) => k.look !== undefined).length > 10);
+      const sol = CD.renderer.status, vox = [...V3.cards.values()].find((k) => k.vox && k.vox.visible);
+      T.check('the Realm\'s still things are solid models, not cards', sol.solids > 10 && sol.models > 0 && sol.models <= sol.solids && vox.vox.geometry.attributes.position.count > 0 && !vox.mesh.visible, sol);
       T.check('the Realm lights its lamps and the hero', CD.renderer.status.lights >= 1 && cards > 0);
       T.check('glow and colour are on by default', CD.renderer.status.glow === true, CD.renderer.status);
       CD.settings.glow = false; render();

@@ -158,6 +158,7 @@ function v3Light(L, dark, tint) {
   V3.ambient.color.set(tint);
   const own = 0.06 + lit * 0.24;
   V3_SELF_GLOW.value = 0.9 * (1 - lit);
+  V3_OWN_GLOW.value = own;
   if (own !== V3.ownGlow) { V3.ownGlow = own; for (const c of V3.cards.values()) if (!c.selfLit) c.mesh.material.emissiveIntensity = own; }
   const p = G.p;
   L.sort((a, b) => Math.hypot(a.x - p.x, a.y - p.y) - Math.hypot(b.x - p.x, b.y - p.y));
@@ -190,7 +191,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
     const mesh = new THREE.Mesh(V3_QUAD, mat);
     mesh.scale.set(w, hgt, 1);
     V3.scene.add(mesh);
-    c = { cv, g: cv.getContext('2d'), tex, mesh, w, hgt, look: undefined };
+    c = { cv, g: cv.getContext('2d'), tex, mesh, w, hgt, below, look: undefined };
     V3.cards.set(id, c);
   }
   c.used = V3.frame;
@@ -208,7 +209,7 @@ function v3Card(id, x, y, w, hgt, below, paint, look) {
   c.tex.needsUpdate = true;
   return c;
 }
-function v3DropCard(id, c) { V3.scene.remove(c.mesh); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
+function v3DropCard(id, c) { V3.scene.remove(c.mesh); if (c.vox) V3.scene.remove(c.vox); c.mesh.material.dispose(); c.tex.dispose(); V3.cards.delete(id); }
 // painters cull against the view; a card is the whole view while it is painted, and its shadows go to the floor
 function v3PaintCards(fn) {
   const vw = R.VW, vh = R.VH, ox = R.ox, oy = R.oy;
@@ -217,7 +218,7 @@ function v3PaintCards(fn) {
   const shadows = R.shadows; R.shadows = null;
   for (const [id, c] of V3.cards) {
     if (c.used === V3.frame) continue;
-    c.mesh.visible = false;
+    c.mesh.visible = false; if (c.vox) c.vox.visible = false;
     if (V3.frame - c.used > 240) v3DropCard(id, c);
   }
   return shadows;
@@ -241,6 +242,84 @@ function v3DeepCards(vis) {
     v3HeroCard(G.p);
   });
 }
+/* ---------- solids: pixel pictures built into voxel models ---------- */
+// The silhouette is extruded, deeper toward the middle in a few steps so it reads round; every pixel keeps
+// its colour. A model is built once per picture and shared by everything that looks the same.
+const V3_OWN_GLOW = { value: 0.28 };
+const V3_SOLIDS = new Map(), V3_SOLID_DEPTH = 1 + 3 * 1.6;
+const V3_SOLID_MAT = [false, true].map((faded) => {
+  const m = new THREE.MeshLambertMaterial({ vertexColors: true, transparent: faded, opacity: faded ? 0.38 : 1, depthWrite: !faded });
+  m.onBeforeCompile = (sh) => {
+    sh.uniforms.selfGlow = V3_SELF_GLOW; sh.uniforms.ownGlow = V3_OWN_GLOW;
+    sh.fragmentShader = 'uniform float selfGlow;\nuniform float ownGlow;\n' + sh.fragmentShader.replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
+      { vec3 t = diffuseColor.rgb; float hi = max(t.r, max(t.g, t.b)), sat = (hi - min(t.r, min(t.g, t.b))) / max(hi, 0.001);
+        totalEmissiveRadiance += t * (ownGlow + smoothstep(0.65, 0.95, hi) * smoothstep(0.7, 0.9, sat) * selfGlow); }`);
+  };
+  m.customProgramCacheKey = () => 'v3-solid';
+  return m;
+});
+const v3Lin = (c) => { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); };
+function v3SolidGeo(cv, w, hgt, below) {
+  const d = cv.getContext('2d').getImageData(0, 0, w, hgt).data, n = w * hgt, solid = new Uint8Array(n), dist = new Uint8Array(n);
+  for (let i = 0; i < n; i++) { solid[i] = d[i * 4 + 3] > 24 ? 1 : 0; dist[i] = solid[i] ? 255 : 0; }
+  // how far each pixel is from the edge, then a few depth steps from that
+  for (let y = 0; y < hgt; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (!solid[i]) continue; dist[i] = Math.min(dist[i], x ? dist[i - 1] + 1 : 1, y ? dist[i - w] + 1 : 1); }
+  for (let y = hgt - 1; y >= 0; y--) for (let x = w - 1; x >= 0; x--) { const i = y * w + x; if (!solid[i]) continue; dist[i] = Math.min(dist[i], x < w - 1 ? dist[i + 1] + 1 : 1, y < hgt - 1 ? dist[i + w] + 1 : 1); }
+  const half = (i) => (solid[i] ? Math.min(V3_SOLID_DEPTH, 1 + Math.min(3, (dist[i] - 1) >> 1) * 1.6) : 0);
+  const pos = [], col = [], nor = [], top = hgt - below;
+  const quad = (a, b, c, e, nx, ny, nz, r, g, bl) => {
+    for (const v of [a, b, c, a, c, e]) { pos.push(v[0], v[1], v[2]); nor.push(nx, ny, nz); col.push(r, g, bl); }
+  };
+  const rgb = (i) => [v3Lin(d[i * 4]), v3Lin(d[i * 4 + 1]), v3Lin(d[i * 4 + 2])];
+  for (let y = 0; y < hgt; y++) {
+    const u0 = top - y, u1 = top - y - 1;
+    // faces front and back, merged along runs of one colour and depth
+    for (let x = 0; x < w;) {
+      const i = y * w + x;
+      if (!solid[i]) { x++; continue; }
+      let e = x + 1;
+      while (e < w && solid[i + e - x] && half(i + e - x) === half(i) && d[(i + e - x) * 4] === d[i * 4] && d[(i + e - x) * 4 + 1] === d[i * 4 + 1] && d[(i + e - x) * 4 + 2] === d[i * 4 + 2]) e++;
+      const z = half(i), [r, g, b] = rgb(i), x0 = x - w / 2, x1 = e - w / 2;
+      quad([x0, u1, z], [x1, u1, z], [x1, u0, z], [x0, u0, z], 0, 0, 1, r, g, b);
+      quad([x1, u1, -z], [x0, u1, -z], [x0, u0, -z], [x1, u0, -z], 0, 0, -1, r, g, b);
+      x = e;
+    }
+    // sides wherever a neighbour is shallower
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      if (!solid[i]) continue;
+      const z = half(i), [r, g, b] = rgb(i), x0 = x - w / 2, x1 = x0 + 1;
+      const side = (nz, mk) => { if (nz >= z) return; mk(nz, z); mk(-z, -nz); };
+      side(x ? half(i - 1) : 0, (a, b2) => quad([x0, u1, a], [x0, u1, b2], [x0, u0, b2], [x0, u0, a], -1, 0, 0, r, g, b));
+      side(x < w - 1 ? half(i + 1) : 0, (a, b2) => quad([x1, u1, b2], [x1, u1, a], [x1, u0, a], [x1, u0, b2], 1, 0, 0, r, g, b));
+      side(y ? half(i - w) : 0, (a, b2) => quad([x0, u0, b2], [x1, u0, b2], [x1, u0, a], [x0, u0, a], 0, 1, 0, r, g, b));
+      side(y < hgt - 1 ? half(i + w) : 0, (a, b2) => quad([x0, u1, a], [x1, u1, a], [x1, u1, b2], [x0, u1, b2], 0, -1, 0, r, g, b));
+    }
+  }
+  // the bundle carries only the shapes the game uses, so a box is emptied and given these buffers
+  const geo = new THREE.BoxGeometry(1, 1, 1), Attr = geo.attributes.position.constructor;
+  geo.setIndex(null); geo.clearGroups(); geo.deleteAttribute('uv');
+  geo.setAttribute('position', new Attr(new Float32Array(pos), 3));
+  geo.setAttribute('normal', new Attr(new Float32Array(nor), 3));
+  geo.setAttribute('color', new Attr(new Float32Array(col), 3));
+  geo.computeBoundingSphere();
+  return geo;
+}
+// a card whose picture is still is shown as its solid instead
+function v3Solid(c, key, faded) {
+  let geo = V3_SOLIDS.get(key);
+  if (!geo) {
+    if (V3_SOLIDS.size > 600) { for (const g of V3_SOLIDS.values()) g.dispose(); V3_SOLIDS.clear(); for (const k of V3.cards.values()) if (k.vox) k.vox.geometry = null; }
+    geo = v3SolidGeo(c.cv, c.w, c.hgt, c.below); V3_SOLIDS.set(key, geo);
+  }
+  if (!c.vox) { c.vox = new THREE.Mesh(geo, V3_SOLID_MAT[0]); V3.scene.add(c.vox); }
+  c.vox.geometry = geo; c.vox.material = V3_SOLID_MAT[faded ? 1 : 0];
+  // pushed back by its deepest point, so it never reaches in front of whatever stands where it stands
+  c.vox.position.set(c.mesh.position.x, 0, c.mesh.position.z - V3_SOLID_DEPTH);
+  c.vox.visible = true; c.mesh.visible = false;
+  return c;
+}
+
 // objects that look the same frame to frame; the rest (fires, glowing stones, things you can use) repaint
 // a short name for each sprite, so a card can tell whether its picture changed
 const V3_SPRITE_IDS = new WeakMap();
@@ -260,7 +339,9 @@ function v3RealmCards(x0, y0, x1, y1) {
           const faded = (o.kind === 'tree' || o.kind === 'building' || o.kind === 'tower' || o.kind === 'mark') && near(o, sp);
           const still = V3_STILL.has(o.kind) || (o.kind === 'lw' && !o.actor && !o.id);
           const w = 2 * Math.max(sp.ax, sp.w - sp.ax) + 8, below = Math.max(8, sp.h - sp.ay + 6);
-          v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${o.kind === 'building' ? day : ''}` : undefined);
+          const day1 = o.kind === 'building' ? day : '';
+          const c = v3Card(o, o.x, o.y, w, sp.ay + 10 + below, below, (g, cx2, cy2) => drawRealmObj(g, o, sp, cx2, cy2, faded), still ? `${v3SpriteId(sp)}:${faded}:${day1}` : undefined);
+          if (still) v3Solid(c, `${v3SpriteId(sp)}:${day1}:${c.w}x${c.hgt}`, faded);
         }
     for (const e of G.ents) if (!e.dead && inView(e.x, e.y)) v3EntCard(e);
     for (const n of W.npcs) if (inView(n.x, n.y)) v3Card(n, n.x, n.y, 176, 128, 12, (g, cx, cy) => drawNpc(g, n, cx, cy));
@@ -515,7 +596,7 @@ function render() {
   const realm = !!(W.on && !W.inInst && fl && fl.realm && W.Z && G.p), deep = !realm && !!(fl && fl.rooms && G.p);
   if (V3.level) V3.level.visible = deep;
   v3SyncDoors(deep);
-  if (!realm && !deep) { v3AirFx(false); for (const c of V3.cards.values()) c.mesh.visible = false; V3.ground.mesh.visible = V3.fx.mesh.visible = false; V3.ug && V3.ug.clearRect(0, 0, V3.ui.width, V3.ui.height); V3.renderer.render(V3.scene, V3.camera); return; }
+  if (!realm && !deep) { v3AirFx(false); for (const c of V3.cards.values()) { c.mesh.visible = false; if (c.vox) c.vox.visible = false; } V3.ground.mesh.visible = V3.fx.mesh.visible = false; V3.ug && V3.ug.clearRect(0, 0, V3.ui.width, V3.ui.height); V3.renderer.render(V3.scene, V3.camera); return; }
   V3.ground.mesh.visible = V3.fx.mesh.visible = true;
   R.camX = G.cam.x; R.camY = G.cam.y;
   v3Camera();
@@ -543,4 +624,4 @@ function render() {
   v3Ui(realm, tone);
   v3Present();
 }
-CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible).length, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };
+CD.renderer = { get status() { return { rooms: V3.rooms.length, cards: [...V3.cards.values()].filter((c) => c.mesh.visible || (c.vox && c.vox.visible)).length, solids: [...V3.cards.values()].filter((c) => c.vox && c.vox.visible).length, models: V3_SOLIDS.size, glow: !!V3.post && !!CD.settings.glow && !CD.settings.lowFx, lights: V3.lights.filter((l) => l.intensity > 0).length, revision: THREE.REVISION }; } };
