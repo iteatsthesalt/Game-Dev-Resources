@@ -62,6 +62,14 @@ module.exports = [
       T.check('the pitch baked at is the pitch reported', J.meta.cameraElevationDeg === 40, J.meta.cameraElevationDeg);
       T.check('every clip and frame is listed', Object.keys(J.clips).length === T.state().baked.length && J.frames.length > 100, J.frames.length);
       T.check('frames carry their sockets', J.frames.every((f) => f.sockets && Object.keys(f.sockets).length));
+      const headHeight = async (sub) => {
+        await T.press(`#subjectSeg [data-subject="${sub}"]`);
+        const E = JSON.parse(window.SpriteRig.exportJson()), f = E.frames.find((q) => q.clip === 'idle' && q.dir === 0 && q.frame === 0);
+        return E.meta.anchor.y - f.sockets.head.y;
+      };
+      const man = await headHeight('character'), golem = await headHeight('golem');
+      T.check('the Golem\'s sockets grow with its body', Math.abs(golem / man - 1.12) < 0.03, { man, golem });
+      await T.press('#subjectSeg [data-subject="character"]');
       return T.done();
     }),
   },

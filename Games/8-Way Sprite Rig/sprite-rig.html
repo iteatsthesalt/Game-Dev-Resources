@@ -1399,12 +1399,16 @@ window.FX = (() => {
     magma: { name: "Magma Golem", pal: { shirt: "#4a221e", pants: "#2a1412", skin: "#ff6a28", hair: "#ffd35c", gear: "#ff3d20" }, head: "horns", back: "pack", right: "axe", left: "torch", pauldron: "spikes", enchant: "fire" },
   };
 
+  // the Golem is a character grown by GOLEM_K: its pose carries the scale so sockets and held props sit in its hands
+  const GOLEM_K = 1.12;
+  const scalePose = (j, k) => Object.fromEntries(Object.entries(j).map(([n, p]) => [n, p.map((v) => v * k)]));
+
   // a subject: its clips, skeleton, painter, looks, colour names, the cell it bakes into and the sockets it exports
   const SUBJECTS = {
     character: { name: "Character", clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: drawFigure, presets: PRESETS, palNames: PAL_NAMES, cell: { w: 32, h: 48, ox: 16, oy: 44 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 9 },
     beast: { name: "Beast", clips: BEAST_CLIPS, pose: beastPose, draw: drawBeast, presets: BEAST_PRESETS, palNames: { coat: "Coat", belly: "Belly", mane: "Mane", eye: "Eyes" }, cell: { w: 48, h: 40, ox: 24, oy: 36 }, dot: "coat", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 12 },
     dragon: { name: "Dragon", clips: DRAGON_CLIPS, pose: dragonPose, draw: drawDragon, presets: DRAGON_PRESETS, palNames: { coat: "Scales", belly: "Belly", mane: "Wings", eye: "Eyes" }, cell: { w: 56, h: 48, ox: 28, oy: 42 }, dot: "mane", sockets: { mouth: "mouth", head: "head", tail: "tail2" }, ref: "shoulders", shadow: 14 },
-    golem: { name: "Golem", clips: CHAR_CLIPS, pose: (c, t) => charPose(c, t), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, j, rel, ox, oy, sc * 1.12, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
+    golem: { name: "Golem", clips: CHAR_CLIPS, pose: (c, t) => scalePose(charPose(c, t), GOLEM_K), draw: (ctx, j, rel, ox, oy, sc, look, mono) => drawFigure(ctx, scalePose(j, 1 / GOLEM_K), rel, ox, oy, sc * GOLEM_K, look, mono, 1.15), presets: GOLEM_PRESETS, palNames: PAL_NAMES, cell: { w: 40, h: 52, ox: 20, oy: 48 }, gear: true, dot: "gear", sockets: { "hand.R": "haR", "hand.L": "haL", head: "head" }, ref: "chest", shadow: 12 },
     tree: { name: "Tree", clips: TREE_CLIPS, pose: treePose, draw: drawTree, presets: TREE_PRESETS, palNames: { trunk: "Trunk", leaf: "Leaves", light: "Highlight" }, cell: { w: 48, h: 64, ox: 24, oy: 60 }, dot: "leaf", sockets: { top: "t4", foot: "t0" }, ref: "t2", shadow: 11, still: true },
     chest: { name: "Chest", clips: CHEST_CLIPS, pose: chestPose, draw: drawChest, presets: CHEST_PRESETS, palNames: { wood: "Box", lid: "Lid", band: "Bands" }, cell: { w: 32, h: 32, ox: 16, oy: 26 }, dot: "lid", sockets: { loot: "in", lock: "lock" }, ref: "in", shadow: 9, still: true },
   };
@@ -1484,8 +1488,8 @@ window.FX = (() => {
     ctx.restore();
   }
   // a sprite plus its props, each prop behind or in front by the hand's depth against the chest
-  function drawCharacter(ctx, look, sheet, clip, d, frame, cell, x, y, S) {
-    const j = charPose(clip, frame / st.FR), rq = (d * 360 / st.N) * D2R, chest = project(j.chest, rq);
+  function drawCharacter(ctx, sub, look, sheet, clip, d, frame, cell, x, y, S) {
+    const j = sub.pose(clip, frame / st.FR, look), rq = (d * 360 / st.N) * D2R, chest = project(j.chest, rq);
     const props = propsFor(look, j, rq, x, y, S, ctx);
     for (const p of props) if (p.d > chest.d) p.draw();
     blitCell(ctx, sheet, cell, x, y, S);
@@ -1494,7 +1498,7 @@ window.FX = (() => {
   }
   // characters carry props in their hands; beasts, trees and chests are only their baked cells
   function drawActor(ctx, sub, look, sheet, clip, d, frame, cell, x, y, S) {
-    if (sub.gear) return drawCharacter(ctx, look, sheet, clip, d, frame, cell, x, y, S);
+    if (sub.gear) return drawCharacter(ctx, sub, look, sheet, clip, d, frame, cell, x, y, S);
     blitCell(ctx, sheet, cell, x, y, S);
     return { props: [] };
   }
