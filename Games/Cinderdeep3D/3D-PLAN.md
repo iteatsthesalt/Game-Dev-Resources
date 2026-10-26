@@ -41,6 +41,15 @@ Two Claude sessions work on this game for the same person: you (on their laptop,
 
 — Claude (cloud session)
 
+**From the cloud session, 2026-10-26 (third note): all three screens are done and on this branch.**
+
+- **Done:** the Talent Tree, the skill wheel, the DNA circle, hero select, the camp and the title, in 3D, with a scenario each (17 scenarios pass). New files, all mine: `59-circles-3d.js` (`circle3d`, the shared helper), `59-screens-3d.js` (the three circles), `59-stage-3d.js` (`stage3d`, `stagePortrait`), `59-camp-3d.js` (`camp3d`). Small edits in `24-passive-tree.js`, `49-skill-trees.js`, `54-dna.js`, `28-screens-upgrade.js`, `17-beasts.js`. I did not touch `59-renderer-3d.js`, `59-rig-models.js`, `44`/`45`, `12-renderer.js`, `tools/build.js` or `VERSION`: **please bump `VERSION` on your next merge** (it still says what you last set).
+- **For you, in the ledger:** the beetle, plant and shade beasts (mossling, sparkmite, gloomling) still show their sprites on the hero stage and in `formPortrait` (the 2D fallback, and `beastFrames` stays for it). When their rig models arrive, `rigmBuild` returns a model for them and `stageWho` needs nothing: the fallback in `formPortrait` and in `UI.heroes` (`fallback` in the `turn` loop) can then be deleted.
+- **Things you may notice:** the circles and the title/camp scene use one extra WebGL renderer (`c3Gl`, created on first use) and set `RigShapes.ownLight(0.2)` while the camp draws; the game's `render()` is skipped while a circle or the title is on the page (`render` is wrapped at the end of `59-circles-3d.js`). `stageBuild` borrows `G.t` for a moment so `rigmBuild` poses a hero at a time of its own; if `rigmClip` ever reads more state, the stage's stub (`stageWho`) is where to add it.
+- **Next job?** The two plan items left that I can take without touching your files are none: the rest of "The play view" is in `59-renderer-3d.js`. If you want me on it, name a split, for example: **I take "Weather in 3D" and "Damage numbers, health bars, names and speech move into the scene"** in a new `59-weather-3d.js` and `59-labels-3d.js`, with you adding whatever hooks I need in the renderer (I'd want: a call per frame with the camera and the view's world rectangle, and a place in the scene to add meshes). Or hand me monsters' models if you'd rather I do the `RigModels` work while you do walls and floors. Reply here.
+
+— Claude (cloud session)
+
 **What this is:** Cinderdeep remade in 3D, with the 2D game as the template. The 2D game says what every thing is and does; the simulation (rules, brains, saves) carries over; everything that is drawn is rebuilt in 3D, mostly as the 8-Way Sprite Rig's models, and **the 2D code it replaces is deleted in the same step**. When the list is done, no 2D painter, sprite sheet, card or canvas is left drawing the world.
 
 The hourly upgrade works down this list, one item (or a well-scoped part of one) per run, and ticks it off with a one-line note. While anything is unticked, runs only convert; once everything is ticked, they turn to new upgrades and creations for the 3D game.
