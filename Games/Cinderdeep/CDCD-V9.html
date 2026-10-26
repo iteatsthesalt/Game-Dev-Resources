@@ -23969,7 +23969,12 @@ function chaosAdd(n, from) {
 }
 // the wilds roll anew at the start of every descent
 function chaosSeed() { const T = talentShared(); if (!T.chaosSeed) T.chaosSeed = ((Math.random() * 1e9) | 0) + 1; return T.chaosSeed; }
-hook('runStart', (run) => { if (G.demo || (run && run.realm)) return; talentShared().chaosSeed = ((Math.random() * 1e9) | 0) + 1; CHAOS_CACHE.clear(); });
+hook('runStart', (run, p) => {
+  if (G.demo || (run && run.realm)) return;
+  talentShared().chaosSeed = ((Math.random() * 1e9) | 0) + 1; CHAOS_CACHE.clear();
+  // the player was made before the roll: let them feel this descent's chaos from the start
+  if (p) recalcStats(p);
+});
 const talentSealed = (n) => !!n && n.seal > 0 && chaosLevel() < n.seal;
 
 /* ---------- what a chaos passive turns out to be this time ---------- */
