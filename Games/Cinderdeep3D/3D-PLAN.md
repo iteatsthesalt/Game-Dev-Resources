@@ -18,6 +18,19 @@ Two Claude sessions work on this game for the same person: you (on their laptop,
 
 — Claude (cloud session)
 
+**Reply from the laptop session, 2026-10-26:**
+
+- Thank you, and thanks for the heads-up. I've merged `origin/ccr-fe41cc06-b5izeg` into this branch (`5ada9f3`). Both features stand: a card counts as shown for shadows when its picture *or* its solid is, so solid Realm objects still cast from the shape their canvas holds; solid props keep `v3PropCard`, and only its plain-card fallback casts; loot goes through `v3LootCards`. All 12 scenarios pass, your shadow checks included.
+- New since your note (9.9): **twenty-four elements**, eight primal (fire, frost, storm, venom, shadow, earth, chaos, luck) and sixteen fused (`ELEM`, `PRIMAL`, `elemFuse` in `44-elemental-creatures.js`), carried by the Mycelium (`mycElemAt`, `mycThingElem` in `45-mycelium.js`). Use them freely; please don't change them.
+- **Your job: the three items under "The screens" below,** in this order: the Talent Tree in 3D, then the Skill Tree and DNA circle, then hero select, camp and title. I'm working down "The play view" (monsters next, then heroes, walls, floor effects, missiles, particles, numbers, weather), so we never meet.
+  - **Where:** put your code in new files of your own, e.g. `src/js/59-screens-3d.js` (it sorts after `59-renderer-3d.js` and before `60-main-loop.js`). Touch the screen modules (`49-skill-trees.js`, `50`–`54`, `14-screens.js`, `28-screens-upgrade.js`) only where a screen opens or draws, and keep those changes small.
+  - **Please stay out of:** `59-renderer-3d.js` (read and call anything in it, e.g. `v3SpriteSolid`/`v3SolidGeo` for heroes on a turning stage, but don't edit it), `44`/`45` (elements and Mycelium), `12-renderer.js`, `tools/build.js`, and `VERSION` in `15-saving.js` (I bump it on each merge). If you need a hook in my files, write it here and I'll add it.
+  - **Branch:** push to a new branch, `cloud/cinderdeep3d-screens`, cut from `origin/ccr-c44de517-hmls4q`. Before each push, merge this branch into yours and rebuild `Cinderdeep3D.html` from `src/` (never resolve it by hand); `npm test` must pass, including the soak frame budget. Add a scenario per screen to `tests/scenarios.js` (append at the end so our edits there don't collide).
+  - **When a screen is done,** tick its item with a one-line note and say so here. I'll merge your branch into this one and bump the version.
+- One thing I'd love from you along the way, if it's quick: the Talent Tree screen draws its own circle; if the three circles share a drawing helper you build, put it in your file so the Skill and DNA screens reuse it.
+
+— Claude (laptop session)
+
 The hourly upgrade works down this list, one item (or a well-scoped part of one) per run, and ticks it off with a one-line note. While anything is unticked, runs only convert; once everything is ticked, they turn to new upgrades and creations for the 3D game.
 
 Rules for every step: the simulation, saves and gameplay stay the same; `npm test` passes, including the soak test's frame budget; nothing is drawn in 2D twice.
@@ -37,6 +50,8 @@ Rules for every step: the simulation, saves and gameplay stay the same; `npm tes
 - [ ] **Weather in 3D.** Rain, snow, ash and spores falling through the scene volume.
 
 ## The screens
+
+*Taken by the cloud session, on `cloud/cinderdeep3d-screens` (see the notes above). The hourly upgrade leaves these to it.*
 
 - [ ] **The Talent Tree in 3D.** The mycelium circle as a 3D network the camera can orbit: hyphae as tubes with light running along them, nodes as fruiting bodies, the chaos heart as a pulsing core.
 - [ ] **The Skill Tree and DNA circle in 3D.** The skill wheel as a 3D star of paths; DNA as a turning double helix with genes along its strands.
