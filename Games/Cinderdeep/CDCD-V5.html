@@ -7493,7 +7493,7 @@ const FEATS = [
   { id: 'relics8', name: 'Reliquary', desc: 'Hold 8 relics in a single run.', embers: 60 },
   { id: 'untouched', name: 'Untouchable', desc: 'Clear a whole floor without taking damage.', embers: 40 },
   { id: 'speedrun', name: 'Express Descent', desc: 'Win a run in under 25 minutes.', embers: 120 },
-  { id: 'allheroes', name: 'Full Company', desc: 'Unlock every hero and beast.', embers: 100 },
+  { id: 'allheroes', name: 'Full Company', desc: 'Make a descent with every hero and beast.', embers: 100 },
 ];
 const FEAT = Object.fromEntries(FEATS.map((f) => [f.id, f]));
 
@@ -10090,8 +10090,8 @@ function soulWell(pr) {
   heal(p, Math.round(p.maxHp * 0.4)); p.poisonT = p.burnT = p.slowT = p.chillT = 0;
   later(0.8, () => {
     const info = classLevelInfo(cls);
-    if (res.after > res.before) { banner(`Class Level ${res.after}`, `${playerClassName(cls)} · ${info.free} talent point${info.free === 1 ? '' : 's'} to spend`, 3); Sound.play('ascend'); ring(p.x, p.y - 10, 70, '#ff8ad8', 0.8, 3); burst(p.x, p.y - 10, 40, ['#ff6f9c', '#7fc8ff', '#fff27a', '#7dff9a', '#c873ff'], { smax: 150, glow: true, vz: 140 }); }
-    else toast(`${n} souls banked · ${info.need - info.into} more to Class Level ${info.lvl + 1}`, '#9ff6ff');
+    if (res.after > res.before) { banner(`Talent Level ${res.after}`, `${typeof talentLabel === 'function' ? talentLabel(cls) : playerClassName(cls)} · ${info.free} talent point${info.free === 1 ? '' : 's'} to spend`, 3); Sound.play('ascend'); ring(p.x, p.y - 10, 70, '#ff8ad8', 0.8, 3); burst(p.x, p.y - 10, 40, ['#ff6f9c', '#7fc8ff', '#fff27a', '#7dff9a', '#c873ff'], { smax: 150, glow: true, vz: 140 }); }
+    else toast(`${n} souls banked · ${info.need - info.into} more to Talent Level ${info.lvl + 1}`, '#9ff6ff');
     later(0.6, () => { if (G.p === p && !p.dead && !UI.top()) UI.tree(cls, { inRun: true }); }, true);
   }, true);
 }
@@ -10959,13 +10959,13 @@ const FEAT_TEST = {
   relics8: (S, F) => (F.maxRelics || 0) >= 8,
   untouched: (S, F) => (F.untouched || 0) >= 1,
   speedrun: (S, F) => !!F.fastWin,
-  allheroes: () => CLASSES.every((c) => CD.save.unlocks.classes.includes(c.id)),
+  allheroes: () => CLASSES.every((c) => ((CD.save.fs && CD.save.fs.played) || []).includes(c.id)),
 };
 // feats about the new systems
 FEATS.push(
   { id: 'dmt', name: 'Breakthrough', desc: 'Find a DMT zone.', embers: 25 },
   { id: 'banked', name: 'Soul Broker', desc: 'Bank 1,000 souls in total.', embers: 60 },
-  { id: 'classlvl', name: 'Devoted', desc: 'Raise a character to Class Level 20.', embers: 80 },
+  { id: 'classlvl', name: 'Devoted', desc: 'Raise a character to Talent Level 20.', embers: 80 },
   { id: 'keystone', name: 'Keystone', desc: 'Allocate a keystone passive.', embers: 20 },
   { id: 'vengeance', name: 'Vengeance', desc: 'Slay a Chaos Beast and reclaim your souls.', embers: 50 },
   { id: 'awaken', name: 'Awakened', desc: 'Awaken a hero.', embers: 25 },
@@ -10974,7 +10974,7 @@ for (const f of FEATS.slice(-6)) FEAT[f.id] = f;
 Object.assign(FEAT_TEST, {
   dmt: (S, F) => (F.dmtFound || 0) >= 1,
   banked: (S, F) => (F.soulsBanked || 0) >= 1000,
-  classlvl: () => Object.keys(CD.save.tree || {}).some((c) => CLASS[c] && classLevelInfo(c).lvl >= 20),
+  classlvl: () => realmStore().chars.some((ch) => talentLevelOf(ch.tree && ch.tree.xp).lvl >= 20),
   keystone: () => Object.entries(CD.save.tree || {}).some(([c, T]) => (T.alloc || []).some((id) => TREE.nodes[id] && TREE.nodes[id].type === 'keystone')),
   vengeance: (S, F) => (F.nemesesSlain || 0) >= 1,
   awaken: (S, F) => (F.awakenings || 0) >= 1,
@@ -11723,9 +11723,10 @@ UI.heroes = function (st = {}) {
       evo.append(fig(s1, 'Start'), h('span', { class: 'arrow' }, '›'), fig(s2, `Level ${5 - shift}`), h('span', { class: 'arrow' }, '›'),
         h('div', { class: 'or' }, fig(s3[0], `Level ${12 - shift}`), h('i', {}, 'or'), fig(s3[1], `Level ${12 - shift}`)));
     } else {
-      const S = SECTORS[sectorOf(sel)];
+      // every five levels it evolves into whatever its skill and talent trees make of it
+      const P0 = PATH[skNative(sel)];
       evo.append(h('figure', {}, portrait(sel, 64), h('figcaption', {}, c.name)), h('span', { class: 'arrow' }, '›'),
-        h('figure', {}, (() => { const cv = portrait(sel, 64); cv.style.filter = `drop-shadow(0 0 6px ${S.color})`; return cv; })(), h('figcaption', {}, `Awakened at level ${treeHas(sel, 'primal') ? 8 : 10}`, h('br'), h('small', { style: { color: S.color } }, `${S.name} sector`))));
+        h('figure', {}, (() => { const cv = portrait(sel, 64); cv.style.filter = `drop-shadow(0 0 6px ${P0.col})`; return cv; })(), h('figcaption', {}, `Evolves every 5 levels`, h('br'), h('small', { style: { color: P0.col } }, `Born to ${P0.name.toLowerCase()} · 8 paths, 28 hybrids`))));
     }
     detail.innerHTML = '';
     detail.append(
@@ -11736,10 +11737,10 @@ UI.heroes = function (st = {}) {
       evo,
       h('div', { class: 'duo' }, wc.firstElementChild, ac.firstElementChild),
       h('div', { class: 'duo', style: { alignItems: 'center' } },
-        h('div', { class: 'lvlbar' }, h('span', {}, `Class Level `, h('b', { style: { color: '#9ff6ff', fontWeight: 400 } }, String(L.lvl)), L.free ? h('span', { style: { color: 'var(--gold)' } }, ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend`) : null),
+        h('div', { class: 'lvlbar' }, h('span', {}, `Shared Talent Level `, h('b', { style: { color: '#9ff6ff', fontWeight: 400 } }, String(L.lvl)), L.free ? h('span', { style: { color: 'var(--gold)' } }, ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend`) : null),
           h('i', {}, h('em', { style: { width: `${Math.round((L.into / L.need) * 100)}%` } })),
           h('small', {}, L.lvl >= MAX_CLASS_LEVEL ? 'Mastered' : `${L.into} / ${L.need} souls to level ${L.lvl + 1} · bank souls at DMT zones`)),
-        h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, btn(L.free ? `Passive tree · ${L.free} to spend` : 'Passive tree', () => UI.tree(sel, { onClose: () => UI.heroes(state()) }), L.free ? 'small primary' : 'small'))));
+        h('div', { class: 'row', style: { justifyContent: 'flex-end' } }, btn(L.free ? `Talent tree · ${L.free} to spend` : 'Talent tree', () => UI.tree(sel, { layer: 'shared', onClose: () => UI.heroes(state()) }), L.free ? 'small primary' : 'small'))));
     go.disabled = !playable(sel);
     go.textContent = playable(sel) ? `Descend as the ${c.name}${chaos ? ' · Chaos' : ''}` : `Locked · ${c.cost} embers in camp`;
     lookField.hidden = !!c.beast;
@@ -11775,7 +11776,7 @@ UI.heroes = function (st = {}) {
 /* ---------- camp ---------- */
 UI.camp = function (tab = 'upgrades') {
   const save = CD.save;
-  const tabs = [['upgrades', 'Upgrades'], ['heroes', 'Heroes'], ['beasts', 'Beasts'], ['trees', 'Passive trees'], ['armory', 'Armory'], ['library', 'Library']];
+  const tabs = [['upgrades', 'Upgrades'], ['heroes', 'Heroes'], ['beasts', 'Beasts'], ['trees', 'Talent trees'], ['armory', 'Armory'], ['library', 'Library']];
   const body = h('div', { class: 'grid-up' });
   const spend = (cost, fn) => { if ((save.embers || 0) < cost) { Sound.play('deny'); toast('Not enough embers'); return; } save.embers -= cost; fn(); Sound.play('buy'); persist(); UI.camp(tab); };
   const buyBtn = (label, cost, fn) => btn(h('span', {}, `${label} `, h('span', { class: 'cost' }, `${cost}`)), () => spend(cost, fn), 'small', { disabled: (save.embers || 0) < cost ? true : null });
@@ -11799,12 +11800,20 @@ UI.camp = function (tab = 'upgrades') {
       h('small', {}, `${FORMS[s1].name} › ${FORMS[s2].name} › ${FORMS[s3[0]].name} or ${FORMS[s3[1]].name}`),
       own ? h('small', {}, `Ready · ${classLvlHTML(B.id)}`) : buyBtn('Unlock', B.cost, () => save.unlocks.classes.push(B.id))));
   }
-  if (tab === 'trees') for (const c of CLASSES.filter((x) => save.unlocks.classes.includes(x.id))) {
-    const L = classLevelInfo(c.id), S = SECTORS[sectorOf(c.id)];
-    body.append(h('div', { class: 'up', style: { '--rc': L.free ? S.color : 'var(--soot-4)' } }, classPortrait(c.id), h('b', {}, `${c.name} · Lv ${L.lvl}`),
-      h('small', {}, `${S.name} sector · ${L.spent} allocated${L.free ? ` · ${L.free} to spend` : ''}`),
-      h('small', {}, L.lvl >= MAX_CLASS_LEVEL ? 'Mastered' : `${L.into} / ${L.need} souls to the next level`),
-      btn(L.free ? 'Spend points' : 'Open tree', () => UI.tree(c.id, { onClose: () => UI.camp('trees') }), L.free ? 'small primary' : 'small')));
+  if (tab === 'trees') {
+    // the shared layer, then every living character's own
+    const card = (cls, ch, label) => {
+      CD.focusChar = ch ? ch.id : null;
+      const prev = CD.treeLayer; CD.treeLayer = ch ? 'own' : 'shared';
+      const L = classLevelInfo(cls); CD.treeLayer = prev;
+      body.append(h('div', { class: 'up', style: { '--rc': L.free ? (ch ? PATH[skNative(cls)].col : '#ffc65a') : 'var(--soot-4)' } }, classPortrait(cls), h('b', {}, `${label} · Talent Lv ${L.lvl}`),
+        h('small', {}, `${L.spent} allocated${L.free ? ` · ${L.free} to spend` : ''}`),
+        h('small', {}, L.lvl >= MAX_CLASS_LEVEL ? 'Mastered' : `${L.into} / ${L.need} souls to the next level`),
+        btn(L.free ? 'Spend points' : 'Open tree', () => { CD.focusChar = ch ? ch.id : null; UI.tree(cls, { layer: ch ? 'own' : 'shared', onClose: () => UI.camp('trees') }); }, L.free ? 'small primary' : 'small')));
+    };
+    card(save.lastClass && CLASS[save.lastClass] ? save.lastClass : 'knight', null, 'Shared by everyone');
+    for (const ch of realmStore().chars) card(ch.cls, ch, `${charLabel(ch)} the ${CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls}`);
+    CD.focusChar = null;
   }
   if (tab === 'armory') for (const w of WEAPONS.filter((x) => !x.start && x.cost)) {
     const own = save.unlocks.weapons.includes(w.id), evo = EVOLVE_FROM[w.id];
@@ -11819,9 +11828,9 @@ UI.camp = function (tab = 'upgrades') {
   }
   const notes = {
     upgrades: 'Embers you carry out of the deep buy lasting strength.',
-    heroes: 'Unlocked heroes join the select screen. Locked ones can still be tried in Chaos Mode.',
+    heroes: 'Every hero is yours from the start. Each new descent makes a new character of the one you pick.',
     beasts: 'Beasts are monsters you play. They evolve twice, choose a final form, and devour weapons instead of wielding them.',
-    trees: 'Every character has its own passive tree. Bank souls at DMT zones to raise class levels; each level is one talent point.',
+    trees: 'One talent tree, with a start for every hero and beast. Banked souls raise the shared level, whose points everyone keeps, and the banking character\'s own level, whose points are theirs while they live.',
     armory: 'Unlocked weapons start turning up in chests and shops. Take one to +3 with its matching relic and evolve it at a forge.',
     library: 'Unlocked abilities start turning up in chests and shops.',
   };
@@ -11843,9 +11852,10 @@ UI.records = function () {
   const save = CD.save, F = save.fs || {};
   const stat = (k, v) => h('div', {}, k, h('b', {}, String(v)));
   const extra = [];
-  const levels = CLASSES.filter((c) => save.unlocks.classes.includes(c.id) || (save.tree && save.tree[c.id] && save.tree[c.id].xp)).map((c) => stat(c.name, `Lv ${classLevelInfo(c.id).lvl}`));
+  const levels = [stat('Shared', `Lv ${talentLevelOf(talentShared().xp).lvl}`), ...realmStore().chars.map((ch) => stat(`${charLabel(ch)} (${CLASS[ch.cls] ? CLASS[ch.cls].name : ch.cls})`, `Lv ${talentLevelOf(ch.tree && ch.tree.xp).lvl}`))];
   extra.push(h('h3', {}, 'Souls'), h('div', { class: 'statgrid' }, stat('Souls banked', F.soulsBanked || 0), stat('Souls reclaimed', F.soulsReclaimed || 0), stat('Chaos Beasts slain', F.nemesesSlain || 0), stat('DMT zones found', F.dmtFound || 0), stat('Mycelial bond', F.mycBond || 0), stat('Secrets found', F.secrets || 0), stat('Best combo', F.maxCombo || 0)));
-  extra.push(h('h3', {}, 'Class levels'), h('div', { class: 'statgrid' }, ...levels));
+  extra.push(h('h3', {}, 'Talent levels'), h('div', { class: 'statgrid' }, ...levels));
+  if ((save.fallen || []).length) extra.push(h('h3', {}, `The fallen (${save.fallen.length})`), h('p', {}, save.fallen.slice(0, 10).map((f) => `${f.name}, ${CLASS[f.cls] ? CLASS[f.cls].name : f.cls}, level ${f.level}`).join(' · ')));
   const nems = save.nemeses || [];
   extra.push(h('h3', {}, `Chaos Beasts (${nems.length})`), nems.length
     ? h('div', { class: 'nem-list' }, ...[...nems].sort((a, b) => b.chaos - a.chaos).map((n) => h('div', {}, h('span', {}, h('b', {}, nemTitle(n)), h('br'), `${ACTS[n.act % ACTS.length].name}${n.muts.length ? ` · ${n.muts.map((m) => NEM_MUTS[m].name).join(', ')}` : ''}`), h('span', {}, `Chaos ×${n.chaos} · ${n.souls} souls`))))
@@ -11867,12 +11877,12 @@ UI.pause = function () {
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
     h('h2', {}, 'Paused'),
     h('p', {}, `${playerName(p)} · level ${p.level} · ${floorLabel(G.fl.idx)} · ${fmtTime(run.t)} · seed ${run.seedText}${run.chaos ? ' · Chaos Mode' : ''}`),
-    h('p', {}, `Carrying ${run.souls || 0} souls · Class Level ${L.lvl}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend` : ''}`),
+    h('p', {}, `Carrying ${run.souls || 0} souls · Talent Level ${L.lvl}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend` : ''}`),
     h('div', { class: 'menu', style: { width: '100%' } },
       btn('Resume', () => UI.close(el), 'primary', { 'data-autofocus': true }),
       btn('Map', () => { UI.close(el); UI.map(); }),
       btn('Your build', () => { UI.close(el); UI.build(); }),
-      btn(L.free ? `Passive tree · ${L.free} to spend` : 'Passive tree', () => { UI.close(el); UI.tree(run.cls, { inRun: true }); }),
+      btn(L.free ? `Talent tree · ${L.free} to spend` : 'Talent tree', () => { UI.close(el); UI.tree(run.cls, { inRun: true }); }),
       btn('Settings', () => UI.settings()),
       btn('How to play', () => UI.help()),
       btn('Save and quit', () => { saveCheckpoint(); UI.clear(); setMode('title'); UI.title(); toast('Saved at the start of this floor'); }),
@@ -11899,7 +11909,7 @@ UI.build = function () {
   }
   if (p.muts && p.muts.length) extra.push(h('h3', {}, 'Mutations'), h('div', { class: 'chips' }, ...p.muts.map((m) => h('span', { class: 'chip', style: { '--rc': '#ff4ad0' }, title: PLAYER_MUTS[m].desc }, h('img', { alt: '', src: iconURL(chaosIcon(), 2) }), `${PLAYER_MUTS[m].name}: ${PLAYER_MUTS[m].desc}`))));
   const majors = treeAlloc(run.cls).map((id) => TREE.nodes[id]).filter((n) => n && n.def);
-  extra.push(h('h3', {}, `Passive tree · Class Level ${classLevelInfo(run.cls).lvl}`), majors.length ? h('div', { class: 'chips' }, ...majors.map((n) => h('span', { class: 'chip', style: { '--rc': n.type === 'keystone' ? '#ff4ad0' : SECTORS[n.sector] ? SECTORS[n.sector].color : '#ffffff' }, title: nodeDesc(n) }, nodeName(n)))) : h('p', {}, 'No notables yet. Bank souls at a DMT zone to earn talent points.'));
+  extra.push(h('h3', {}, `Talent tree · Talent Level ${classLevelInfo(run.cls).lvl}`), majors.length ? h('div', { class: 'chips' }, ...majors.map((n) => h('span', { class: 'chip', style: { '--rc': n.type === 'keystone' ? '#ff4ad0' : SECTORS[n.sector] ? SECTORS[n.sector].color : '#ffffff' }, title: nodeDesc(n) }, nodeName(n)))) : h('p', {}, 'No notables yet. Bank souls at a DMT zone to earn talent points.'));
   const anchor = [...panel.querySelectorAll('h3')].find((x) => x.textContent === 'Numbers');
   for (const x of extra) panel.insertBefore(x, anchor || null);
 };
@@ -11938,12 +11948,14 @@ UI.forge = function () {
 };
 
 /* ---------- the end of a run ---------- */
-hook('runStart', (run) => { run.t0 = Date.now(); });
+hook('runStart', (run) => { run.t0 = Date.now(); const F = CD.save.fs; if (run.cls && !run.realm) { F.played = F.played || []; if (!F.played.includes(run.cls)) F.played.push(run.cls); } });
 UI.runSummary = function (won) {
+  const again = G.run && G.run.charId && typeof charById === 'function' ? charById(G.run.charId) : null;
   const run = G.run, p = G.p, save = CD.save;
   setMode('menu');
   const stat = (k, v) => h('div', {}, k, h('b', {}, String(v)));
-  const L = classLevelInfo(run.cls), who = p ? playerName(p) : CLASS[run.cls].name;
+  const fell = !won && CD.save.fallen && CD.save.fallen[0] && Date.now() - CD.save.fallen[0].date < 60000 ? CD.save.fallen[0] : null;
+  const L = classLevelInfo(run.cls), who = again ? `${charLabel(again)} the ${CLASS[run.cls].name}` : fell ? `${fell.name} the ${CLASS[run.cls].name}` : p ? playerName(p) : CLASS[run.cls].name;
   const ev = run.nemEvent, snap = run.nemEventSnap;
   let soulText = null;
   if (won && run.wonSouls) soulText = h('p', {}, `You carried ${run.wonSouls} souls out of the deep. They are banked.`);
@@ -11960,13 +11972,13 @@ UI.runSummary = function (won) {
       h('div', { class: 'statgrid' }, stat('Time', fmtTime(run.t)), stat('Floor', run.floorIdx + 1), stat('Foes slain', run.stats.kills), stat('Bosses', run.stats.bosses), stat('Damage dealt', Math.round(run.stats.dmgDealt)), stat('Damage taken', Math.round(run.stats.dmgTaken)), stat('Gold found', run.stats.gold), stat('Rooms cleared', run.stats.cleared), stat('Best combo', (G.combo && G.combo.max) || 0), stat('Souls banked', run.soulsBanked || 0), stat('Chaos Beasts slain', run.nemKilled || 0), stat('Mode', run.chaos ? 'Chaos' : run.heat ? `Heat ${run.heat}` : 'Normal')),
       h('div', { class: 'row' }, h('span', { class: 'embers' }, h('img', { alt: '', src: iconURL(miscIcon('ember'), 2) }), `+${run.emberTotal} embers`), h('span', { class: 'foot' }, `You now hold ${save.embers}`)),
       h('h3', {}, 'Souls'), soulText,
-      h('div', { class: 'tree-lvl' }, h('span', {}, `${CLASS[run.cls].name} · Class Level `, h('b', {}, String(L.lvl))), h('i', {}, h('em', { style: { width: `${Math.round((L.into / L.need) * 100)}%` } })), h('small', {}, `${L.into} / ${L.need} souls to level ${L.lvl + 1}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend` : ''}`)),
+      h('div', { class: 'tree-lvl' }, h('span', {}, `${typeof talentLabel === 'function' ? talentLabel(run.cls) : CLASS[run.cls].name} · Talent Level `, h('b', {}, String(L.lvl))), h('i', {}, h('em', { style: { width: `${Math.round((L.into / L.need) * 100)}%` } })), h('small', {}, `${L.into} / ${L.need} souls to level ${L.lvl + 1}${L.free ? ` · ${L.free} point${L.free === 1 ? '' : 's'} to spend` : ''}`)),
       newFeats.length ? h('h3', {}, 'New feats') : null,
       newFeats.length ? h('div', { class: 'feats' }, ...newFeats.map((f) => h('div', { class: 'feat got' }, h('b', {}, f.name), h('em', {}, `+${f.embers}`), h('small', {}, f.desc)))) : null,
       won && run.heat < MAX_HEAT ? h('p', {}, `Heat ${Math.min(MAX_HEAT, run.heat + 1)} is unlocked. Harder descents pay 10% more embers per level.`) : null),
     h('div', { class: 'menu' },
-      btn('Descend again', () => { UI.clear(); fadeTransition(() => startRun({ cls: run.cls, heat: run.heat, sheetId: run.sheetId, chaos: run.chaos })); }, 'primary', { 'data-autofocus': true }),
-      btn(L.free ? `Passive tree · ${L.free} to spend` : 'Passive tree', () => UI.tree(run.cls, { onClose: () => UI.runSummary(won) })),
+      btn(again ? `Descend again with ${charLabel(again)}` : `New descent as a ${CLASS[run.cls].name}`, () => { UI.clear(); fadeTransition(() => startRun({ cls: run.cls, heat: run.heat, sheetId: run.sheetId, chaos: run.chaos, charId: again ? again.id : undefined })); }, 'primary', { 'data-autofocus': true }),
+      btn(L.free ? `Talent tree · ${L.free} to spend` : 'Talent tree', () => UI.tree(run.cls, { onClose: () => UI.runSummary(won) })),
       btn('Choose another', () => UI.heroes({ sel: run.cls, chaos: !!run.chaos })),
       btn('Camp', () => UI.camp()),
       btn('Title', () => UI.title())));
@@ -11979,9 +11991,13 @@ UI.help = function (back) {
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel wide' },
     h('h2', {}, 'How to play'),
     h('p', {}, 'Fight down through four regions of three floors each. Every room you enter seals until its monsters fall. Find the stairs, beat the boss on every third floor, and claim a relic from its altar. When you die, the run ends but the embers you gathered stay with you for the camp.'),
-    h('h3', {}, 'Souls, DMT zones and the passive tree'),
-    h('p', {}, 'Everything you kill can drop souls. They are not safe in your pockets. Most floors hide a DMT zone behind a false wall: walk along the walls, and when the air starts to sparkle, step closer. Inside, deposit your souls at the well. Banked souls raise that character’s Class Level for good, and every level is a talent point for its passive tree.'),
-    h('p', {}, 'The tree is shared by everyone but each character starts in its own sector. Small passives add up, notables change how you fight, keystones bend the rules, and evolution nodes decide what happens when a beast evolves or a hero awakens at level 10.'),
+    h('h3', {}, 'Characters'),
+    h('p', {}, 'Every hero and beast is yours from the start. Each new descent makes a named character. A descent starts at level 1: levels, gear, the passives you pick and your skill tree belong to that run. Death is permanent, below and above. Reach floor 11 in a single descent and the Realm above opens to that character.'),
+    h('h3', {}, 'Skill trees and evolution'),
+    h('p', {}, 'Every level is a skill point for your playable\'s own skill tree: eight paths (fire, frost, storm, venom, shadow, earth, chaos and luck) that change your weapon, your ability and the accessory you wear. Every five levels you evolve. The paths you walk, here and in your talents, decide the form: one strong path makes a pure form, two make a hybrid.'),
+    h('h3', {}, 'Souls, DMT zones and the talent tree'),
+    h('p', {}, 'Everything you kill can drop souls. They are not safe in your pockets. Most floors hide a DMT zone behind a false wall: walk along the walls, and when the air starts to sparkle, step closer. Inside, deposit your souls at the well, or commune with the Mycelium. Banked souls raise two Talent Levels for good: the shared one, whose points go on passives everyone keeps, and your character\'s own, whose points are theirs while they live.'),
+    h('p', {}, 'There is one talent tree, with a start for every hero and beast. From each start run four roads of its own (weapon, ability, nature and element), woven into its neighbours\' roads. Shared passives can grow from any start; your own grow from yours. Attribute passives give Strength, Dexterity or Intelligence: click a taken one to switch. Keystones bend the rules, and where kin meet, their element roads flow into a confluence.'),
     h('h3', {}, 'Chaos Beasts'),
     h('p', {}, 'Die while carrying souls and whatever killed you eats them. It becomes a Level 1 Chaos Beast with a name and a grudge, and it waits for you in that region on a later descent. Kill it to get every soul back, plus interest. If it kills you again, its chaos doubles and it mutates.'),
     h('h3', {}, 'Beasts and evolution'),
@@ -12518,7 +12534,7 @@ UI.saveTransfer = function (back) {
   const close = () => { UI.close(el); if (back) back(); };
   const el = h('div', { class: 'modal' }, h('div', { class: 'panel' },
     h('h2', {}, 'Move your progress'),
-    h('p', {}, 'Copy this code, then paste it into Cinderdeep on another device, in the browser or the Android app. It carries embers, unlocks, class levels, passive trees, feats and Chaos Beasts.'),
+    h('p', {}, 'Copy this code, then paste it into Cinderdeep on another device, in the browser or the Android app. It carries embers, characters, talent levels, the talent tree, feats and Chaos Beasts.'),
     out,
     h('div', { class: 'row', style: { justifyContent: 'flex-start' } }, btn('Copy my save code', async () => {
       try { await navigator.clipboard.writeText(code); toast('Save code copied', '#9ff6ff'); }
