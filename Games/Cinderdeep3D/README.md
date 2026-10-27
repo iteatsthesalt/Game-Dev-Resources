@@ -1,4 +1,9 @@
-# Cinderdeep 3D
+# Cinderdeep 3D (frozen)
+
+> **FROZEN, 2026-10-27. Do not work on this version.** The game was restarted from an empty source tree as
+> [CinderDeep 3D](https://github.com/iteatsthesalt/CinderDeep) (`projects/cinderdeep-3d`). This folder is kept for
+> reference only: no hourly routine, session or pull request should add to it. If you are a session reading this,
+> stop and work in the new project instead.
 
 Cinderdeep drawn entirely in 3D. Open `Cinderdeep3D.html` in a browser with WebGL to play; nothing else is needed. It is a copy of [Cinderdeep](../Cinderdeep/) with every 2D drawing path removed: the dungeons, the dungeons inside the Realm and the Realm itself are all three.js scenes.
 
