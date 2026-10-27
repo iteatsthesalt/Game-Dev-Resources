@@ -1,5 +1,7 @@
 # Cinderdeep
 
+> **Reference only, not developed.** The one Cinderdeep game is [CinderDeep](https://github.com/iteatsthesalt/CinderDeep) `projects/cinderdeep-3d`; see `../CINDERDEEP_MOVED.md`.
+
 A browser roguelite in one file. Open `CDCD-V9.html` to play; nothing else is needed.
 
 ## Working on it
