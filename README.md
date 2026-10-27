@@ -1,5 +1,7 @@
 # Game Development Resources
 
+> **Cinderdeep 3D:** the one game is `Games/Cinderdeep3D` on branch `ccr-c44de517-hmls4q`. See [CANONICAL.md](CANONICAL.md).
+
 This collection contains full Git clones, including repository history. The repositories are grouped by engine and purpose:
 
 This GitHub repository indexes the source projects as submodules rather than copying their histories into one large repository. When cloning, pass `--recurse-submodules` to `git clone` to check out the linked projects.
