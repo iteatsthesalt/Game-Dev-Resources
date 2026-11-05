@@ -1,0 +1,21 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/substrates/ash.tres" id="1_k0mxa"]
+[ext_resource type="Resource" path="res://demo/living/substrates/loam.tres" id="2_hvxiq"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="3_uyjnl"]
+
+[resource]
+script = ExtResource("3_uyjnl")
+id = &"leaf_litter"
+display_name = "Leaf Litter"
+nutrients = {
+&"fuel": 22.0,
+&"organic": 10.0
+}
+residues = {
+&"fire": ExtResource("1_k0mxa"),
+&"mycelium": ExtResource("2_hvxiq")
+}
+color = Color(0.30980393, 0.22745098, 0.13333334, 1)
+shape = 2
+slab_height = 0.3

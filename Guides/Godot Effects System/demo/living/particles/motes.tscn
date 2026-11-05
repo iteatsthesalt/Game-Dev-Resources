@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_d2dam"]
+transparency = 1
+shading_mode = 0
+vertex_color_use_as_albedo = true
+billboard_mode = 3
+particles_anim_h_frames = 1
+particles_anim_v_frames = 1
+particles_anim_loop = false
+
+[sub_resource type="QuadMesh" id="QuadMesh_sxwpb"]
+material = SubResource("StandardMaterial3D_d2dam")
+size = Vector2(0.045, 0.045)
+
+[sub_resource type="Gradient" id="Gradient_iu2o2"]
+colors = PackedColorArray(0.78431374, 1, 0.9411765, 1, 0.24705882, 0.8392157, 0.6901961, 0)
+
+[node name="Motes" type="CPUParticles3D"]
+amount = 5
+lifetime = 2.2
+mesh = SubResource("QuadMesh_sxwpb")
+emission_shape = 3
+emission_box_extents = Vector3(0.22, 0.1, 0.22)
+direction = Vector3(0, 1, 0)
+spread = 40.0
+gravity = Vector3(0, 0.15, 0)
+initial_velocity_min = 0.1
+initial_velocity_max = 0.3
+color_ramp = SubResource("Gradient_iu2o2")

@@ -1,0 +1,49 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/strains/wildfire.tres" id="1_lurxu"]
+[ext_resource type="Resource" path="res://demo/living/effects/burn.tres" id="2_fn7q7"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/embers.tscn" id="3_d30rk"]
+[ext_resource type="Resource" path="res://demo/living/substrates/ash.tres" id="4_vwekh"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="5_gtfu0"]
+
+[resource]
+script = ExtResource("5_gtfu0")
+id = &"ember"
+display_name = "Ember"
+tags = Array[StringName]([&"fire.ember"])
+max_energy = 14.0
+metabolism = 1.6
+feeds_on = &"fuel"
+feed_rate = 6.0
+rest_energy = 1.5
+wake_energy = 3.0
+dormant_metabolism = 0.3
+mature_time = 0.25
+split_energy = 7.0
+division_cost = 0.6
+spread_up = 2.2
+spread_down = 0.15
+wind_factor = 0.4
+max_colony_cells = 900
+max_wounds = 2
+heal_time = 1.5
+infection_effect = ExtResource("2_fn7q7")
+infection_interval = 0.6
+host_capacity = 12.0
+shed_energy = 3.0
+shed_interval = 0.5
+judge_interval = 1.5
+evolve_into = ExtResource("1_lurxu")
+evolve_at_cells = 140
+residue = ExtResource("4_vwekh")
+color = Color(0.65882355, 0.21176471, 0.10980392, 1)
+hot_color = Color(1, 0.8156863, 0.5411765, 1)
+emission = 2.4
+cell_scale = 0.95
+flicker = 0.6
+rise = 0.75
+light_color = Color(1, 0.47843137, 0.16470589, 1)
+light_energy = 1.4
+max_lights = 4
+particles = ExtResource("3_d30rk")
+max_emitters = 10

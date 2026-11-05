@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/substrates/ash.tres" id="1_j5ney"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="2_kkvat"]
+
+[resource]
+script = ExtResource("2_kkvat")
+id = &"mycelium_bed"
+display_name = "Mycelium Bed"
+nutrients = {
+&"fuel": 6.0,
+&"organic": 16.0
+}
+residues = {
+&"fire": ExtResource("1_j5ney")
+}
+color = Color(0.16470589, 0.22745098, 0.19607843, 1)
+shape = 2

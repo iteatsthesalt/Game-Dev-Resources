@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/burn.tres" id="1_f2hmu"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/embers.tscn" id="2_gqf8u"]
+[ext_resource type="Resource" path="res://demo/living/substrates/ash.tres" id="3_pq8gd"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="4_qd6l7"]
+
+[resource]
+script = ExtResource("4_qd6l7")
+id = &"wildfire"
+display_name = "Wildfire"
+tags = Array[StringName]([&"fire.wild"])
+max_energy = 16.0
+metabolism = 1.8
+feeds_on = &"fuel"
+feed_rate = 8.0
+rest_energy = 1.5
+wake_energy = 3.0
+dormant_metabolism = 0.3
+mature_time = 0.2
+split_energy = 6.0
+division_cost = 0.6
+spread_up = 2.6
+spread_side = 1.5
+spread_down = 0.15
+wind_factor = 0.7
+max_colony_cells = 900
+max_wounds = 2
+heal_time = 1.5
+infection_effect = ExtResource("1_f2hmu")
+infection_interval = 0.6
+host_capacity = 14.0
+shed_energy = 3.0
+shed_interval = 0.45
+judge_interval = 1.5
+residue = ExtResource("3_pq8gd")
+color = Color(0.76862746, 0.2509804, 0.10980392, 1)
+hot_color = Color(1, 0.9411765, 0.7529412, 1)
+emission = 3.0
+flicker = 0.7
+rise = 0.85
+light_color = Color(1, 0.47843137, 0.16470589, 1)
+light_energy = 1.8
+max_lights = 6
+particles = ExtResource("2_gqf8u")
+max_emitters = 14

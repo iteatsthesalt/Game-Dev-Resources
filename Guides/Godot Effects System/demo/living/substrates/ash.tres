@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_awja3"]
+
+[resource]
+script = ExtResource("1_awja3")
+id = &"ash"
+display_name = "Ash"
+nutrients = {
+&"organic": 6.0
+}
+color = Color(0.43137255, 0.41568628, 0.4, 1)
+shape = 2
+slab_height = 0.18

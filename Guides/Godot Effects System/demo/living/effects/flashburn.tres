@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_v765i"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/flash_cue.gd" id="2_gjvra"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="3_djrje"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="4_ynfo0"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="5_lxl71"]
+
+[sub_resource type="Resource" id="Resource_4y28y"]
+script = ExtResource("2_gjvra")
+
+[sub_resource type="Resource" id="Resource_r3nsw"]
+script = ExtResource("3_djrje")
+text = "{amount}"
+color = Color(1, 0.9411765, 0.7529412, 1)
+offset = Vector3(0, 2.1, 0)
+
+[sub_resource type="Resource" id="Resource_ggmuc"]
+script = ExtResource("4_ynfo0")
+stat = &"health"
+value = -18.0
+
+[resource]
+script = ExtResource("5_lxl71")
+id = &"flashburn"
+display_name = "Flashburn"
+description = "Spores caught fire."
+color = Color(1, 0.8156863, 0.5411765, 1)
+hidden = true
+duration_type = 0
+instant_changes = Array[ExtResource("4_ynfo0")]([SubResource("Resource_ggmuc")])
+tags = Array[StringName]([&"fire.blast"])
+cues = Array[ExtResource("1_v765i")]([SubResource("Resource_4y28y"), SubResource("Resource_r3nsw")])

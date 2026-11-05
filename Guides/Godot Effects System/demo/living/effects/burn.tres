@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_lhuwl"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/tint_cue.gd" id="2_gvlw5"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/flash_cue.gd" id="3_epmny"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="4_yuahp"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="5_20t4i"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="6_ptxrf"]
+
+[sub_resource type="Resource" id="Resource_tgs64"]
+script = ExtResource("2_gvlw5")
+color = Color(1, 0.6901961, 0.4392157, 1)
+events = 0
+
+[sub_resource type="Resource" id="Resource_q3e5h"]
+script = ExtResource("3_epmny")
+color = Color(1, 0.6039216, 0.23529412, 1)
+events = 2
+
+[sub_resource type="Resource" id="Resource_0pnjn"]
+script = ExtResource("4_yuahp")
+text = "{amount}"
+color = Color(1, 0.7019608, 0.36862746, 1)
+offset = Vector3(0, 2.1, 0)
+events = 2
+
+[sub_resource type="Resource" id="Resource_y1b8r"]
+script = ExtResource("5_20t4i")
+stat = &"health"
+value = -3.0
+
+[resource]
+script = ExtResource("6_ptxrf")
+id = &"burn"
+display_name = "Burn"
+description = "On fire. Puts out when soaked."
+color = Color(1, 0.47843137, 0.16470589, 1)
+duration = 2.5
+period = 0.5
+periodic_changes = Array[ExtResource("5_20t4i")]([SubResource("Resource_y1b8r")])
+tags = Array[StringName]([&"fire.burn", &"debuff"])
+blocked_by_tags = Array[StringName]([&"wet"])
+cues = Array[ExtResource("1_lhuwl")]([SubResource("Resource_tgs64"), SubResource("Resource_q3e5h"), SubResource("Resource_0pnjn")])

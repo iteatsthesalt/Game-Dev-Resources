@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Reaction" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/reaction.gd" id="1_lcun4"]
+
+[resource]
+script = ExtResource("1_lcun4")
+tag_a = &"cold"
+tag_b = &"blight"
+chance = 0.5
+wound_b = 1
+wound_energy = 1.5

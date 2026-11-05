@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/strains/sporeveil.tres" id="1_g7f7h"]
+[ext_resource type="Resource" path="res://demo/living/effects/spore_sickness.tres" id="2_ighs0"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/spores.tscn" id="3_6tght"]
+[ext_resource type="Resource" path="res://demo/living/substrates/blighted_soil.tres" id="4_1hhxv"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="5_vqjmi"]
+
+[resource]
+script = ExtResource("5_vqjmi")
+id = &"blight"
+display_name = "Blight"
+tags = Array[StringName]([&"blight.spore", &"corruption"])
+seed_energy = 8.0
+max_energy = 12.0
+metabolism = 0.45
+feeds_on = &"organic"
+feed_rate = 1.8
+rest_energy = 1.0
+wake_energy = 2.0
+mature_time = 0.9
+split_energy = 5.5
+division_cost = 0.5
+spread_up = 0.25
+spread_down = 0.2
+infection_effect = ExtResource("2_ighs0")
+infection_interval = 1.0
+infection_cost = 1.5
+host_capacity = 10.0
+shed_energy = 2.5
+shed_interval = 1.0
+root_regen = 6.0
+supply_rate = 0.5
+evolve_into = ExtResource("1_g7f7h")
+evolve_at_cells = 220
+residue = ExtResource("4_1hhxv")
+shape = 1
+color = Color(0.3529412, 0.16470589, 0.41568628, 1)
+hot_color = Color(0.78431374, 0.41568628, 0.8784314, 1)
+emission = 1.4
+cell_scale = 0.55
+bob = 0.5
+light_color = Color(0.627451, 0.3137255, 0.78431374, 1)
+light_energy = 1.0
+max_lights = 2
+particles = ExtResource("3_6tght")
+max_emitters = 6

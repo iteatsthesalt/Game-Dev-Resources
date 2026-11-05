@@ -1,0 +1,39 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_5bnqe"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/tint_cue.gd" id="2_7hxx4"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/text_cue.gd" id="3_72jvt"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="4_qv14x"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="5_wsh07"]
+
+[sub_resource type="Resource" id="Resource_howds"]
+script = ExtResource("2_7hxx4")
+color = Color(0.8509804, 0.65882355, 0.91764706, 1)
+events = 0
+
+[sub_resource type="Resource" id="Resource_m8isu"]
+script = ExtResource("3_72jvt")
+text = "{amount}"
+color = Color(0.8784314, 0.627451, 1, 1)
+offset = Vector3(0, 2.1, 0)
+events = 2
+
+[sub_resource type="Resource" id="Resource_a101e"]
+script = ExtResource("4_qv14x")
+stat = &"health"
+value = -1.5
+
+[resource]
+script = ExtResource("5_wsh07")
+id = &"spore_sickness"
+display_name = "Spore Sickness"
+description = "The blight grows inside you. Carriers spread it."
+color = Color(0.78431374, 0.41568628, 0.8784314, 1)
+duration = 6.0
+period = 1.0
+stack_mode = 1
+max_stacks = 4
+lose_one_stack_on_expiry = true
+periodic_changes = Array[ExtResource("4_qv14x")]([SubResource("Resource_a101e")])
+tags = Array[StringName]([&"blight.spores", &"debuff"])
+cues = Array[ExtResource("1_5bnqe")]([SubResource("Resource_howds"), SubResource("Resource_m8isu")])

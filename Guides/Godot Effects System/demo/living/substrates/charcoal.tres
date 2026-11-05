@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_mh0xq"]
+
+[resource]
+script = ExtResource("1_mh0xq")
+id = &"charcoal"
+display_name = "Charcoal"
+nutrients = {
+&"fuel": 3.0,
+&"organic": 2.0
+}
+color = Color(0.18039216, 0.101960786, 0.078431375, 1)
+emission = 0.6

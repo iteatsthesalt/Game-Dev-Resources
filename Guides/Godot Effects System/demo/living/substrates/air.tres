@@ -1,0 +1,9 @@
+[gd_resource type="Resource" script_class="Substrate" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cellular/substrate.gd" id="1_m6o11"]
+
+[resource]
+script = ExtResource("1_m6o11")
+id = &"air"
+display_name = "Air"
+shape = 0

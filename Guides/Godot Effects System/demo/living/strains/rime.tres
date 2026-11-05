@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="Strain" format=3]
+
+[ext_resource type="Resource" path="res://demo/living/effects/frostbite.tres" id="1_eetnv"]
+[ext_resource type="PackedScene" path="res://demo/living/particles/snow.tscn" id="2_84e4q"]
+[ext_resource type="Script" path="res://addons/effects_system/cellular/strain.gd" id="3_sky8a"]
+
+[resource]
+script = ExtResource("3_sky8a")
+id = &"rime"
+display_name = "Rime"
+tags = Array[StringName]([&"cold.rime"])
+seed_energy = 8.0
+max_energy = 10.0
+metabolism = 0.9
+feeds_on = &"water"
+rest_energy = 0.5
+wake_energy = 1.0
+dormant_metabolism = 0.5
+mature_time = 0.3
+split_energy = 5.0
+division_cost = 0.4
+spread_up = 0.05
+spread_down = 0.5
+max_colony_cells = 350
+infection_effect = ExtResource("1_eetnv")
+infection_cost = 1.0
+host_capacity = 6.0
+shed_energy = 0.0
+shape = 2
+color = Color(0.43137255, 0.7647059, 1, 1)
+hot_color = Color(0.9098039, 0.972549, 1, 1)
+emission = 1.0
+particles = ExtResource("2_84e4q")
+max_emitters = 5

@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="Effect" format=3]
+
+[ext_resource type="Script" path="res://addons/effects_system/cues/effect_cue.gd" id="1_o4m1o"]
+[ext_resource type="Script" path="res://addons/effects_system/cues/tint_cue.gd" id="2_aicwf"]
+[ext_resource type="Script" path="res://addons/effects_system/core/stat_modifier.gd" id="3_r6iso"]
+[ext_resource type="Script" path="res://addons/effects_system/core/effect.gd" id="4_ujob4"]
+
+[sub_resource type="Resource" id="Resource_2jf42"]
+script = ExtResource("2_aicwf")
+color = Color(0.6901961, 0.8, 1, 1)
+events = 0
+
+[sub_resource type="Resource" id="Resource_gemgt"]
+script = ExtResource("3_r6iso")
+stat = &"speed"
+operation = 2
+value = 0.9
+
+[resource]
+script = ExtResource("4_ujob4")
+id = &"soaked"
+display_name = "Soaked"
+description = "Wet through: can't burn, a little slower."
+color = Color(0.3529412, 0.627451, 1, 1)
+modifiers = Array[ExtResource("3_r6iso")]([SubResource("Resource_gemgt")])
+tags = Array[StringName]([&"wet"])
+removes_tags = Array[StringName]([&"fire"])
+cues = Array[ExtResource("1_o4m1o")]([SubResource("Resource_2jf42")])
