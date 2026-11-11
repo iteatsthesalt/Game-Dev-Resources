@@ -630,7 +630,29 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
 
     const row = h('div', { class: 'tl-actions-row' },
       button('Surprise me', { iconName: 'surprise', variant: 'primary', onClick: () => { actions.surprise(); announce(`${store.scene.name || 'A new scene'} is playing`); } }),
-      button('Share link', { iconName: 'share', onClick: () => run.shareLink() }));
+      button(platform.native ? 'Share scene code' : 'Share link', { iconName: 'share', onClick: () => run.shareLink() }));
+
+    // someone sent a link or a code: paste it here to play their scene
+    const openId = uid('open');
+    const openInput = h('input', {
+      class: 'tl-text', id: openId, type: 'text', autocomplete: 'off', enterkeyhint: 'go',
+      spellcheck: 'false', placeholder: 'Paste a link or code',
+    });
+    const openForm = h('form', { class: 'tl-save' },
+      h('label', { class: 'tl-label', for: openId }, 'Open a shared scene'),
+      h('div', { class: 'tl-save-row' }, openInput,
+        h('button', { type: 'submit', class: 'tl-btn' }, icon('share'), h('span', { class: 'tl-btn-text' }, 'Open'))));
+    openForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const r = actions.openShared(openInput.value);
+      if (r && r.ok) {
+        openInput.value = '';
+        openInput.blur();
+        toast(`Playing ${store.scene.name ? `“${store.scene.name}”` : 'the shared scene'}`);
+      } else {
+        toast('That is not a Tactilume link or scene code.');
+      }
+    });
 
     const yours = section('Your scenes');
     const inputId = uid('name');
@@ -654,7 +676,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     yours.body.append(form, userList);
     renderUser(store.userScenes());
 
-    panel.append(presetSec.el, row, yours.el);
+    panel.append(presetSec.el, row, openForm, yours.el);
   }
 
   function renderUser(list) {

@@ -210,6 +210,21 @@ export default [
       c.push(h.check('a new link in the address bar loads its scene', switched && isDeepStrictEqual(got2, other), sceneDiff(got2, other)));
       c.push(h.check('the app keeps drawing after a link', await h.waitFrames(linked, 3)));
 
+      // a pasted link or bare code (Scenes > Open a shared scene) opens the scene too
+      const pasted = await linked.evaluate((code) => {
+        const t = window.TACTILUME;
+        const link = t.actions.openShared('Look at this: https://example.org/Tactilume.html#s=' + code + ' !');
+        const linkPalette = t.store.scene.palette;
+        t.actions.loadPreset('first-light');
+        const bare = t.actions.openShared('  ' + code + '\n');
+        const barePalette = t.store.scene.palette;
+        const junk = [t.actions.openShared('hello'), t.actions.openShared(''), t.actions.openShared('#s=garbage')];
+        return { link: link.ok, linkPalette, bare: bare.ok, barePalette, junk: junk.map((r) => r.ok), after: t.store.scene.palette };
+      }, code);
+      c.push(h.check('a pasted link inside text opens its scene', pasted.link && pasted.linkPalette === 'aurora', JSON.stringify(pasted)));
+      c.push(h.check('a pasted bare code opens its scene', pasted.bare && pasted.barePalette === 'aurora', JSON.stringify(pasted)));
+      c.push(h.check('pasted text that is not a scene is refused and changes nothing', pasted.junk.every((ok) => !ok) && pasted.after === 'aurora', JSON.stringify(pasted)));
+
       await linked.close();
 
       // Hostile links at start-up, each in a fresh context so nothing saved can mask the

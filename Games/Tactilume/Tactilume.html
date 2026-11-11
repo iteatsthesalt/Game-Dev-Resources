@@ -6731,8 +6731,40 @@ void main() {
           actions.surprise();
           announce(`${store.scene.name || "A new scene"} is playing`);
         } }),
-        button("Share link", { iconName: "share", onClick: () => run.shareLink() })
+        button(platform.native ? "Share scene code" : "Share link", { iconName: "share", onClick: () => run.shareLink() })
       );
+      const openId = uid("open");
+      const openInput = h("input", {
+        class: "tl-text",
+        id: openId,
+        type: "text",
+        autocomplete: "off",
+        enterkeyhint: "go",
+        spellcheck: "false",
+        placeholder: "Paste a link or code"
+      });
+      const openForm = h(
+        "form",
+        { class: "tl-save" },
+        h("label", { class: "tl-label", for: openId }, "Open a shared scene"),
+        h(
+          "div",
+          { class: "tl-save-row" },
+          openInput,
+          h("button", { type: "submit", class: "tl-btn" }, icon("share"), h("span", { class: "tl-btn-text" }, "Open"))
+        )
+      );
+      openForm.addEventListener("submit", (e) => {
+        e.preventDefault();
+        const r = actions.openShared(openInput.value);
+        if (r && r.ok) {
+          openInput.value = "";
+          openInput.blur();
+          toast(`Playing ${store.scene.name ? `“${store.scene.name}”` : "the shared scene"}`);
+        } else {
+          toast("That is not a Tactilume link or scene code.");
+        }
+      });
       const yours = section("Your scenes");
       const inputId = uid("name");
       saveInput = h("input", {
@@ -6769,7 +6801,7 @@ void main() {
       userList = h("ul", { class: "tl-user-list", "aria-label": "Saved scenes" });
       yours.body.append(form, userList);
       renderUser(store.userScenes());
-      panel.append(presetSec.el, row, yours.el);
+      panel.append(presetSec.el, row, openForm, yours.el);
     }
     function renderUser(list) {
       if (!userList) return;
@@ -7112,7 +7144,7 @@ void main() {
       },
       async shareLink() {
         const r = await attempt(() => actions.shareLink());
-        if (r && r.ok) toast(r.copied ? "Link copied" : "Shared");
+        if (r && r.ok) toast(r.kind === "code" ? r.copied ? "Scene code copied" : "Scene code shared" : r.copied ? "Link copied" : "Shared");
         else if (r && r.error !== "cancelled") toast(r && r.error || "The link could not be shared.");
         return r;
       }
@@ -7446,8 +7478,21 @@ void main() {
         return capture.startRecording({ maxSeconds: 60, withSound: store.settings.sound || store.settings.react !== "off" });
       },
       async shareLink() {
-        const url = location.href.split("#")[0].split("?")[0] + "#s=" + store.shareCode();
+        const code2 = store.shareCode();
+        if (platform.native) {
+          const r = await platform.shareLink(code2, "A Tactilume scene code");
+          return { ...r, kind: "code" };
+        }
+        const url = location.href.split("#")[0].split("?")[0] + "#s=" + code2;
         return platform.shareLink(url, store.scene.name ? `${store.scene.name}, on Tactilume` : "A scene on Tactilume");
+      },
+      // A pasted share link or bare scene code. Returns { ok }.
+      openShared(text) {
+        const s = String(text || "").trim().slice(0, 4096);
+        const fromLink = /(?:#|&)s=([A-Za-z0-9_-]+)/.exec(s);
+        const bare = /^1[A-Za-z0-9_-]{2,}$/.test(s) ? s : null;
+        const code2 = fromLink ? fromLink[1] : bare;
+        return { ok: !!code2 && store.loadShareCode(code2, "paste") };
       },
       clearPins() {
         pointers.clearPins();

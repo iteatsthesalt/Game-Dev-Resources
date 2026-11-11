@@ -103,7 +103,7 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
     },
     async shareLink() {
       const r = await attempt(() => actions.shareLink());
-      if (r && r.ok) toast(r.copied ? 'Link copied' : 'Shared');
+      if (r && r.ok) toast(r.kind === 'code' ? (r.copied ? 'Scene code copied' : 'Scene code shared') : r.copied ? 'Link copied' : 'Shared');
       else if (r && r.error !== 'cancelled') toast((r && r.error) || 'The link could not be shared.');
       return r;
     },

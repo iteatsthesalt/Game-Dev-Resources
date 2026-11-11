@@ -142,8 +142,23 @@ function boot() {
       return capture.startRecording({ maxSeconds: 60, withSound: store.settings.sound || store.settings.react !== 'off' });
     },
     async shareLink() {
-      const url = location.href.split('#')[0].split('?')[0] + '#s=' + store.shareCode();
+      const code = store.shareCode();
+      // Inside the Android app the page lives at a private address nobody else can open,
+      // so the app shares the scene code instead; Scenes > Open a shared scene takes it.
+      if (platform.native) {
+        const r = await platform.shareLink(code, 'A Tactilume scene code');
+        return { ...r, kind: 'code' };
+      }
+      const url = location.href.split('#')[0].split('?')[0] + '#s=' + code;
       return platform.shareLink(url, store.scene.name ? `${store.scene.name}, on Tactilume` : 'A scene on Tactilume');
+    },
+    // A pasted share link or bare scene code. Returns { ok }.
+    openShared(text) {
+      const s = String(text || '').trim().slice(0, 4096);
+      const fromLink = /(?:#|&)s=([A-Za-z0-9_-]+)/.exec(s);
+      const bare = /^1[A-Za-z0-9_-]{2,}$/.test(s) ? s : null;
+      const code = fromLink ? fromLink[1] : bare;
+      return { ok: !!code && store.loadShareCode(code, 'paste') };
     },
     clearPins() { pointers.clearPins(); },
     toggleFullscreen() { platform.setFullscreen(!platform.isFullscreen()); },
