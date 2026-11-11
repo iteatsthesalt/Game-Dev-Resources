@@ -161,6 +161,26 @@ describe('createGovernor', () => {
     assert.equal(g.refreshHz, 120);
   });
 
+  test('a 60 cap on a 90 Hz display is met, not mistaken for slow frames', () => {
+    // with the cap paced by deadline, frames come one vsync then two: 11.1 ms, 22.2 ms, ...
+    const g = createGovernor({ maxParticles: MAX, startParticles: 1 << 19 });
+    g.setCap(60);
+    const vsync = 1000 / 90;
+    let i = 0;
+    const r = play(g, 30, () => (i++ % 2 ? 2 * vsync : vsync));
+    assert.equal(r.minP, 1 << 19, `particles fell to ${r.minP}`);
+    assert.equal(r.minS, 1, `render scale fell to ${r.minS}`);
+    assert.equal(g.cap, 60);
+  });
+
+  test('under a 30 cap, frames that miss it still lower detail', () => {
+    const g = createGovernor({ maxParticles: MAX, startParticles: 1 << 19 });
+    g.setCap(30);
+    const before = g.particles;
+    play(g, 10, 50);
+    assert.ok(g.particles < before, `particles ${before} -> ${g.particles}`);
+  });
+
   test('a single long hitch does not lower detail', () => {
     const g = createGovernor({ maxParticles: MAX, startParticles: 1 << 19 });
     play(g, 2, 16.7);

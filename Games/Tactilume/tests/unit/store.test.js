@@ -331,17 +331,51 @@ describe('saved scenes', () => {
     assert.equal(store.userScenes()[0].name, 'One');
   });
 
-  test('keeps at most 60, dropping the oldest', () => {
+  test('keeps at most 60 and refuses more, never dropping an older scene', () => {
     const storage = memoryStorage();
     const store = make({ storage });
-    const ids = [];
-    for (let i = 0; i < 65; i++) ids.push(store.saveUserScene(`Scene ${i}`).id);
+    const results = [];
+    for (let i = 0; i < 65; i++) results.push(store.saveUserScene(`Scene ${i}`));
+    assert.ok(results.slice(0, 60).every((e) => e && e.id), 'the first 60 saves succeed');
+    assert.ok(results.slice(60).every((e) => e === null), 'saves past 60 are refused');
     const list = store.userScenes();
     assert.equal(list.length, 60);
-    assert.equal(list[0].name, 'Scene 64');
-    assert.equal(list[59].name, 'Scene 5');
+    assert.equal(list[0].name, 'Scene 59');
+    assert.equal(list[59].name, 'Scene 0');
     store.flush();
     assert.equal(storage.saved().user.length, 60);
+  });
+
+  test('two tabs never write over each other\'s saved scenes', () => {
+    const storage = memoryStorage();
+    const a = make({ storage });
+    const b = make({ storage });
+    a.saveUserScene('Kept in tab A');
+    // tab B still holds the empty list it read at start; any change it saves must keep A's scene
+    b.setScene({ hue: 0.3 });
+    b.flush();
+    assert.deepEqual(storage.saved().user.map((e) => e.name), ['Kept in tab A']);
+    b.saveUserScene('From tab B');
+    assert.deepEqual(storage.saved().user.map((e) => e.name), ['From tab B', 'Kept in tab A']);
+    a.deleteUserScene(a.userScenes()[0].id);
+    assert.deepEqual(storage.saved().user.map((e) => e.name), ['From tab B']);
+  });
+
+  test('syncFromStorage takes another tab\'s scenes and settings, but not its microphone or tilt', () => {
+    const storage = memoryStorage();
+    const a = make({ storage });
+    const b = make({ storage });
+    const userEvents = [];
+    a.on('user', (list) => userEvents.push(list.length));
+    b.saveUserScene('From B');
+    b.setSettings({ volume: 0.2, react: 'mic', tilt: true });
+    b.flush();
+    a.syncFromStorage();
+    assert.deepEqual(a.userScenes().map((e) => e.name), ['From B']);
+    assert.deepEqual(userEvents, [1]);
+    assert.equal(a.settings.volume, 0.2);
+    assert.equal(a.settings.react, 'off');
+    assert.equal(a.settings.tilt, false);
   });
 
   test('an over-full save from elsewhere is cut to 60', () => {

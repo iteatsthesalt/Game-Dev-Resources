@@ -433,9 +433,11 @@ void main() {
   float gain = 0.0;
 
   // --- the touches -------------------------------------------------------------
+  // Strength (and calm mode, and the music's bass) scales how hard touches push and pull;
+  // the clamps further down keep even the springiest behaviours stable at 3x.
   vec3 acc = vec3(0.0);
-  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix);
-  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix;
+  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix) * uStrength;
+  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix * uStrength;
   int lead = uMix < 0.5 ? uBehA : uBehB;
 
   // fountains respawn spent particles at a touch

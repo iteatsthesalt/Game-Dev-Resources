@@ -80,16 +80,20 @@ void main() {
 //   r: adapted scene brightness (slow), drives auto exposure
 //   g: guarded on-screen brightness, which may only rise so fast
 //   b: the exposure multiplier the composite uses
+// The state is stored as the exact bits of 32-bit floats in an RGBA32UI target: integer
+// targets are renderable in every WebGL2, so the guard works the same on devices that
+// cannot render half floats (in 8 bits its slow rise would round away to nothing).
 export const ADAPT_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uLum;     // the smallest bloom level: a blurred thumbnail of the frame
-uniform sampler2D uPrev;
+uniform highp usampler2D uPrev;
 uniform float uDt;
 uniform float uBase;        // the scene's exposure, as a multiplier
 uniform float uAuto;        // 0..1, how strongly to adapt
 uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
-out vec4 o;
+uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
+out uvec4 o;
 void main() {
   float sum = 0.0;
   for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
@@ -97,16 +101,20 @@ void main() {
     sum += dot(clamp(c, 0.0, 30000.0), vec3(0.2126, 0.7152, 0.0722));
   }
   float L = max(sum / 16.0, 0.0);
-  vec4 prev = texelFetch(uPrev, ivec2(0), 0);
-  bool first = prev.a < 0.5;
+  vec4 prev = uintBitsToFloat(texelFetch(uPrev, ivec2(0), 0));
+  bool first = !(prev.a > 0.5);   // cleared to zero bits (0.0), or never written
   float La = first ? L : prev.r + (L - prev.r) * (1.0 - exp(-uDt / (L > prev.r ? 0.45 : 1.3)));
   float e = clamp(pow(0.06 / max(La, 0.0005), uAuto), 0.35, 3.5) * uBase;
-  float D = L * e;
+  // what reaches the screen includes the bloom the composite adds
+  float D = L * (1.0 + uGlowGain) * e;
   float Dg = first ? D : prev.g;
   float allowed = Dg * exp(uRise * uDt) + 0.02 * uDt;
   float shown = uGuard > 0.5 ? min(D, allowed) : D;
   float k = D > 1e-6 ? shown / D : 1.0;
-  o = vec4(La, shown, e * k, 1.0);
+  vec4 next = vec4(La, shown, e * k, 1.0);
+  // never let a bad value stick: NaN or infinity starts afresh next frame
+  if (any(isnan(next)) || any(isinf(next))) next = vec4(0.0);
+  o = floatBitsToUint(next);
 }`;
 
 // Bloom, exposure, AgX tone mapping, lens fringe, vignette, grain and dither.
@@ -115,7 +123,7 @@ precision highp float;
 in vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
-uniform sampler2D uAdapt;
+uniform highp usampler2D uAdapt;
 uniform float uGlow;
 uniform float uVignette;
 uniform float uGrain;
@@ -172,7 +180,7 @@ void main() {
   col = clamp(col, 0.0, 30000.0) + bl * uGlow;
   if (any(isnan(col))) col = vec3(0.0);
 
-  col *= texelFetch(uAdapt, ivec2(0), 0).b;
+  col *= uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
   col = agx(col);
 
   float aspect = uRes.x / uRes.y;

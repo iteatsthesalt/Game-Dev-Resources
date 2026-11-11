@@ -1247,26 +1247,44 @@ body {
       }
     };
   }
+  function cleanUserList(list) {
+    if (!Array.isArray(list)) return null;
+    return list.filter((e) => e && typeof e === "object" && typeof e.id === "string").slice(0, MAX_USER_SCENES).map((e) => ({ id: String(e.id).slice(0, 40), name: sanitizeScene({ name: e.name }).name || "Untitled", created: Number(e.created) || 0, scene: sanitizeScene(e.scene) }));
+  }
   function createStore({ storage = safeStorage(), initialScene = null, persistDelayMs = 400 } = {}) {
     const ev = createEmitter();
-    let saved = {};
-    try {
-      const raw = storage.get(STORAGE_KEY);
-      saved = raw ? JSON.parse(raw) : {};
-      if (!saved || typeof saved !== "object") saved = {};
-    } catch {
-      saved = {};
+    function readSaved() {
+      try {
+        const raw = storage.get(STORAGE_KEY);
+        const saved2 = raw ? JSON.parse(raw) : {};
+        return saved2 && typeof saved2 === "object" ? saved2 : {};
+      } catch {
+        return {};
+      }
     }
+    const saved = readSaved();
     let settings = Object.freeze(sanitizeSettings(saved.settings));
     let scene = Object.freeze(sanitizeScene(initialScene || saved.scene || DEFAULT_SCENE));
-    let user = Array.isArray(saved.user) ? saved.user.filter((e) => e && typeof e === "object" && typeof e.id === "string").slice(0, MAX_USER_SCENES).map((e) => ({ id: String(e.id).slice(0, 40), name: sanitizeScene({ name: e.name }).name || "Untitled", created: Number(e.created) || 0, scene: sanitizeScene(e.scene) })) : [];
+    let user = cleanUserList(saved.user) || [];
+    let userDirty = false;
     let timer = null;
     function persistNow() {
       timer = null;
+      if (!userDirty) user = cleanUserList(readSaved().user) || user;
+      userDirty = false;
       try {
         storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user }));
       } catch {
       }
+    }
+    function changeUser(fn) {
+      if (timer) clearTimeout(timer);
+      user = cleanUserList(readSaved().user) || user;
+      const result = fn();
+      userDirty = true;
+      persistNow();
+      ev.emit("user", user.map((e) => ({ ...e })));
+      return result;
     }
     function persist() {
       if (timer) clearTimeout(timer);
@@ -1294,12 +1312,13 @@ body {
         ev.emit("scene", scene, changed, source);
         return changed;
       },
-      setSettings(partial, { source = "ui" } = {}) {
+      // `persist: false` adopts values without writing them back (they came from storage)
+      setSettings(partial, { source = "ui", persist: write = true } = {}) {
         const next = Object.freeze(sanitizeSettings(partial, settings));
         const changed = diffKeys(settings, next, SETTINGS_SCHEMA);
         if (!changed.length) return [];
         settings = next;
-        persist();
+        if (write) persist();
         ev.emit("settings", settings, changed, source);
         return changed;
       },
@@ -1309,20 +1328,35 @@ body {
       userScenes() {
         return user.map((e) => ({ ...e }));
       },
+      // Returns the new entry, or null when the list is full: a save never deletes an
+      // older scene behind the person's back.
       saveUserScene(name) {
-        const clean = sanitizeScene({ ...scene, name: name || scene.name || "My scene" });
-        const entry = { id: "u" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: clean.name, created: Date.now(), scene: clean };
-        user = [entry, ...user].slice(0, MAX_USER_SCENES);
-        persist();
-        ev.emit("user", store.userScenes());
-        return { ...entry };
+        return changeUser(() => {
+          if (user.length >= MAX_USER_SCENES) return null;
+          const clean = sanitizeScene({ ...scene, name: name || scene.name || "My scene" });
+          const entry = { id: "u" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: clean.name, created: Date.now(), scene: clean };
+          user = [entry, ...user];
+          return { ...entry };
+        });
       },
       deleteUserScene(id) {
-        const before = user.length;
-        user = user.filter((e) => e.id !== id);
-        if (user.length !== before) {
-          persist();
+        if (!user.some((e) => e.id === id)) return;
+        changeUser(() => {
+          user = user.filter((e) => e.id !== id);
+        });
+      },
+      // Another tab changed what is stored: take its saved scenes, and its settings except
+      // the ones that only describe what runs in this tab (the microphone or song, tilt).
+      syncFromStorage() {
+        const s = readSaved();
+        const list = cleanUserList(s.user);
+        if (list && JSON.stringify(list) !== JSON.stringify(user)) {
+          user = list;
           ev.emit("user", store.userScenes());
+        }
+        if (s.settings && typeof s.settings === "object") {
+          const { react, tilt, ...shared } = s.settings;
+          store.setSettings(shared, { source: "other-tab", persist: false });
         }
       },
       shareCode() {
@@ -1360,18 +1394,28 @@ body {
         // the constellation turns, so its points also move
         vx: pole.vx - sa * radius * 0.35,
         vy: pole.vy + ca * radius * 0.35,
-        id: `${pole.id}:v${i}`,
+        id: i === 0 ? pole.id : `${pole.id}:v${i}`,
         kind: i === 0 ? pole.kind : "virtual"
       });
     }
     return out;
   }
-  function symmetrise(poles, symmetry, mirror) {
+  function symmetryPlan(count, symmetry, mirror, max) {
+    const n = Math.max(1, symmetry | 0);
+    for (const mir of mirror ? [true, false] : [false]) {
+      const per = mir ? 2 : 1;
+      for (let m = n; m >= 1; m--) {
+        if (n % m === 0 && count * m * per <= max) return { n, step: n / m, mirror: mir };
+      }
+    }
+    return { n, step: n, mirror: false };
+  }
+  function symmetrise(poles, symmetry, mirror, step = 1) {
     const n = Math.max(1, symmetry | 0);
     if (n === 1 && !mirror) return poles;
     const out = [];
     for (const p of poles) {
-      for (let k = 0; k < n; k++) {
+      for (let k = 0; k < n; k += Math.max(1, step)) {
         const a = k / n * Math.PI * 2;
         const ca = Math.cos(a), sa = Math.sin(a);
         const rot = (x2, y2) => [x2 * ca - y2 * sa, x2 * sa + y2 * ca];
@@ -1389,14 +1433,14 @@ body {
   }
   function expandPoles(poles, { symmetry = 1, mirror = false, virtualFingers = 0, time = 0 } = {}) {
     let list = poles;
-    if (virtualFingers > 1 && poles.length === 1) list = constellation(poles[0], virtualFingers, time);
-    list = symmetrise(list, symmetry, mirror);
-    if (list.length > MAX_POLES) {
-      const real = list.filter((p) => p.kind !== "mirror");
-      const copies = list.filter((p) => p.kind === "mirror");
-      list = real.concat(copies).slice(0, MAX_POLES);
+    if (virtualFingers > 1) {
+      const held = poles.filter((p) => p.held && p.kind !== "mirror" && p.kind !== "virtual");
+      const lead = held.length === 1 ? held[0] : held.length === 0 && poles.length === 1 ? poles[0] : null;
+      if (lead) list = constellation(lead, virtualFingers, time).concat(poles.filter((p) => p !== lead));
     }
-    return list;
+    if (list.length > MAX_POLES) list = list.slice(0, MAX_POLES);
+    const plan = symmetryPlan(list.length, symmetry, mirror, MAX_POLES);
+    return symmetrise(list, plan.n, plan.mirror, plan.step);
   }
   function fingerCount(poles, virtualFingers = 0) {
     const held = poles.filter((p) => p.held && p.kind !== "mirror" && p.kind !== "virtual").length;
@@ -1439,9 +1483,10 @@ body {
     let frozen = false;
     const PROBES = 2, PROBE_EVERY = 5;
     let probesLeft = PROBES, sinceProbe = 0;
+    let capHz = 0;
     function budgetMs() {
       const hz = cfg.targetHz || refreshHz;
-      return 1e3 / hz;
+      return capHz ? Math.max(1e3 / hz, 1e3 / capHz) : 1e3 / hz;
     }
     return {
       get particles() {
@@ -1471,6 +1516,19 @@ body {
       freeze(on) {
         frozen = !!on;
       },
+      // 0 for no cap, else the frames per second the loop is held to.
+      setCap(hz) {
+        const next = hz > 0 ? hz : 0;
+        if (next !== capHz) {
+          capHz = next;
+          settleFor = 1;
+          slowFor = 0;
+          fastFor = 0;
+        }
+      },
+      get cap() {
+        return capHz;
+      },
       // Call once per displayed frame with the time since the previous one (ms).
       // Returns true when the targets changed.
       sample(intervalMs, dtSeconds = intervalMs / 1e3) {
@@ -1494,8 +1552,8 @@ body {
           return true;
         }
         const budget = budgetMs();
-        const recent = intervals.slice(-20).sort((a, b) => a - b);
-        const typical = recent[recent.length >> 1];
+        const last = intervals.slice(-20);
+        const typical = capHz ? last.reduce((a, b) => a + b, 0) / last.length : last.sort((a, b) => a - b)[last.length >> 1];
         if (typical > budget * 1.25) {
           slowFor += dtSeconds;
           fastFor = 0;
@@ -1833,13 +1891,14 @@ void main() {
   var ADAPT_FS = `#version 300 es
 precision highp float;
 uniform sampler2D uLum;     // the smallest bloom level: a blurred thumbnail of the frame
-uniform sampler2D uPrev;
+uniform highp usampler2D uPrev;
 uniform float uDt;
 uniform float uBase;        // the scene's exposure, as a multiplier
 uniform float uAuto;        // 0..1, how strongly to adapt
 uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
-out vec4 o;
+uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
+out uvec4 o;
 void main() {
   float sum = 0.0;
   for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
@@ -1847,23 +1906,27 @@ void main() {
     sum += dot(clamp(c, 0.0, 30000.0), vec3(0.2126, 0.7152, 0.0722));
   }
   float L = max(sum / 16.0, 0.0);
-  vec4 prev = texelFetch(uPrev, ivec2(0), 0);
-  bool first = prev.a < 0.5;
+  vec4 prev = uintBitsToFloat(texelFetch(uPrev, ivec2(0), 0));
+  bool first = !(prev.a > 0.5);   // cleared to zero bits (0.0), or never written
   float La = first ? L : prev.r + (L - prev.r) * (1.0 - exp(-uDt / (L > prev.r ? 0.45 : 1.3)));
   float e = clamp(pow(0.06 / max(La, 0.0005), uAuto), 0.35, 3.5) * uBase;
-  float D = L * e;
+  // what reaches the screen includes the bloom the composite adds
+  float D = L * (1.0 + uGlowGain) * e;
   float Dg = first ? D : prev.g;
   float allowed = Dg * exp(uRise * uDt) + 0.02 * uDt;
   float shown = uGuard > 0.5 ? min(D, allowed) : D;
   float k = D > 1e-6 ? shown / D : 1.0;
-  o = vec4(La, shown, e * k, 1.0);
+  vec4 next = vec4(La, shown, e * k, 1.0);
+  // never let a bad value stick: NaN or infinity starts afresh next frame
+  if (any(isnan(next)) || any(isinf(next))) next = vec4(0.0);
+  o = floatBitsToUint(next);
 }`;
   var COMPOSITE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
-uniform sampler2D uAdapt;
+uniform highp usampler2D uAdapt;
 uniform float uGlow;
 uniform float uVignette;
 uniform float uGrain;
@@ -1920,7 +1983,7 @@ void main() {
   col = clamp(col, 0.0, 30000.0) + bl * uGlow;
   if (any(isnan(col))) col = vec3(0.0);
 
-  col *= texelFetch(uAdapt, ivec2(0), 0).b;
+  col *= uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
   col = agx(col);
 
   float aspect = uRes.x / uRes.y;
@@ -1939,7 +2002,7 @@ void main() {
   var common_default = "// ---- shared by the simulation and the point renderer --------------------------\n\nconst float TAU = 6.28318530718;\n\n// PCG3D (Jarzynski & Olano 2020): good, fast integer hashing on any GPU.\nuvec3 pcg3d(uvec3 v) {\n  v = v * 1664525u + 1013904223u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  v ^= v >> 16u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  return v;\n}\n\n// Four fixed random numbers in 0..1 for particle `i`, the same every frame.\nvec4 seeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x9e3779b9u, 0x85ebca6bu));\n  uvec3 b = pcg3d(uvec3(a.x ^ i, 0xc2b2ae35u, 0x27d4eb2fu));\n  return vec4(vec3(a), float(b.x)) * (1.0 / 4294967295.0);\n}\n\n// Three more fixed numbers per particle, roughly bell-shaped around 0 (-1.5..1.5),\n// independent of seeds(): for offsets that should look organic, not gridded.\nvec3 bellSeeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x165667b1u, 0xd3a2646cu));\n  uvec3 b = pcg3d(a ^ uvec3(0xfd7046c5u, 0xb55a4f09u, i));\n  vec3 u = vec3(a) * (1.0 / 4294967295.0);\n  vec3 v = vec3(b) * (1.0 / 4294967295.0);\n  vec3 w = vec3(pcg3d(b + i)) * (1.0 / 4294967295.0);\n  return u + v + w - 1.5;\n}\n\n// Three random numbers in 0..1 that change with `salt` (for example the frame number).\nvec3 rand3(uint i, uint salt) {\n  return vec3(pcg3d(uvec3(i, salt, i ^ (salt * 747796405u)))) * (1.0 / 4294967295.0);\n}\n\n// Arnold-Beltrami-Childress flow in two octaves: divergence-free (so the light\n// never bunches up or thins out on its own), smooth and endlessly varied.\n// The second octave is evaluated in rotated coordinates and rotated back, which\n// keeps it divergence-free because the rotation is orthonormal.\nconst mat3 ROT = mat3(0.8, 0.6, 0.0, -0.48, 0.64, 0.6, 0.36, -0.48, 0.8);\nvec3 abcFlow(vec3 p, float t) {\n  vec3 q = p * 2.1 + vec3(0.31 * t, -0.23 * t, 0.17 * t);\n  vec3 u = vec3(sin(q.z) + cos(q.y), sin(q.x) + cos(q.z), sin(q.y) + cos(q.x));\n  vec3 r = ROT * p * 4.3 + vec3(-0.13 * t, 0.29 * t, 0.11 * t);\n  vec3 w = vec3(sin(r.z) + cos(r.y), sin(r.x) + cos(r.z), sin(r.y) + cos(r.x));\n  return u * 0.62 + (transpose(ROT) * w) * 0.3;\n}\n";
 
   // src/js/gfx/shaders/sim.vert.glsl
-  var sim_vert_default = "#version 300 es\n// One step of the particle simulation. Runs once per particle with rasterisation\n// off; transform feedback writes vPos/vVel into the other buffer.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz position, w heat (how lit-up it is)\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life (fountain only)\n\nout vec4 vPos;\nout vec4 vVel;\n\n#include common\n\n#define MAX_POLES 32\nuniform vec4 uPole[MAX_POLES];    // x, y, weight (power with fade), age\nuniform vec4 uPoleV[MAX_POLES];   // vx, vy, raw power, spin sign\nuniform int uPoleCount;\nuniform vec4 uPulse[8];           // x, y, power, age   (age >= 9 means unused)\nuniform vec4 uRelease[4];         // x, y, charge, age  (charge 0 means unused)\nuniform int uBehA;\nuniform int uBehB;\nuniform float uMix;               // 0 = all A, 1 = all B\nuniform float uDt;\nuniform float uTime;\nuniform uint uFrame;\nuniform float uStrength;\nuniform float uDrag;\nuniform float uFlow;\nuniform float uDepth;\nuniform float uTouch;             // 0..1, how much anyone is touching right now\nuniform float uEngage;            // like uTouch but lets go slowly\nuniform int uForm;\nuniform vec3 uGravity;            // acceleration, already scaled\nuniform float uAspect;\nuniform vec4 uAudio;              // level, bass, mid, high\nuniform float uOnset;\nuniform int uInit;                // 1: place every particle in the resting shape\n\n// Behaviour ids, as in core/behaviours.js\n#define B_WELL 0\n#define B_WHIRL 1\n#define B_BURST 2\n#define B_HALO 3\n#define B_CURRENT 4\n#define B_WEAVE 5\n#define B_CHIME 6\n#define B_STORM 7\n#define B_LATTICE 8\n#define B_NOVA 9\n#define B_MURMUR 10\n#define B_FOUNTAIN 11\n\n// Forms, as in core/scene.js FORMS\n#define F_NEBULA 0\n#define F_DISC 1\n#define F_SHELL 2\n#define F_RING 3\n#define F_LATTICE 4\n#define F_NONE 5\n\nvec3 poleAt(int i) { return vec3(uPole[i].xy, 0.0); }\n\n// A point on the lattice: glowing grid lines. Each particle sits on one line.\nvec3 latticeHome(vec4 s) {\n  float sp = 0.25;\n  float ax = uAspect * 1.05;\n  float dz = 0.15 + uDepth * 0.75;\n  int fam = int(s.w * (uDepth > 0.15 ? 3.0 : 2.0));\n  float nx = floor(ax / sp), ny = floor(1.05 / sp), nz = max(1.0, floor(dz / sp));\n  float gx = (floor(s.y * (2.0 * nx + 1.0)) - nx) * sp;\n  float gy = (floor(s.z * (2.0 * ny + 1.0)) - ny) * sp;\n  float gz = (floor(s.z * (2.0 * nz + 1.0)) - nz) * sp;\n  float gz2 = (floor(s.y * (2.0 * nz + 1.0)) - nz) * sp;\n  float u = s.x * 2.0 - 1.0;\n  if (fam == 0) return vec3(u * ax, gy, gz2 * uDepth);\n  if (fam == 1) return vec3(gx, u * 1.05, gz * uDepth);\n  return vec3(gx, gy, u * dz);\n}\n\n// Where a particle rests in each shape. The shapes turn slowly, so the targets move.\nvec3 formTarget(int form, vec4 s, float t) {\n  float R = min(uAspect, 1.0) * 0.86;\n  if (form == F_DISC) {\n    float r = 0.06 + 0.94 * sqrt(s.x);\n    float a = s.y * TAU + t * 0.32 / (0.22 + r);\n    // two soft spiral arms\n    r *= 1.0 + 0.07 * sin(2.0 * a - 7.0 * r);\n    float z = (s.z - 0.5) * 0.16 * uDepth * (1.0 - 0.7 * r);\n    // a little wider than tall on wide screens, so the disc fills them\n    return vec3(cos(a) * r * R * clamp(uAspect, 1.0, 1.35), sin(a) * r * R, z);\n  }\n  if (form == F_SHELL) {\n    float z = s.x * 2.0 - 1.0;\n    float a = s.y * TAU + t * 0.12;\n    float rr = sqrt(1.0 - z * z);\n    vec3 p = vec3(cos(a) * rr, z, sin(a) * rr) * R * 0.92;\n    p.z *= uDepth;\n    return p + (s.zwx - 0.5) * 0.02;\n  }\n  if (form == F_RING) {\n    float a = s.x * TAU + t * 0.18;\n    float b = s.y * TAU;\n    float minor = 0.05 + 0.04 * s.z;\n    vec3 p = vec3(cos(a) * (R + minor * cos(b)), sin(a) * (R + minor * cos(b)), minor * sin(b));\n    float tilt = uDepth * 1.05;\n    float c = cos(tilt), sn = sin(tilt);\n    p = vec3(p.x, p.y * c - p.z * sn, p.y * sn + p.z * c);\n    return p;\n  }\n  if (form == F_LATTICE) return latticeHome(s);\n  // nebula and none: a soft cloud\n  float r1 = sqrt(-2.0 * log(max(s.x, 1e-6)));\n  vec3 g = vec3(r1 * cos(TAU * s.y), r1 * sin(TAU * s.y), (s.z - 0.5) * 2.4);\n  return g * vec3(uAspect * 0.34, 0.34, 0.32 * uDepth);\n}\n\n// ---------------------------------------------------------------------------------\n// The behaviours. Each returns an acceleration and adds to `heat` (how bright it gets).\n\nvec3 bWell(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.0025;\n    float r = sqrt(r2);\n    acc += d / r * min(w * 0.6 / r2, 45.0);\n    // a sideways pull, so the light settles into discs instead of falling straight through\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);\n    // a soft core keeps the centre from collapsing to a single point\n    acc -= d / r * w * 26.0 * exp(-r2 * 700.0);\n    heat += w * 0.9 * exp(-r2 * 34.0);\n  }\n  return acc;\n}\n\nvec3 bWhirl(vec3 p, vec3 v, inout float heat) {\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d.xy, d.xy) + 0.004;\n    float r = sqrt(r2);\n    // a solid core that turns into a 1/r swirl outside: neighbouring touches turn opposite ways\n    float sign = (i % 2 == 0) ? 1.0 : -1.0;\n    vec3 t = vec3(-d.y, d.x, 0.0) / r * (w * 1.7 * r / (r2 + 0.045)) * sign;\n    t += d * w * 0.4 / (r + 0.35);\n    t.z += sin(r * 13.0 - uTime * 2.2 + float(i)) * 0.22 * w * uDepth;\n    float f = exp(-r * 1.1);\n    field += t * f;\n    wsum += f * w;\n    heat += w * 0.9 * exp(-r2 * 10.0);\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6;\n}\n\nvec3 bBurst(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d) + 0.003;\n    float r = sqrt(r2);\n    vec3 n = d / r;\n    // a short-range push keeps a clear space around the touch\n    acc += n * w * 0.3 / (r2 + 0.04) * exp(-r * 1.5);\n    // rings go out every 0.9 s while held, the first one at touch-down\n    float ph = mod(uPole[i].w, 0.9);\n    float R = ph * 1.5;\n    float band = exp(-pow((length(d.xy) - R) / 0.04, 2.0)) * (1.0 - ph / 0.9);\n    acc += n * band * w * 14.0;\n    heat += band * w * 3.0;\n    // and the light drifts back in between rings\n    acc -= n * w * 0.35 * smoothstep(0.25, 1.2, r);\n  }\n  return acc;\n}\n\nvec3 bHalo(vec3 p, vec3 v, vec4 s, inout float heat) {\n  // Each particle belongs to one touch's halo. (Pulling toward every ring at once\n  // would trap the light at the balance point between two touches.)\n  int i = min(int(s.y * float(uPoleCount)), uPoleCount - 1);\n  float w = uPole[i].z;\n  vec3 d = p - poleAt(i);\n  float r = length(d) + 1e-4;\n  vec3 n = d / r;\n  // rings within the ring: each particle keeps to its own shell\n  float R0 = (0.15 + 0.06 * uPoleV[i].z) * (0.8 + 0.4 * s.z) + 0.025 * sin(uPole[i].w * 2.3 + float(i));\n  vec3 acc = -n * (r - R0) * 14.0 * w;\n  acc += vec3(-n.y, n.x, 0.0) * (0.9 + 0.8 * s.x) * w * uPoleV[i].w;\n  acc -= v * 1.5 * w;\n  heat += w * (0.25 + exp(-abs(r - R0) * 24.0) * 1.1);\n  return acc;\n}\n\n// closest point on segment a-b to p, and the segment direction\nvec3 closestOnSegment(vec3 p, vec3 a, vec3 b, out vec3 dir, out float t) {\n  vec3 ab = b - a;\n  float L2 = max(dot(ab, ab), 1e-6);\n  t = clamp(dot(p - a, ab) / L2, 0.0, 1.0);\n  dir = ab * inversesqrt(L2);\n  return a + ab * t;\n}\n\nvec3 bCurrent(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.8) return vec3(0.0);   // some light stays loose, as atmosphere\n  // each particle swims in its own lane, so the river has width and grain\n  vec3 lane3 = bellSeeds(uint(gl_VertexID)) * 0.045;\n  if (n == 1) {\n    // one touch: a circular river around it\n    float w = uPole[0].z;\n    vec3 d = p - poleAt(0);\n    float r = length(d.xy) + 1e-3;\n    vec3 tang = vec3(-d.y, d.x, 0.0) / r;\n    vec3 target = tang * 1.3 - d / r * (r - 0.32) * 3.0;\n    target.z = -p.z * 1.5;\n    float f = w * exp(-abs(r - 0.32) * 3.0);\n    heat += f * 0.8;\n    return (target - v) * 2.4 * f;\n  }\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  vec3 pull = vec3(0.0);\n  for (int i = 0; i < n; i++) {\n    int j = (i + 1) % n;\n    vec3 a = poleAt(i), b = poleAt(j);\n    // with two touches the river runs out on one side and back on the other\n    if (n == 2) {\n      vec3 ab = b - a;\n      vec3 side = normalize(vec3(-ab.y, ab.x, 0.0) + 1e-5) * 0.08;\n      a += side; b += side;\n    }\n    vec3 dir; float t;\n    vec3 c = closestOnSegment(p, a, b, dir, t);\n    vec3 side = vec3(-dir.y, dir.x, 0.0);\n    c += side * lane3.x + vec3(0.0, 0.0, lane3.y * uDepth);\n    vec3 dd = p - c;\n    float dist2 = dot(dd, dd);\n    float w = min(uPole[i].z, uPole[j].z);\n    float f = exp(-dist2 / 0.03) * w;\n    // faster in the middle of the stream than at its banks\n    field += dir * (1.1 + 0.7 * exp(-lane3.x * lane3.x * 600.0)) * f;\n    wsum += f;\n    pull += -dd / (sqrt(dist2) + 0.05) * 0.7 * exp(-dist2 / 0.2) * w;\n    heat += f * 0.8;\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6 + pull;\n}\n\nvec3 bWeave(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.72) return vec3(0.0);   // some light stays loose, as atmosphere\n  if (n == 1) {\n    float w = uPole[0].z;\n    float a = s.x * TAU + uTime * 0.6;\n    vec3 target = poleAt(0) + vec3(cos(a), sin(a), sin(a * 2.0 + s.y * TAU) * 0.3 * uDepth) * (0.22 + 0.02 * sin(a * 5.0 + uTime * 3.0));\n    heat += w * 0.4;\n    return ((target - p) * 16.0 - v * 3.0) * w;\n  }\n  // threads: each touch to the next, and (from 4 touches) to the one after that too\n  int segs = n == 2 ? 1 : (n == 3 ? 3 : 2 * n);\n  int k = min(int(s.x * float(segs)), segs - 1);\n  int i = k < n ? k : k - n;\n  int j = k < n ? (i + 1) % n : (i + 2) % n;\n  vec3 a = poleAt(i), b = poleAt(j);\n  vec3 ab = b - a;\n  float L = length(ab) + 1e-4;\n  vec3 side = vec3(-ab.y, ab.x, 0.0) / L;\n  float tp = fract(s.y + uTime * 0.04 * (s.z - 0.5));\n  // the thread vibrates like a plucked string, in its own harmonic\n  float harmonic = float(1 + k % 3);\n  float vib = sin(3.14159 * tp * harmonic) * sin(uTime * (3.0 + harmonic * 1.7) + float(k)) * 0.05 * min(L, 1.0);\n  vec2 jit = (s.zw - 0.5) * 0.022;\n  vec3 target = a + ab * tp + side * (jit.x + vib) + vec3(0.0, 0.0, jit.y + vib * 0.8 * uDepth);\n  float w = min(uPole[i].z, uPole[j].z);\n  heat += w * 0.55;\n  return ((target - p) * 20.0 - v * 3.2) * w;\n}\n\nvec3 bChime(vec3 p, vec3 v, uint id, inout float heat) {\n  // the touches ring like bells; light gathers on the still lines between the waves\n  float F = 0.0;\n  vec3 G = vec3(0.0);\n  float k = 15.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r = length(d.xy) + 1e-4;\n    float ph = k * r - 3.2 * uPole[i].w;\n    float fall = exp(-r * 0.9);\n    F += w * sin(ph) * fall;\n    G += w * (k * cos(ph) - 0.9 * sin(ph)) * fall * vec3(d.xy / r, 0.0);\n  }\n  vec3 acc = -F * G * 0.1;\n  acc.z -= p.z * 5.0 * (1.0 - 0.6 * uDepth);\n  // shaken off the moving parts of the plate, like sand\n  vec3 shake = rand3(id, uFrame) - 0.5;\n  acc += shake * abs(F) * 3.5;\n  heat += abs(F) * 0.25 + 0.15 * float(uPoleCount > 0);\n  return acc - v * 1.2;\n}\n\nvec3 bStorm(vec3 p, vec3 v, inout float heat) {\n  float near = 0.0;\n  vec3 gust = vec3(0.0);\n  vec3 swirl = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d.xy, d.xy);\n    float e = exp(-r2 / 0.22);\n    near += w * e;\n    // a flick throws the air along with it\n    gust += vec3(uPoleV[i].xy, 0.0) * w * exp(-r2 / 0.05) * 3.2;\n    swirl += vec3(-d.y, d.x, 0.0) * w * e * 1.8;\n  }\n  vec3 field = abcFlow(p * 1.35, uTime * 1.6) * (0.35 + near * 2.4) + swirl;\n  field.z *= uDepth;\n  heat += near * 0.6 + length(gust) * 0.15;\n  return (field - v) * 1.9 + gust;\n}\n\nvec3 bLattice(vec3 p, vec3 v, vec4 s, inout float heat) {\n  vec3 h = latticeHome(s);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 q = poleAt(i);\n    vec2 dh = h.xy - q.xy;\n    float r2 = dot(dh, dh) + 1e-5;\n    // each touch is a lens: the lattice bulges and twists around it\n    float bulge = w * 0.2 * exp(-r2 / 0.07);\n    h.xy += dh * inversesqrt(r2) * bulge;\n    float tw = w * 1.1 * exp(-r2 / 0.05) * uPoleV[i].w;\n    float c = cos(tw), sn = sin(tw);\n    vec2 rel = h.xy - q.xy;\n    h.xy = q.xy + vec2(rel.x * c - rel.y * sn, rel.x * sn + rel.y * c);\n    h.z += bulge * 0.8 * uDepth;\n    heat += bulge * 5.0;\n  }\n  heat += 0.1;\n  return ((h - p) * 11.0 - v * 2.6) * uEngage;\n}\n\nvec3 bNova(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.002;\n    float r = sqrt(r2);\n    float charge = min(uPole[i].w, 3.0) / 3.0;\n    acc += d / r * w * (1.1 + charge * 3.2) / (r + 0.09);\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 1.6 * uPoleV[i].w / (r + 0.2);\n    acc -= v * w * 1.4 * exp(-r * 2.0);\n    heat += w * (0.3 + charge * 2.2) * exp(-r2 * 26.0);\n  }\n  return acc;\n}\n\nvec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  int m = min(int(s.y * float(n)), n - 1);\n  float w = uPole[m].z;\n  // five flocks per touch, each following its own leader on a looping path\n  float j = floor(s.x * 5.0);\n  float dirn = mod(j, 2.0) < 0.5 ? 1.0 : -1.0;\n  float R = 0.2 + 0.1 * j;\n  float om = (0.55 + 0.22 * j) * dirn;\n  float ph = j * 1.7 + float(m) * 2.3;\n  float t = uTime;\n  vec3 c = poleAt(m);\n  vec3 lead = c + vec3(cos(om * t + ph) * R * 1.25, sin(om * t * 1.3 + ph) * R * 0.85, sin(om * t * 0.7 + ph) * R * 0.7 * uDepth);\n  vec3 leadV = vec3(-sin(om * t + ph) * R * 1.25 * om, cos(om * t * 1.3 + ph) * R * 0.85 * om * 1.3, cos(om * t * 0.7 + ph) * R * 0.7 * uDepth * om * 0.7);\n  // each bird keeps its own place in the flock: a soft cloud, stretched along the\n  // direction of flight\n  vec3 b = bellSeeds(uint(gl_VertexID));\n  vec3 off = b * vec3(0.045, 0.035, 0.035 * uDepth);\n  vec3 fwd = normalize(leadV + 1e-4);\n  off += fwd * b.z * 0.06;\n  vec3 target = lead + off + abcFlow(p * 3.1, t * 0.8) * 0.025;\n  vec3 desired = (target - p) * 3.2 + leadV;\n  heat += w * 0.45;\n  return (desired - v) * 2.3 * w;\n}\n\nvec3 bFountain(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  // gravity pulls the spray down; the floor bounces it\n  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);\n  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)\n  for (int i = 0; i < uPoleCount; i++) {\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d);\n    heat += uPole[i].z * exp(-r2 * 30.0) * 1.5;\n  }\n  return acc;\n}\n\nvec3 behaviour(int b, vec3 p, vec3 v, vec4 s, uint id, inout float heat) {\n  if (uPoleCount == 0) return vec3(0.0);\n  if (b == B_WELL) return bWell(p, v, heat);\n  if (b == B_WHIRL) return bWhirl(p, v, heat);\n  if (b == B_BURST) return bBurst(p, v, heat);\n  if (b == B_HALO) return bHalo(p, v, s, heat);\n  if (b == B_CURRENT) return bCurrent(p, v, s, heat);\n  if (b == B_WEAVE) return bWeave(p, v, s, heat);\n  if (b == B_CHIME) return bChime(p, v, id, heat);\n  if (b == B_STORM) return bStorm(p, v, heat);\n  if (b == B_LATTICE) return bLattice(p, v, s, heat);\n  if (b == B_NOVA) return bNova(p, v, heat);\n  if (b == B_MURMUR) return bMurmur(p, v, s, heat);\n  return bFountain(p, v, heat);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n  float life = aVel.w;\n\n  if (uInit == 1) {\n    vPos = vec4(formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime), 0.0);\n    vVel = vec4((s.wzy - 0.5) * 0.05, s.x * 3.0);\n    return;\n  }\n\n  float dt = uDt;\n  float gain = 0.0;\n\n  // --- the touches -------------------------------------------------------------\n  vec3 acc = vec3(0.0);\n  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix);\n  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix;\n  int lead = uMix < 0.5 ? uBehA : uBehB;\n\n  // fountains respawn spent particles at a touch\n  if (lead == B_FOUNTAIN && uPoleCount > 0 && s.w < 0.85) {\n    life -= dt * (0.5 + s.y * 0.6);\n    if (life <= 0.0) {\n      vec3 r = rand3(id, uFrame);\n      int m = min(int(r.x * float(uPoleCount)), uPoleCount - 1);\n      vec3 up = length(uGravity) > 0.05 ? -normalize(uGravity) : vec3(0.0, 1.0, 0.0);\n      vec3 side = normalize(cross(up, vec3(0.0, 0.0, 1.0)) + 1e-5);\n      // a spray that arcs over and lands within the screen\n      vec3 b = bellSeeds(id ^ uFrame);\n      float power = 0.75 + uPole[m].z * 0.35;\n      p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);\n      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;\n      v += vec3(uPoleV[m].xy, 0.0) * 0.4;\n      // a random head start within the frame, so each frame's batch does not travel as a band\n      p += v * dt * r.y;\n      life = 1.4 + s.z * 1.2;\n      heat = 0.9;\n    }\n  }\n\n  // --- rings where a touch lands, and the release of a gathered nova --------------\n  for (int k = 0; k < 8; k++) {\n    vec4 pu = uPulse[k];\n    if (pu.w > 1.6) continue;\n    vec2 d = p.xy - pu.xy;\n    float r = length(d) + 1e-4;\n    float R = pu.w * 1.25;\n    float band = exp(-pow((r - R) / 0.035, 2.0)) * pu.z * (1.0 - pu.w / 1.6);\n    gain += band * 9.0;\n    acc.xy += d / r * band * 2.5;\n  }\n  for (int k = 0; k < 4; k++) {\n    vec4 re = uRelease[k];\n    if (re.z <= 0.0) continue;\n    vec3 d = p - vec3(re.xy, 0.0);\n    float r = length(d) + 1e-3;\n    float e = re.z * exp(-re.w * 5.0) * exp(-r * 1.3);\n    acc += d / r * e * 55.0;\n    gain += e * 14.0;\n  }\n\n  // --- the light's own life --------------------------------------------------------\n  // the resting shape, which lets go while someone is touching\n  float formPull = (1.0 - 0.88 * uTouch) * (uForm == F_NONE || uForm == F_NEBULA ? 0.0 : 1.0);\n  if (formPull > 0.0) {\n    vec3 home = formTarget(uForm, s, uTime);\n    acc += ((home - p) * 1.6 - v * 0.6) * formPull;\n  }\n  // currents that keep everything moving\n  vec3 flowV = abcFlow(p, uTime * 0.35) * 0.28;\n  flowV.z *= uDepth;\n  acc += (flowV - v) * uFlow * (1.0 - 0.6 * uTouch) * 1.2;\n\n  // music: the beat kicks out from the middle\n  acc += normalize(p + 1e-4) * uOnset * 1.8;\n  gain += uOnset * 1.2 + uAudio.x * 0.4;\n\n  acc += uGravity;\n\n  // soft walls just beyond the screen, and a floor of depth\n  vec3 lim = vec3(uAspect * 1.12, 1.12, 0.2 + uDepth * 1.1);\n  vec3 over = max(abs(p) - lim, 0.0) * sign(p);\n  acc -= over * 40.0;\n  // flatten toward the screen as depth goes to zero\n  acc.z -= p.z * 9.0 * (1.0 - uDepth);\n\n  float am = length(acc);\n  if (am > 90.0) acc *= 90.0 / am;\n\n  // semi-implicit Euler with frame-rate-independent drag (spray flies almost freely,\n  // so it arcs instead of dropping straight down)\n  v += acc * dt;\n  bool spray = lead == B_FOUNTAIN && s.w < 0.85;\n  v *= exp(-dt * (spray ? 0.1 + uDrag * 0.25 : 0.12 + uDrag * 2.6));\n  float sp = length(v);\n  if (sp > 4.5) v *= 4.5 / sp;\n  p += v * dt;\n\n  // fountain spray bounces off the floor\n  if (lead == B_FOUNTAIN && p.y < -1.02 && v.y < 0.0) { v.y = -v.y * 0.32; v.xz *= 0.8; p.y = -1.02; gain += 0.6; }\n\n  heat = heat * exp(-dt * 1.7) + gain * dt;\n  heat = min(heat, 6.0);\n\n  // anything lost to rounding or flung far away comes back into the shape\n  if (any(isnan(p)) || any(isinf(p)) || any(isnan(v)) || dot(p, p) > 64.0) {\n    p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);\n    v = vec3(0.0);\n    heat = 0.0;\n  }\n  vPos = vec4(p, heat);\n  vVel = vec4(v, life);\n}\n";
+  var sim_vert_default = "#version 300 es\n// One step of the particle simulation. Runs once per particle with rasterisation\n// off; transform feedback writes vPos/vVel into the other buffer.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz position, w heat (how lit-up it is)\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life (fountain only)\n\nout vec4 vPos;\nout vec4 vVel;\n\n#include common\n\n#define MAX_POLES 32\nuniform vec4 uPole[MAX_POLES];    // x, y, weight (power with fade), age\nuniform vec4 uPoleV[MAX_POLES];   // vx, vy, raw power, spin sign\nuniform int uPoleCount;\nuniform vec4 uPulse[8];           // x, y, power, age   (age >= 9 means unused)\nuniform vec4 uRelease[4];         // x, y, charge, age  (charge 0 means unused)\nuniform int uBehA;\nuniform int uBehB;\nuniform float uMix;               // 0 = all A, 1 = all B\nuniform float uDt;\nuniform float uTime;\nuniform uint uFrame;\nuniform float uStrength;\nuniform float uDrag;\nuniform float uFlow;\nuniform float uDepth;\nuniform float uTouch;             // 0..1, how much anyone is touching right now\nuniform float uEngage;            // like uTouch but lets go slowly\nuniform int uForm;\nuniform vec3 uGravity;            // acceleration, already scaled\nuniform float uAspect;\nuniform vec4 uAudio;              // level, bass, mid, high\nuniform float uOnset;\nuniform int uInit;                // 1: place every particle in the resting shape\n\n// Behaviour ids, as in core/behaviours.js\n#define B_WELL 0\n#define B_WHIRL 1\n#define B_BURST 2\n#define B_HALO 3\n#define B_CURRENT 4\n#define B_WEAVE 5\n#define B_CHIME 6\n#define B_STORM 7\n#define B_LATTICE 8\n#define B_NOVA 9\n#define B_MURMUR 10\n#define B_FOUNTAIN 11\n\n// Forms, as in core/scene.js FORMS\n#define F_NEBULA 0\n#define F_DISC 1\n#define F_SHELL 2\n#define F_RING 3\n#define F_LATTICE 4\n#define F_NONE 5\n\nvec3 poleAt(int i) { return vec3(uPole[i].xy, 0.0); }\n\n// A point on the lattice: glowing grid lines. Each particle sits on one line.\nvec3 latticeHome(vec4 s) {\n  float sp = 0.25;\n  float ax = uAspect * 1.05;\n  float dz = 0.15 + uDepth * 0.75;\n  int fam = int(s.w * (uDepth > 0.15 ? 3.0 : 2.0));\n  float nx = floor(ax / sp), ny = floor(1.05 / sp), nz = max(1.0, floor(dz / sp));\n  float gx = (floor(s.y * (2.0 * nx + 1.0)) - nx) * sp;\n  float gy = (floor(s.z * (2.0 * ny + 1.0)) - ny) * sp;\n  float gz = (floor(s.z * (2.0 * nz + 1.0)) - nz) * sp;\n  float gz2 = (floor(s.y * (2.0 * nz + 1.0)) - nz) * sp;\n  float u = s.x * 2.0 - 1.0;\n  if (fam == 0) return vec3(u * ax, gy, gz2 * uDepth);\n  if (fam == 1) return vec3(gx, u * 1.05, gz * uDepth);\n  return vec3(gx, gy, u * dz);\n}\n\n// Where a particle rests in each shape. The shapes turn slowly, so the targets move.\nvec3 formTarget(int form, vec4 s, float t) {\n  float R = min(uAspect, 1.0) * 0.86;\n  if (form == F_DISC) {\n    float r = 0.06 + 0.94 * sqrt(s.x);\n    float a = s.y * TAU + t * 0.32 / (0.22 + r);\n    // two soft spiral arms\n    r *= 1.0 + 0.07 * sin(2.0 * a - 7.0 * r);\n    float z = (s.z - 0.5) * 0.16 * uDepth * (1.0 - 0.7 * r);\n    // a little wider than tall on wide screens, so the disc fills them\n    return vec3(cos(a) * r * R * clamp(uAspect, 1.0, 1.35), sin(a) * r * R, z);\n  }\n  if (form == F_SHELL) {\n    float z = s.x * 2.0 - 1.0;\n    float a = s.y * TAU + t * 0.12;\n    float rr = sqrt(1.0 - z * z);\n    vec3 p = vec3(cos(a) * rr, z, sin(a) * rr) * R * 0.92;\n    p.z *= uDepth;\n    return p + (s.zwx - 0.5) * 0.02;\n  }\n  if (form == F_RING) {\n    float a = s.x * TAU + t * 0.18;\n    float b = s.y * TAU;\n    float minor = 0.05 + 0.04 * s.z;\n    vec3 p = vec3(cos(a) * (R + minor * cos(b)), sin(a) * (R + minor * cos(b)), minor * sin(b));\n    float tilt = uDepth * 1.05;\n    float c = cos(tilt), sn = sin(tilt);\n    p = vec3(p.x, p.y * c - p.z * sn, p.y * sn + p.z * c);\n    return p;\n  }\n  if (form == F_LATTICE) return latticeHome(s);\n  // nebula and none: a soft cloud\n  float r1 = sqrt(-2.0 * log(max(s.x, 1e-6)));\n  vec3 g = vec3(r1 * cos(TAU * s.y), r1 * sin(TAU * s.y), (s.z - 0.5) * 2.4);\n  return g * vec3(uAspect * 0.34, 0.34, 0.32 * uDepth);\n}\n\n// ---------------------------------------------------------------------------------\n// The behaviours. Each returns an acceleration and adds to `heat` (how bright it gets).\n\nvec3 bWell(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.0025;\n    float r = sqrt(r2);\n    acc += d / r * min(w * 0.6 / r2, 45.0);\n    // a sideways pull, so the light settles into discs instead of falling straight through\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);\n    // a soft core keeps the centre from collapsing to a single point\n    acc -= d / r * w * 26.0 * exp(-r2 * 700.0);\n    heat += w * 0.9 * exp(-r2 * 34.0);\n  }\n  return acc;\n}\n\nvec3 bWhirl(vec3 p, vec3 v, inout float heat) {\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d.xy, d.xy) + 0.004;\n    float r = sqrt(r2);\n    // a solid core that turns into a 1/r swirl outside: neighbouring touches turn opposite ways\n    float sign = (i % 2 == 0) ? 1.0 : -1.0;\n    vec3 t = vec3(-d.y, d.x, 0.0) / r * (w * 1.7 * r / (r2 + 0.045)) * sign;\n    t += d * w * 0.4 / (r + 0.35);\n    t.z += sin(r * 13.0 - uTime * 2.2 + float(i)) * 0.22 * w * uDepth;\n    float f = exp(-r * 1.1);\n    field += t * f;\n    wsum += f * w;\n    heat += w * 0.9 * exp(-r2 * 10.0);\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6;\n}\n\nvec3 bBurst(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d) + 0.003;\n    float r = sqrt(r2);\n    vec3 n = d / r;\n    // a short-range push keeps a clear space around the touch\n    acc += n * w * 0.3 / (r2 + 0.04) * exp(-r * 1.5);\n    // rings go out every 0.9 s while held, the first one at touch-down\n    float ph = mod(uPole[i].w, 0.9);\n    float R = ph * 1.5;\n    float band = exp(-pow((length(d.xy) - R) / 0.04, 2.0)) * (1.0 - ph / 0.9);\n    acc += n * band * w * 14.0;\n    heat += band * w * 3.0;\n    // and the light drifts back in between rings\n    acc -= n * w * 0.35 * smoothstep(0.25, 1.2, r);\n  }\n  return acc;\n}\n\nvec3 bHalo(vec3 p, vec3 v, vec4 s, inout float heat) {\n  // Each particle belongs to one touch's halo. (Pulling toward every ring at once\n  // would trap the light at the balance point between two touches.)\n  int i = min(int(s.y * float(uPoleCount)), uPoleCount - 1);\n  float w = uPole[i].z;\n  vec3 d = p - poleAt(i);\n  float r = length(d) + 1e-4;\n  vec3 n = d / r;\n  // rings within the ring: each particle keeps to its own shell\n  float R0 = (0.15 + 0.06 * uPoleV[i].z) * (0.8 + 0.4 * s.z) + 0.025 * sin(uPole[i].w * 2.3 + float(i));\n  vec3 acc = -n * (r - R0) * 14.0 * w;\n  acc += vec3(-n.y, n.x, 0.0) * (0.9 + 0.8 * s.x) * w * uPoleV[i].w;\n  acc -= v * 1.5 * w;\n  heat += w * (0.25 + exp(-abs(r - R0) * 24.0) * 1.1);\n  return acc;\n}\n\n// closest point on segment a-b to p, and the segment direction\nvec3 closestOnSegment(vec3 p, vec3 a, vec3 b, out vec3 dir, out float t) {\n  vec3 ab = b - a;\n  float L2 = max(dot(ab, ab), 1e-6);\n  t = clamp(dot(p - a, ab) / L2, 0.0, 1.0);\n  dir = ab * inversesqrt(L2);\n  return a + ab * t;\n}\n\nvec3 bCurrent(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.8) return vec3(0.0);   // some light stays loose, as atmosphere\n  // each particle swims in its own lane, so the river has width and grain\n  vec3 lane3 = bellSeeds(uint(gl_VertexID)) * 0.045;\n  if (n == 1) {\n    // one touch: a circular river around it\n    float w = uPole[0].z;\n    vec3 d = p - poleAt(0);\n    float r = length(d.xy) + 1e-3;\n    vec3 tang = vec3(-d.y, d.x, 0.0) / r;\n    vec3 target = tang * 1.3 - d / r * (r - 0.32) * 3.0;\n    target.z = -p.z * 1.5;\n    float f = w * exp(-abs(r - 0.32) * 3.0);\n    heat += f * 0.8;\n    return (target - v) * 2.4 * f;\n  }\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  vec3 pull = vec3(0.0);\n  for (int i = 0; i < n; i++) {\n    int j = (i + 1) % n;\n    vec3 a = poleAt(i), b = poleAt(j);\n    // with two touches the river runs out on one side and back on the other\n    if (n == 2) {\n      vec3 ab = b - a;\n      vec3 side = normalize(vec3(-ab.y, ab.x, 0.0) + 1e-5) * 0.08;\n      a += side; b += side;\n    }\n    vec3 dir; float t;\n    vec3 c = closestOnSegment(p, a, b, dir, t);\n    vec3 side = vec3(-dir.y, dir.x, 0.0);\n    c += side * lane3.x + vec3(0.0, 0.0, lane3.y * uDepth);\n    vec3 dd = p - c;\n    float dist2 = dot(dd, dd);\n    float w = min(uPole[i].z, uPole[j].z);\n    float f = exp(-dist2 / 0.03) * w;\n    // faster in the middle of the stream than at its banks\n    field += dir * (1.1 + 0.7 * exp(-lane3.x * lane3.x * 600.0)) * f;\n    wsum += f;\n    pull += -dd / (sqrt(dist2) + 0.05) * 0.7 * exp(-dist2 / 0.2) * w;\n    heat += f * 0.8;\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6 + pull;\n}\n\nvec3 bWeave(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.72) return vec3(0.0);   // some light stays loose, as atmosphere\n  if (n == 1) {\n    float w = uPole[0].z;\n    float a = s.x * TAU + uTime * 0.6;\n    vec3 target = poleAt(0) + vec3(cos(a), sin(a), sin(a * 2.0 + s.y * TAU) * 0.3 * uDepth) * (0.22 + 0.02 * sin(a * 5.0 + uTime * 3.0));\n    heat += w * 0.4;\n    return ((target - p) * 16.0 - v * 3.0) * w;\n  }\n  // threads: each touch to the next, and (from 4 touches) to the one after that too\n  int segs = n == 2 ? 1 : (n == 3 ? 3 : 2 * n);\n  int k = min(int(s.x * float(segs)), segs - 1);\n  int i = k < n ? k : k - n;\n  int j = k < n ? (i + 1) % n : (i + 2) % n;\n  vec3 a = poleAt(i), b = poleAt(j);\n  vec3 ab = b - a;\n  float L = length(ab) + 1e-4;\n  vec3 side = vec3(-ab.y, ab.x, 0.0) / L;\n  float tp = fract(s.y + uTime * 0.04 * (s.z - 0.5));\n  // the thread vibrates like a plucked string, in its own harmonic\n  float harmonic = float(1 + k % 3);\n  float vib = sin(3.14159 * tp * harmonic) * sin(uTime * (3.0 + harmonic * 1.7) + float(k)) * 0.05 * min(L, 1.0);\n  vec2 jit = (s.zw - 0.5) * 0.022;\n  vec3 target = a + ab * tp + side * (jit.x + vib) + vec3(0.0, 0.0, jit.y + vib * 0.8 * uDepth);\n  float w = min(uPole[i].z, uPole[j].z);\n  heat += w * 0.55;\n  return ((target - p) * 20.0 - v * 3.2) * w;\n}\n\nvec3 bChime(vec3 p, vec3 v, uint id, inout float heat) {\n  // the touches ring like bells; light gathers on the still lines between the waves\n  float F = 0.0;\n  vec3 G = vec3(0.0);\n  float k = 15.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r = length(d.xy) + 1e-4;\n    float ph = k * r - 3.2 * uPole[i].w;\n    float fall = exp(-r * 0.9);\n    F += w * sin(ph) * fall;\n    G += w * (k * cos(ph) - 0.9 * sin(ph)) * fall * vec3(d.xy / r, 0.0);\n  }\n  vec3 acc = -F * G * 0.1;\n  acc.z -= p.z * 5.0 * (1.0 - 0.6 * uDepth);\n  // shaken off the moving parts of the plate, like sand\n  vec3 shake = rand3(id, uFrame) - 0.5;\n  acc += shake * abs(F) * 3.5;\n  heat += abs(F) * 0.25 + 0.15 * float(uPoleCount > 0);\n  return acc - v * 1.2;\n}\n\nvec3 bStorm(vec3 p, vec3 v, inout float heat) {\n  float near = 0.0;\n  vec3 gust = vec3(0.0);\n  vec3 swirl = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d.xy, d.xy);\n    float e = exp(-r2 / 0.22);\n    near += w * e;\n    // a flick throws the air along with it\n    gust += vec3(uPoleV[i].xy, 0.0) * w * exp(-r2 / 0.05) * 3.2;\n    swirl += vec3(-d.y, d.x, 0.0) * w * e * 1.8;\n  }\n  vec3 field = abcFlow(p * 1.35, uTime * 1.6) * (0.35 + near * 2.4) + swirl;\n  field.z *= uDepth;\n  heat += near * 0.6 + length(gust) * 0.15;\n  return (field - v) * 1.9 + gust;\n}\n\nvec3 bLattice(vec3 p, vec3 v, vec4 s, inout float heat) {\n  vec3 h = latticeHome(s);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 q = poleAt(i);\n    vec2 dh = h.xy - q.xy;\n    float r2 = dot(dh, dh) + 1e-5;\n    // each touch is a lens: the lattice bulges and twists around it\n    float bulge = w * 0.2 * exp(-r2 / 0.07);\n    h.xy += dh * inversesqrt(r2) * bulge;\n    float tw = w * 1.1 * exp(-r2 / 0.05) * uPoleV[i].w;\n    float c = cos(tw), sn = sin(tw);\n    vec2 rel = h.xy - q.xy;\n    h.xy = q.xy + vec2(rel.x * c - rel.y * sn, rel.x * sn + rel.y * c);\n    h.z += bulge * 0.8 * uDepth;\n    heat += bulge * 5.0;\n  }\n  heat += 0.1;\n  return ((h - p) * 11.0 - v * 2.6) * uEngage;\n}\n\nvec3 bNova(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.002;\n    float r = sqrt(r2);\n    float charge = min(uPole[i].w, 3.0) / 3.0;\n    acc += d / r * w * (1.1 + charge * 3.2) / (r + 0.09);\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 1.6 * uPoleV[i].w / (r + 0.2);\n    acc -= v * w * 1.4 * exp(-r * 2.0);\n    heat += w * (0.3 + charge * 2.2) * exp(-r2 * 26.0);\n  }\n  return acc;\n}\n\nvec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  int m = min(int(s.y * float(n)), n - 1);\n  float w = uPole[m].z;\n  // five flocks per touch, each following its own leader on a looping path\n  float j = floor(s.x * 5.0);\n  float dirn = mod(j, 2.0) < 0.5 ? 1.0 : -1.0;\n  float R = 0.2 + 0.1 * j;\n  float om = (0.55 + 0.22 * j) * dirn;\n  float ph = j * 1.7 + float(m) * 2.3;\n  float t = uTime;\n  vec3 c = poleAt(m);\n  vec3 lead = c + vec3(cos(om * t + ph) * R * 1.25, sin(om * t * 1.3 + ph) * R * 0.85, sin(om * t * 0.7 + ph) * R * 0.7 * uDepth);\n  vec3 leadV = vec3(-sin(om * t + ph) * R * 1.25 * om, cos(om * t * 1.3 + ph) * R * 0.85 * om * 1.3, cos(om * t * 0.7 + ph) * R * 0.7 * uDepth * om * 0.7);\n  // each bird keeps its own place in the flock: a soft cloud, stretched along the\n  // direction of flight\n  vec3 b = bellSeeds(uint(gl_VertexID));\n  vec3 off = b * vec3(0.045, 0.035, 0.035 * uDepth);\n  vec3 fwd = normalize(leadV + 1e-4);\n  off += fwd * b.z * 0.06;\n  vec3 target = lead + off + abcFlow(p * 3.1, t * 0.8) * 0.025;\n  vec3 desired = (target - p) * 3.2 + leadV;\n  heat += w * 0.45;\n  return (desired - v) * 2.3 * w;\n}\n\nvec3 bFountain(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  // gravity pulls the spray down; the floor bounces it\n  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);\n  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)\n  for (int i = 0; i < uPoleCount; i++) {\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d);\n    heat += uPole[i].z * exp(-r2 * 30.0) * 1.5;\n  }\n  return acc;\n}\n\nvec3 behaviour(int b, vec3 p, vec3 v, vec4 s, uint id, inout float heat) {\n  if (uPoleCount == 0) return vec3(0.0);\n  if (b == B_WELL) return bWell(p, v, heat);\n  if (b == B_WHIRL) return bWhirl(p, v, heat);\n  if (b == B_BURST) return bBurst(p, v, heat);\n  if (b == B_HALO) return bHalo(p, v, s, heat);\n  if (b == B_CURRENT) return bCurrent(p, v, s, heat);\n  if (b == B_WEAVE) return bWeave(p, v, s, heat);\n  if (b == B_CHIME) return bChime(p, v, id, heat);\n  if (b == B_STORM) return bStorm(p, v, heat);\n  if (b == B_LATTICE) return bLattice(p, v, s, heat);\n  if (b == B_NOVA) return bNova(p, v, heat);\n  if (b == B_MURMUR) return bMurmur(p, v, s, heat);\n  return bFountain(p, v, heat);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n  float life = aVel.w;\n\n  if (uInit == 1) {\n    vPos = vec4(formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime), 0.0);\n    vVel = vec4((s.wzy - 0.5) * 0.05, s.x * 3.0);\n    return;\n  }\n\n  float dt = uDt;\n  float gain = 0.0;\n\n  // --- the touches -------------------------------------------------------------\n  // Strength (and calm mode, and the music's bass) scales how hard touches push and pull;\n  // the clamps further down keep even the springiest behaviours stable at 3x.\n  vec3 acc = vec3(0.0);\n  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix) * uStrength;\n  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix * uStrength;\n  int lead = uMix < 0.5 ? uBehA : uBehB;\n\n  // fountains respawn spent particles at a touch\n  if (lead == B_FOUNTAIN && uPoleCount > 0 && s.w < 0.85) {\n    life -= dt * (0.5 + s.y * 0.6);\n    if (life <= 0.0) {\n      vec3 r = rand3(id, uFrame);\n      int m = min(int(r.x * float(uPoleCount)), uPoleCount - 1);\n      vec3 up = length(uGravity) > 0.05 ? -normalize(uGravity) : vec3(0.0, 1.0, 0.0);\n      vec3 side = normalize(cross(up, vec3(0.0, 0.0, 1.0)) + 1e-5);\n      // a spray that arcs over and lands within the screen\n      vec3 b = bellSeeds(id ^ uFrame);\n      float power = 0.75 + uPole[m].z * 0.35;\n      p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);\n      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;\n      v += vec3(uPoleV[m].xy, 0.0) * 0.4;\n      // a random head start within the frame, so each frame's batch does not travel as a band\n      p += v * dt * r.y;\n      life = 1.4 + s.z * 1.2;\n      heat = 0.9;\n    }\n  }\n\n  // --- rings where a touch lands, and the release of a gathered nova --------------\n  for (int k = 0; k < 8; k++) {\n    vec4 pu = uPulse[k];\n    if (pu.w > 1.6) continue;\n    vec2 d = p.xy - pu.xy;\n    float r = length(d) + 1e-4;\n    float R = pu.w * 1.25;\n    float band = exp(-pow((r - R) / 0.035, 2.0)) * pu.z * (1.0 - pu.w / 1.6);\n    gain += band * 9.0;\n    acc.xy += d / r * band * 2.5;\n  }\n  for (int k = 0; k < 4; k++) {\n    vec4 re = uRelease[k];\n    if (re.z <= 0.0) continue;\n    vec3 d = p - vec3(re.xy, 0.0);\n    float r = length(d) + 1e-3;\n    float e = re.z * exp(-re.w * 5.0) * exp(-r * 1.3);\n    acc += d / r * e * 55.0;\n    gain += e * 14.0;\n  }\n\n  // --- the light's own life --------------------------------------------------------\n  // the resting shape, which lets go while someone is touching\n  float formPull = (1.0 - 0.88 * uTouch) * (uForm == F_NONE || uForm == F_NEBULA ? 0.0 : 1.0);\n  if (formPull > 0.0) {\n    vec3 home = formTarget(uForm, s, uTime);\n    acc += ((home - p) * 1.6 - v * 0.6) * formPull;\n  }\n  // currents that keep everything moving\n  vec3 flowV = abcFlow(p, uTime * 0.35) * 0.28;\n  flowV.z *= uDepth;\n  acc += (flowV - v) * uFlow * (1.0 - 0.6 * uTouch) * 1.2;\n\n  // music: the beat kicks out from the middle\n  acc += normalize(p + 1e-4) * uOnset * 1.8;\n  gain += uOnset * 1.2 + uAudio.x * 0.4;\n\n  acc += uGravity;\n\n  // soft walls just beyond the screen, and a floor of depth\n  vec3 lim = vec3(uAspect * 1.12, 1.12, 0.2 + uDepth * 1.1);\n  vec3 over = max(abs(p) - lim, 0.0) * sign(p);\n  acc -= over * 40.0;\n  // flatten toward the screen as depth goes to zero\n  acc.z -= p.z * 9.0 * (1.0 - uDepth);\n\n  float am = length(acc);\n  if (am > 90.0) acc *= 90.0 / am;\n\n  // semi-implicit Euler with frame-rate-independent drag (spray flies almost freely,\n  // so it arcs instead of dropping straight down)\n  v += acc * dt;\n  bool spray = lead == B_FOUNTAIN && s.w < 0.85;\n  v *= exp(-dt * (spray ? 0.1 + uDrag * 0.25 : 0.12 + uDrag * 2.6));\n  float sp = length(v);\n  if (sp > 4.5) v *= 4.5 / sp;\n  p += v * dt;\n\n  // fountain spray bounces off the floor\n  if (lead == B_FOUNTAIN && p.y < -1.02 && v.y < 0.0) { v.y = -v.y * 0.32; v.xz *= 0.8; p.y = -1.02; gain += 0.6; }\n\n  heat = heat * exp(-dt * 1.7) + gain * dt;\n  heat = min(heat, 6.0);\n\n  // anything lost to rounding or flung far away comes back into the shape\n  if (any(isnan(p)) || any(isinf(p)) || any(isnan(v)) || dot(p, p) > 64.0) {\n    p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);\n    v = vec3(0.0);\n    heat = 0.0;\n  }\n  vPos = vec4(p, heat);\n  vVel = vec4(v, life);\n}\n";
 
   // src/js/gfx/shaders/points.vert.glsl
   var points_vert_default = "#version 300 es\n// Draws each particle as a point of light: colour from the palette, size from\n// perspective and soft focus, brightness spread so a blurred speck keeps its energy.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz, w heat\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life\n\n#include common\n\nuniform mat4 uViewProj;\nuniform float uCamDist;       // distance from the camera to the touch plane (in focus)\nuniform float uPointPx;       // base speck size in pixels, in focus\nuniform float uDofPx;         // extra blur in pixels per unit of distance from focus\nuniform float uMaxPx;\nuniform float uEnergy;        // light per particle (normalised by count and trails)\nuniform float uEnergyCap;     // keeps any single pixel well inside half-float range\nuniform float uSparkle;\nuniform float uHigh;          // treble from the music, makes sparkles busier\nuniform float uTime;\nuniform int uColorBy;         // core/scene.js COLOR_BY: speed, heat, seed, direction, depth\nuniform float uPalA;          // palette rows (texel centres, 0..1)\nuniform float uPalB;\nuniform float uPalMix;\nuniform float uHue;           // radians\nuniform float uDepthRange;\nuniform sampler2D uLUT;\n\nout vec3 vColor;\nout float vSoft;\n\nvec3 hueRotate(vec3 c, float a) {\n  const vec3 k = vec3(0.57735027);\n  float ca = cos(a);\n  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n\n  vec4 clip = uViewProj * vec4(p, 1.0);\n  gl_Position = clip;\n\n  float dist = max(clip.w, 0.05);\n  float persp = uCamDist / dist;\n  float base = uPointPx * persp * (0.75 + 0.5 * s.z);\n  float blur = uDofPx * abs(dist - uCamDist);\n  float size = min(sqrt(base * base + blur * blur), uMaxPx);\n  float px = max(size, 1.0);\n  gl_PointSize = px;\n\n  // where on the palette this speck sits\n  float speed = length(v);\n  float t;\n  if (uColorBy == 0) t = 1.0 - exp(-speed * 1.1);\n  else if (uColorBy == 1) t = 1.0 - exp(-heat * 0.7);\n  else if (uColorBy == 2) t = s.x;\n  else if (uColorBy == 3) t = 0.5 + 0.5 * sin(atan(v.y, v.x + 1e-6));\n  else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);\n  // a touch of per-particle spread keeps flat regions from looking banded\n  t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);\n  vec3 col = mix(texture(uLUT, vec2(t, uPalA)).rgb, texture(uLUT, vec2(t, uPalB)).rgb, uPalMix);\n  if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);\n  // partly even out how bright the colours are (a deep red is far darker than a pale\n  // yellow), so the palette sets the hue and heat sets the brightness\n  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));\n  col *= min(pow(0.3 / max(lum, 0.004), 0.55), 5.0);\n\n  // hot light burns brighter; resting light glows softly\n  float bright = 0.45 + 0.55 * min(heat, 3.0) + 0.25 * min(speed, 2.0);\n  // now and then a speck catches the light\n  float tw = sin(uTime * (1.3 + s.w * 3.7 + uHigh * 6.0) + s.x * 97.0);\n  bright *= 1.0 + uSparkle * pow(max(tw, 0.0), 24.0) * 6.0;\n\n  // the same light spread over a larger disc when out of focus or sub-pixel\n  float energy = uEnergy * persp * bright * (base * base) / (px * px);\n  vColor = col * min(energy, uEnergyCap);\n  vSoft = smoothstep(1.6, 3.6, px);\n}\n";
@@ -2043,11 +2106,11 @@ void main() {
       gl.uniform1i(composite.u.uBloom, 1);
       gl.uniform1i(composite.u.uAdapt, 2);
       gl.useProgram(null);
-      const adaptT = [createTarget(gl, 1, 1, fmt, gl.NEAREST), createTarget(gl, 1, 1, fmt, gl.NEAREST)];
+      const UINT = { internal: gl.RGBA32UI, format: gl.RGBA_INTEGER, type: gl.UNSIGNED_INT };
+      const adaptT = [createTarget(gl, 1, 1, UINT, gl.NEAREST), createTarget(gl, 1, 1, UINT, gl.NEAREST)];
       for (const t of adaptT) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
-        gl.clearColor(0, 0, 0, 0);
-        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4));
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true };
@@ -2067,13 +2130,23 @@ void main() {
     }
     function sizeTargets(w, h2) {
       if (!R || R.w === w && R.h === h2) return;
-      destroyTarget(gl, R.scene);
+      const old = R.scene;
       R.levels.forEach((t) => destroyTarget(gl, t));
       R.scene = createTarget(gl, w, h2, R.fmt);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
-      gl.clearColor(0, 0, 0, 1);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const sameShape = old && old.ok && Math.abs(old.w / old.h - w / h2) < 0.02;
+      if (sameShape) {
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, old.fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, R.scene.fbo);
+        gl.blitFramebuffer(0, 0, old.w, old.h, 0, 0, w, h2, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+      } else {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+      destroyTarget(gl, old);
       const n = clamp(Math.floor(Math.log2(Math.min(w, h2))) - 3, 3, 7);
       R.levels = [];
       let lw = w, lh = h2;
@@ -2121,12 +2194,12 @@ void main() {
     }
     function symmetric(x, y, max) {
       const s = lastScene;
-      const n = s ? Math.max(1, s.symmetry | 0) : 1;
+      const plan = symmetryPlan(1, s ? s.symmetry : 1, !!(s && s.mirror), max);
       const out = [];
-      for (let k = 0; k < n && out.length < max; k++) {
-        const a = k / n * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+      for (let k = 0; k < plan.n; k += plan.step) {
+        const a = k / plan.n * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
         out.push([x * c - y * sn, x * sn + y * c]);
-        if (s && s.mirror && out.length < max) out.push([x * c + y * sn, x * sn - y * c]);
+        if (plan.mirror) out.push([x * c + y * sn, x * sn - y * c]);
       }
       return out;
     }
@@ -2264,6 +2337,13 @@ void main() {
         gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
         gl.bindVertexArray(R.empty);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (!hdr) {
+          gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+          gl.blendFunc(gl.ONE, gl.ONE);
+          gl.uniform1f(R.fade.u.uKeep, 1 / 255);
+          gl.drawArrays(gl.TRIANGLES, 0, 3);
+          gl.blendEquation(gl.FUNC_ADD);
+        }
       } else {
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -2324,6 +2404,8 @@ void main() {
       const settings = f.settings || {};
       gl.uniform1f(a.u.uGuard, settings.flashGuard === false ? 0 : 1);
       gl.uniform1f(a.u.uRise, settings.calm ? 0.9 : 2.3);
+      const glowGain = scene.glow * scene.glow * 2.4;
+      gl.uniform1f(a.u.uGlowGain, glowGain);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       R.adaptCur = 1 - R.adaptCur;
       const u = R.up;
@@ -2351,7 +2433,7 @@ void main() {
       gl.bindTexture(gl.TEXTURE_2D, R.levels[0].tex);
       gl.activeTexture(gl.TEXTURE2);
       gl.bindTexture(gl.TEXTURE_2D, R.adaptT[R.adaptCur].tex);
-      gl.uniform1f(c.u.uGlow, scene.glow * scene.glow * 2.4 / R.levels.length);
+      gl.uniform1f(c.u.uGlow, glowGain / R.levels.length);
       gl.uniform1f(c.u.uVignette, scene.vignette);
       gl.uniform1f(c.u.uGrain, scene.grain);
       gl.uniform1f(c.u.uAberr, scene.aberration);
@@ -2486,12 +2568,12 @@ void main() {
         if (hdr) {
           out.scene = readMean(R.scene);
           out.bloom = readMean(R.levels[0]);
-          const a = new Float32Array(4);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
-          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, a);
-          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-          out.adapt = Array.from(a);
         }
+        const bits = new Uint32Array(4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
+        gl.readPixels(0, 0, 1, 1, gl.RGBA_INTEGER, gl.UNSIGNED_INT, bits);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        out.adapt = Array.from(new Float32Array(bits.buffer));
         out.error = gl.getError();
         return out;
       },
@@ -2545,10 +2627,10 @@ void main() {
     if (!el || !el.tagName) return false;
     return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
   }
-  function flickVelocity(history, tEnd) {
+  function flickVelocity(history2, tEnd) {
     const from = tEnd - FLICK_WINDOW_MS;
     let n = 0, st = 0, sx = 0, sy = 0, stt = 0, stx = 0, sty = 0;
-    for (const s of history) {
+    for (const s of history2) {
       if (s.t < from) continue;
       const t = (s.t - tEnd) / 1e3;
       n++;
@@ -4204,7 +4286,7 @@ void main() {
     const spectrum = new Float32Array(bins);
     const previous = new Float32Array(b3 + 1);
     const wave = new Float32Array(FFT_SIZE);
-    const history = new Float32Array(HISTORY);
+    const history2 = new Float32Array(HISTORY);
     const sorted = new Float32Array(HISTORY);
     const raw = new Float64Array(4);
     const peaks = new Float64Array(4);
@@ -4235,7 +4317,7 @@ void main() {
     function medianFlux() {
       const n = historyCount;
       for (let i = 0; i < n; i++) {
-        const v = history[i];
+        const v = history2[i];
         let j = i - 1;
         while (j >= 0 && sorted[j] > v) {
           sorted[j + 1] = sorted[j];
@@ -4276,7 +4358,7 @@ void main() {
         wasAbove = false;
         return;
       }
-      history[historyAt] = flux;
+      history2[historyAt] = flux;
       historyAt = (historyAt + 1) % HISTORY;
       if (historyCount < HISTORY) historyCount++;
       const threshold = medianFlux() * (1 + 0.6 / gain) + 1.4 / gain;
@@ -4418,7 +4500,15 @@ void main() {
     });
   }
   var cleanName = (name) => String(name || "Song").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80) || "Song";
-  function createAudio({ getSettings }) {
+  function createAudio({ getSettings, onSourceEnded = () => {
+  } }) {
+    const ended = (kind) => {
+      try {
+        onSourceEnded(kind);
+      } catch (e) {
+        console.warn("Tactilume: onSourceEnded failed", e);
+      }
+    };
     let ctx = null;
     let graph = null;
     let mic = null;
@@ -4688,7 +4778,10 @@ void main() {
         graph.analyser.reset();
         mic = { stream, source };
         for (const t of stream.getAudioTracks()) t.addEventListener("ended", () => {
-          if (mic && mic.stream === stream) stopMic();
+          if (mic && mic.stream === stream) {
+            stopMic();
+            ended("mic");
+          }
         });
         updateSession();
         resume();
@@ -4733,7 +4826,10 @@ void main() {
         }
         song.waiting = result === "blocked";
         el.addEventListener("error", () => {
-          if (song && song.el === el) stopFile();
+          if (song && song.el === el) {
+            stopFile();
+            ended("file");
+          }
         });
         graph.analyser.reset();
         updateSession();
@@ -7395,12 +7491,20 @@ void main() {
       glow: scene.glow * (1 - 0.25 * k)
     };
   }
+  function forgetLinkCode() {
+    try {
+      history.replaceState(history.state, "", location.href.split("#")[0]);
+    } catch {
+    }
+  }
   function boot() {
     const canvas = document.getElementById("stage");
     const uiRoot = document.getElementById("ui");
     const code = sceneCodeFromHash(location.hash);
     const linked = code ? decodeScene(code) : null;
-    const store = createStore({ initialScene: linked });
+    const store = createStore();
+    if (linked) store.setScene(linked, { replace: true, source: "link" });
+    if (code) forgetLinkCode();
     if (!linked && !store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: "preset" });
     if (TEST) store.setSettings({ introSeen: true, autopilot: "off", haptics: false });
     if (store.settings.react !== "off") store.setSettings({ react: "off" }, { source: "boot" });
@@ -7431,6 +7535,9 @@ void main() {
       startScale: tier === "low" ? 0.75 : 1
     });
     if (forcedParticles) governor.freeze(true);
+    else if (!TEST && governor.mode === "max") governor.setMode("max");
+    const capOf = (s) => s.fpsCap === "30" ? 30 : s.fpsCap === "60" ? 60 : 0;
+    governor.setCap(capOf(store.settings));
     engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
     function resize() {
       const vv = window.visualViewport;
@@ -7442,15 +7549,33 @@ void main() {
     addEventListener("resize", resize);
     window.visualViewport?.addEventListener("resize", resize);
     const platform = createPlatform();
-    const audio = createAudio({ getSettings: () => store.settings });
+    let ui = null;
+    const audio = createAudio({
+      getSettings: () => store.settings,
+      // the microphone or song stopped by itself: say so, and stop claiming it is on
+      onSourceEnded: (kind) => {
+        store.setSettings({ react: "off" }, { source: "audio" });
+        if (ui) ui.toast(kind === "mic" ? "The microphone stopped" : "The song stopped");
+      }
+    });
     const pointers = createPointers(canvas, { screenToWorld: (px, py) => engine.screenToWorld(px, py), getSettings: () => store.settings });
     const autopilot = createAutopilot({ seed: TEST ? 7 : Date.now() & 16777215 });
     const tilt = createTilt();
+    if (store.settings.tilt) {
+      tilt.enable().then((ok) => {
+        if (!ok && store.settings.tilt) store.setSettings({ tilt: false }, { source: "boot" });
+      });
+    }
     const capture = createCapture({ engine, audio, platform });
     let uiHidden = false;
     let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
     let lastActivity = -Infinity;
+    let personAt = performance.now();
     let autopilotForced = false;
+    let autopilotPaused = false;
+    let autoShown = false;
+    let due = 0;
+    let awake = null;
     const actions = {
       loadPreset(key) {
         const i = PRESETS.findIndex((p) => p.key === key);
@@ -7530,16 +7655,50 @@ void main() {
       unlock() {
         audio.unlock();
       },
+      // Works on what is on screen: if autoplay is showing, A stops it (until the next touch
+      // or A); otherwise A starts it now. Returns whether autoplay is now wanted.
       toggleAutopilot() {
-        autopilotForced = !autopilotForced;
-        if (autopilotForced) autopilot.reset();
-        return autopilotForced;
+        if (autoShown) {
+          autopilotForced = false;
+          autopilotPaused = true;
+          lastActivity = performance.now();
+          return false;
+        }
+        autopilotPaused = false;
+        autopilotForced = true;
+        autopilot.reset();
+        return true;
       }
     };
-    const ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
-    const keyboard = createKeyboard({ store, actions: { ...actions, photo: () => ui.run.photo(), toggleRecord: () => ui.run.record() }, pointers });
+    ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
+    const keyboard = createKeyboard({
+      store,
+      pointers,
+      actions: {
+        ...actions,
+        photo: () => ui.run.photo(),
+        toggleRecord: () => ui.run.record(),
+        stepPreset: (d) => {
+          const p = actions.stepPreset(d);
+          ui.toast(`${p.name} is playing`);
+          return p;
+        },
+        surprise: () => {
+          actions.surprise();
+          ui.toast(`${store.scene.name || "A new scene"} is playing`);
+        },
+        toggleAutopilot: () => {
+          const on = actions.toggleAutopilot();
+          ui.toast(store.settings.autopilot === "off" ? "Autoplay is switched off in Settings" : on ? "Autoplay on" : "Autoplay off");
+          return on;
+        }
+      }
+    });
     const activity = () => {
-      lastActivity = performance.now();
+      const now = performance.now();
+      lastActivity = now;
+      personAt = now;
+      autopilotPaused = false;
       if (autopilotForced && store.settings.autopilot !== "always") autopilotForced = false;
     };
     pointers.on("activity", activity);
@@ -7557,7 +7716,9 @@ void main() {
     };
     addEventListener("pointerdown", unlockOnce, { capture: true });
     addEventListener("keydown", (e) => {
-      lastActivity = performance.now();
+      const now = performance.now();
+      lastActivity = now;
+      personAt = now;
       unlockOnce(e);
     }, { capture: true });
     store.on("settings", (s, keys) => {
@@ -7565,12 +7726,21 @@ void main() {
         governor.setMode(s.quality);
         engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
       }
+      if (keys.includes("fpsCap")) {
+        governor.setCap(capOf(s));
+        due = 0;
+      }
       if (keys.includes("tilt") && !s.tilt) tilt.disable();
       if (keys.includes("sound") || keys.includes("react")) audio.unlock();
     });
     addEventListener("hashchange", () => {
       const c = sceneCodeFromHash(location.hash);
-      if (c && store.loadShareCode(c)) ui.toast("Scene loaded from the link");
+      if (!c) return;
+      if (store.loadShareCode(c)) ui.toast("Scene loaded from the link");
+      forgetLinkCode();
+    });
+    addEventListener("storage", (e) => {
+      if (e.key === null || e.key === "tactilume.v1") store.syncFromStorage();
     });
     platform.onBack(() => ui.back());
     const blend = { a: behaviourFor(store.scene, 1).key, b: behaviourFor(store.scene, 1).key, mix: 1 };
@@ -7587,13 +7757,15 @@ void main() {
     function tick(now) {
       rafId = 0;
       if (!running) return;
-      const interval = Math.max(0, now - last);
-      const cap = store.settings.fpsCap;
-      const minInterval = cap === "30" ? 1e3 / 30 - 2 : cap === "60" ? 1e3 / 60 - 2 : 0;
-      if (interval < minInterval) {
-        schedule();
-        return;
+      const capHz = capOf(store.settings);
+      if (capHz) {
+        if (now < due - 2) {
+          schedule();
+          return;
+        }
+        due = Math.max(due + 1e3 / capHz, now);
       }
+      const interval = Math.max(0, now - last);
       last = now;
       const dt = Math.min(interval / 1e3, 1 / 20);
       time += dt;
@@ -7602,10 +7774,11 @@ void main() {
       const scene = effectiveScene(store.scene, settings);
       pointers.update(dt);
       const idleFor = (now - lastActivity) / 1e3;
-      const auto = !TEST && settings.autopilot !== "off" && (settings.autopilot === "always" || autopilotForced || idleFor > settings.idleSeconds);
+      const auto = !TEST && settings.autopilot !== "off" && !autopilotPaused && (settings.autopilot === "always" || autopilotForced || idleFor > settings.idleSeconds);
       const userPoles = pointers.poles().concat(keyboard.poles());
       const autoPoles = auto && pointers.active() === 0 ? autopilot.update(dt, time, engine.aspect) : [];
       const raw = userPoles.length ? userPoles : autoPoles;
+      autoShown = auto && !userPoles.length;
       const fingers = fingerCount(raw, settings.virtualFingers);
       const poles = expandPoles(raw, { symmetry: scene.symmetry, mirror: scene.mirror, virtualFingers: settings.virtualFingers, time });
       if (fingers > 0) {
@@ -7615,7 +7788,7 @@ void main() {
           blend.b = target;
           blend.mix = 0;
           const b = behaviourByKey(target);
-          if (settings.hints) ui.showBehaviour(b);
+          if (settings.hints) ui.showBehaviour(b, { autopilot: autoShown });
           audio.behaviourChanged(target);
         }
       }
@@ -7637,23 +7810,35 @@ void main() {
       if (!capture.recording && governor.sample(interval, dt)) {
         engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
       }
-      ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: auto && !userPoles.length });
+      ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
+      updateAwake(now);
       frames++;
       if (frames === 2) hook.ready = true;
       schedule();
     }
+    function updateAwake(now) {
+      const s = store.settings;
+      const quietFor = Math.max(5 * 6e4, (s.idleSeconds + 60) * 1e3);
+      const want = !document.hidden && (s.autopilot === "always" || capture.recording || now - personAt < quietFor);
+      if (want !== awake) {
+        awake = want;
+        platform.keepAwake(want);
+      }
+    }
     document.addEventListener("visibilitychange", () => {
       if (document.hidden) {
         store.flush();
-        platform.keepAwake(false);
+        updateAwake(performance.now());
       } else {
         last = performance.now();
-        platform.keepAwake(true);
+        due = 0;
+        personAt = last;
+        updateAwake(last);
         schedule();
       }
     });
     addEventListener("pagehide", () => store.flush());
-    platform.keepAwake(true);
+    updateAwake(performance.now());
     const hook = {
       version: VERSION,
       ready: false,
@@ -7678,6 +7863,9 @@ void main() {
       },
       get behaviour() {
         return { ...blend };
+      },
+      get autoplay() {
+        return autoShown;
       }
     };
     window.TACTILUME = hook;

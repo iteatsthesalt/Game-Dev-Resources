@@ -30,29 +30,50 @@ export function safeStorage(backing) {
   };
 }
 
+// Saved scenes from whatever is in storage, cleaned. null when storage holds no list.
+function cleanUserList(list) {
+  if (!Array.isArray(list)) return null;
+  return list
+    .filter((e) => e && typeof e === 'object' && typeof e.id === 'string')
+    .slice(0, MAX_USER_SCENES)
+    .map((e) => ({ id: String(e.id).slice(0, 40), name: sanitizeScene({ name: e.name }).name || 'Untitled', created: Number(e.created) || 0, scene: sanitizeScene(e.scene) }));
+}
+
 export function createStore({ storage = safeStorage(), initialScene = null, persistDelayMs = 400 } = {}) {
   const ev = createEmitter();
-  let saved = {};
-  try {
-    const raw = storage.get(STORAGE_KEY);
-    saved = raw ? JSON.parse(raw) : {};
-    if (!saved || typeof saved !== 'object') saved = {};
-  } catch { saved = {}; }
+  function readSaved() {
+    try {
+      const raw = storage.get(STORAGE_KEY);
+      const saved = raw ? JSON.parse(raw) : {};
+      return saved && typeof saved === 'object' ? saved : {};
+    } catch { return {}; }
+  }
+  const saved = readSaved();
 
   let settings = Object.freeze(sanitizeSettings(saved.settings));
   let scene = Object.freeze(sanitizeScene(initialScene || saved.scene || DEFAULT_SCENE));
-  let user = Array.isArray(saved.user)
-    ? saved.user
-      .filter((e) => e && typeof e === 'object' && typeof e.id === 'string')
-      .slice(0, MAX_USER_SCENES)
-      .map((e) => ({ id: String(e.id).slice(0, 40), name: sanitizeScene({ name: e.name }).name || 'Untitled', created: Number(e.created) || 0, scene: sanitizeScene(e.scene) }))
-    : [];
+  let user = cleanUserList(saved.user) || [];
+  // Saved scenes are shared by every tab of the app. A tab only writes its own copy of the
+  // list right after it changed it; otherwise it keeps whatever another tab stored.
+  let userDirty = false;
 
   let timer = null;
   function persistNow() {
     timer = null;
+    if (!userDirty) user = cleanUserList(readSaved().user) || user;
+    userDirty = false;
     // a custom storage adapter may throw; losing one save must not break the app
     try { storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user })); } catch { /* not saved */ }
+  }
+  // read, change, write at once, so another tab's saved scenes are never written over
+  function changeUser(fn) {
+    if (timer) clearTimeout(timer);
+    user = cleanUserList(readSaved().user) || user;
+    const result = fn();
+    userDirty = true;
+    persistNow();
+    ev.emit('user', user.map((e) => ({ ...e })));
+    return result;
   }
   function persist() {
     if (timer) clearTimeout(timer);
@@ -80,12 +101,13 @@ export function createStore({ storage = safeStorage(), initialScene = null, pers
       return changed;
     },
 
-    setSettings(partial, { source = 'ui' } = {}) {
+    // `persist: false` adopts values without writing them back (they came from storage)
+    setSettings(partial, { source = 'ui', persist: write = true } = {}) {
       const next = Object.freeze(sanitizeSettings(partial, settings));
       const changed = diffKeys(settings, next, SETTINGS_SCHEMA);
       if (!changed.length) return [];
       settings = next;
-      persist();
+      if (write) persist();
       ev.emit('settings', settings, changed, source);
       return changed;
     },
@@ -94,19 +116,36 @@ export function createStore({ storage = safeStorage(), initialScene = null, pers
 
     userScenes() { return user.map((e) => ({ ...e })); },
 
+    // Returns the new entry, or null when the list is full: a save never deletes an
+    // older scene behind the person's back.
     saveUserScene(name) {
-      const clean = sanitizeScene({ ...scene, name: name || scene.name || 'My scene' });
-      const entry = { id: 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: clean.name, created: Date.now(), scene: clean };
-      user = [entry, ...user].slice(0, MAX_USER_SCENES);
-      persist();
-      ev.emit('user', store.userScenes());
-      return { ...entry };
+      return changeUser(() => {
+        if (user.length >= MAX_USER_SCENES) return null;
+        const clean = sanitizeScene({ ...scene, name: name || scene.name || 'My scene' });
+        const entry = { id: 'u' + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: clean.name, created: Date.now(), scene: clean };
+        user = [entry, ...user];
+        return { ...entry };
+      });
     },
 
     deleteUserScene(id) {
-      const before = user.length;
-      user = user.filter((e) => e.id !== id);
-      if (user.length !== before) { persist(); ev.emit('user', store.userScenes()); }
+      if (!user.some((e) => e.id === id)) return;
+      changeUser(() => { user = user.filter((e) => e.id !== id); });
+    },
+
+    // Another tab changed what is stored: take its saved scenes, and its settings except
+    // the ones that only describe what runs in this tab (the microphone or song, tilt).
+    syncFromStorage() {
+      const s = readSaved();
+      const list = cleanUserList(s.user);
+      if (list && JSON.stringify(list) !== JSON.stringify(user)) {
+        user = list;
+        ev.emit('user', store.userScenes());
+      }
+      if (s.settings && typeof s.settings === 'object') {
+        const { react, tilt, ...shared } = s.settings;
+        store.setSettings(shared, { source: 'other-tab', persist: false });
+      }
     },
 
     shareCode() { return encodeScene(scene); },

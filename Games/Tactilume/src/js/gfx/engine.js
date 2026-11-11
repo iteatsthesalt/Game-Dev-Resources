@@ -12,7 +12,7 @@ import POINTS_FS from './shaders/points.frag.glsl';
 import { behaviourByKey } from '../core/behaviours.js';
 import { PALETTES, paletteIndex, bakeLUT } from '../core/palettes.js';
 import { FORMS, COLOR_BY } from '../core/scene.js';
-import { MAX_POLES } from '../core/poles.js';
+import { MAX_POLES, symmetryPlan } from '../core/poles.js';
 import { guessTier, TIERS } from '../core/governor.js';
 import { clamp, approach } from '../core/util.js';
 
@@ -111,8 +111,10 @@ export function createEngine(canvas, opts = {}) {
     gl.useProgram(composite.prog); gl.uniform1i(composite.u.uScene, 0); gl.uniform1i(composite.u.uBloom, 1); gl.uniform1i(composite.u.uAdapt, 2);
     gl.useProgram(null);
 
-    const adaptT = [createTarget(gl, 1, 1, fmt, gl.NEAREST), createTarget(gl, 1, 1, fmt, gl.NEAREST)];
-    for (const t of adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); }
+    // eye adaptation and flash guard state: float bits in an integer target, exact on every device
+    const UINT = { internal: gl.RGBA32UI, format: gl.RGBA_INTEGER, type: gl.UNSIGNED_INT };
+    const adaptT = [createTarget(gl, 1, 1, UINT, gl.NEAREST), createTarget(gl, 1, 1, UINT, gl.NEAREST)];
+    for (const t of adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4)); }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
     R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true };
@@ -135,13 +137,25 @@ export function createEngine(canvas, opts = {}) {
   // the HDR scene and the bloom chain follow the drawing-buffer size
   function sizeTargets(w, h) {
     if (!R || (R.w === w && R.h === h)) return;
-    destroyTarget(gl, R.scene);
+    const old = R.scene;
     R.levels.forEach((t) => destroyTarget(gl, t));
     R.scene = createTarget(gl, w, h, R.fmt);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    // A quality step only changes the resolution: carry the trails over, so the picture
+    // does not blink dark. A new shape (rotation) or a first build starts black.
+    const sameShape = old && old.ok && Math.abs(old.w / old.h - w / h) < 0.02;
+    if (sameShape) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, old.fbo);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, R.scene.fbo);
+      gl.blitFramebuffer(0, 0, old.w, old.h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    destroyTarget(gl, old);
     const n = clamp(Math.floor(Math.log2(Math.min(w, h))) - 3, 3, 7);
     R.levels = [];
     let lw = w, lh = h;
@@ -190,15 +204,15 @@ export function createEngine(canvas, opts = {}) {
     sizeTargets(w, h);
   }
 
-  // copies of a point for the scene's symmetry, at most `max`
+  // copies of a point for the scene's symmetry, at most `max`, evenly spaced (as the poles)
   function symmetric(x, y, max) {
     const s = lastScene;
-    const n = s ? Math.max(1, s.symmetry | 0) : 1;
+    const plan = symmetryPlan(1, s ? s.symmetry : 1, !!(s && s.mirror), max);
     const out = [];
-    for (let k = 0; k < n && out.length < max; k++) {
-      const a = (k / n) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+    for (let k = 0; k < plan.n; k += plan.step) {
+      const a = (k / plan.n) * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
       out.push([x * c - y * sn, x * sn + y * c]);
-      if (s && s.mirror && out.length < max) out.push([x * c + y * sn, x * sn - y * c]);
+      if (plan.mirror) out.push([x * c + y * sn, x * sn - y * c]);
     }
     return out;
   }
@@ -345,6 +359,15 @@ export function createEngine(canvas, opts = {}) {
       gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
       gl.bindVertexArray(R.empty);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if (!hdr) {
+        // In 8 bits a dim pixel times `keep` rounds back to itself and would glow forever;
+        // taking one step off as well lets every trail fade all the way to black.
+        gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
+        gl.blendFunc(gl.ONE, gl.ONE);
+        gl.uniform1f(R.fade.u.uKeep, 1 / 255);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.blendEquation(gl.FUNC_ADD);
+      }
     } else {
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -414,6 +437,8 @@ export function createEngine(canvas, opts = {}) {
     const settings = f.settings || {};
     gl.uniform1f(a.u.uGuard, settings.flashGuard === false ? 0 : 1);
     gl.uniform1f(a.u.uRise, settings.calm ? 0.9 : 2.3);
+    const glowGain = scene.glow * scene.glow * 2.4;
+    gl.uniform1f(a.u.uGlowGain, glowGain);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     R.adaptCur = 1 - R.adaptCur;
 
@@ -444,7 +469,7 @@ export function createEngine(canvas, opts = {}) {
     gl.bindTexture(gl.TEXTURE_2D, R.levels[0].tex);
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, R.adaptT[R.adaptCur].tex);
-    gl.uniform1f(c.u.uGlow, scene.glow * scene.glow * 2.4 / R.levels.length);
+    gl.uniform1f(c.u.uGlow, glowGain / R.levels.length);
     gl.uniform1f(c.u.uVignette, scene.vignette);
     gl.uniform1f(c.u.uGrain, scene.grain);
     gl.uniform1f(c.u.uAberr, scene.aberration);
@@ -585,12 +610,13 @@ export function createEngine(canvas, opts = {}) {
       if (hdr) {
         out.scene = readMean(R.scene);
         out.bloom = readMean(R.levels[0]);
-        const a = new Float32Array(4);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
-        gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, a);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        out.adapt = Array.from(a);
       }
+      // the adaptation state is float bits in an integer target (see ADAPT_FS)
+      const bits = new Uint32Array(4);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA_INTEGER, gl.UNSIGNED_INT, bits);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      out.adapt = Array.from(new Float32Array(bits.buffer));
       out.error = gl.getError();
       return out;
     },

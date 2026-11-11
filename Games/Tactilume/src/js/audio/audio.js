@@ -110,7 +110,10 @@ function playElement(el, timeoutMs = 15000) {
 
 const cleanName = (name) => String(name || 'Song').replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 80) || 'Song';
 
-export function createAudio({ getSettings }) {
+// `onSourceEnded(kind)`: the microphone ('mic') or the song ('file') stopped by itself
+// (unplugged, permission taken back, a broken file), so the setting can say so too.
+export function createAudio({ getSettings, onSourceEnded = () => {} }) {
+  const ended = (kind) => { try { onSourceEnded(kind); } catch (e) { console.warn('Tactilume: onSourceEnded failed', e); } };
   let ctx = null;
   let graph = null;
   let mic = null; // { stream, source }
@@ -363,7 +366,7 @@ export function createAudio({ getSettings }) {
       graph.analyser.reset();
       mic = { stream, source };
       // unplugged, or permission taken back while listening
-      for (const t of stream.getAudioTracks()) t.addEventListener('ended', () => { if (mic && mic.stream === stream) stopMic(); });
+      for (const t of stream.getAudioTracks()) t.addEventListener('ended', () => { if (mic && mic.stream === stream) { stopMic(); ended('mic'); } });
       updateSession();
       resume();
       return { ok: true };
@@ -407,7 +410,7 @@ export function createAudio({ getSettings }) {
       }
       // 'blocked': some browsers want a tap first; the next touch starts it
       song.waiting = result === 'blocked';
-      el.addEventListener('error', () => { if (song && song.el === el) stopFile(); });
+      el.addEventListener('error', () => { if (song && song.el === el) { stopFile(); ended('file'); } });
       graph.analyser.reset();
       updateSession();
       return { ok: true };

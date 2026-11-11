@@ -44,10 +44,13 @@ export function createGovernor({ maxParticles, startParticles, minParticles = 81
   // after a couple of tries.
   const PROBES = 2, PROBE_EVERY = 5;
   let probesLeft = PROBES, sinceProbe = 0;
+  // A frame-rate cap (Settings > Frame rate) slows frames on purpose: they are judged
+  // against the cap, not the display.
+  let capHz = 0;
 
   function budgetMs() {
     const hz = cfg.targetHz || refreshHz;
-    return 1000 / hz;
+    return capHz ? Math.max(1000 / hz, 1000 / capHz) : 1000 / hz;
   }
 
   return {
@@ -67,6 +70,13 @@ export function createGovernor({ maxParticles, startParticles, minParticles = 81
 
     // Stops adjusting (tests, or while recording video so the clip stays steady).
     freeze(on) { frozen = !!on; },
+
+    // 0 for no cap, else the frames per second the loop is held to.
+    setCap(hz) {
+      const next = hz > 0 ? hz : 0;
+      if (next !== capHz) { capHz = next; settleFor = 1.0; slowFor = 0; fastFor = 0; }
+    },
+    get cap() { return capHz; },
 
     // Call once per displayed frame with the time since the previous one (ms).
     // Returns true when the targets changed.
@@ -90,9 +100,13 @@ export function createGovernor({ maxParticles, startParticles, minParticles = 81
       }
 
       const budget = budgetMs();
-      // the median of the last 20 frames ignores one-off hitches
-      const recent = intervals.slice(-20).sort((a, b) => a - b);
-      const typical = recent[recent.length >> 1];
+      // The median of the last 20 frames ignores one-off hitches. Under a cap that does not
+      // divide the display rate (60 on 90 Hz) intervals alternate, 11 and 22 ms, so the
+      // mean is what tells whether the cap is being met.
+      const last = intervals.slice(-20);
+      const typical = capHz
+        ? last.reduce((a, b) => a + b, 0) / last.length
+        : last.sort((a, b) => a - b)[last.length >> 1];
       if (typical > budget * 1.25) { slowFor += dtSeconds; fastFor = 0; }
       else if (typical < budget * 1.08) { fastFor += dtSeconds; slowFor = 0; }
       else { slowFor = 0; fastFor = 0; }

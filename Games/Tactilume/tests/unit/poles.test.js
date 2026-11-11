@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { MAX_POLES, expandPoles, fingerCount, constellation, symmetrise } from '../../src/js/core/poles.js';
+import { MAX_POLES, expandPoles, fingerCount, constellation, symmetrise, symmetryPlan } from '../../src/js/core/poles.js';
 
 const pole = (over = {}) => ({ x: 0.5, y: 0.2, vx: 0.3, vy: -0.1, power: 1, age: 0.4, held: true, id: 't1', kind: 'touch', ...over });
 const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} vs ${b}`);
@@ -78,18 +78,47 @@ describe('symmetry', () => {
 });
 
 describe('the pole cap', () => {
-  test(`never more than MAX_POLES (${MAX_POLES}), and real touches survive first`, () => {
-    const touches = Array.from({ length: 10 }, (_, i) => pole({ id: `t${i}`, x: i / 10, y: 0.3 }));
+  // the angle of a pole around the centre, in turns (0..1)
+  const turn = (q) => ((Math.atan2(q.y, q.x) / (Math.PI * 2)) % 1 + 1) % 1;
+
+  test(`never more than MAX_POLES (${MAX_POLES}); every touch kept, in order, with the same copies`, () => {
+    const touches = Array.from({ length: 10 }, (_, i) => pole({ id: `t${i}`, x: i / 10 + 0.05, y: 0.3 }));
     const out = expandPoles(touches, { symmetry: 6, mirror: true });
-    assert.equal(out.length, MAX_POLES);
-    assert.deepEqual(out.slice(0, 10).map((q) => q.id), touches.map((t) => t.id), 'all real touches, in order, at the front');
-    for (const q of out.slice(10)) assert.equal(q.kind, 'mirror');
+    assert.ok(out.length <= MAX_POLES, `${out.length} poles`);
+    const real = out.filter((q) => q.kind !== 'mirror');
+    assert.deepEqual(real.map((q) => q.id), touches.map((t) => t.id), 'all real touches, in order');
+    const copiesOf = (id) => out.filter((q) => q.kind === 'mirror' && q.id.split(':')[0] === id).length;
+    const counts = touches.map((t) => copiesOf(t.id));
+    assert.ok(counts.every((c) => c === counts[0]), `copies per touch: ${counts}`);
+  });
+
+  test('when copies must be cut, each touch keeps an evenly spaced subset (6-fold + mirror, 3 touches)', () => {
+    const touches = [0.2, 0.45, 0.7].map((x, i) => pole({ id: `t${i}`, x, y: 0.1 }));
+    const out = expandPoles(touches, { symmetry: 6, mirror: true });
+    assert.ok(out.length <= MAX_POLES);
+    // 3 touches x 6 rotations x 2 is 36, too many: 3 rotations each (every 120 degrees) x 2 fits
+    assert.equal(out.length, 18);
+    for (const t of touches) {
+      const rotations = out.filter((q) => q.id === t.id || q.id.startsWith(`${t.id}:s`));
+      assert.equal(rotations.length, 3, t.id);
+      const angles = rotations.map(turn).sort((a, b) => a - b);
+      near(angles[1] - angles[0], 1 / 3, `${t.id} spacing`);
+      near(angles[2] - angles[1], 1 / 3, `${t.id} spacing`);
+    }
+  });
+
+  test('symmetryPlan keeps the mirror while one rotation each still fits, then lets it go', () => {
+    assert.deepEqual(symmetryPlan(1, 6, true, 8), { n: 6, step: 2, mirror: true });
+    assert.deepEqual(symmetryPlan(16, 4, true, 32), { n: 4, step: 4, mirror: true });
+    assert.deepEqual(symmetryPlan(20, 4, true, 32), { n: 4, step: 4, mirror: false });
+    assert.deepEqual(symmetryPlan(2, 5, false, 8), { n: 5, step: 5, mirror: false });
   });
 
   test('virtual fingers count as real for the cap', () => {
     const out = expandPoles([pole()], { symmetry: 12, mirror: true, virtualFingers: 10 });
-    assert.equal(out.length, MAX_POLES);
-    assert.deepEqual(out.slice(0, 10).map((q) => q.kind), ['touch', ...Array(9).fill('virtual')]);
+    assert.ok(out.length <= MAX_POLES, `${out.length} poles`);
+    const own = out.filter((q) => q.kind !== 'mirror');
+    assert.deepEqual(own.map((q) => q.kind), ['touch', ...Array(9).fill('virtual')]);
   });
 
   test('ten touches with no copies are all kept', () => {
@@ -99,6 +128,21 @@ describe('the pole cap', () => {
 });
 
 describe('one-finger chords', () => {
+  test('the touch keeps its own id inside the chord (sound and smoothing follow it)', () => {
+    const out = expandPoles([pole({ id: 't7' })], { virtualFingers: 4, time: 0 });
+    assert.equal(out[0].id, 't7');
+    assert.deepEqual(out.slice(1).map((q) => q.id), ['t7:v1', 't7:v2', 't7:v3']);
+  });
+
+  test('the chord still forms while an earlier lifted touch is fading', () => {
+    const fading = pole({ id: 't1', held: false, x: 0.5 });
+    const held = pole({ id: 't2', x: -0.3 });
+    const out = expandPoles([fading, held], { virtualFingers: 5, time: 0 });
+    assert.equal(out.filter((q) => q.kind === 'virtual').length, 4, 'four extra fingers around the held touch');
+    assert.ok(out.some((q) => q.id === 't1'), 'the fading touch is still there');
+    assert.equal(fingerCount([fading, held], 5), 5);
+  });
+
   for (const n of [2, 3, 5, 10]) {
     test(`one touch played as ${n} fingers makes an even ring around it`, () => {
       const p = pole();
