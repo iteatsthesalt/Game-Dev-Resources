@@ -29,7 +29,21 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 (() => {
   // src/js/core/util.js
   var clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  function smoothstep(a, b, x) {
+    const t = clamp((x - a) / (b - a), 0, 1);
+    return t * t * (3 - 2 * t);
+  }
   var approach = (dt, tau) => tau <= 0 ? 1 : 1 - Math.exp(-dt / tau);
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function next() {
+      a = a + 1831565813 >>> 0;
+      let t = a;
+      t = Math.imul(t ^ t >>> 15, t | 1);
+      t ^= t + Math.imul(t ^ t >>> 7, t | 61);
+      return ((t ^ t >>> 14) >>> 0) / 4294967296;
+    };
+  }
   function createEmitter() {
     const map = /* @__PURE__ */ new Map();
     return {
@@ -79,22 +93,49 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
 
   // src/js/core/palettes.js
   var PALETTES = [
-    { key: "ember", name: "Ember", stops: ["#140202", "#5c0a04", "#d23a05", "#ff8a1e", "#ffd27a", "#fff6e0"] },
-    { key: "aurora", name: "Aurora", stops: ["#020b14", "#05405a", "#09a38a", "#6cf0a0", "#d8ff9a", "#f4fff0"] },
-    { key: "abyss", name: "Abyss", stops: ["#01030d", "#071a5e", "#1155d6", "#2fb5ff", "#a8f0ff", "#f0fcff"] },
-    { key: "orchid", name: "Orchid", stops: ["#0c0214", "#3d0a5c", "#9b1fc0", "#ff4fd8", "#ffb0e8", "#fff0fb"] },
-    { key: "solar", name: "Solar", stops: ["#100600", "#6a2300", "#e86a00", "#ffc21a", "#fff38a", "#fffde8"] },
-    { key: "glacier", name: "Glacier", stops: ["#020608", "#0f3442", "#3d8fa8", "#9fe0f0", "#e4fbff", "#ffffff"] },
-    { key: "koi", name: "Koi", stops: ["#050208", "#2b0d40", "#e0402a", "#ff9a3c", "#f4f0e0", "#7fd6ff"] },
+    { key: "ember", name: "Ember", stops: ["#8a1405", "#d2380a", "#ff7a1a", "#ffb347", "#ffe0a0", "#fff8ec"] },
+    { key: "aurora", name: "Aurora", stops: ["#0b4f6c", "#0a8f88", "#20d39a", "#8cf58c", "#e4ffa8", "#f6fff2"] },
+    { key: "abyss", name: "Abyss", stops: ["#1a2a9e", "#1f5ee0", "#2aa4ff", "#5fdcff", "#bff4ff", "#f2fdff"] },
+    { key: "orchid", name: "Orchid", stops: ["#5a138c", "#a41fc4", "#e83ad8", "#ff7ad0", "#ffc2ea", "#fff2fb"] },
+    { key: "solar", name: "Solar", stops: ["#a03200", "#e86400", "#ffa012", "#ffd23a", "#fff28a", "#fffdea"] },
+    { key: "glacier", name: "Glacier", stops: ["#1d5670", "#3b8eb0", "#6fc4e0", "#a8e8f6", "#e2fbff", "#ffffff"] },
+    { key: "koi", name: "Koi", stops: ["#c2281a", "#f05a2a", "#ff9a3c", "#ffd9a0", "#f4f2ea", "#8fd8ff"] },
     { key: "prism", name: "Prism", stops: ["#ff2a4a", "#ff9a1a", "#f4ff2a", "#2aff7a", "#2ad4ff", "#6a3aff", "#ff2ad8", "#ff2a4a"] },
-    { key: "moss", name: "Moss", safe: true, stops: ["#0a0418", "#30235c", "#255f86", "#1f9a8a", "#5fca5a", "#e8f028"] },
-    { key: "lantern", name: "Lantern", safe: true, stops: ["#00102e", "#1b2f6b", "#56588a", "#8f8576", "#d0b45a", "#fff0a0"] },
-    { key: "silver", name: "Silver", safe: true, stops: ["#020203", "#1a1c22", "#565c6a", "#a6adbc", "#e2e6ee", "#ffffff"] },
-    { key: "infrared", name: "Infrared", stops: ["#000000", "#2a0030", "#8a0050", "#ff2a2a", "#ffb000", "#ffffd8"] },
-    { key: "peacock", name: "Peacock", stops: ["#020a08", "#06363a", "#0a7f7a", "#2a5fd8", "#a03ae0", "#f0d8ff"] },
-    { key: "twilight", name: "Twilight", stops: ["#05030f", "#241448", "#6a2a7a", "#d0506a", "#ffa070", "#ffe8c8"] }
+    { key: "moss", name: "Moss", safe: true, stops: ["#46337e", "#355f8d", "#26828e", "#1fa187", "#6ece58", "#e8f028"] },
+    { key: "lantern", name: "Lantern", safe: true, stops: ["#1f3f8f", "#4a5f9a", "#7c7b8c", "#b09c6a", "#dcbc4c", "#fff0a0"] },
+    { key: "silver", name: "Silver", safe: true, stops: ["#4a5160", "#6e7686", "#9aa2b4", "#c4cbd8", "#e6eaf2", "#ffffff"] },
+    { key: "infrared", name: "Infrared", stops: ["#5a0a7a", "#a0105a", "#ff2a2a", "#ff7a00", "#ffc400", "#ffffd8"] },
+    { key: "peacock", name: "Peacock", stops: ["#0a6a62", "#0e9a8c", "#2a72e0", "#6a4ae8", "#b45ae8", "#f0dcff"] },
+    { key: "twilight", name: "Twilight", stops: ["#3c2478", "#7a2f8a", "#c84a78", "#ff7a6a", "#ffb488", "#ffeedc"] }
   ];
   var PALETTE_KEYS = PALETTES.map((p) => p.key);
+  var paletteIndex = (key) => Math.max(0, PALETTE_KEYS.indexOf(key));
+  function hexToRgb(hex) {
+    const n = parseInt(hex.slice(1), 16);
+    return [n >> 16 & 255, n >> 8 & 255, n & 255];
+  }
+  function samplePalette(palette, t) {
+    const stops = palette.stops.map(hexToRgb);
+    const x = Math.min(Math.max(t, 0), 1) * (stops.length - 1);
+    const i = Math.min(Math.floor(x), stops.length - 2);
+    const f = x - i;
+    return stops[i].map((c, k) => Math.round(c + (stops[i + 1][k] - c) * f));
+  }
+  function bakeLUT(width = 256) {
+    const height = PALETTES.length;
+    const data = new Uint8Array(width * height * 4);
+    PALETTES.forEach((p, row) => {
+      for (let x = 0; x < width; x++) {
+        const [r, g, b] = samplePalette(p, x / (width - 1));
+        const o = (row * width + x) * 4;
+        data[o] = r;
+        data[o + 1] = g;
+        data[o + 2] = b;
+        data[o + 3] = 255;
+      }
+    });
+    return { data, width, height };
+  }
 
   // src/js/core/scene.js
   var FORMS = ["nebula", "disc", "shell", "ring", "lattice", "none"];
@@ -308,7 +349,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
       key: "prism-rain",
       name: "Prism Rain",
       blurb: "Fountains of every colour fall under their own weight.",
-      scene: { palette: "prism", colorBy: "seed", form: "none", lock: "fountain", gravity: 0.55, trails: 0.5, glow: 0.7, sparkle: 0.7, depth: 0.5 }
+      scene: { palette: "prism", colorBy: "speed", form: "none", lock: "fountain", gravity: 0.3, trails: 0.3, glow: 0.65, sparkle: 0.7, depth: 0.5, size: 0.9 }
     },
     {
       key: "night-garden",
@@ -641,6 +682,17 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
       }
     };
   }
+  function guessTier({ renderer = "", maxTextureSize = 4096, deviceMemory = 4, cores = 4, touch = false, screenPixels = 2e6 }) {
+    const r = renderer.toLowerCase();
+    const discrete = /nvidia|geforce|rtx|radeon rx|radeon pro|arc a|apple m\d (pro|max|ultra)/.test(r);
+    const software = /swiftshader|llvmpipe|software|basic render/.test(r);
+    if (software) return "low";
+    if (!touch && (discrete || deviceMemory >= 8 && cores >= 8)) return "ultra";
+    if (/adreno \(tm\) (7[3-9]\d|8\d\d)|adreno.*8\d\d|mali-g7[1-9]\d|mali-g9\d\d|immortalis|xclipse|apple gpu|apple m/.test(r)) return "high";
+    if (maxTextureSize >= 16384 && deviceMemory >= 6) return "high";
+    if (deviceMemory <= 2 || cores <= 4 || /adreno \(tm\) [1-5]\d\d|mali-[4t]|powervr/.test(r)) return "low";
+    return screenPixels > 35e5 && touch ? "mid" : "mid";
+  }
   var TIERS = {
     low: { max: 1 << 17, start: 1 << 16 },
     // 131k / 65k
@@ -688,207 +740,3895 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     });
   }
 
+  // src/js/gfx/gl.js
+  function preprocess(src, chunks) {
+    return src.replace(/^#include (\w+)\s*$/gm, (_, name) => {
+      if (!(name in chunks)) throw new Error(`unknown shader include "${name}"`);
+      return chunks[name];
+    });
+  }
+  function compile(gl, type, src, name) {
+    const sh = gl.createShader(type);
+    gl.shaderSource(sh, src);
+    gl.compileShader(sh);
+    if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS) && !gl.isContextLost()) {
+      const log = gl.getShaderInfoLog(sh) || "";
+      const lines = src.split("\n");
+      const near = [...log.matchAll(/ERROR: \d+:(\d+)/g)].slice(0, 3).map((m) => {
+        const n = +m[1];
+        return lines.slice(Math.max(0, n - 3), n + 1).map((l, i) => `${n - 2 + i}: ${l}`).join("\n");
+      }).join("\n---\n");
+      gl.deleteShader(sh);
+      throw new Error(`${name} (${type === gl.VERTEX_SHADER ? "vertex" : "fragment"}) failed to compile:
+${log}
+${near}`);
+    }
+    return sh;
+  }
+  function createProgram(gl, vsSrc, fsSrc, { name = "program", varyings = null } = {}) {
+    const vs = compile(gl, gl.VERTEX_SHADER, vsSrc, name);
+    const fs = compile(gl, gl.FRAGMENT_SHADER, fsSrc, name);
+    const prog = gl.createProgram();
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    if (varyings) gl.transformFeedbackVaryings(prog, varyings, gl.INTERLEAVED_ATTRIBS);
+    gl.linkProgram(prog);
+    gl.deleteShader(vs);
+    gl.deleteShader(fs);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS) && !gl.isContextLost()) {
+      const log = gl.getProgramInfoLog(prog);
+      gl.deleteProgram(prog);
+      throw new Error(`${name} failed to link: ${log}`);
+    }
+    const u = {};
+    const n = gl.getProgramParameter(prog, gl.ACTIVE_UNIFORMS) || 0;
+    for (let i = 0; i < n; i++) {
+      const info = gl.getActiveUniform(prog, i);
+      const key = info.name.replace(/\[0\]$/, "");
+      u[key] = gl.getUniformLocation(prog, info.name);
+    }
+    return { prog, u };
+  }
+  function createTarget(gl, w, h, fmt, filter = gl.LINEAR) {
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, fmt.internal, w, h, 0, fmt.format, fmt.type, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    return { tex, fbo, w, h, ok };
+  }
+  function destroyTarget(gl, t) {
+    if (!t) return;
+    gl.deleteFramebuffer(t.fbo);
+    gl.deleteTexture(t.tex);
+  }
+  function canRender(gl, fmt) {
+    const t = createTarget(gl, 4, 4, fmt);
+    destroyTarget(gl, t);
+    return t.ok;
+  }
+
+  // src/js/gfx/camera.js
+  var DIST = 3;
+  var TAN_HALF = 1 / DIST;
+  var NEAR = 0.08;
+  var FAR = 24;
+  var sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  var cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  var dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  var norm = (a) => {
+    const l = Math.hypot(a[0], a[1], a[2]) || 1;
+    return [a[0] / l, a[1] / l, a[2] / l];
+  };
+  function createCamera() {
+    const viewProj = new Float32Array(16);
+    const cam = {
+      eye: [0, 0, DIST],
+      right: [1, 0, 0],
+      up: [0, 1, 0],
+      fwd: [0, 0, -1],
+      aspect: 1,
+      dist: DIST,
+      viewProj,
+      // `orbit` 0..1 from the scene; `t` a clock in seconds
+      update(aspect, orbit, t) {
+        cam.aspect = aspect;
+        const yaw = orbit * (0.24 * Math.sin(t * 0.047) + 0.09 * Math.sin(t * 0.113 + 2.1));
+        const pitch = orbit * (0.13 * Math.sin(t * 0.031 + 1) + 0.04 * Math.sin(t * 0.09));
+        const d = DIST * (1 + 0.035 * orbit * Math.sin(t * 0.071));
+        cam.dist = d;
+        cam.eye = [d * Math.sin(yaw) * Math.cos(pitch), d * Math.sin(pitch), d * Math.cos(yaw) * Math.cos(pitch)];
+        cam.fwd = norm(sub([0, 0, 0], cam.eye));
+        cam.right = norm(cross(cam.fwd, [0, 1, 0]));
+        cam.up = cross(cam.right, cam.fwd);
+        const th = 1 / d;
+        const f = 1 / th;
+        const r = cam.right, u = cam.up, b = [-cam.fwd[0], -cam.fwd[1], -cam.fwd[2]];
+        const e = cam.eye;
+        const view = [
+          r[0],
+          u[0],
+          b[0],
+          0,
+          r[1],
+          u[1],
+          b[1],
+          0,
+          r[2],
+          u[2],
+          b[2],
+          0,
+          -dot(r, e),
+          -dot(u, e),
+          -dot(b, e),
+          1
+        ];
+        const nf = 1 / (NEAR - FAR);
+        const proj = [
+          f / aspect,
+          0,
+          0,
+          0,
+          0,
+          f,
+          0,
+          0,
+          0,
+          0,
+          (FAR + NEAR) * nf,
+          -1,
+          0,
+          0,
+          2 * FAR * NEAR * nf,
+          0
+        ];
+        for (let c = 0; c < 4; c++) {
+          for (let rr = 0; rr < 4; rr++) {
+            let s = 0;
+            for (let k = 0; k < 4; k++) s += proj[k * 4 + rr] * view[c * 4 + k];
+            viewProj[c * 4 + rr] = s;
+          }
+        }
+        cam.tanHalf = th;
+      },
+      // normalised device coordinates (-1..1, y up) -> the point on the plane z = 0
+      ndcToPlane(nx, ny) {
+        const th = cam.tanHalf || TAN_HALF;
+        const dir = norm([
+          cam.fwd[0] + nx * th * cam.aspect * cam.right[0] + ny * th * cam.up[0],
+          cam.fwd[1] + nx * th * cam.aspect * cam.right[1] + ny * th * cam.up[1],
+          cam.fwd[2] + nx * th * cam.aspect * cam.right[2] + ny * th * cam.up[2]
+        ]);
+        if (Math.abs(dir[2]) < 1e-4) return { x: nx * cam.aspect, y: ny };
+        const t = -cam.eye[2] / dir[2];
+        return { x: cam.eye[0] + dir[0] * t, y: cam.eye[1] + dir[1] * t };
+      },
+      planeToNdc(x, y) {
+        const m = viewProj;
+        const cx = m[0] * x + m[4] * y + m[12];
+        const cy = m[1] * x + m[5] * y + m[13];
+        const cw = m[3] * x + m[7] * y + m[15];
+        return { nx: cx / cw, ny: cy / cw };
+      }
+    };
+    cam.update(1, 0, 0);
+    return cam;
+  }
+
+  // src/js/gfx/shaders/post.glsl.js
+  var QUAD_VS = `#version 300 es
+precision highp float;
+out vec2 vUv;
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  vUv = p;
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+  var NOTHING_FS = `#version 300 es
+precision mediump float;
+out vec4 o;
+void main() { o = vec4(0.0); }`;
+  var FADE_FS = `#version 300 es
+precision mediump float;
+uniform float uKeep;
+out vec4 o;
+void main() { o = vec4(uKeep, uKeep, uKeep, 1.0); }`;
+  var DOWN_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+uniform int uFirst;
+out vec4 o;
+vec3 tap(vec2 off) {
+  vec3 c = texture(uSrc, vUv + uTexel * off).rgb;
+  if (uFirst == 1) {
+    c = clamp(c, 0.0, 30000.0);
+    if (any(isnan(c))) c = vec3(0.0);
+  }
+  return c;
+}
+float kw(vec3 c) { return 1.0 / (1.0 + dot(c, vec3(0.2126, 0.7152, 0.0722))); }
+void main() {
+  vec3 a = tap(vec2(-2.0, 2.0)), b = tap(vec2(0.0, 2.0)), c = tap(vec2(2.0, 2.0));
+  vec3 d = tap(vec2(-2.0, 0.0)), e = tap(vec2(0.0)), f = tap(vec2(2.0, 0.0));
+  vec3 g = tap(vec2(-2.0, -2.0)), h = tap(vec2(0.0, -2.0)), i = tap(vec2(2.0, -2.0));
+  vec3 j = tap(vec2(-1.0, 1.0)), k = tap(vec2(1.0, 1.0)), l = tap(vec2(-1.0, -1.0)), m = tap(vec2(1.0, -1.0));
+  vec3 r;
+  if (uFirst == 1) {
+    vec3 g0 = (j + k + l + m) * 0.25, g1 = (a + b + d + e) * 0.25, g2 = (b + c + e + f) * 0.25;
+    vec3 g3 = (d + e + g + h) * 0.25, g4 = (e + f + h + i) * 0.25;
+    float w0 = kw(g0) * 0.5, w1 = kw(g1) * 0.125, w2 = kw(g2) * 0.125, w3 = kw(g3) * 0.125, w4 = kw(g4) * 0.125;
+    r = (g0 * w0 + g1 * w1 + g2 * w2 + g3 * w3 + g4 * w4) / (w0 + w1 + w2 + w3 + w4);
+  } else {
+    r = e * 0.125 + (a + c + g + i) * 0.03125 + (b + d + f + h) * 0.0625 + (j + k + l + m) * 0.125;
+  }
+  o = vec4(r, 1.0);
+}`;
+  var UP_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uSrc;
+uniform vec2 uTexel;
+uniform float uRadius;
+uniform float uWeight;
+out vec4 o;
+vec3 tap(vec2 off) { return texture(uSrc, vUv + uTexel * off * uRadius).rgb; }
+void main() {
+  vec3 r = tap(vec2(0.0)) * 4.0
+    + (tap(vec2(-1.0, 0.0)) + tap(vec2(1.0, 0.0)) + tap(vec2(0.0, -1.0)) + tap(vec2(0.0, 1.0))) * 2.0
+    + tap(vec2(-1.0, -1.0)) + tap(vec2(1.0, -1.0)) + tap(vec2(-1.0, 1.0)) + tap(vec2(1.0, 1.0));
+  o = vec4(r * (uWeight / 16.0), 1.0);
+}`;
+  var ADAPT_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uLum;     // the smallest bloom level: a blurred thumbnail of the frame
+uniform sampler2D uPrev;
+uniform float uDt;
+uniform float uBase;        // the scene's exposure, as a multiplier
+uniform float uAuto;        // 0..1, how strongly to adapt
+uniform float uGuard;       // 1: limit how fast the screen may brighten
+uniform float uRise;        // allowed rise in e-folds per second
+out vec4 o;
+void main() {
+  float sum = 0.0;
+  for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
+    vec3 c = texture(uLum, (vec2(float(x), float(y)) + 0.5) / 4.0).rgb;
+    sum += dot(clamp(c, 0.0, 30000.0), vec3(0.2126, 0.7152, 0.0722));
+  }
+  float L = max(sum / 16.0, 0.0);
+  vec4 prev = texelFetch(uPrev, ivec2(0), 0);
+  bool first = prev.a < 0.5;
+  float La = first ? L : prev.r + (L - prev.r) * (1.0 - exp(-uDt / (L > prev.r ? 0.45 : 1.3)));
+  float e = clamp(pow(0.06 / max(La, 0.0005), uAuto), 0.35, 3.5) * uBase;
+  float D = L * e;
+  float Dg = first ? D : prev.g;
+  float allowed = Dg * exp(uRise * uDt) + 0.02 * uDt;
+  float shown = uGuard > 0.5 ? min(D, allowed) : D;
+  float k = D > 1e-6 ? shown / D : 1.0;
+  o = vec4(La, shown, e * k, 1.0);
+}`;
+  var COMPOSITE_FS = `#version 300 es
+precision highp float;
+in vec2 vUv;
+uniform sampler2D uScene;
+uniform sampler2D uBloom;
+uniform sampler2D uAdapt;
+uniform float uGlow;
+uniform float uVignette;
+uniform float uGrain;
+uniform float uAberr;
+uniform float uSat;
+uniform float uTime;
+uniform vec2 uRes;
+out vec4 o;
+
+// AgX (Troy Sobotka), in Benjamin Wrensch's compact form: hot light rolls off to white
+// gracefully instead of clipping into flat primaries.
+const mat3 AGX_IN = mat3(0.842479062253094, 0.0423282422610123, 0.0423756549057051,
+                         0.0784335999999992, 0.878468636469772, 0.0784336,
+                         0.0792237451477643, 0.0791661274605434, 0.879142973793104);
+const mat3 AGX_OUT = mat3(1.19687900512017, -0.0528968517574562, -0.0529716355144438,
+                          -0.0980208811401368, 1.15190312990417, -0.0980434501171241,
+                          -0.0990297440797205, -0.0989611768448433, 1.15107367264116);
+vec3 agxCurve(vec3 x) {
+  vec3 x2 = x * x, x4 = x2 * x2;
+  return 15.5 * x4 * x2 - 40.14 * x4 * x + 31.96 * x4 - 6.868 * x2 * x + 0.4298 * x2 + 0.1191 * x - 0.00232;
+}
+vec3 agx(vec3 c) {
+  const float lo = -12.47393, hi = 4.026069;
+  c = AGX_IN * max(c, 1e-10);
+  c = clamp(log2(c), lo, hi);
+  c = (c - lo) / (hi - lo);
+  c = agxCurve(c);
+  // a punchier look than AgX's default, for light on black
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = l + (c - l) * uSat;
+  return clamp(AGX_OUT * c, 0.0, 1.0);
+}
+
+float hash12(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+void main() {
+  vec2 uv = vUv;
+  vec2 cc = uv - 0.5;
+  vec3 col;
+  vec3 bl;
+  if (uAberr > 0.001) {
+    // the lens bends red and blue a touch differently, more toward the edges
+    vec2 off = cc * uAberr * 0.012;
+    col = vec3(texture(uScene, uv - off).r, texture(uScene, uv).g, texture(uScene, uv + off).b);
+    bl = vec3(texture(uBloom, uv - off * 2.0).r, texture(uBloom, uv).g, texture(uBloom, uv + off * 2.0).b);
+  } else {
+    col = texture(uScene, uv).rgb;
+    bl = texture(uBloom, uv).rgb;
+  }
+  col = clamp(col, 0.0, 30000.0) + bl * uGlow;
+  if (any(isnan(col))) col = vec3(0.0);
+
+  col *= texelFetch(uAdapt, ivec2(0), 0).b;
+  col = agx(col);
+
+  float aspect = uRes.x / uRes.y;
+  float r = length(cc * vec2(aspect, 1.0)) / length(vec2(aspect, 1.0) * 0.5);
+  col *= mix(1.0, 1.0 - 0.75 * smoothstep(0.35, 1.15, r), uVignette);
+
+  // film grain, strongest in the mid-tones, and a dither that hides banding in the dark
+  float n = hash12(gl_FragCoord.xy + fract(uTime * 13.7) * 341.0) - 0.5;
+  float l = dot(col, vec3(0.2126, 0.7152, 0.0722));
+  col += n * uGrain * 0.09 * (l * (1.0 - l) * 3.0 + 0.05);
+  col += (hash12(gl_FragCoord.yx * 1.37 + uTime) - hash12(gl_FragCoord.xy * 0.93 - uTime)) / 255.0;
+  o = vec4(clamp(col, 0.0, 1.0), 1.0);
+}`;
+
+  // src/js/gfx/shaders/common.glsl
+  var common_default = "// ---- shared by the simulation and the point renderer --------------------------\n\nconst float TAU = 6.28318530718;\n\n// PCG3D (Jarzynski & Olano 2020): good, fast integer hashing on any GPU.\nuvec3 pcg3d(uvec3 v) {\n  v = v * 1664525u + 1013904223u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  v ^= v >> 16u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  return v;\n}\n\n// Four fixed random numbers in 0..1 for particle `i`, the same every frame.\nvec4 seeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x9e3779b9u, 0x85ebca6bu));\n  uvec3 b = pcg3d(uvec3(a.x ^ i, 0xc2b2ae35u, 0x27d4eb2fu));\n  return vec4(vec3(a), float(b.x)) * (1.0 / 4294967295.0);\n}\n\n// Three more fixed numbers per particle, roughly bell-shaped around 0 (-1.5..1.5),\n// independent of seeds(): for offsets that should look organic, not gridded.\nvec3 bellSeeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x165667b1u, 0xd3a2646cu));\n  uvec3 b = pcg3d(a ^ uvec3(0xfd7046c5u, 0xb55a4f09u, i));\n  vec3 u = vec3(a) * (1.0 / 4294967295.0);\n  vec3 v = vec3(b) * (1.0 / 4294967295.0);\n  vec3 w = vec3(pcg3d(b + i)) * (1.0 / 4294967295.0);\n  return u + v + w - 1.5;\n}\n\n// Three random numbers in 0..1 that change with `salt` (for example the frame number).\nvec3 rand3(uint i, uint salt) {\n  return vec3(pcg3d(uvec3(i, salt, i ^ (salt * 747796405u)))) * (1.0 / 4294967295.0);\n}\n\n// Arnold-Beltrami-Childress flow in two octaves: divergence-free (so the light\n// never bunches up or thins out on its own), smooth and endlessly varied.\n// The second octave is evaluated in rotated coordinates and rotated back, which\n// keeps it divergence-free because the rotation is orthonormal.\nconst mat3 ROT = mat3(0.8, 0.6, 0.0, -0.48, 0.64, 0.6, 0.36, -0.48, 0.8);\nvec3 abcFlow(vec3 p, float t) {\n  vec3 q = p * 2.1 + vec3(0.31 * t, -0.23 * t, 0.17 * t);\n  vec3 u = vec3(sin(q.z) + cos(q.y), sin(q.x) + cos(q.z), sin(q.y) + cos(q.x));\n  vec3 r = ROT * p * 4.3 + vec3(-0.13 * t, 0.29 * t, 0.11 * t);\n  vec3 w = vec3(sin(r.z) + cos(r.y), sin(r.x) + cos(r.z), sin(r.y) + cos(r.x));\n  return u * 0.62 + (transpose(ROT) * w) * 0.3;\n}\n";
+
+  // src/js/gfx/shaders/sim.vert.glsl
+  var sim_vert_default = "#version 300 es\n// One step of the particle simulation. Runs once per particle with rasterisation\n// off; transform feedback writes vPos/vVel into the other buffer.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz position, w heat (how lit-up it is)\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life (fountain only)\n\nout vec4 vPos;\nout vec4 vVel;\n\n#include common\n\n#define MAX_POLES 32\nuniform vec4 uPole[MAX_POLES];    // x, y, weight (power with fade), age\nuniform vec4 uPoleV[MAX_POLES];   // vx, vy, raw power, spin sign\nuniform int uPoleCount;\nuniform vec4 uPulse[8];           // x, y, power, age   (age >= 9 means unused)\nuniform vec4 uRelease[4];         // x, y, charge, age  (charge 0 means unused)\nuniform int uBehA;\nuniform int uBehB;\nuniform float uMix;               // 0 = all A, 1 = all B\nuniform float uDt;\nuniform float uTime;\nuniform uint uFrame;\nuniform float uStrength;\nuniform float uDrag;\nuniform float uFlow;\nuniform float uDepth;\nuniform float uTouch;             // 0..1, how much anyone is touching right now\nuniform float uEngage;            // like uTouch but lets go slowly\nuniform int uForm;\nuniform vec3 uGravity;            // acceleration, already scaled\nuniform float uAspect;\nuniform vec4 uAudio;              // level, bass, mid, high\nuniform float uOnset;\nuniform int uInit;                // 1: place every particle in the resting shape\n\n// Behaviour ids, as in core/behaviours.js\n#define B_WELL 0\n#define B_WHIRL 1\n#define B_BURST 2\n#define B_HALO 3\n#define B_CURRENT 4\n#define B_WEAVE 5\n#define B_CHIME 6\n#define B_STORM 7\n#define B_LATTICE 8\n#define B_NOVA 9\n#define B_MURMUR 10\n#define B_FOUNTAIN 11\n\n// Forms, as in core/scene.js FORMS\n#define F_NEBULA 0\n#define F_DISC 1\n#define F_SHELL 2\n#define F_RING 3\n#define F_LATTICE 4\n#define F_NONE 5\n\nvec3 poleAt(int i) { return vec3(uPole[i].xy, 0.0); }\n\n// A point on the lattice: glowing grid lines. Each particle sits on one line.\nvec3 latticeHome(vec4 s) {\n  float sp = 0.25;\n  float ax = uAspect * 1.05;\n  float dz = 0.15 + uDepth * 0.75;\n  int fam = int(s.w * (uDepth > 0.15 ? 3.0 : 2.0));\n  float nx = floor(ax / sp), ny = floor(1.05 / sp), nz = max(1.0, floor(dz / sp));\n  float gx = (floor(s.y * (2.0 * nx + 1.0)) - nx) * sp;\n  float gy = (floor(s.z * (2.0 * ny + 1.0)) - ny) * sp;\n  float gz = (floor(s.z * (2.0 * nz + 1.0)) - nz) * sp;\n  float gz2 = (floor(s.y * (2.0 * nz + 1.0)) - nz) * sp;\n  float u = s.x * 2.0 - 1.0;\n  if (fam == 0) return vec3(u * ax, gy, gz2 * uDepth);\n  if (fam == 1) return vec3(gx, u * 1.05, gz * uDepth);\n  return vec3(gx, gy, u * dz);\n}\n\n// Where a particle rests in each shape. The shapes turn slowly, so the targets move.\nvec3 formTarget(int form, vec4 s, float t) {\n  float R = min(uAspect, 1.0) * 0.86;\n  if (form == F_DISC) {\n    float r = 0.06 + 0.94 * sqrt(s.x);\n    float a = s.y * TAU + t * 0.32 / (0.22 + r);\n    // two soft spiral arms\n    r *= 1.0 + 0.07 * sin(2.0 * a - 7.0 * r);\n    float z = (s.z - 0.5) * 0.16 * uDepth * (1.0 - 0.7 * r);\n    // a little wider than tall on wide screens, so the disc fills them\n    return vec3(cos(a) * r * R * clamp(uAspect, 1.0, 1.35), sin(a) * r * R, z);\n  }\n  if (form == F_SHELL) {\n    float z = s.x * 2.0 - 1.0;\n    float a = s.y * TAU + t * 0.12;\n    float rr = sqrt(1.0 - z * z);\n    vec3 p = vec3(cos(a) * rr, z, sin(a) * rr) * R * 0.92;\n    p.z *= uDepth;\n    return p + (s.zwx - 0.5) * 0.02;\n  }\n  if (form == F_RING) {\n    float a = s.x * TAU + t * 0.18;\n    float b = s.y * TAU;\n    float minor = 0.05 + 0.04 * s.z;\n    vec3 p = vec3(cos(a) * (R + minor * cos(b)), sin(a) * (R + minor * cos(b)), minor * sin(b));\n    float tilt = uDepth * 1.05;\n    float c = cos(tilt), sn = sin(tilt);\n    p = vec3(p.x, p.y * c - p.z * sn, p.y * sn + p.z * c);\n    return p;\n  }\n  if (form == F_LATTICE) return latticeHome(s);\n  // nebula and none: a soft cloud\n  float r1 = sqrt(-2.0 * log(max(s.x, 1e-6)));\n  vec3 g = vec3(r1 * cos(TAU * s.y), r1 * sin(TAU * s.y), (s.z - 0.5) * 2.4);\n  return g * vec3(uAspect * 0.34, 0.34, 0.32 * uDepth);\n}\n\n// ---------------------------------------------------------------------------------\n// The behaviours. Each returns an acceleration and adds to `heat` (how bright it gets).\n\nvec3 bWell(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.0025;\n    float r = sqrt(r2);\n    acc += d / r * min(w * 0.6 / r2, 45.0);\n    // a sideways pull, so the light settles into discs instead of falling straight through\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);\n    // a soft core keeps the centre from collapsing to a single point\n    acc -= d / r * w * 26.0 * exp(-r2 * 700.0);\n    heat += w * 0.9 * exp(-r2 * 34.0);\n  }\n  return acc;\n}\n\nvec3 bWhirl(vec3 p, vec3 v, inout float heat) {\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d.xy, d.xy) + 0.004;\n    float r = sqrt(r2);\n    // a solid core that turns into a 1/r swirl outside: neighbouring touches turn opposite ways\n    float sign = (i % 2 == 0) ? 1.0 : -1.0;\n    vec3 t = vec3(-d.y, d.x, 0.0) / r * (w * 1.7 * r / (r2 + 0.045)) * sign;\n    t += d * w * 0.4 / (r + 0.35);\n    t.z += sin(r * 13.0 - uTime * 2.2 + float(i)) * 0.22 * w * uDepth;\n    float f = exp(-r * 1.1);\n    field += t * f;\n    wsum += f * w;\n    heat += w * 0.9 * exp(-r2 * 10.0);\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6;\n}\n\nvec3 bBurst(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d) + 0.003;\n    float r = sqrt(r2);\n    vec3 n = d / r;\n    // a short-range push keeps a clear space around the touch\n    acc += n * w * 0.3 / (r2 + 0.04) * exp(-r * 1.5);\n    // rings go out every 0.9 s while held, the first one at touch-down\n    float ph = mod(uPole[i].w, 0.9);\n    float R = ph * 1.5;\n    float band = exp(-pow((length(d.xy) - R) / 0.04, 2.0)) * (1.0 - ph / 0.9);\n    acc += n * band * w * 14.0;\n    heat += band * w * 3.0;\n    // and the light drifts back in between rings\n    acc -= n * w * 0.35 * smoothstep(0.25, 1.2, r);\n  }\n  return acc;\n}\n\nvec3 bHalo(vec3 p, vec3 v, vec4 s, inout float heat) {\n  // Each particle belongs to one touch's halo. (Pulling toward every ring at once\n  // would trap the light at the balance point between two touches.)\n  int i = min(int(s.y * float(uPoleCount)), uPoleCount - 1);\n  float w = uPole[i].z;\n  vec3 d = p - poleAt(i);\n  float r = length(d) + 1e-4;\n  vec3 n = d / r;\n  // rings within the ring: each particle keeps to its own shell\n  float R0 = (0.15 + 0.06 * uPoleV[i].z) * (0.8 + 0.4 * s.z) + 0.025 * sin(uPole[i].w * 2.3 + float(i));\n  vec3 acc = -n * (r - R0) * 14.0 * w;\n  acc += vec3(-n.y, n.x, 0.0) * (0.9 + 0.8 * s.x) * w * uPoleV[i].w;\n  acc -= v * 1.5 * w;\n  heat += w * (0.25 + exp(-abs(r - R0) * 24.0) * 1.1);\n  return acc;\n}\n\n// closest point on segment a-b to p, and the segment direction\nvec3 closestOnSegment(vec3 p, vec3 a, vec3 b, out vec3 dir, out float t) {\n  vec3 ab = b - a;\n  float L2 = max(dot(ab, ab), 1e-6);\n  t = clamp(dot(p - a, ab) / L2, 0.0, 1.0);\n  dir = ab * inversesqrt(L2);\n  return a + ab * t;\n}\n\nvec3 bCurrent(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.8) return vec3(0.0);   // some light stays loose, as atmosphere\n  // each particle swims in its own lane, so the river has width and grain\n  vec3 lane3 = bellSeeds(uint(gl_VertexID)) * 0.045;\n  if (n == 1) {\n    // one touch: a circular river around it\n    float w = uPole[0].z;\n    vec3 d = p - poleAt(0);\n    float r = length(d.xy) + 1e-3;\n    vec3 tang = vec3(-d.y, d.x, 0.0) / r;\n    vec3 target = tang * 1.3 - d / r * (r - 0.32) * 3.0;\n    target.z = -p.z * 1.5;\n    float f = w * exp(-abs(r - 0.32) * 3.0);\n    heat += f * 0.8;\n    return (target - v) * 2.4 * f;\n  }\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  vec3 pull = vec3(0.0);\n  for (int i = 0; i < n; i++) {\n    int j = (i + 1) % n;\n    vec3 a = poleAt(i), b = poleAt(j);\n    // with two touches the river runs out on one side and back on the other\n    if (n == 2) {\n      vec3 ab = b - a;\n      vec3 side = normalize(vec3(-ab.y, ab.x, 0.0) + 1e-5) * 0.08;\n      a += side; b += side;\n    }\n    vec3 dir; float t;\n    vec3 c = closestOnSegment(p, a, b, dir, t);\n    vec3 side = vec3(-dir.y, dir.x, 0.0);\n    c += side * lane3.x + vec3(0.0, 0.0, lane3.y * uDepth);\n    vec3 dd = p - c;\n    float dist2 = dot(dd, dd);\n    float w = min(uPole[i].z, uPole[j].z);\n    float f = exp(-dist2 / 0.03) * w;\n    // faster in the middle of the stream than at its banks\n    field += dir * (1.1 + 0.7 * exp(-lane3.x * lane3.x * 600.0)) * f;\n    wsum += f;\n    pull += -dd / (sqrt(dist2) + 0.05) * 0.7 * exp(-dist2 / 0.2) * w;\n    heat += f * 0.8;\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6 + pull;\n}\n\nvec3 bWeave(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.72) return vec3(0.0);   // some light stays loose, as atmosphere\n  if (n == 1) {\n    float w = uPole[0].z;\n    float a = s.x * TAU + uTime * 0.6;\n    vec3 target = poleAt(0) + vec3(cos(a), sin(a), sin(a * 2.0 + s.y * TAU) * 0.3 * uDepth) * (0.22 + 0.02 * sin(a * 5.0 + uTime * 3.0));\n    heat += w * 0.4;\n    return ((target - p) * 16.0 - v * 3.0) * w;\n  }\n  // threads: each touch to the next, and (from 4 touches) to the one after that too\n  int segs = n == 2 ? 1 : (n == 3 ? 3 : 2 * n);\n  int k = min(int(s.x * float(segs)), segs - 1);\n  int i = k < n ? k : k - n;\n  int j = k < n ? (i + 1) % n : (i + 2) % n;\n  vec3 a = poleAt(i), b = poleAt(j);\n  vec3 ab = b - a;\n  float L = length(ab) + 1e-4;\n  vec3 side = vec3(-ab.y, ab.x, 0.0) / L;\n  float tp = fract(s.y + uTime * 0.04 * (s.z - 0.5));\n  // the thread vibrates like a plucked string, in its own harmonic\n  float harmonic = float(1 + k % 3);\n  float vib = sin(3.14159 * tp * harmonic) * sin(uTime * (3.0 + harmonic * 1.7) + float(k)) * 0.05 * min(L, 1.0);\n  vec2 jit = (s.zw - 0.5) * 0.022;\n  vec3 target = a + ab * tp + side * (jit.x + vib) + vec3(0.0, 0.0, jit.y + vib * 0.8 * uDepth);\n  float w = min(uPole[i].z, uPole[j].z);\n  heat += w * 0.55;\n  return ((target - p) * 20.0 - v * 3.2) * w;\n}\n\nvec3 bChime(vec3 p, vec3 v, uint id, inout float heat) {\n  // the touches ring like bells; light gathers on the still lines between the waves\n  float F = 0.0;\n  vec3 G = vec3(0.0);\n  float k = 15.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r = length(d.xy) + 1e-4;\n    float ph = k * r - 3.2 * uPole[i].w;\n    float fall = exp(-r * 0.9);\n    F += w * sin(ph) * fall;\n    G += w * (k * cos(ph) - 0.9 * sin(ph)) * fall * vec3(d.xy / r, 0.0);\n  }\n  vec3 acc = -F * G * 0.1;\n  acc.z -= p.z * 5.0 * (1.0 - 0.6 * uDepth);\n  // shaken off the moving parts of the plate, like sand\n  vec3 shake = rand3(id, uFrame) - 0.5;\n  acc += shake * abs(F) * 3.5;\n  heat += abs(F) * 0.25 + 0.15 * float(uPoleCount > 0);\n  return acc - v * 1.2;\n}\n\nvec3 bStorm(vec3 p, vec3 v, inout float heat) {\n  float near = 0.0;\n  vec3 gust = vec3(0.0);\n  vec3 swirl = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d.xy, d.xy);\n    float e = exp(-r2 / 0.22);\n    near += w * e;\n    // a flick throws the air along with it\n    gust += vec3(uPoleV[i].xy, 0.0) * w * exp(-r2 / 0.05) * 3.2;\n    swirl += vec3(-d.y, d.x, 0.0) * w * e * 1.8;\n  }\n  vec3 field = abcFlow(p * 1.35, uTime * 1.6) * (0.35 + near * 2.4) + swirl;\n  field.z *= uDepth;\n  heat += near * 0.6 + length(gust) * 0.15;\n  return (field - v) * 1.9 + gust;\n}\n\nvec3 bLattice(vec3 p, vec3 v, vec4 s, inout float heat) {\n  vec3 h = latticeHome(s);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 q = poleAt(i);\n    vec2 dh = h.xy - q.xy;\n    float r2 = dot(dh, dh) + 1e-5;\n    // each touch is a lens: the lattice bulges and twists around it\n    float bulge = w * 0.2 * exp(-r2 / 0.07);\n    h.xy += dh * inversesqrt(r2) * bulge;\n    float tw = w * 1.1 * exp(-r2 / 0.05) * uPoleV[i].w;\n    float c = cos(tw), sn = sin(tw);\n    vec2 rel = h.xy - q.xy;\n    h.xy = q.xy + vec2(rel.x * c - rel.y * sn, rel.x * sn + rel.y * c);\n    h.z += bulge * 0.8 * uDepth;\n    heat += bulge * 5.0;\n  }\n  heat += 0.1;\n  return ((h - p) * 11.0 - v * 2.6) * uEngage;\n}\n\nvec3 bNova(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.002;\n    float r = sqrt(r2);\n    float charge = min(uPole[i].w, 3.0) / 3.0;\n    acc += d / r * w * (1.1 + charge * 3.2) / (r + 0.09);\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 1.6 * uPoleV[i].w / (r + 0.2);\n    acc -= v * w * 1.4 * exp(-r * 2.0);\n    heat += w * (0.3 + charge * 2.2) * exp(-r2 * 26.0);\n  }\n  return acc;\n}\n\nvec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  int m = min(int(s.y * float(n)), n - 1);\n  float w = uPole[m].z;\n  // five flocks per touch, each following its own leader on a looping path\n  float j = floor(s.x * 5.0);\n  float dirn = mod(j, 2.0) < 0.5 ? 1.0 : -1.0;\n  float R = 0.2 + 0.1 * j;\n  float om = (0.55 + 0.22 * j) * dirn;\n  float ph = j * 1.7 + float(m) * 2.3;\n  float t = uTime;\n  vec3 c = poleAt(m);\n  vec3 lead = c + vec3(cos(om * t + ph) * R * 1.25, sin(om * t * 1.3 + ph) * R * 0.85, sin(om * t * 0.7 + ph) * R * 0.7 * uDepth);\n  vec3 leadV = vec3(-sin(om * t + ph) * R * 1.25 * om, cos(om * t * 1.3 + ph) * R * 0.85 * om * 1.3, cos(om * t * 0.7 + ph) * R * 0.7 * uDepth * om * 0.7);\n  // each bird keeps its own place in the flock: a soft cloud, stretched along the\n  // direction of flight\n  vec3 b = bellSeeds(uint(gl_VertexID));\n  vec3 off = b * vec3(0.045, 0.035, 0.035 * uDepth);\n  vec3 fwd = normalize(leadV + 1e-4);\n  off += fwd * b.z * 0.06;\n  vec3 target = lead + off + abcFlow(p * 3.1, t * 0.8) * 0.025;\n  vec3 desired = (target - p) * 3.2 + leadV;\n  heat += w * 0.45;\n  return (desired - v) * 2.3 * w;\n}\n\nvec3 bFountain(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  // gravity pulls the spray down; the floor bounces it\n  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);\n  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)\n  for (int i = 0; i < uPoleCount; i++) {\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d);\n    heat += uPole[i].z * exp(-r2 * 30.0) * 1.5;\n  }\n  return acc;\n}\n\nvec3 behaviour(int b, vec3 p, vec3 v, vec4 s, uint id, inout float heat) {\n  if (uPoleCount == 0) return vec3(0.0);\n  if (b == B_WELL) return bWell(p, v, heat);\n  if (b == B_WHIRL) return bWhirl(p, v, heat);\n  if (b == B_BURST) return bBurst(p, v, heat);\n  if (b == B_HALO) return bHalo(p, v, s, heat);\n  if (b == B_CURRENT) return bCurrent(p, v, s, heat);\n  if (b == B_WEAVE) return bWeave(p, v, s, heat);\n  if (b == B_CHIME) return bChime(p, v, id, heat);\n  if (b == B_STORM) return bStorm(p, v, heat);\n  if (b == B_LATTICE) return bLattice(p, v, s, heat);\n  if (b == B_NOVA) return bNova(p, v, heat);\n  if (b == B_MURMUR) return bMurmur(p, v, s, heat);\n  return bFountain(p, v, heat);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n  float life = aVel.w;\n\n  if (uInit == 1) {\n    vPos = vec4(formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime), 0.0);\n    vVel = vec4((s.wzy - 0.5) * 0.05, s.x * 3.0);\n    return;\n  }\n\n  float dt = uDt;\n  float gain = 0.0;\n\n  // --- the touches -------------------------------------------------------------\n  vec3 acc = vec3(0.0);\n  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix);\n  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix;\n  int lead = uMix < 0.5 ? uBehA : uBehB;\n\n  // fountains respawn spent particles at a touch\n  if (lead == B_FOUNTAIN && uPoleCount > 0 && s.w < 0.85) {\n    life -= dt * (0.5 + s.y * 0.6);\n    if (life <= 0.0) {\n      vec3 r = rand3(id, uFrame);\n      int m = min(int(r.x * float(uPoleCount)), uPoleCount - 1);\n      vec3 up = length(uGravity) > 0.05 ? -normalize(uGravity) : vec3(0.0, 1.0, 0.0);\n      vec3 side = normalize(cross(up, vec3(0.0, 0.0, 1.0)) + 1e-5);\n      // a spray that arcs over and lands within the screen\n      vec3 b = bellSeeds(id ^ uFrame);\n      float power = 0.75 + uPole[m].z * 0.35;\n      p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);\n      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;\n      v += vec3(uPoleV[m].xy, 0.0) * 0.4;\n      // a random head start within the frame, so each frame's batch does not travel as a band\n      p += v * dt * r.y;\n      life = 1.4 + s.z * 1.2;\n      heat = 0.9;\n    }\n  }\n\n  // --- rings where a touch lands, and the release of a gathered nova --------------\n  for (int k = 0; k < 8; k++) {\n    vec4 pu = uPulse[k];\n    if (pu.w > 1.6) continue;\n    vec2 d = p.xy - pu.xy;\n    float r = length(d) + 1e-4;\n    float R = pu.w * 1.25;\n    float band = exp(-pow((r - R) / 0.035, 2.0)) * pu.z * (1.0 - pu.w / 1.6);\n    gain += band * 9.0;\n    acc.xy += d / r * band * 2.5;\n  }\n  for (int k = 0; k < 4; k++) {\n    vec4 re = uRelease[k];\n    if (re.z <= 0.0) continue;\n    vec3 d = p - vec3(re.xy, 0.0);\n    float r = length(d) + 1e-3;\n    float e = re.z * exp(-re.w * 5.0) * exp(-r * 1.3);\n    acc += d / r * e * 55.0;\n    gain += e * 14.0;\n  }\n\n  // --- the light's own life --------------------------------------------------------\n  // the resting shape, which lets go while someone is touching\n  float formPull = (1.0 - 0.88 * uTouch) * (uForm == F_NONE || uForm == F_NEBULA ? 0.0 : 1.0);\n  if (formPull > 0.0) {\n    vec3 home = formTarget(uForm, s, uTime);\n    acc += ((home - p) * 1.6 - v * 0.6) * formPull;\n  }\n  // currents that keep everything moving\n  vec3 flowV = abcFlow(p, uTime * 0.35) * 0.28;\n  flowV.z *= uDepth;\n  acc += (flowV - v) * uFlow * (1.0 - 0.6 * uTouch) * 1.2;\n\n  // music: the beat kicks out from the middle\n  acc += normalize(p + 1e-4) * uOnset * 1.8;\n  gain += uOnset * 1.2 + uAudio.x * 0.4;\n\n  acc += uGravity;\n\n  // soft walls just beyond the screen, and a floor of depth\n  vec3 lim = vec3(uAspect * 1.12, 1.12, 0.2 + uDepth * 1.1);\n  vec3 over = max(abs(p) - lim, 0.0) * sign(p);\n  acc -= over * 40.0;\n  // flatten toward the screen as depth goes to zero\n  acc.z -= p.z * 9.0 * (1.0 - uDepth);\n\n  float am = length(acc);\n  if (am > 90.0) acc *= 90.0 / am;\n\n  // semi-implicit Euler with frame-rate-independent drag (spray flies almost freely,\n  // so it arcs instead of dropping straight down)\n  v += acc * dt;\n  bool spray = lead == B_FOUNTAIN && s.w < 0.85;\n  v *= exp(-dt * (spray ? 0.1 + uDrag * 0.25 : 0.12 + uDrag * 2.6));\n  float sp = length(v);\n  if (sp > 4.5) v *= 4.5 / sp;\n  p += v * dt;\n\n  // fountain spray bounces off the floor\n  if (lead == B_FOUNTAIN && p.y < -1.02 && v.y < 0.0) { v.y = -v.y * 0.32; v.xz *= 0.8; p.y = -1.02; gain += 0.6; }\n\n  heat = heat * exp(-dt * 1.7) + gain * dt;\n  heat = min(heat, 6.0);\n\n  // anything lost to rounding or flung far away comes back into the shape\n  if (any(isnan(p)) || any(isinf(p)) || any(isnan(v)) || dot(p, p) > 64.0) {\n    p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);\n    v = vec3(0.0);\n    heat = 0.0;\n  }\n  vPos = vec4(p, heat);\n  vVel = vec4(v, life);\n}\n";
+
+  // src/js/gfx/shaders/points.vert.glsl
+  var points_vert_default = "#version 300 es\n// Draws each particle as a point of light: colour from the palette, size from\n// perspective and soft focus, brightness spread so a blurred speck keeps its energy.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz, w heat\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life\n\n#include common\n\nuniform mat4 uViewProj;\nuniform float uCamDist;       // distance from the camera to the touch plane (in focus)\nuniform float uPointPx;       // base speck size in pixels, in focus\nuniform float uDofPx;         // extra blur in pixels per unit of distance from focus\nuniform float uMaxPx;\nuniform float uEnergy;        // light per particle (normalised by count and trails)\nuniform float uEnergyCap;     // keeps any single pixel well inside half-float range\nuniform float uSparkle;\nuniform float uHigh;          // treble from the music, makes sparkles busier\nuniform float uTime;\nuniform int uColorBy;         // core/scene.js COLOR_BY: speed, heat, seed, direction, depth\nuniform float uPalA;          // palette rows (texel centres, 0..1)\nuniform float uPalB;\nuniform float uPalMix;\nuniform float uHue;           // radians\nuniform float uDepthRange;\nuniform sampler2D uLUT;\n\nout vec3 vColor;\nout float vSoft;\n\nvec3 hueRotate(vec3 c, float a) {\n  const vec3 k = vec3(0.57735027);\n  float ca = cos(a);\n  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n\n  vec4 clip = uViewProj * vec4(p, 1.0);\n  gl_Position = clip;\n\n  float dist = max(clip.w, 0.05);\n  float persp = uCamDist / dist;\n  float base = uPointPx * persp * (0.75 + 0.5 * s.z);\n  float blur = uDofPx * abs(dist - uCamDist);\n  float size = min(sqrt(base * base + blur * blur), uMaxPx);\n  float px = max(size, 1.0);\n  gl_PointSize = px;\n\n  // where on the palette this speck sits\n  float speed = length(v);\n  float t;\n  if (uColorBy == 0) t = 1.0 - exp(-speed * 1.1);\n  else if (uColorBy == 1) t = 1.0 - exp(-heat * 0.7);\n  else if (uColorBy == 2) t = s.x;\n  else if (uColorBy == 3) t = 0.5 + 0.5 * sin(atan(v.y, v.x + 1e-6));\n  else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);\n  // a touch of per-particle spread keeps flat regions from looking banded\n  t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);\n  vec3 col = mix(texture(uLUT, vec2(t, uPalA)).rgb, texture(uLUT, vec2(t, uPalB)).rgb, uPalMix);\n  if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);\n  // partly even out how bright the colours are (a deep red is far darker than a pale\n  // yellow), so the palette sets the hue and heat sets the brightness\n  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));\n  col *= min(pow(0.3 / max(lum, 0.004), 0.55), 5.0);\n\n  // hot light burns brighter; resting light glows softly\n  float bright = 0.45 + 0.55 * min(heat, 3.0) + 0.25 * min(speed, 2.0);\n  // now and then a speck catches the light\n  float tw = sin(uTime * (1.3 + s.w * 3.7 + uHigh * 6.0) + s.x * 97.0);\n  bright *= 1.0 + uSparkle * pow(max(tw, 0.0), 24.0) * 6.0;\n\n  // the same light spread over a larger disc when out of focus or sub-pixel\n  float energy = uEnergy * persp * bright * (base * base) / (px * px);\n  vColor = col * min(energy, uEnergyCap);\n  vSoft = smoothstep(1.6, 3.6, px);\n}\n";
+
+  // src/js/gfx/shaders/points.frag.glsl
+  var points_frag_default = "#version 300 es\nprecision highp float;\n\nin vec3 vColor;\nin float vSoft;\nout vec4 outColor;\n\nvoid main() {\n  // small specks are flat squares; larger ones are soft discs with the same total light\n  // (5.14 is 1 / the mean of exp(-4 r^2) over the point's square)\n  vec2 c = gl_PointCoord * 2.0 - 1.0;\n  float shape = mix(1.0, exp(-4.0 * dot(c, c)) * 5.14, vSoft);\n  outColor = vec4(vColor * shape, 1.0);\n}\n";
+
   // src/js/gfx/engine.js
+  var STRIDE = 32;
+  var MAX_PULSES = 8;
+  var MAX_RELEASES = 4;
+  var REF_COUNT = 262144;
+  function stringHash(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i);
+      h = Math.imul(h, 16777619);
+    }
+    return h >>> 0;
+  }
+  function detectTier(gl) {
+    const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+    let renderer = "";
+    try {
+      renderer = String(gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER) || "");
+    } catch {
+      renderer = "";
+    }
+    const touch = (navigator.maxTouchPoints || 0) > 0;
+    const tier = guessTier({
+      renderer,
+      maxTextureSize: gl.getParameter(gl.MAX_TEXTURE_SIZE),
+      deviceMemory: navigator.deviceMemory || 4,
+      cores: navigator.hardwareConcurrency || 4,
+      touch,
+      screenPixels: (screen.width || 1e3) * (screen.height || 1e3) * (devicePixelRatio || 1) ** 2
+    });
+    return { tier, renderer };
+  }
   function createEngine(canvas, opts = {}) {
-    const gl = canvas.getContext("webgl2");
+    const attrs = { antialias: false, alpha: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false, powerPreference: "high-performance" };
+    const gl = canvas.getContext("webgl2", attrs);
     if (!gl) throw new Error("webgl2");
-    let w = 1, h = 1, dpr = 1, particles = 0, renderScale = 1;
-    const engine = {
-      caps: { maxParticles: 1 << 18, tier: "mid", renderer: "stub", halfFloat: true },
-      get aspect() {
-        return w / h;
-      },
-      resize(cw, ch, d) {
-        w = cw;
-        h = ch;
-        dpr = d;
-        canvas.width = Math.round(cw * d);
-        canvas.height = Math.round(ch * d);
-        canvas.style.width = cw + "px";
-        canvas.style.height = ch + "px";
-      },
-      setQuality(q) {
-        particles = q.particles;
-        renderScale = q.renderScale;
-      },
-      frame(f) {
-        gl.clearColor(0.02, 0.01, 0.03, 1);
+    const { tier, renderer } = detectTier(gl);
+    const capacity = opts.maxParticles > 0 ? Math.floor(opts.maxParticles) : TIERS[tier].max;
+    let R = null;
+    let lost = false;
+    let hdr = true;
+    function build() {
+      gl.getExtension("EXT_color_buffer_float");
+      gl.getExtension("EXT_color_buffer_half_float");
+      const HALF = { internal: gl.RGBA16F, format: gl.RGBA, type: gl.HALF_FLOAT };
+      const BYTE = { internal: gl.RGBA8, format: gl.RGBA, type: gl.UNSIGNED_BYTE };
+      hdr = canRender(gl, HALF);
+      const fmt = hdr ? HALF : BYTE;
+      const chunks = { common: common_default };
+      const sim = createProgram(gl, preprocess(sim_vert_default, chunks), NOTHING_FS, { name: "simulation", varyings: ["vPos", "vVel"] });
+      const points = createProgram(gl, preprocess(points_vert_default, chunks), points_frag_default, { name: "points" });
+      const fade = createProgram(gl, QUAD_VS, FADE_FS, { name: "fade" });
+      const down = createProgram(gl, QUAD_VS, DOWN_FS, { name: "downsample" });
+      const up = createProgram(gl, QUAD_VS, UP_FS, { name: "upsample" });
+      const adapt = createProgram(gl, QUAD_VS, ADAPT_FS, { name: "adapt" });
+      const composite = createProgram(gl, QUAD_VS, COMPOSITE_FS, { name: "composite" });
+      const bufs = [gl.createBuffer(), gl.createBuffer()];
+      const vaos = bufs.map((b) => {
+        const vao = gl.createVertexArray();
+        gl.bindVertexArray(vao);
+        gl.bindBuffer(gl.ARRAY_BUFFER, b);
+        gl.bufferData(gl.ARRAY_BUFFER, capacity * STRIDE, gl.DYNAMIC_COPY);
+        gl.enableVertexAttribArray(0);
+        gl.vertexAttribPointer(0, 4, gl.FLOAT, false, STRIDE, 0);
+        gl.enableVertexAttribArray(1);
+        gl.vertexAttribPointer(1, 4, gl.FLOAT, false, STRIDE, 16);
+        return vao;
+      });
+      gl.bindVertexArray(null);
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      const tf = gl.createTransformFeedback();
+      const empty = gl.createVertexArray();
+      const lut = bakeLUT(256);
+      const lutTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, lutTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, lut.width, lut.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.useProgram(points.prog);
+      gl.uniform1i(points.u.uLUT, 0);
+      gl.useProgram(down.prog);
+      gl.uniform1i(down.u.uSrc, 0);
+      gl.useProgram(up.prog);
+      gl.uniform1i(up.u.uSrc, 0);
+      gl.useProgram(adapt.prog);
+      gl.uniform1i(adapt.u.uLum, 0);
+      gl.uniform1i(adapt.u.uPrev, 1);
+      gl.useProgram(composite.prog);
+      gl.uniform1i(composite.u.uScene, 0);
+      gl.uniform1i(composite.u.uBloom, 1);
+      gl.uniform1i(composite.u.uAdapt, 2);
+      gl.useProgram(null);
+      const adaptT = [createTarget(gl, 1, 1, fmt, gl.NEAREST), createTarget(gl, 1, 1, fmt, gl.NEAREST)];
+      for (const t of adaptT) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+        gl.clearColor(0, 0, 0, 0);
         gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true };
+    }
+    function destroy() {
+      if (!R) return;
+      for (const k of ["sim", "points", "fade", "down", "up", "adapt", "composite"]) gl.deleteProgram(R[k].prog);
+      R.bufs.forEach((b) => gl.deleteBuffer(b));
+      R.vaos.forEach((v) => gl.deleteVertexArray(v));
+      gl.deleteVertexArray(R.empty);
+      gl.deleteTransformFeedback(R.tf);
+      gl.deleteTexture(R.lutTex);
+      R.adaptT.forEach((t) => destroyTarget(gl, t));
+      destroyTarget(gl, R.scene);
+      R.levels.forEach((t) => destroyTarget(gl, t));
+      R = null;
+    }
+    function sizeTargets(w, h) {
+      if (!R || R.w === w && R.h === h) return;
+      destroyTarget(gl, R.scene);
+      R.levels.forEach((t) => destroyTarget(gl, t));
+      R.scene = createTarget(gl, w, h, R.fmt);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const n = clamp(Math.floor(Math.log2(Math.min(w, h))) - 3, 3, 7);
+      R.levels = [];
+      let lw = w, lh = h;
+      for (let i = 0; i < n; i++) {
+        lw = Math.max(1, Math.ceil(lw / 2));
+        lh = Math.max(1, Math.ceil(lh / 2));
+        R.levels.push(createTarget(gl, lw, lh, R.fmt));
+      }
+      R.w = w;
+      R.h = h;
+    }
+    build();
+    const cam = createCamera();
+    let cssW = 1, cssH = 1, dpr = 1;
+    let renderScale = 1;
+    let drawN = Math.min(capacity, TIERS[tier].start);
+    let frameNo = 0;
+    let simTime = 0;
+    let camTime = 0;
+    let lastScene = null;
+    let lead = "well";
+    const poleState = /* @__PURE__ */ new Map();
+    const pulses = [];
+    const releases = [];
+    let touchAmt = 0;
+    let engage = 0;
+    let palFrom = 0, palTo = 0, palMix = 1;
+    let pendingCaptures = [];
+    const poleU = new Float32Array(MAX_POLES * 4);
+    const poleVU = new Float32Array(MAX_POLES * 4);
+    const pulseU = new Float32Array(MAX_PULSES * 4);
+    const releaseU = new Float32Array(MAX_RELEASES * 4);
+    function drawingSize() {
+      return [Math.max(1, Math.round(cssW * dpr * renderScale)), Math.max(1, Math.round(cssH * dpr * renderScale))];
+    }
+    function applySize() {
+      const [w, h] = drawingSize();
+      if (canvas.width !== w || canvas.height !== h) {
+        canvas.width = w;
+        canvas.height = h;
+      }
+      canvas.style.width = cssW + "px";
+      canvas.style.height = cssH + "px";
+      sizeTargets(w, h);
+    }
+    function symmetric(x, y, max) {
+      const s = lastScene;
+      const n = s ? Math.max(1, s.symmetry | 0) : 1;
+      const out = [];
+      for (let k = 0; k < n && out.length < max; k++) {
+        const a = k / n * Math.PI * 2, c = Math.cos(a), sn = Math.sin(a);
+        out.push([x * c - y * sn, x * sn + y * c]);
+        if (s && s.mirror && out.length < max) out.push([x * c + y * sn, x * sn - y * c]);
+      }
+      return out;
+    }
+    function updatePoles(poles, dt) {
+      const seen = /* @__PURE__ */ new Set();
+      for (const p of poles) {
+        seen.add(p.id);
+        let st = poleState.get(p.id);
+        if (!st) {
+          st = { pole: p, w: 0 };
+          poleState.set(p.id, st);
+        }
+        st.pole = p;
+      }
+      for (const [id, st] of poleState) {
+        const present = seen.has(id);
+        const target = present && st.pole.held ? clamp(st.pole.power, 0.15, 2) : 0;
+        st.w += (target - st.w) * approach(dt, target > st.w ? 0.045 : 0.14);
+        if (!present) st.pole = { ...st.pole, held: false, age: st.pole.age + dt };
+        if (!present && st.w < 0.01) poleState.delete(id);
+      }
+      const list = [...poleState.entries()].sort((a, b) => b[1].w - a[1].w).slice(0, MAX_POLES);
+      list.sort((a, b) => poles.findIndex((p) => p.id === a[0]) - poles.findIndex((p) => p.id === b[0]));
+      let total = 0;
+      list.forEach(([id, st], i) => {
+        const p = st.pole;
+        const root = String(id).split(":")[0];
+        let sign = stringHash(root) & 1 ? 1 : -1;
+        if (/:m\d/.test(id)) sign = -sign;
+        poleU.set([p.x, p.y, st.w, p.age], i * 4);
+        poleVU.set([p.vx || 0, p.vy || 0, clamp(p.power, 0, 2), sign], i * 4);
+        if (p.held) total += st.w;
+      });
+      const held = Math.min(1, total);
+      touchAmt += (held - touchAmt) * approach(dt, 0.15);
+      engage += (held - engage) * approach(dt, held > engage ? 0.1 : 2.5);
+      return list.length;
+    }
+    function updateEvents(dt) {
+      for (const e of pulses) e.age += dt;
+      for (const e of releases) e.age += dt;
+      while (pulses.length && pulses[0].age > 1.6) pulses.shift();
+      while (releases.length && releases[0].age > 1.2) releases.shift();
+      pulseU.fill(0);
+      for (let i = 0; i < MAX_PULSES; i++) {
+        const e = pulses[i];
+        pulseU.set(e ? [e.x, e.y, e.power, e.age] : [0, 0, 0, 99], i * 4);
+      }
+      releaseU.fill(0);
+      releases.forEach((e, i) => releaseU.set([e.x, e.y, e.charge, e.age], i * 4));
+    }
+    function frame(f) {
+      if (lost || !R) return;
+      const scene = f.scene;
+      lastScene = scene;
+      const dt = f.dt;
+      const sdt = dt * scene.speed;
+      simTime += sdt;
+      camTime += dt * (0.5 + scene.speed * 0.5);
+      frameNo = frameNo + 1 >>> 0;
+      applySize();
+      const W = R.w, H = R.h;
+      const N = Math.max(1, Math.min(capacity, Math.round(drawN * scene.density)));
+      const nPoles = updatePoles(f.poles || [], dt);
+      updateEvents(dt);
+      const beh = f.behaviour || { a: "well", b: "well", mix: 1 };
+      const ia = (behaviourByKey(beh.a) || behaviourByKey("well")).id;
+      const ib = (behaviourByKey(beh.b) || behaviourByKey("well")).id;
+      const mix = clamp(beh.mix, 0, 1);
+      lead = mix < 0.5 ? beh.a : beh.b;
+      const pi = paletteIndex(scene.palette);
+      if (pi !== palTo) {
+        palFrom = palMix >= 1 ? palTo : palFrom;
+        palTo = pi;
+        palMix = 0;
+      }
+      palMix = Math.min(1, palMix + dt / 0.8);
+      cam.update(W / H, scene.orbit, camTime);
+      const audio = f.audio || { level: 0, bass: 0, mid: 0, high: 0, onset: 0 };
+      const g = f.gravity || { x: 0, y: -1, z: 0 };
+      const gs = scene.gravity * 2.2;
+      const s = R.sim;
+      gl.useProgram(s.prog);
+      gl.uniform4fv(s.u.uPole, poleU);
+      gl.uniform4fv(s.u.uPoleV, poleVU);
+      gl.uniform1i(s.u.uPoleCount, nPoles);
+      gl.uniform4fv(s.u.uPulse, pulseU);
+      gl.uniform4fv(s.u.uRelease, releaseU);
+      gl.uniform1i(s.u.uBehA, ia);
+      gl.uniform1i(s.u.uBehB, ib);
+      gl.uniform1f(s.u.uMix, mix * mix * (3 - 2 * mix));
+      gl.uniform1f(s.u.uDt, sdt);
+      gl.uniform1f(s.u.uTime, simTime);
+      gl.uniform1ui(s.u.uFrame, frameNo);
+      gl.uniform1f(s.u.uStrength, scene.strength * (1 + audio.bass * 0.7));
+      gl.uniform1f(s.u.uDrag, scene.drag);
+      gl.uniform1f(s.u.uFlow, scene.flow);
+      gl.uniform1f(s.u.uDepth, scene.depth);
+      gl.uniform1f(s.u.uTouch, touchAmt);
+      gl.uniform1f(s.u.uEngage, engage);
+      gl.uniform1i(s.u.uForm, Math.max(0, FORMS.indexOf(scene.form)));
+      gl.uniform3f(s.u.uGravity, g.x * gs, g.y * gs, g.z * gs);
+      gl.uniform1f(s.u.uAspect, W / H);
+      gl.uniform4f(s.u.uAudio, audio.level, audio.bass, audio.mid, audio.high);
+      gl.uniform1f(s.u.uOnset, audio.onset);
+      const runSim = (count, init) => {
+        gl.uniform1i(s.u.uInit, init ? 1 : 0);
+        gl.enable(gl.RASTERIZER_DISCARD);
+        gl.bindVertexArray(R.vaos[R.cur]);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, R.tf);
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, R.bufs[1 - R.cur]);
+        gl.beginTransformFeedback(gl.POINTS);
+        gl.drawArrays(gl.POINTS, 0, count);
+        gl.endTransformFeedback();
+        gl.bindBufferBase(gl.TRANSFORM_FEEDBACK_BUFFER, 0, null);
+        gl.bindTransformFeedback(gl.TRANSFORM_FEEDBACK, null);
+        gl.bindVertexArray(null);
+        gl.disable(gl.RASTERIZER_DISCARD);
+        R.cur = 1 - R.cur;
+      };
+      if (R.needsInit) {
+        runSim(capacity, true);
+        runSim(capacity, true);
+        R.needsInit = false;
+      }
+      runSim(N, false);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+      gl.viewport(0, 0, W, H);
+      const tau = 0.04 + scene.trails * scene.trails * 1.35;
+      const keep = scene.trails > 5e-3 ? Math.min(Math.exp(-dt / tau), 0.994) : 0;
+      gl.enable(gl.BLEND);
+      if (keep > 0) {
+        gl.useProgram(R.fade.prog);
+        gl.uniform1f(R.fade.u.uKeep, keep);
+        gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
+        gl.bindVertexArray(R.empty);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      } else {
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      }
+      const p = R.points;
+      gl.useProgram(p.prog);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, R.lutTex);
+      gl.uniformMatrix4fv(p.u.uViewProj, false, cam.viewProj);
+      gl.uniform1f(p.u.uCamDist, cam.dist);
+      const pxScale = H / 1e3;
+      const basePx = Math.max(0.6, 1.45 * pxScale);
+      gl.uniform1f(p.u.uPointPx, Math.max(0.6, scene.size * basePx));
+      gl.uniform1f(p.u.uDofPx, scene.focus * 15 * pxScale);
+      gl.uniform1f(p.u.uMaxPx, clamp(32 * pxScale, 6, 48));
+      const trailNorm = Math.pow(1 - keep, 0.8);
+      const energy = 0.055 * (W * H) / (N * basePx * basePx) * Math.pow(N / REF_COUNT, 0.3) / Math.max(scene.size, 0.25) * trailNorm * (hdr ? 1 : 0.35) * (1 + audio.level * 0.6);
+      gl.uniform1f(p.u.uEnergy, energy);
+      gl.uniform1f(p.u.uEnergyCap, hdr ? 24e3 / N : 4 / Math.sqrt(N));
+      gl.uniform1f(p.u.uSparkle, scene.sparkle);
+      gl.uniform1f(p.u.uHigh, audio.high);
+      gl.uniform1f(p.u.uTime, simTime);
+      gl.uniform1i(p.u.uColorBy, Math.max(0, COLOR_BY.indexOf(scene.colorBy)));
+      gl.uniform1f(p.u.uPalA, (palFrom + 0.5) / R.lutRows);
+      gl.uniform1f(p.u.uPalB, (palTo + 0.5) / R.lutRows);
+      gl.uniform1f(p.u.uPalMix, palMix * palMix * (3 - 2 * palMix));
+      gl.uniform1f(p.u.uHue, scene.hue * Math.PI * 2);
+      gl.uniform1f(p.u.uDepthRange, 0.2 + scene.depth * 1.1);
+      gl.bindVertexArray(R.vaos[R.cur]);
+      gl.drawArrays(gl.POINTS, 0, N);
+      gl.bindVertexArray(R.empty);
+      gl.disable(gl.BLEND);
+      const d = R.down;
+      gl.useProgram(d.prog);
+      let src = R.scene;
+      R.levels.forEach((lvl, i) => {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, lvl.fbo);
+        gl.viewport(0, 0, lvl.w, lvl.h);
+        gl.bindTexture(gl.TEXTURE_2D, src.tex);
+        gl.uniform2f(d.u.uTexel, 1 / src.w, 1 / src.h);
+        gl.uniform1i(d.u.uFirst, i === 0 ? 1 : 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        src = lvl;
+      });
+      const a = R.adapt;
+      gl.useProgram(a.prog);
+      const next = R.adaptT[1 - R.adaptCur];
+      gl.bindFramebuffer(gl.FRAMEBUFFER, next.fbo);
+      gl.viewport(0, 0, 1, 1);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, R.adaptT[R.adaptCur].tex);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, R.levels[R.levels.length - 1].tex);
+      gl.uniform1f(a.u.uDt, Math.max(dt, 1e-3));
+      gl.uniform1f(a.u.uBase, Math.pow(2, scene.exposure) * 1.25);
+      gl.uniform1f(a.u.uAuto, 0.5);
+      const settings = f.settings || {};
+      gl.uniform1f(a.u.uGuard, settings.flashGuard === false ? 0 : 1);
+      gl.uniform1f(a.u.uRise, settings.calm ? 0.9 : 2.3);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      R.adaptCur = 1 - R.adaptCur;
+      const u = R.up;
+      gl.useProgram(u.prog);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.uniform1f(u.u.uRadius, 1);
+      gl.uniform1f(u.u.uWeight, 1);
+      for (let i = R.levels.length - 2; i >= 0; i--) {
+        const dst = R.levels[i], from = R.levels[i + 1];
+        gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+        gl.viewport(0, 0, dst.w, dst.h);
+        gl.bindTexture(gl.TEXTURE_2D, from.tex);
+        gl.uniform2f(u.u.uTexel, 1 / from.w, 1 / from.h);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+      }
+      gl.disable(gl.BLEND);
+      const c = R.composite;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, W, H);
+      gl.useProgram(c.prog);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, R.scene.tex);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, R.levels[0].tex);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, R.adaptT[R.adaptCur].tex);
+      gl.uniform1f(c.u.uGlow, scene.glow * scene.glow * 2.4 / R.levels.length);
+      gl.uniform1f(c.u.uVignette, scene.vignette);
+      gl.uniform1f(c.u.uGrain, scene.grain);
+      gl.uniform1f(c.u.uAberr, scene.aberration);
+      gl.uniform1f(c.u.uSat, 1.22);
+      gl.uniform1f(c.u.uTime, simTime);
+      gl.uniform2f(c.u.uRes, W, H);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.bindVertexArray(null);
+      if (pendingCaptures.length) {
+        const list = pendingCaptures;
+        pendingCaptures = [];
+        for (const { mime, resolve } of list) {
+          try {
+            canvas.toBlob((b) => resolve(b), mime, 0.95);
+          } catch {
+            resolve(null);
+          }
+        }
+      }
+    }
+    canvas.addEventListener("webglcontextlost", (e) => {
+      e.preventDefault();
+      lost = true;
+      R = null;
+      poleState.clear();
+      opts.onLost?.();
+    });
+    canvas.addEventListener("webglcontextrestored", () => {
+      lost = false;
+      try {
+        build();
+        applySize();
+        opts.onRestored?.();
+      } catch (err) {
+        console.warn("Tactilume could not rebuild after the graphics context was restored", err);
+      }
+    });
+    const engine = {
+      caps: { maxParticles: capacity, tier, renderer, halfFloat: hdr },
+      get aspect() {
+        return cssW / cssH;
       },
-      pulse() {
+      resize(w, h, ratio) {
+        cssW = Math.max(1, w);
+        cssH = Math.max(1, h);
+        dpr = ratio || 1;
+        if (R) applySize();
       },
-      release() {
+      setQuality({ particles, renderScale: rs }) {
+        if (particles) drawN = clamp(Math.round(particles), 1024, capacity);
+        if (rs) renderScale = clamp(rs, 0.4, 1);
+        if (R) applySize();
+      },
+      frame,
+      pulse(x, y, power = 1) {
+        for (const [px, py] of symmetric(x, y, MAX_PULSES)) {
+          pulses.push({ x: px, y: py, power: clamp(power, 0.2, 2), age: 0 });
+          if (pulses.length > MAX_PULSES) pulses.shift();
+        }
+      },
+      release(x, y, power = 1, heldFor = 0) {
+        if (lead !== "nova") return;
+        const charge = clamp(heldFor / 1.5, 0.25, 1.6) * clamp(power, 0.4, 1.5);
+        for (const [px, py] of symmetric(x, y, MAX_RELEASES)) {
+          releases.push({ x: px, y: py, charge, age: 0 });
+          if (releases.length > MAX_RELEASES) releases.shift();
+        }
       },
       screenToWorld(px, py) {
-        const a = w / h;
-        return { x: (px / w * 2 - 1) * a, y: 1 - py / h * 2 };
+        return cam.ndcToPlane(px / cssW * 2 - 1, 1 - py / cssH * 2);
       },
       worldToScreen(x, y) {
-        const a = w / h;
-        return { px: (x / a + 1) * 0.5 * w, py: (1 - y) * 0.5 * h };
+        const { nx, ny } = cam.planeToNdc(x, y);
+        return { px: (nx + 1) * 0.5 * cssW, py: (1 - ny) * 0.5 * cssH };
       },
       capture(mime = "image/png") {
-        return new Promise((res) => canvas.toBlob(res, mime));
+        return new Promise((resolve) => pendingCaptures.push({ mime, resolve }));
       },
-      captureStream(fps) {
-        return canvas.captureStream(fps);
+      captureStream(fps = 60) {
+        return canvas.captureStream ? canvas.captureStream(fps) : null;
       },
       get stats() {
-        return { particles, renderScale, width: canvas.width, height: canvas.height };
+        return { particles: Math.min(capacity, Math.round(drawN * (lastScene ? lastScene.density : 1))), renderScale, width: canvas.width, height: canvas.height };
+      },
+      get debug() {
+        return { capacity, drawN, hdr, levels: R ? R.levels.length : 0, poles: poleState.size, lost, palettes: PALETTES.length, touch: touchAmt, engage };
+      },
+      // Puts every particle back in the resting shape (and clears the trails) next frame.
+      reset() {
+        if (!R) return;
+        R.needsInit = true;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        poleState.clear();
+        pulses.length = 0;
+        releases.length = 0;
+      },
+      // For tests and debugging: reads back a few particles, the HDR scene's mean
+      // brightness and the eye-adaptation values. Slow (stalls the GPU); never per frame.
+      inspect(sample = 4) {
+        if (!R || lost) return null;
+        const out = {};
+        const n = Math.min(sample, capacity);
+        const buf = new Float32Array(n * 8);
+        gl.bindBuffer(gl.ARRAY_BUFFER, R.bufs[R.cur]);
+        gl.getBufferSubData(gl.ARRAY_BUFFER, 0, buf);
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        out.particles = [];
+        for (let i = 0; i < n; i++) out.particles.push(Array.from(buf.slice(i * 8, i * 8 + 8), (v) => +v.toFixed(4)));
+        const readMean = (t) => {
+          const px = new Float32Array(t.w * t.h * 4);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+          gl.readPixels(0, 0, t.w, t.h, gl.RGBA, gl.FLOAT, px);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          let sum = 0, max = 0, lit = 0;
+          for (let i = 0; i < px.length; i += 4) {
+            const l = px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722;
+            sum += l;
+            if (l > max) max = l;
+            if (l > 1e-3) lit++;
+          }
+          return { mean: sum / (t.w * t.h), max, lit, w: t.w, h: t.h };
+        };
+        if (hdr) {
+          out.scene = readMean(R.scene);
+          out.bloom = readMean(R.levels[0]);
+          const a = new Float32Array(4);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
+          gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.FLOAT, a);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          out.adapt = Array.from(a);
+        }
+        out.error = gl.getError();
+        return out;
       },
       dispose() {
+        destroy();
       }
     };
     return engine;
   }
 
   // src/js/input/pointers.js
+  var MAX_LIVE = 10;
+  var MAX_PINS = 10;
+  var FADE_SECONDS = 0.35;
+  var VELOCITY_TAU = 0.06;
+  var STILL_AFTER = 0.05;
+  var FLICK_WINDOW_MS = 80;
+  var MAX_FLICK = 40;
+  var POWER_TAU = 0.08;
+  var COAST_TAU = 0.12;
+  var PIN_REACH = 0.08;
+  var FINGERTIP_AREA = 40 * 40;
+  var GUARD_STYLE = {
+    "touch-action": "none",
+    "user-select": "none",
+    "-webkit-user-select": "none",
+    "-webkit-touch-callout": "none",
+    "-webkit-tap-highlight-color": "transparent"
+  };
+  var BLOCKED_EVENTS = ["gesturestart", "gesturechange", "gestureend", "contextmenu", "dblclick", "selectstart", "dragstart"];
+  var realPressure = (p) => p > 0 && p !== 0.5;
+  function powerOf(e) {
+    const type = e.pointerType;
+    if (type === "mouse") return 1;
+    if (type === "pen") return 0.15 + clamp(e.pressure || 0, 0, 1) * 1.85;
+    if (realPressure(e.pressure)) return clamp(0.6 + e.pressure * 0.8, 0.6, 1.6);
+    if (e.width > 1 && e.height > 1) return clamp(e.width * e.height / FINGERTIP_AREA, 0.6, 1.6);
+    return 1;
+  }
+  function isPress(e) {
+    if (e.pointerType === "mouse") return e.button === 0;
+    if (e.pointerType === "pen") return e.button === 0 || e.button === 5;
+    return true;
+  }
+  function stampOf(e) {
+    const now = performance.now();
+    const t = e.timeStamp;
+    return Number.isFinite(t) && t > 0 && Math.abs(now - t) < 6e4 ? t : now;
+  }
+  function isEditable(el) {
+    if (!el || !el.tagName) return false;
+    return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
+  }
+  function flickVelocity(history, tEnd) {
+    const from = tEnd - FLICK_WINDOW_MS;
+    let n = 0, st = 0, sx = 0, sy = 0, stt = 0, stx = 0, sty = 0;
+    for (const s of history) {
+      if (s.t < from) continue;
+      const t = (s.t - tEnd) / 1e3;
+      n++;
+      st += t;
+      sx += s.x;
+      sy += s.y;
+      stt += t * t;
+      stx += t * s.x;
+      sty += t * s.y;
+    }
+    if (n < 2) return null;
+    const den = n * stt - st * st;
+    if (den < 1e-10) return null;
+    const vx = (n * stx - st * sx) / den;
+    const vy = (n * sty - st * sy) / den;
+    const speed = Math.hypot(vx, vy);
+    const k = speed > MAX_FLICK ? MAX_FLICK / speed : 1;
+    return { vx: vx * k, vy: vy * k };
+  }
   function createPointers(target, { screenToWorld, getSettings }) {
     const ev = createEmitter();
     const live = /* @__PURE__ */ new Map();
-    const onDown = (e) => {
+    const consumed = /* @__PURE__ */ new Set();
+    const pins = [];
+    const fading = [];
+    let serial = 0;
+    let pinWasOn = !!getSettings().pin;
+    function clientToWorld(clientX, clientY) {
       const r = target.getBoundingClientRect();
-      const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
-      const p = { x: w.x, y: w.y, vx: 0, vy: 0, power: 1, age: 0, held: true, id: "t" + e.pointerId, kind: "touch" };
-      live.set(e.pointerId, p);
-      target.setPointerCapture?.(e.pointerId);
-      ev.emit("activity");
-      ev.emit("down", { x: p.x, y: p.y, power: 1, id: p.id, kind: "touch" });
-    };
-    const onMove = (e) => {
-      const p = live.get(e.pointerId);
-      if (!p) return;
-      const r = target.getBoundingClientRect();
+      return screenToWorld(clientX - r.left, clientY - r.top);
+    }
+    function fade(pole) {
+      pole.held = false;
+      fading.push({ pole, gone: 0 });
+    }
+    function nearestPin(x, y) {
+      let best = -1, bestD = PIN_REACH;
+      pins.forEach((p, i) => {
+        const d = Math.hypot(p.x - x, p.y - y);
+        if (d < bestD) {
+          best = i;
+          bestD = d;
+        }
+      });
+      return best;
+    }
+    function removePin(i) {
+      const [pin2] = pins.splice(i, 1);
+      ev.emit("up", { x: pin2.x, y: pin2.y, vx: 0, vy: 0, power: pin2.power, heldFor: pin2.age, id: pin2.id });
+      fade(pin2);
+    }
+    function pin(pole) {
+      pole.kind = "pin";
+      pole.vx = 0;
+      pole.vy = 0;
+      pins.push(pole);
+      while (pins.length > MAX_PINS) fade(pins.shift());
+    }
+    function capture(id) {
+      try {
+        target.setPointerCapture(id);
+      } catch {
+      }
+    }
+    function sample(rec, e, r, lifting = false) {
+      const p = rec.pole;
+      const t = stampOf(e);
+      const moved = e.clientX !== rec.cx || e.clientY !== rec.cy;
+      rec.cx = e.clientX;
+      rec.cy = e.clientY;
       const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
       p.x = w.x;
       p.y = w.y;
+      if (!lifting) rec.targetPower = powerOf(e);
+      if (!moved) return;
+      rec.still = 0;
+      const dts = (t - rec.lastT) / 1e3;
+      if (dts > 0) {
+        const k = approach(dts, VELOCITY_TAU);
+        p.vx += ((w.x - rec.lx) / dts - p.vx) * k;
+        p.vy += ((w.y - rec.ly) / dts - p.vy) * k;
+        rec.lastT = t;
+        rec.lx = w.x;
+        rec.ly = w.y;
+      }
+      rec.history.push({ t, x: w.x, y: w.y });
+      while (rec.history.length > 2 && rec.history[0].t < t - FLICK_WINDOW_MS * 1.5) rec.history.shift();
+    }
+    function onDown(e) {
+      if (!isPress(e)) return;
+      if (isEditable(document.activeElement)) document.activeElement.blur();
+      const old = live.get(e.pointerId);
+      if (old) lift(old, null);
+      const w = clientToWorld(e.clientX, e.clientY);
+      const hit = nearestPin(w.x, w.y);
+      if (hit >= 0) {
+        removePin(hit);
+        consumed.add(e.pointerId);
+        capture(e.pointerId);
+        ev.emit("activity");
+        return;
+      }
+      if (live.size >= MAX_LIVE) return;
+      const t = stampOf(e);
+      const power = powerOf(e);
+      const pole = { x: w.x, y: w.y, vx: 0, vy: 0, power, age: 0, held: true, id: "t" + serial++, kind: "touch", fade: 1 };
+      live.set(e.pointerId, {
+        pointerId: e.pointerId,
+        type: e.pointerType,
+        pole,
+        cx: e.clientX,
+        cy: e.clientY,
+        targetPower: power,
+        still: 0,
+        lastT: t,
+        lx: w.x,
+        ly: w.y,
+        history: [{ t, x: w.x, y: w.y }]
+      });
+      capture(e.pointerId);
       ev.emit("activity");
+      ev.emit("down", { x: w.x, y: w.y, power, id: pole.id, kind: getSettings().pin ? "pin" : "touch" });
+    }
+    function onMove(e) {
+      const rec = live.get(e.pointerId);
+      if (!rec) {
+        if (consumed.has(e.pointerId)) ev.emit("activity");
+        return;
+      }
+      if (rec.type === "mouse" && !(e.buttons & 1)) {
+        lift(rec, e);
+        return;
+      }
+      const r = target.getBoundingClientRect();
+      const list = typeof e.getCoalescedEvents === "function" ? e.getCoalescedEvents() : null;
+      if (list && list.length) for (const c of list) sample(rec, c, r);
+      else sample(rec, e, r);
+      ev.emit("activity");
+    }
+    function lift(rec, e) {
+      live.delete(rec.pointerId);
+      const p = rec.pole;
+      let tEnd = performance.now();
+      if (e) {
+        tEnd = stampOf(e);
+        sample(rec, e, target.getBoundingClientRect(), true);
+      }
+      const flick = flickVelocity(rec.history, tEnd) || { vx: 0, vy: 0 };
+      p.vx = flick.vx;
+      p.vy = flick.vy;
+      p.power = rec.targetPower;
+      if (getSettings().pin) {
+        pin(p);
+      } else {
+        ev.emit("up", { x: p.x, y: p.y, vx: p.vx, vy: p.vy, power: p.power, heldFor: p.age, id: p.id });
+        fade(p);
+      }
+      ev.emit("activity");
+    }
+    function onEnd(e) {
+      const rec = live.get(e.pointerId);
+      if (rec) lift(rec, e.type === "pointerup" ? e : null);
+      else if (consumed.delete(e.pointerId)) ev.emit("activity");
+    }
+    function onLostCapture(e) {
+      const rec = live.get(e.pointerId);
+      if (rec) lift(rec, null);
+      consumed.delete(e.pointerId);
+    }
+    function liftAll() {
+      for (const rec of [...live.values()]) lift(rec, null);
+      consumed.clear();
+    }
+    const onVisibility = () => {
+      if (document.hidden) liftAll();
     };
-    const onUp = (e) => {
-      const p = live.get(e.pointerId);
-      if (!p) return;
-      live.delete(e.pointerId);
-      ev.emit("up", { x: p.x, y: p.y, vx: 0, vy: 0, power: 1, heldFor: p.age, id: p.id });
+    const block = (e) => {
+      if (e.cancelable) e.preventDefault();
     };
+    const savedStyle = {};
+    for (const [name, value] of Object.entries(GUARD_STYLE)) {
+      savedStyle[name] = target.style.getPropertyValue(name);
+      target.style.setProperty(name, value);
+    }
+    const touchOpts = { passive: false };
     target.addEventListener("pointerdown", onDown);
-    target.addEventListener("pointermove", onMove);
-    target.addEventListener("pointerup", onUp);
-    target.addEventListener("pointercancel", onUp);
+    target.addEventListener("lostpointercapture", onLostCapture);
+    target.addEventListener("touchstart", block, touchOpts);
+    target.addEventListener("touchmove", block, touchOpts);
+    for (const name of BLOCKED_EVENTS) target.addEventListener(name, block);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onEnd);
+    window.addEventListener("pointercancel", onEnd);
+    window.addEventListener("blur", liftAll);
+    document.addEventListener("visibilitychange", onVisibility);
     return {
       update(dt) {
-        for (const p of live.values()) p.age += dt;
+        const r = live.size ? target.getBoundingClientRect() : null;
+        for (const rec of live.values()) {
+          const p = rec.pole;
+          const w = screenToWorld(rec.cx - r.left, rec.cy - r.top);
+          p.x = w.x;
+          p.y = w.y;
+          p.age += dt;
+          rec.still += dt;
+          if (rec.still > STILL_AFTER) {
+            const k2 = Math.exp(-dt / VELOCITY_TAU);
+            p.vx *= k2;
+            p.vy *= k2;
+          }
+          p.power += (rec.targetPower - p.power) * approach(dt, POWER_TAU);
+        }
+        for (const p of pins) p.age += dt;
+        const k = Math.exp(-dt / COAST_TAU);
+        for (let i = fading.length - 1; i >= 0; i--) {
+          const f = fading[i];
+          const p = f.pole;
+          f.gone += dt;
+          p.age += dt;
+          p.x += p.vx * COAST_TAU * (1 - k);
+          p.y += p.vy * COAST_TAU * (1 - k);
+          p.vx *= k;
+          p.vy *= k;
+          p.fade = Math.max(0, 1 - f.gone / FADE_SECONDS);
+          if (f.gone >= FADE_SECONDS) fading.splice(i, 1);
+        }
+        const pinOn = !!getSettings().pin;
+        if (pinWasOn && !pinOn) while (pins.length) fade(pins.shift());
+        pinWasOn = pinOn;
       },
-      poles: () => [...live.values()].map((p) => ({ ...p })),
+      poles() {
+        const out = [];
+        for (const rec of live.values()) out.push({ ...rec.pole });
+        for (const p of pins) out.push({ ...p });
+        for (const f of fading) out.push({ ...f.pole });
+        return out;
+      },
       active: () => live.size,
+      pinCount: () => pins.length,
       clearPins() {
+        while (pins.length) fade(pins.shift());
       },
       on: ev.on,
+      // For the keyboard: the canvas, the same screen-to-world mapping touches use,
+      // and a way to announce its presses so they ring and chime like touches do.
+      target,
+      clientToWorld,
+      relay(name, payload) {
+        if (name === "down" || name === "up" || name === "activity") ev.emit(name, payload);
+      },
       dispose() {
+        target.removeEventListener("pointerdown", onDown);
+        target.removeEventListener("lostpointercapture", onLostCapture);
+        target.removeEventListener("touchstart", block, touchOpts);
+        target.removeEventListener("touchmove", block, touchOpts);
+        for (const name of BLOCKED_EVENTS) target.removeEventListener(name, block);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onEnd);
+        window.removeEventListener("pointercancel", onEnd);
+        window.removeEventListener("blur", liftAll);
+        document.removeEventListener("visibilitychange", onVisibility);
+        for (const [name, value] of Object.entries(savedStyle)) {
+          if (value) target.style.setProperty(name, value);
+          else target.style.removeProperty(name);
+        }
+        live.clear();
+        consumed.clear();
+        pins.length = 0;
+        fading.length = 0;
       }
     };
   }
 
   // src/js/input/keyboard.js
+  var RING_RADIUS = 0.18;
+  var RING_SPIN = 0.25;
+  var ARROW_SPEED = 0.9;
+  var FADE_SECONDS2 = 0.35;
+  var VELOCITY_TAU2 = 0.06;
+  var COAST_TAU2 = 0.12;
+  var MAX_STEP = 0.05;
+  var EDGE = 0.97;
+  var MAX_SYMMETRY = SCENE_FIELDS.get("symmetry").max;
+  var ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
+  var KEEPS_KEYS = [
+    "button",
+    "a[href]",
+    "summary",
+    "audio",
+    "video",
+    ...[
+      "button",
+      "tab",
+      "tablist",
+      "radio",
+      "radiogroup",
+      "slider",
+      "switch",
+      "checkbox",
+      "menuitem",
+      "option",
+      "listbox",
+      "spinbutton",
+      "scrollbar"
+    ].map((r) => `[role="${r}"]`)
+  ].join(",");
+  function isTyping(el) {
+    if (!el || !el.tagName) return false;
+    return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
+  }
+  var keepsKeys = (el) => !!(el && typeof el.closest === "function" && el.closest(KEEPS_KEYS));
+  var altGraph = (e) => typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
+  function letterOf(e, byCode) {
+    if (typeof e.key === "string" && /^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
+    const m = byCode && /^Key([A-Z])$/.exec(e.code || "");
+    return m ? m[1].toLowerCase() : null;
+  }
+  function digitOf(e, byCode) {
+    const m = byCode && /^(?:Digit|Numpad)([0-9])$/.exec(e.code || "");
+    const d = m ? m[1] : typeof e.key === "string" && /^[0-9]$/.test(e.key) ? e.key : null;
+    return d === null ? 0 : d === "0" ? 10 : Number(d);
+  }
+  function bracketOf(e, byCode) {
+    if (e.key === "[" || e.key === "]") return e.key;
+    if (!byCode) return null;
+    return e.code === "BracketLeft" ? "[" : e.code === "BracketRight" ? "]" : null;
+  }
   function createKeyboard({ store, actions, pointers }) {
-    return { poles: () => [], dispose() {
-    } };
+    const canvas = pointers && pointers.target;
+    const clientToWorld = pointers && typeof pointers.clientToWorld === "function" ? pointers.clientToWorld : null;
+    const mouse = { x: 0, y: 0, over: false };
+    const cursor = { x: 0, y: 0 };
+    const digitsDown = [];
+    const arrowsDown = /* @__PURE__ */ new Set();
+    const fading = [];
+    let ring = null;
+    let dot2 = null;
+    let serial = 0;
+    let lastStep = 0;
+    const commands = {
+      h: () => actions.toggleUI(),
+      p: () => actions.photo(),
+      r: () => actions.toggleRecord(),
+      s: () => {
+        const s = store.scene.symmetry;
+        store.setScene({ symmetry: s >= MAX_SYMMETRY ? 1 : s + 1 }, { source: "keyboard" });
+      },
+      m: () => store.setScene({ mirror: !store.scene.mirror }, { source: "keyboard" }),
+      n: () => actions.surprise(),
+      a: () => actions.toggleAutopilot(),
+      f: () => actions.toggleFullscreen(),
+      "[": () => actions.stepPreset(-1),
+      "]": () => actions.stepPreset(1)
+    };
+    function run(command) {
+      try {
+        const result = command();
+        if (result && typeof result.then === "function") result.catch((err) => console.warn("Tactilume: a keyboard shortcut failed", err));
+      } catch (err) {
+        console.warn("Tactilume: a keyboard shortcut failed", err);
+      }
+    }
+    function announce(name, payload) {
+      if (pointers && typeof pointers.relay === "function") pointers.relay(name, payload);
+    }
+    function aspect() {
+      const r = canvas ? canvas.getBoundingClientRect() : null;
+      const w = r && r.width ? r.width : innerWidth;
+      const h = r && r.height ? r.height : innerHeight;
+      return h > 0 ? w / h : 1;
+    }
+    function mouseWorld() {
+      if (!mouse.over || !clientToWorld) return null;
+      const w = clientToWorld(mouse.x, mouse.y);
+      return w && Number.isFinite(w.x) && Number.isFinite(w.y) ? w : null;
+    }
+    const anchor = () => mouseWorld() || cursor;
+    function makePole(x, y) {
+      const pole = { x, y, vx: 0, vy: 0, power: 1, age: 0, held: true, id: "k" + serial++, kind: "touch", fade: 1 };
+      announce("down", { x, y, power: 1, id: pole.id, kind: "touch" });
+      return pole;
+    }
+    function release(pole) {
+      pole.held = false;
+      announce("up", { x: pole.x, y: pole.y, vx: pole.vx, vy: pole.vy, power: 1, heldFor: pole.age, id: pole.id });
+      fading.push({ pole, gone: 0 });
+    }
+    function ringSpot(i, n, spin, a) {
+      if (n === 1) return a;
+      const angle = spin + i / n * Math.PI * 2;
+      return { x: a.x + Math.cos(angle) * RING_RADIUS, y: a.y + Math.sin(angle) * RING_RADIUS };
+    }
+    function setRing(n) {
+      if (ring && ring.n === n) return;
+      if (ring) ring.poles.forEach(release);
+      ring = null;
+      if (!n) return;
+      const a = anchor();
+      const spin = Math.PI / 2;
+      ring = { n, spin, poles: [] };
+      for (let i = 0; i < n; i++) {
+        const s = ringSpot(i, n, spin, a);
+        ring.poles.push(makePole(s.x, s.y));
+      }
+    }
+    function toggleDot() {
+      if (dot2) {
+        release(dot2);
+        dot2 = null;
+        return;
+      }
+      const m = mouseWorld();
+      const asp = aspect();
+      if (m) {
+        cursor.x = clamp(m.x, -asp * EDGE, asp * EDGE);
+        cursor.y = clamp(m.y, -EDGE, EDGE);
+      }
+      dot2 = makePole(cursor.x, cursor.y);
+    }
+    function moveTo(p, x, y, dt) {
+      if (dt > 0) {
+        const k = approach(dt, VELOCITY_TAU2);
+        p.vx += ((x - p.x) / dt - p.vx) * k;
+        p.vy += ((y - p.y) / dt - p.vy) * k;
+      }
+      p.x = x;
+      p.y = y;
+    }
+    function step() {
+      const now = performance.now();
+      const dt = lastStep ? Math.min((now - lastStep) / 1e3, MAX_STEP) : 0;
+      if (lastStep && dt < 1e-4) return;
+      lastStep = now;
+      let dx = 0, dy = 0;
+      for (const key of arrowsDown) {
+        dx += ARROWS[key][0];
+        dy += ARROWS[key][1];
+      }
+      const len = Math.hypot(dx, dy);
+      if (len > 0) {
+        const asp = aspect();
+        cursor.x = clamp(cursor.x + dx / len * ARROW_SPEED * dt, -asp * EDGE, asp * EDGE);
+        cursor.y = clamp(cursor.y + dy / len * ARROW_SPEED * dt, -EDGE, EDGE);
+      }
+      if (dot2) {
+        moveTo(dot2, cursor.x, cursor.y, dt);
+        dot2.age += dt;
+      }
+      if (ring) {
+        ring.spin += RING_SPIN * dt;
+        const a = anchor();
+        ring.poles.forEach((p, i) => {
+          const s = ringSpot(i, ring.n, ring.spin, a);
+          moveTo(p, s.x, s.y, dt);
+          p.age += dt;
+        });
+      }
+      const k = Math.exp(-dt / COAST_TAU2);
+      for (let i = fading.length - 1; i >= 0; i--) {
+        const f = fading[i];
+        const p = f.pole;
+        f.gone += dt;
+        p.age += dt;
+        p.x += p.vx * COAST_TAU2 * (1 - k);
+        p.y += p.vy * COAST_TAU2 * (1 - k);
+        p.vx *= k;
+        p.vy *= k;
+        p.fade = Math.max(0, 1 - f.gone / FADE_SECONDS2);
+        if (f.gone >= FADE_SECONDS2) fading.splice(i, 1);
+      }
+    }
+    function onKeyDown(e) {
+      if (e.defaultPrevented || e.isComposing) return;
+      const altGr = altGraph(e);
+      if ((e.ctrlKey || e.metaKey || e.altKey) && !altGr) return;
+      const focus = document.activeElement;
+      if (isTyping(e.target) || isTyping(focus)) return;
+      const byCode = !altGr;
+      if (ARROWS[e.key]) {
+        if (keepsKeys(focus)) return;
+        e.preventDefault();
+        arrowsDown.add(e.key);
+        return;
+      }
+      if (e.code === "Space" || e.key === " ") {
+        if (keepsKeys(focus)) return;
+        e.preventDefault();
+        if (!e.repeat) toggleDot();
+        return;
+      }
+      const n = digitOf(e, byCode);
+      if (n) {
+        e.preventDefault();
+        if (e.repeat) return;
+        const code = e.code || e.key;
+        const known = digitsDown.findIndex((d) => d.code === code);
+        if (known >= 0) digitsDown.splice(known, 1);
+        digitsDown.push({ code, n });
+        setRing(n);
+        return;
+      }
+      const command = commands[letterOf(e, byCode)] || commands[bracketOf(e, byCode)];
+      if (!command) return;
+      e.preventDefault();
+      if (!e.repeat) run(command);
+    }
+    function onKeyUp(e) {
+      if (ARROWS[e.key]) {
+        arrowsDown.delete(e.key);
+        return;
+      }
+      const code = e.code || e.key;
+      let i = digitsDown.findIndex((d) => d.code === code);
+      if (i < 0) {
+        const n = digitOf(e, true);
+        i = n ? digitsDown.findIndex((d) => d.n === n) : -1;
+      }
+      if (i < 0) return;
+      digitsDown.splice(i, 1);
+      const top = digitsDown[digitsDown.length - 1];
+      setRing(top ? top.n : 0);
+    }
+    function onPointerMove(e) {
+      if (e.pointerType === "touch") return;
+      mouse.x = e.clientX;
+      mouse.y = e.clientY;
+      mouse.over = !!canvas && e.target === canvas;
+    }
+    const onPointerLeave = () => {
+      mouse.over = false;
+    };
+    function letGo() {
+      arrowsDown.clear();
+      digitsDown.length = 0;
+      setRing(0);
+    }
+    const onVisibility = () => {
+      if (document.hidden) letGo();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("pointermove", onPointerMove, { passive: true });
+    document.documentElement.addEventListener("pointerleave", onPointerLeave);
+    window.addEventListener("blur", letGo);
+    document.addEventListener("visibilitychange", onVisibility);
+    return {
+      poles() {
+        step();
+        const out = [];
+        if (ring) for (const p of ring.poles) out.push({ ...p });
+        if (dot2) out.push({ ...dot2 });
+        for (const f of fading) out.push({ ...f.pole });
+        return out;
+      },
+      dispose() {
+        window.removeEventListener("keydown", onKeyDown);
+        window.removeEventListener("keyup", onKeyUp);
+        window.removeEventListener("pointermove", onPointerMove, { passive: true });
+        document.documentElement.removeEventListener("pointerleave", onPointerLeave);
+        window.removeEventListener("blur", letGo);
+        document.removeEventListener("visibilitychange", onVisibility);
+        ring = null;
+        dot2 = null;
+        digitsDown.length = 0;
+        arrowsDown.clear();
+        fading.length = 0;
+      }
+    };
   }
 
   // src/js/input/autopilot.js
+  var MIN_COUNT = 1;
+  var MAX_COUNT = 5;
+  var COUNT_WEIGHT = [0, 0.26, 0.3, 0.24, 0.12, 0.08];
+  var CHANGE_EVERY = [4, 9];
+  var TAP_EVERY = [6, 14];
+  var FADE_IN = 1.5;
+  var FADE_OUT = 1.5;
+  var FREQ = [0.03, 0.17];
+  var REACH = 0.8;
+  var RESUME_GAP = 0.5;
+  var MAX_DT = 0.25;
+  var TAU = Math.PI * 2;
   function createAutopilot({ seed = 1 } = {}) {
+    let rng, clock, serial, voices, nextChange, nextTap, lastTime;
+    const between = ([lo, hi]) => lo + rng() * (hi - lo);
+    function axis() {
+      const n = rng() < 0.5 ? 2 : 3;
+      const reach = REACH * (0.65 + 0.35 * rng());
+      const parts = [];
+      let sum = 0;
+      for (let i = 0; i < n; i++) {
+        const weight = 0.35 + rng();
+        parts.push({ w: TAU * between(FREQ), phase: rng() * TAU, amp: weight });
+        sum += weight;
+      }
+      for (const p of parts) p.amp *= reach / sum;
+      return parts;
+    }
+    function voice() {
+      return { id: "a" + serial++, px: axis(), py: axis(), ageFrom: clock, state: "in", since: clock };
+    }
+    function evaluate(parts, t) {
+      let v = 0, d = 0;
+      for (const p of parts) {
+        const a = p.w * t + p.phase;
+        v += p.amp * Math.sin(a);
+        d += p.amp * p.w * Math.cos(a);
+      }
+      return [v, d];
+    }
+    const staying = () => voices.filter((v) => v.state !== "out");
+    function maybeChange() {
+      const here = staying();
+      const n = here.length;
+      const m = n + (rng() < 0.5 ? 1 : -1);
+      const accept = rng();
+      if (m < MIN_COUNT || m > MAX_COUNT || accept >= Math.min(1, COUNT_WEIGHT[m] / COUNT_WEIGHT[n])) return;
+      if (m > n) {
+        voices.push(voice());
+      } else {
+        const leaving = here.reduce((a, b) => b.ageFrom < a.ageFrom ? b : a);
+        leaving.state = "out";
+        leaving.since = clock;
+      }
+    }
+    function tap() {
+      const ready = voices.filter((v) => v.state === "on");
+      if (ready.length) ready[Math.floor(rng() * ready.length)].ageFrom = clock;
+    }
+    function resume() {
+      voices = voices.filter((v) => v.state !== "out");
+      if (!voices.length) voices.push(voice());
+      for (const v of voices) {
+        v.state = "in";
+        v.since = clock;
+        v.ageFrom = clock;
+      }
+      nextChange = clock + between(CHANGE_EVERY);
+      nextTap = clock + between(TAP_EVERY);
+    }
+    function reset() {
+      rng = mulberry32(seed);
+      clock = 0;
+      serial = 0;
+      voices = [];
+      voices.push(voice());
+      nextChange = between(CHANGE_EVERY);
+      nextTap = between(TAP_EVERY);
+      lastTime = null;
+    }
+    reset();
     return {
       update(dt, time, aspect) {
-        const x = Math.sin(time * 0.31) * aspect * 0.5, y = Math.sin(time * 0.23 + 1) * 0.5;
-        return [{ x, y, vx: 0, vy: 0, power: 1, age: time, held: true, id: "a0", kind: "auto" }];
+        const step = Number.isFinite(dt) && dt > 0 ? Math.min(dt, MAX_DT) : 0;
+        const asp = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
+        if (lastTime !== null && Number.isFinite(time) && time - lastTime > RESUME_GAP) resume();
+        if (Number.isFinite(time)) lastTime = time;
+        clock += step;
+        if (clock >= nextChange) {
+          maybeChange();
+          nextChange = clock + between(CHANGE_EVERY);
+        }
+        if (clock >= nextTap) {
+          tap();
+          nextTap = clock + between(TAP_EVERY);
+        }
+        const out = [];
+        voices = voices.filter((v) => !(v.state === "out" && clock - v.since >= FADE_OUT));
+        for (const v of voices) {
+          if (v.state === "in" && clock - v.since >= FADE_IN) v.state = "on";
+          const [x, vx] = evaluate(v.px, clock);
+          const [y, vy] = evaluate(v.py, clock);
+          const t = clock - v.since;
+          const power = v.state === "in" ? smoothstep(0, FADE_IN, t) : v.state === "out" ? 1 - smoothstep(0, FADE_OUT, t) : 1;
+          out.push({
+            x: x * asp,
+            y,
+            vx: vx * asp,
+            vy,
+            power,
+            fade: power,
+            age: clock - v.ageFrom,
+            held: v.state !== "out",
+            id: v.id,
+            kind: "auto"
+          });
+        }
+        return out;
       },
-      reset() {
-      }
+      reset
     };
   }
 
   // src/js/input/tilt.js
-  function createTilt() {
-    return { async enable() {
-      return false;
-    }, disable() {
-    }, vector: () => ({ x: 0, y: -1, z: 0 }) };
+  var SMOOTH_TAU = 0.12;
+  var FIRST_READING_MS = 1e3;
+  var ORIENTATION_FRESH = 250;
+  var MOTION_FRESH = 300;
+  var GRAVITY = 9.80665;
+  var STILL_ENOUGH = 2;
+  var SIGN_VOTES = 4;
+  var LEVEL = [0.035, 0.1];
+  var DEG = Math.PI / 180;
+  var DOWN = Object.freeze({ x: 0, y: -1, z: 0 });
+  var num = (v) => typeof v === "number" && Number.isFinite(v);
+  function screenAngle() {
+    try {
+      const a = screen.orientation && screen.orientation.angle;
+      if (num(a)) return a;
+    } catch {
+    }
+    const legacy = window.orientation;
+    return num(legacy) ? legacy : 0;
   }
-
-  // src/js/audio/audio.js
-  var SILENT = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
-  function createAudio({ getSettings }) {
+  function ask(Sensor) {
+    if (!Sensor) return Promise.resolve(false);
+    if (typeof Sensor.requestPermission !== "function") return Promise.resolve(true);
+    try {
+      return Promise.resolve(Sensor.requestPermission()).then((r) => r !== "denied", () => false);
+    } catch {
+      return Promise.resolve(false);
+    }
+  }
+  function createTilt() {
+    let enabled = false;
+    let listening = false;
+    let pending = null;
+    let generation = 0;
+    let firstReading = null;
+    let smooth = null;
+    let lastFeed = 0;
+    let motionAt = -Infinity;
+    let orientation = null;
+    let sign = 1;
+    let votes = 0;
+    function feed(gx, gy, gz) {
+      const a = screenAngle() * DEG;
+      const c = Math.cos(a), s = Math.sin(a);
+      const x = c * gx - s * gy;
+      const y = s * gx + c * gy;
+      const now = performance.now();
+      if (!smooth) {
+        smooth = { x, y, z: gz };
+      } else {
+        const k = approach(Math.min((now - lastFeed) / 1e3, 0.1), SMOOTH_TAU);
+        smooth.x += (x - smooth.x) * k;
+        smooth.y += (y - smooth.y) * k;
+        smooth.z += (gz - smooth.z) * k;
+      }
+      lastFeed = now;
+      if (firstReading) firstReading(true);
+    }
+    function checkSign(gz, length, now) {
+      if (!orientation || now - orientation.at > ORIENTATION_FRESH) return;
+      if (Math.abs(length - GRAVITY) > STILL_ENOUGH || Math.abs(orientation.g.z) < 0.5 || Math.abs(gz) < 0.5) return;
+      const agree = Math.sign(gz) === Math.sign(orientation.g.z);
+      votes = Math.max(-SIGN_VOTES, Math.min(SIGN_VOTES, votes + (agree === (sign === 1) ? 1 : -1)));
+      if (votes <= -SIGN_VOTES) {
+        sign = -sign;
+        votes = 0;
+      }
+    }
+    function onMotion(e) {
+      const a = e.accelerationIncludingGravity;
+      if (!a || !num(a.x) || !num(a.y) || !num(a.z)) return;
+      const length = Math.hypot(a.x, a.y, a.z);
+      if (length < 0.5) return;
+      const now = performance.now();
+      const gx = -a.x / length, gy = -a.y / length, gz = -a.z / length;
+      checkSign(gz, length, now);
+      motionAt = now;
+      feed(gx * sign, gy * sign, gz * sign);
+    }
+    function onOrientation(e) {
+      if (!num(e.beta) || !num(e.gamma)) return;
+      const b = e.beta * DEG, g = e.gamma * DEG;
+      const gd = { x: Math.sin(g) * Math.cos(b), y: -Math.sin(b), z: -Math.cos(g) * Math.cos(b) };
+      const now = performance.now();
+      orientation = { g: gd, at: now };
+      if (now - motionAt > MOTION_FRESH) feed(gd.x, gd.y, gd.z);
+    }
+    function listen(motion, orient) {
+      if (listening) return;
+      listening = true;
+      if (motion) window.addEventListener("devicemotion", onMotion);
+      if (orient) window.addEventListener("deviceorientation", onOrientation);
+    }
+    function stopListening() {
+      listening = false;
+      window.removeEventListener("devicemotion", onMotion);
+      window.removeEventListener("deviceorientation", onOrientation);
+    }
+    function waitForReading() {
+      return new Promise((resolve) => {
+        const timer = setTimeout(() => done(false), FIRST_READING_MS);
+        function done(ok) {
+          clearTimeout(timer);
+          firstReading = null;
+          resolve(ok);
+        }
+        firstReading = done;
+        if (smooth) done(true);
+      });
+    }
     return {
-      unlock() {
+      enable() {
+        if (enabled) return Promise.resolve(true);
+        if (pending) return pending;
+        let Motion = null, Orientation = null;
+        try {
+          Motion = window.DeviceMotionEvent || null;
+          Orientation = window.DeviceOrientationEvent || null;
+        } catch {
+        }
+        if (!Motion && !Orientation) return Promise.resolve(false);
+        const ticket = generation;
+        const asks = [ask(Motion), ask(Orientation)];
+        pending = Promise.all(asks).then(([motion, orient]) => {
+          if (ticket !== generation || !motion && !orient) return false;
+          listen(motion, !!Orientation);
+          return waitForReading();
+        }).catch((err) => {
+          console.warn("Tactilume: tilt could not start", err);
+          return false;
+        }).then((ok) => {
+          if (ticket !== generation) return false;
+          pending = null;
+          if (ok) enabled = true;
+          else stopListening();
+          return ok;
+        });
+        return pending;
       },
-      update() {
+      disable() {
+        generation++;
+        enabled = false;
+        pending = null;
+        if (firstReading) firstReading(false);
+        stopListening();
+        smooth = null;
+        orientation = null;
+        motionAt = -Infinity;
       },
-      noteDown() {
-      },
-      noteUp() {
-      },
-      behaviourChanged() {
-      },
-      analysis: () => SILENT,
-      async startMic() {
-        return { ok: false, error: "not built yet" };
-      },
-      stopMic() {
-      },
-      async playFile() {
-        return { ok: false, error: "not built yet" };
-      },
-      stopFile() {
-      },
-      fileName: "",
-      recordTrack: () => null,
-      dispose() {
+      vector() {
+        if (!enabled || !smooth) return { ...DOWN };
+        const length = Math.hypot(smooth.x, smooth.y, smooth.z);
+        if (length < 1e-3) return { ...DOWN };
+        let x = smooth.x / length, y = smooth.y / length, z = smooth.z / length;
+        const side = Math.hypot(x, y);
+        const keep = smoothstep(LEVEL[0], LEVEL[1], side);
+        if (keep < 1) {
+          x *= keep;
+          y *= keep;
+          z = (z < 0 ? -1 : 1) * Math.sqrt(Math.max(0, 1 - (side * keep) ** 2));
+        }
+        return { x, y, z };
       }
     };
   }
 
-  // src/js/platform/platform.js
-  function createPlatform() {
+  // src/js/audio/reverb.js
+  function makeImpulse(ctx, { seconds = 3.5, preDelay = 0.012, seed = 31431 } = {}) {
+    const rate = ctx.sampleRate;
+    const length = Math.max(2, Math.ceil(seconds * rate));
+    const buffer = ctx.createBuffer(2, length, rate);
+    const rand = mulberry32(seed);
+    const pre = Math.min(length - 1, Math.round(preDelay * rate));
+    const tailSamples = length - pre;
+    const decay = Math.exp(-6.9 / tailSamples);
+    const growIn = Math.max(1, Math.round(0.045 * rate));
+    const channels = [buffer.getChannelData(0), buffer.getChannelData(1)];
+    let peakEnergy = 0;
+    for (const d of channels) {
+      let lp = 0;
+      let env = 1;
+      let energy = 0;
+      for (let i = pre; i < length; i++) {
+        const k = i - pre;
+        const coef = 0.78 - 0.66 * Math.sqrt(k / tailSamples);
+        lp += coef * (rand() * 2 - 1 - lp);
+        const v = lp * env * (k < growIn ? k / growIn : 1);
+        d[i] = v;
+        energy += v * v;
+        env *= decay;
+      }
+      const taps = 16;
+      const tapGains = new Float32Array(taps);
+      const tapAt = new Int32Array(taps);
+      let tapEnergy = 0;
+      for (let r = 0; r < taps; r++) {
+        const time = 5e-3 + Math.pow(rand(), 1.5) * 0.085;
+        tapAt[r] = Math.min(length - 3, pre + Math.round(time * rate));
+        tapGains[r] = (0.4 + 0.6 * rand()) * Math.exp(-time * 18) * (rand() < 0.5 ? -1 : 1);
+        tapEnergy += tapGains[r] * tapGains[r] * 0.46;
+      }
+      const tapScale = Math.sqrt(energy * 0.16 / Math.max(tapEnergy, 1e-9));
+      for (let r = 0; r < taps; r++) {
+        const g = tapGains[r] * tapScale;
+        d[tapAt[r]] += g * 0.6;
+        d[tapAt[r] + 1] += g * 0.3;
+        d[tapAt[r] + 2] += g * 0.1;
+      }
+      let total = 0;
+      for (let i = 0; i < length; i++) total += d[i] * d[i];
+      peakEnergy = Math.max(peakEnergy, total);
+    }
+    const scale = 1 / Math.sqrt(Math.max(peakEnergy, 1e-12));
+    for (const d of channels) for (let i = 0; i < length; i++) d[i] *= scale;
+    return buffer;
+  }
+  function createReverb(ctx, { seconds = 3.5 } = {}) {
+    const input = ctx.createGain();
+    const output = ctx.createGain();
+    const send = ctx.createGain();
+    send.gain.value = 0.5;
+    const hp = ctx.createBiquadFilter();
+    hp.type = "highpass";
+    hp.frequency.value = 170;
+    hp.Q.value = 0.6;
+    const lp = ctx.createBiquadFilter();
+    lp.type = "lowpass";
+    lp.frequency.value = 8e3;
+    lp.Q.value = 0.5;
+    const convolver = ctx.createConvolver();
+    convolver.normalize = false;
+    convolver.buffer = makeImpulse(ctx, { seconds });
+    input.connect(send);
+    send.connect(hp);
+    hp.connect(lp);
+    lp.connect(convolver);
+    convolver.connect(output);
+    const bloomSend = ctx.createGain();
+    bloomSend.gain.value = 0;
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.293;
+    const tone = ctx.createBiquadFilter();
+    tone.type = "bandpass";
+    tone.frequency.value = 1700;
+    tone.Q.value = 0.45;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.36;
+    input.connect(bloomSend);
+    bloomSend.connect(delay);
+    delay.connect(tone);
+    tone.connect(feedback);
+    feedback.connect(delay);
+    tone.connect(hp);
+    const nodes = [input, output, send, hp, lp, convolver, bloomSend, delay, tone, feedback];
     return {
-      native: false,
-      info: { native: false },
-      async saveFile() {
-        return { ok: false, error: "not built yet" };
+      input,
+      output,
+      setMix({ wet, bloom }, at = ctx.currentTime, glide = 0.5) {
+        send.gain.setTargetAtTime(wet, at, glide);
+        bloomSend.gain.setTargetAtTime(bloom, at, glide);
       },
-      async shareFile() {
-        return { ok: false, error: "not built yet" };
+      dispose() {
+        for (const n of nodes) {
+          try {
+            n.disconnect();
+          } catch {
+          }
+        }
+      }
+    };
+  }
+
+  // src/js/audio/synth.js
+  var MAX_BELLS = 7;
+  var MAX_PADS = 6;
+  var MAX_WHOOSH = 2;
+  var PAD_ATTACK = 0.4;
+  var PAD_RELEASE = 1.2;
+  var PAD_MIN_AGE = 0.12;
+  var DRONE_AFTER = 1.8;
+  var REMEMBERED = 16;
+  var BELL = 0.24;
+  var PAD = 0.05;
+  var DRONE = 0.011;
+  var WIND = 0.05;
+  var WHOOSH = 0.075;
+  var SWELL = 0.07;
+  var TIMBRES = {
+    warm: { partials: [[1, 1, 1], [2, 0.22, 0.5], [3.01, 0.07, 0.3]], attack: 8e-3, decay: 3.2, gain: 1 },
+    glass: { partials: [[1, 1, 1], [2.32, 0.26, 0.55], [4.25, 0.1, 0.3]], attack: 5e-3, decay: 3.8, gain: 0.9 },
+    pluck: { partials: [[1, 1, 1], [2, 0.36, 0.4], [3, 0.15, 0.22]], attack: 2e-3, decay: 2.1, gain: 1 },
+    chime: { partials: [[1, 1, 1], [2.76, 0.4, 0.45], [5.4, 0.2, 0.22]], attack: 2e-3, decay: 4.6, gain: 0.82 },
+    bowl: { partials: [[1, 1, 1], [2.71, 0.3, 0.7], [5.15, 0.1, 0.4]], attack: 0.022, decay: 5.2, gain: 0.85 },
+    breath: { partials: [[1, 1, 1], [2, 0.12, 0.6], [3, 0.04, 0.4]], attack: 0.035, decay: 1.6, gain: 0.9 },
+    crystal: { partials: [[1, 1, 1], [3.01, 0.2, 0.5], [4.97, 0.08, 0.3]], attack: 4e-3, decay: 3.4, gain: 0.95 },
+    swell: { partials: [[1, 1, 1], [2, 0.16, 0.8], [3, 0.05, 0.6]], attack: 0.32, decay: 2.8, gain: 1 }
+  };
+  var WAVE_GAIN = { sine: 1, triangle: 0.9, sawtooth: 0.5 };
+  var MODES2 = {
+    // D dorian colour (minor third, major sixth), low and warm
+    well: { root: 50, scale: [0, 3, 5, 7, 9], span: 2, bell: "warm", pad: [-5, 0, 3, 7, 12, 15], padWave: "triangle", padCut: 650, drone: [0, 7], wet: 0.5, bloom: 0.08 },
+    // G lydian: bright and turning
+    whirl: { root: 55, scale: [0, 2, 4, 6, 9], span: 2, bell: "glass", pad: [-5, 0, 4, 7, 14, 16], padWave: "triangle", padCut: 900, drone: [0, 7], wet: 0.55, bloom: 0.18 },
+    // A major, short and sparkling
+    burst: { root: 57, scale: [0, 2, 4, 7, 9], span: 2, bell: "pluck", pad: [-5, 0, 4, 7, 12, 16], padWave: "sawtooth", padCut: 1100, drone: [0, 7], wet: 0.38, bloom: 0.12 },
+    // E suspended, open and airy
+    halo: { root: 52, scale: [0, 2, 5, 7, 10], span: 2, bell: "glass", pad: [-5, 0, 7, 10, 14, 17], padWave: "triangle", padCut: 1400, drone: [0, 7], wet: 0.7, bloom: 0.28 },
+    // F, flowing folk pentatonic
+    current: { root: 53, scale: [0, 2, 5, 7, 9], span: 2, bell: "pluck", pad: [-5, 0, 7, 9, 14, 19], padWave: "triangle", padCut: 800, drone: [0, 7], wet: 0.5, bloom: 0.15 },
+    // B minor, long singing threads
+    weave: { root: 59, scale: [0, 3, 5, 7, 10], span: 2, bell: "bowl", pad: [-5, 0, 3, 7, 10, 15], padWave: "sawtooth", padCut: 700, drone: [0, 7], wet: 0.55, bloom: 0.2 },
+    // E major, high bright bells
+    chime: { root: 64, scale: [0, 2, 4, 7, 9], span: 2, bell: "chime", pad: [-12, -5, 0, 4, 7, 12], padWave: "sine", padCut: 2e3, drone: [-12, -5], wet: 0.62, bloom: 0.3 },
+    // C dark minor (flat sixth) over a low dark pad, with wind
+    storm: { root: 48, scale: [0, 3, 5, 8, 10], span: 2, bell: "warm", pad: [-12, -2, 0, 3, 10, 15], padWave: "sawtooth", padCut: 420, drone: [0, 10], wet: 0.5, bloom: 0.06, wind: 1 },
+    // C# whole-tone, glassy and suspended like a crystal
+    lattice: { root: 61, scale: [0, 2, 4, 6, 8, 10], span: 2, bell: "crystal", pad: [-12, 0, 4, 10, 14, 18], padWave: "sine", padCut: 1600, drone: [-12, -2], wet: 0.6, bloom: 0.22 },
+    // C# major singing bowls; the pad brightens as you gather, and lets go upward
+    nova: { root: 49, scale: [0, 2, 4, 7, 9], span: 2.5, bell: "bowl", pad: [-5, 0, 7, 12, 16, 19], padWave: "sawtooth", padCut: 600, drone: [0, 7], wet: 0.6, bloom: 0.25 },
+    // B flat minor, soft breathy flutes like a far-off flock
+    murmur: { root: 58, scale: [0, 3, 5, 7, 10], span: 2, bell: "breath", pad: [-5, 0, 3, 7, 10, 15], padWave: "triangle", padCut: 900, drone: [0, 7], wet: 0.55, bloom: 0.2 },
+    // D major, cascading plucks
+    fountain: { root: 62, scale: [0, 2, 4, 7, 9], span: 2, bell: "pluck", pad: [-12, -5, 0, 4, 7, 14], padWave: "triangle", padCut: 1200, drone: [-12, -5], wet: 0.5, bloom: 0.25 }
+  };
+  var MODE_KEYS = Object.keys(MODES2);
+  var SWELL_PICKS = [1, 3, 5];
+  var IDLE = 0;
+  var ON = 1;
+  var RELEASING = 2;
+  var mtof = (m) => 440 * Math.pow(2, (m - 69) / 12);
+  var finite = (v, d) => Number.isFinite(v) ? v : d;
+  var velocity = (power) => clamp(0.3 + 0.45 * finite(power, 1), 0.25, 1);
+  var isCopy = (p) => p.kind === "mirror" || p.kind === "virtual";
+  function softCurve(drive = 1.6, n = 2049) {
+    const curve = new Float32Array(n);
+    for (let i = 0; i < n; i++) curve[i] = Math.tanh(drive * (i / (n - 1) * 2 - 1)) / drive;
+    return curve;
+  }
+  function makeNoise(ctx, seconds = 2) {
+    const length = Math.ceil(seconds * ctx.sampleRate);
+    const buffer = ctx.createBuffer(1, length, ctx.sampleRate);
+    const d = buffer.getChannelData(0);
+    const rand = mulberry32(24301);
+    let lp = 0;
+    for (let i = 0; i < length; i++) {
+      lp += 0.6 * (rand() * 2 - 1 - lp);
+      d[i] = lp * 1.5;
+    }
+    return buffer;
+  }
+  function setParam(param, value, at, glide) {
+    if (glide > 0) param.setTargetAtTime(value, at, glide);
+    else param.setValueAtTime(value, at);
+  }
+  function stopSafely(node, at) {
+    try {
+      node.stop(at);
+    } catch {
+    }
+  }
+  function disconnectAll(...nodes) {
+    for (const n of nodes) {
+      if (!n) continue;
+      try {
+        n.disconnect();
+      } catch {
+      }
+    }
+  }
+  function degreeMidi(mode, deg) {
+    const n = mode.scale.length;
+    const d = Math.max(0, deg | 0);
+    const midi = mode.root + Math.floor(d / n) * 12 + mode.scale[d % n];
+    return midi > 93 ? midi - 12 : midi;
+  }
+  var bellSteps = (mode) => Math.round(mode.span * mode.scale.length);
+  var unitY = (y) => Number.isFinite(y) ? clamp((y + 1) / 2, 0, 1) : 0.5;
+  function createSynth(ctx) {
+    const output = ctx.createGain();
+    output.gain.value = 2.6;
+    const bus = ctx.createGain();
+    const shaper = ctx.createWaveShaper();
+    shaper.curve = softCurve();
+    shaper.oversample = "2x";
+    const dry = ctx.createGain();
+    dry.gain.value = 0.82;
+    const reverb = createReverb(ctx, { seconds: 3.5 });
+    const rider = ctx.createGain();
+    bus.connect(rider);
+    rider.connect(shaper);
+    shaper.connect(dry);
+    dry.connect(output);
+    shaper.connect(reverb.input);
+    reverb.output.connect(output);
+    const noise = makeNoise(ctx);
+    let enabled = false;
+    let calm = false;
+    let aspect = 1;
+    let modeKey = "well";
+    let mode = MODES2.well;
+    reverb.setMix(mode, ctx.currentTime, 0.01);
+    const bells = [];
+    const whooshes = [];
+    const pads = Array.from({ length: MAX_PADS }, () => ({
+      state: IDLE,
+      id: "",
+      seen: 0,
+      o1: null,
+      o2: null,
+      filter: null,
+      env: null,
+      panner: null,
+      chord: 0,
+      deg: 0,
+      lastStrum: -9,
+      endAt: 0,
+      freq: 0,
+      cut: 0,
+      pan: 0,
+      level: 0
+    }));
+    const chosen = new Array(MAX_PADS).fill(null);
+    const chosenScore = new Float64Array(MAX_PADS);
+    let chosenN = 0;
+    const rung = new Array(REMEMBERED).fill("");
+    let rungAt = 0;
+    let frame = 0;
+    let lastHeld = -Infinity;
+    let strumTokens = 4;
+    let gust = 0;
+    let busy = 0;
+    let riderLevel = 1;
+    let drone = null;
+    let wind = null;
+    let pendingKey = "";
+    let pendingAt = 0;
+    let lastSwell = -Infinity;
+    const panFor = (x) => clamp(finite(x, 0) / aspect, -1, 1) * 0.75;
+    function rideLevel(now, dt) {
+      busy *= Math.exp(-dt / 1.2);
+      let held = 0;
+      for (const s of pads) if (s.state === ON) held++;
+      const level = 1 / (1 + (busy + held * 0.6) / 12);
+      if (Math.abs(level - riderLevel) > riderLevel * 0.03) {
+        rider.gain.setTargetAtTime(level, now, 0.6);
+        riderLevel = level;
+      }
+    }
+    const bellDegree = (y) => Math.round(unitY(y) * bellSteps(mode));
+    function pruneBells(now) {
+      let w = 0;
+      for (let i = 0; i < bells.length; i++) if (bells[i].end > now) bells[w++] = bells[i];
+      bells.length = w;
+    }
+    function stealBell(now) {
+      let best = -1, bestLevel = Infinity;
+      for (let i = 0; i < bells.length; i++) {
+        const v2 = bells[i];
+        if (v2.attackEnd > now) continue;
+        const est = v2.level * Math.exp(-(now - v2.attackEnd) / v2.tau);
+        if (est < bestLevel) {
+          bestLevel = est;
+          best = i;
+        }
+      }
+      if (best < 0) best = 0;
+      const v = bells[best];
+      for (const g of v.gains) g.gain.setTargetAtTime(0, now, 0.012);
+      for (const o of v.oscs) stopSafely(o, now + 0.09);
+      bells.splice(best, 1);
+    }
+    function strike(midi, level, pan, timbreKey, at, bright = 1) {
+      const t = TIMBRES[timbreKey] || TIMBRES.warm;
+      pruneBells(at);
+      if (bells.length >= MAX_BELLS) stealBell(at);
+      const gain = level * t.gain * (calm ? 0.8 : 1) / Math.sqrt(1 + 0.3 * bells.length);
+      if (!(gain > 1e-4)) return;
+      const f0 = mtof(midi) * Math.pow(2, (Math.random() - 0.5) * 7 / 1200);
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = clamp(pan, -1, 1);
+      panner.connect(bus);
+      const voice = { gains: [], oscs: [], level: gain, tau: 1, attackEnd: at + t.attack, end: at, alive: 0 };
+      const shine = (calm ? 0.6 : 1) * bright;
+      for (const [ratio, amp, share] of t.partials) {
+        const f = f0 * ratio;
+        if (f > 11e3) continue;
+        const a = gain * amp * (ratio === 1 ? 1 : shine) / (1 + (f / 3500) ** 2);
+        const dur = t.decay * share;
+        const osc = ctx.createOscillator();
+        osc.frequency.value = f;
+        const g = ctx.createGain();
+        g.gain.value = 0;
+        g.gain.setValueAtTime(0, at);
+        g.gain.linearRampToValueAtTime(a, at + t.attack);
+        g.gain.setTargetAtTime(0, at + t.attack, dur / 6.9);
+        osc.connect(g);
+        g.connect(panner);
+        const stopAt = at + t.attack + dur;
+        osc.start(at);
+        osc.stop(stopAt);
+        if (share === 1) voice.tau = dur / 6.9;
+        voice.end = Math.max(voice.end, stopAt);
+        voice.oscs.push(osc);
+        voice.gains.push(g);
+        voice.alive++;
+        osc.onended = () => {
+          disconnectAll(osc, g);
+          if (--voice.alive === 0) disconnectAll(panner);
+        };
+      }
+      bells.push(voice);
+      busy += 1;
+    }
+    function remember(id) {
+      rung[rungAt] = String(id);
+      rungAt = (rungAt + 1) % REMEMBERED;
+    }
+    const wasRung = (id) => rung.includes(String(id));
+    function padStart(slot, now) {
+      const o1 = ctx.createOscillator();
+      const o2 = ctx.createOscillator();
+      o1.type = o2.type = mode.padWave;
+      o1.detune.value = 5 + Math.random() * 3;
+      o2.detune.value = -5 - Math.random() * 3;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.Q.value = 0.9;
+      const env = ctx.createGain();
+      env.gain.value = 0;
+      const panner = ctx.createStereoPanner();
+      o1.connect(filter);
+      o2.connect(filter);
+      filter.connect(env);
+      env.connect(panner);
+      panner.connect(bus);
+      o1.start(now);
+      o2.start(now);
+      Object.assign(slot, { o1, o2, filter, env, panner, freq: 0, cut: 0, pan: 0, level: 0, waveGain: WAVE_GAIN[mode.padWave] || 1 });
+    }
+    function padRelease(slot, now) {
+      slot.state = RELEASING;
+      slot.env.gain.setTargetAtTime(0, now, PAD_RELEASE / 4);
+      slot.level = 0;
+      slot.endAt = now + PAD_RELEASE * 1.6;
+    }
+    function padFree(slot, now) {
+      stopSafely(slot.o1, now);
+      stopSafely(slot.o2, now);
+      disconnectAll(slot.o1, slot.o2, slot.filter, slot.env, slot.panner);
+      slot.o1 = slot.o2 = slot.filter = slot.env = slot.panner = null;
+      slot.state = IDLE;
+      slot.id = "";
+    }
+    function choosePoles(poles) {
+      chosenN = 0;
+      for (let i = 0; i < poles.length; i++) {
+        const p = poles[i];
+        if (!p || !p.held || !(finite(p.age, 1) >= PAD_MIN_AGE)) continue;
+        const score = (isCopy(p) ? 0 : 10) + clamp(finite(p.power, 1), 0, 2) - i * 1e-3;
+        let j;
+        if (chosenN < MAX_PADS) j = chosenN++;
+        else if (score > chosenScore[MAX_PADS - 1]) j = MAX_PADS - 1;
+        else continue;
+        while (j > 0 && chosenScore[j - 1] < score) {
+          chosen[j] = chosen[j - 1];
+          chosenScore[j] = chosenScore[j - 1];
+          j--;
+        }
+        chosen[j] = p;
+        chosenScore[j] = score;
+      }
+      for (let j = chosenN; j < MAX_PADS; j++) chosen[j] = null;
+    }
+    function slotFor(id) {
+      for (const s of pads) if (s.state !== IDLE && s.id === id) return s;
+      let best = null;
+      for (const s of pads) {
+        if (s.state === IDLE) return s;
+        if (s.state === RELEASING && (!best || s.endAt < best.endAt)) best = s;
+      }
+      return best;
+    }
+    function padFollow(slot, p, now, fresh) {
+      const n = mode.pad.length;
+      const pos = unitY(p.y) * (n - 1);
+      if (fresh || Math.abs(pos - slot.chord) > 0.62) slot.chord = clamp(Math.round(pos), 0, n - 1);
+      const freq = mtof(mode.root + mode.pad[slot.chord]);
+      if (Math.abs(freq - slot.freq) > slot.freq * 2e-3) {
+        setParam(slot.o1.frequency, freq, now, slot.freq ? 0.07 : 0);
+        setParam(slot.o2.frequency, freq, now, slot.freq ? 0.07 : 0);
+        slot.freq = freq;
+      }
+      const speed = Math.hypot(finite(p.vx, 0), finite(p.vy, 0));
+      let cut = mode.padCut * (1 + 1.4 * Math.min(speed, 4)) * (0.8 + 0.4 * (pos / (n - 1)));
+      if (modeKey === "nova") cut *= 1 + Math.min(finite(p.age, 0), 4) * 0.45;
+      if (calm) cut *= 0.7;
+      cut = clamp(cut, 180, 7e3);
+      if (Math.abs(cut - slot.cut) > slot.cut * 0.03) {
+        setParam(slot.filter.frequency, cut, now, slot.cut ? 0.1 : 0);
+        slot.cut = cut;
+      }
+      const pan = panFor(p.x) * 0.9;
+      if (Math.abs(pan - slot.pan) > 0.02) {
+        slot.panner.pan.setTargetAtTime(pan, now, 0.1);
+        slot.pan = pan;
+      }
+      const level = PAD * slot.waveGain * (0.75 + 0.25 * Math.min(finite(p.power, 1), 1.5)) * (calm ? 0.8 : 1) / Math.sqrt(Math.max(1, chosenN));
+      if (Math.abs(level - slot.level) > slot.level * 0.05) {
+        slot.env.gain.setTargetAtTime(level, now, PAD_ATTACK / 3);
+        slot.level = level;
+      }
+      if (isCopy(p) || p.kind === "pin") return;
+      const steps = bellSteps(mode);
+      const bpos = unitY(p.y) * steps;
+      if (fresh) {
+        slot.deg = Math.round(bpos);
+        return;
+      }
+      if (Math.abs(bpos - slot.deg) <= 0.65) return;
+      slot.deg = Math.round(bpos);
+      const auto = p.kind === "auto";
+      if (now - slot.lastStrum < (auto ? 1.3 : 0.11) || strumTokens < 1 || !auto && speed < 0.25) return;
+      strumTokens -= 1;
+      slot.lastStrum = now;
+      const vel = velocity(p.power);
+      strike(degreeMidi(mode, slot.deg), BELL * (auto ? 0.4 : 0.5) * vel, panFor(p.x), mode.bell, now, 0.5 + 0.5 * vel);
+    }
+    function updatePads(now, poles) {
+      frame++;
+      if (enabled) choosePoles(poles);
+      else chosenN = 0;
+      for (let i = 0; i < chosenN; i++) {
+        const p = chosen[i];
+        const id = String(p.id);
+        const slot = slotFor(id);
+        if (!slot) continue;
+        const fresh = slot.id !== id;
+        if (slot.state === IDLE) padStart(slot, now);
+        slot.state = ON;
+        slot.seen = frame;
+        if (fresh) {
+          slot.id = id;
+          slot.lastStrum = now;
+          if (!isCopy(p) && !wasRung(id)) {
+            remember(id);
+            strike(degreeMidi(mode, bellDegree(p.y)), BELL * (p.kind === "auto" ? 0.45 : 0.6) * velocity(p.power), panFor(p.x), mode.bell, now);
+          }
+        }
+        padFollow(slot, p, now, fresh);
+      }
+      for (const s of pads) {
+        if (s.state === ON && s.seen !== frame) padRelease(s, now);
+        else if (s.state === RELEASING && now >= s.endAt) padFree(s, now);
+      }
+    }
+    function droneFreqs() {
+      return [mtof(mode.root + mode.drone[0]), mtof(mode.root + mode.drone[1])];
+    }
+    function droneStart(now) {
+      const [fa, fb] = droneFreqs();
+      const a = ctx.createOscillator();
+      a.frequency.value = fa;
+      const b = ctx.createOscillator();
+      b.type = "triangle";
+      b.frequency.value = fb;
+      b.detune.value = 4;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "lowpass";
+      filter.frequency.value = 800;
+      const breath = ctx.createGain();
+      breath.gain.value = DRONE;
+      const lfo = ctx.createOscillator();
+      lfo.frequency.value = 0.09;
+      const depth = ctx.createGain();
+      depth.gain.value = DRONE * 0.7;
+      const fade = ctx.createGain();
+      fade.gain.value = 0;
+      fade.gain.setTargetAtTime(calm ? 0.7 : 1, now, 1.4);
+      a.connect(filter);
+      b.connect(filter);
+      filter.connect(breath);
+      breath.connect(fade);
+      fade.connect(bus);
+      lfo.connect(depth);
+      depth.connect(breath.gain);
+      a.start(now);
+      b.start(now);
+      lfo.start(now);
+      drone = { a, b, lfo, depth, filter, breath, fade, endAt: 0 };
+    }
+    function droneUpdate(now) {
+      const want = enabled && now - lastHeld > DRONE_AFTER;
+      if (want && !drone) droneStart(now);
+      if (!drone) return;
+      if (want && drone.endAt) {
+        drone.endAt = 0;
+        drone.fade.gain.setTargetAtTime(calm ? 0.7 : 1, now, 1.4);
+      } else if (!want && !drone.endAt) {
+        drone.fade.gain.setTargetAtTime(0, now, 0.3);
+        drone.endAt = now + 1.8;
+      } else if (drone.endAt && now >= drone.endAt) {
+        droneFree(now);
+      }
+    }
+    function droneFree(now) {
+      if (!drone) return;
+      for (const o of [drone.a, drone.b, drone.lfo]) stopSafely(o, now);
+      disconnectAll(drone.a, drone.b, drone.lfo, drone.depth, drone.filter, drone.breath, drone.fade);
+      drone = null;
+    }
+    function windStart(now) {
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 400;
+      filter.Q.value = 0.9;
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      const panner = ctx.createStereoPanner();
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(panner);
+      panner.connect(bus);
+      src.start(now, Math.random() * 1.5);
+      wind = { src, filter, gain, panner, level: 0, freq: 400, pan: 0, quietSince: 0 };
+    }
+    function windFree(now) {
+      if (!wind) return;
+      stopSafely(wind.src, now);
+      disconnectAll(wind.src, wind.filter, wind.gain, wind.panner);
+      wind = null;
+    }
+    function windUpdate(now, dt, poles) {
+      gust *= Math.exp(-dt / 0.7);
+      let act = 0, sx = 0, n = 0;
+      for (let i = 0; i < poles.length; i++) {
+        const p = poles[i];
+        if (!p || !p.held || isCopy(p)) continue;
+        act += 0.25 + Math.min(Math.hypot(finite(p.vx, 0), finite(p.vy, 0)), 4) * 0.3;
+        sx += finite(p.x, 0);
+        n++;
+      }
+      act = Math.min(act, 2) + gust;
+      const want = enabled && !!mode.wind && act > 0.02;
+      if (want && !wind) windStart(now);
+      if (!wind) return;
+      const level = want ? WIND * mode.wind * Math.min(act, 2.5) * (calm ? 0.7 : 1) : 0;
+      if (Math.abs(level - wind.level) > Math.max(wind.level * 0.05, 1e-4)) {
+        wind.gain.gain.setTargetAtTime(level, now, level > wind.level ? 0.12 : 0.6);
+        wind.level = level;
+      }
+      const freq = 320 + 700 * Math.min(act, 2.5);
+      if (Math.abs(freq - wind.freq) > wind.freq * 0.03) {
+        wind.filter.frequency.setTargetAtTime(freq, now, 0.2);
+        wind.freq = freq;
+      }
+      const pan = n ? panFor(sx / n) * 0.7 : 0;
+      if (Math.abs(pan - wind.pan) > 0.03) {
+        wind.panner.pan.setTargetAtTime(pan, now, 0.3);
+        wind.pan = pan;
+      }
+      if (want) wind.quietSince = 0;
+      else if (!wind.quietSince) wind.quietSince = now;
+      else if (now - wind.quietSince > 2.5) windFree(now);
+    }
+    function whoosh(pan, h, at) {
+      let w = 0;
+      for (let i = 0; i < whooshes.length; i++) if (whooshes[i].end > at) whooshes[w++] = whooshes[i];
+      whooshes.length = w;
+      if (whooshes.length >= MAX_WHOOSH) {
+        const old = whooshes.shift();
+        old.gain.gain.setTargetAtTime(0, at, 0.03);
+        stopSafely(old.src, at + 0.2);
+      }
+      const dur = 0.7 + 1.5 * h;
+      const peakAt = at + dur * 0.55;
+      const tau = dur * 0.22;
+      const src = ctx.createBufferSource();
+      src.buffer = noise;
+      src.loop = true;
+      const filter = ctx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.Q.value = 1.1;
+      filter.frequency.setValueAtTime(220, at);
+      filter.frequency.exponentialRampToValueAtTime(1600 + 3400 * h, at + dur);
+      const gain = ctx.createGain();
+      gain.gain.value = 0;
+      gain.gain.setValueAtTime(0, at);
+      gain.gain.linearRampToValueAtTime(WHOOSH * (0.45 + 0.55 * h) * (calm ? 0.7 : 1), peakAt);
+      gain.gain.setTargetAtTime(0, peakAt, tau);
+      const panner = ctx.createStereoPanner();
+      panner.pan.value = clamp(pan, -1, 1);
+      src.connect(filter);
+      filter.connect(gain);
+      gain.connect(panner);
+      panner.connect(bus);
+      const end = peakAt + tau * 7;
+      src.start(at, Math.random() * 1.5);
+      src.stop(end);
+      src.onended = () => disconnectAll(src, filter, gain, panner);
+      whooshes.push({ src, gain, end });
+    }
+    function setMode(key, now) {
+      if (key === modeKey || !MODES2[key]) return;
+      modeKey = key;
+      mode = MODES2[key];
+      reverb.setMix({ wet: mode.wet * (calm ? 1.1 : 1), bloom: mode.bloom }, now);
+      if (drone) {
+        const [fa, fb] = droneFreqs();
+        drone.a.frequency.setTargetAtTime(fa, now, 0.8);
+        drone.b.frequency.setTargetAtTime(fb, now, 0.8);
+      }
+    }
+    function swellChord(at) {
+      for (let i = 0; i < SWELL_PICKS.length; i++) {
+        strike(mode.root + 12 + mode.pad[SWELL_PICKS[i]], SWELL, (i - 1) * 0.35, "swell", at + i * 0.05, 0.7);
+      }
+      lastSwell = at;
+    }
+    function silence(now = ctx.currentTime) {
+      for (const v of bells) for (const o of v.oscs) stopSafely(o, now);
+      bells.length = 0;
+      for (const w of whooshes) stopSafely(w.src, now);
+      whooshes.length = 0;
+      for (const s of pads) if (s.state !== IDLE) padFree(s, now);
+      droneFree(now);
+      windFree(now);
+      gust = 0;
+      busy = 0;
+      pendingKey = "";
+    }
+    return {
+      output,
+      get mode() {
+        return modeKey;
       },
-      async shareLink() {
-        return { ok: false, error: "not built yet" };
+      setEnabled(on) {
+        enabled = !!on;
+        if (enabled) lastHeld = -Infinity;
       },
-      vibrate() {
+      setCalm(on) {
+        calm = !!on;
       },
-      keepAwake() {
+      setAspect(a) {
+        if (Number.isFinite(a) && a > 0) aspect = a;
       },
-      canFullscreen: () => false,
-      isFullscreen: () => false,
-      setFullscreen() {
+      noteDown(note, at = ctx.currentTime) {
+        if (!enabled || !note) return;
+        remember(note.id);
+        const vel = velocity(note.power);
+        strike(degreeMidi(mode, bellDegree(note.y)), BELL * vel, panFor(note.x), mode.bell, at, 0.55 + 0.6 * vel);
       },
-      onBack() {
+      noteUp(note, at = ctx.currentTime) {
+        if (!enabled || !note) return;
+        const held = Math.max(0, finite(note.heldFor, 0));
+        const speed = Math.hypot(finite(note.vx, 0), finite(note.vy, 0));
+        const pan = panFor(note.x);
+        if (mode.wind) gust = Math.min(1.6, gust + speed / 2.5);
+        if (modeKey === "nova") {
+          const h = clamp(held / 2.5, 0, 1);
+          whoosh(pan, h, at);
+          if (held > 0.25) {
+            const deg = bellDegree(note.y);
+            const count = h > 0.55 ? 4 : 3;
+            for (let i = 0; i < count; i++) {
+              strike(degreeMidi(mode, deg + 2 + i * 2), BELL * (0.3 + 0.25 * h) * (1 - i * 0.12), pan * (1 - i * 0.25), "chime", at + 0.1 + i * (0.07 + 0.05 * h), 0.8);
+            }
+          }
+          return;
+        }
+        if (held > 0.6) strike(degreeMidi(mode, bellDegree(note.y) + 2), BELL * 0.28, pan, "breath", at + 0.02, 0.6);
+      },
+      behaviourChanged(key, at = ctx.currentTime) {
+        setMode(key, at);
+        if (!enabled) return;
+        pendingKey = key;
+        pendingAt = at + 0.12;
+      },
+      update(dt, poles, behaviourKey, now = ctx.currentTime) {
+        const list = Array.isArray(poles) ? poles : [];
+        if (behaviourKey) setMode(behaviourKey, now);
+        strumTokens = Math.min(4, strumTokens + finite(dt, 0) * 9);
+        for (let i = 0; i < list.length; i++) {
+          if (list[i] && list[i].held) {
+            lastHeld = now;
+            break;
+          }
+        }
+        if (pendingKey && now >= pendingAt) {
+          if (enabled && pendingKey === modeKey && now - lastSwell > 0.6) swellChord(now);
+          pendingKey = "";
+        }
+        updatePads(now, list);
+        droneUpdate(now);
+        windUpdate(now, finite(dt, 0), list);
+        rideLevel(now, finite(dt, 0));
+      },
+      // stops every voice at once (after the output has faded)
+      silence,
+      stats(now = ctx.currentTime) {
+        let oscillators = 0;
+        for (const v of bells) if (v.end > now) oscillators += v.oscs.length;
+        let padsOn = 0;
+        for (const s of pads) if (s.state !== IDLE) padsOn++;
+        oscillators += padsOn * 2 + (drone ? 3 : 0);
+        return { mode: modeKey, bells: bells.length, pads: padsOn, drone: !!drone, wind: !!wind, whooshes: whooshes.length, oscillators };
+      },
+      dispose() {
+        silence();
+        reverb.dispose();
+        disconnectAll(output, bus, rider, shaper, dry);
+      }
+    };
+  }
+
+  // src/js/audio/analyser.js
+  var SILENT = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
+  var FFT_SIZE = 2048;
+  var BANDS_HZ = [20, 160, 2e3, 9e3];
+  var PEAK_TAU = 4;
+  var ONSET_TAU = 0.15;
+  var ONSET_GAP = 0.1;
+  var RELEASE_TAU = [0.12, 0.2, 0.14, 0.12];
+  var HISTORY = 31;
+  var MIN_STEP = 1 / 75;
+  var WARMUP = 1;
+  var SMOOTHING = 0.5;
+  var DB_FLOOR = -100;
+  var DB_TO_LN = Math.LN10 / 20;
+  var LEVEL_FLOOR = 4e-3;
+  var BAND_FLOOR = 6e-5;
+  function createAnalyser(ctx) {
+    const input = ctx.createGain();
+    const node = ctx.createAnalyser();
+    node.fftSize = FFT_SIZE;
+    node.smoothingTimeConstant = SMOOTHING;
+    input.connect(node);
+    const sink = ctx.createGain();
+    sink.gain.value = 0;
+    node.connect(sink);
+    sink.connect(ctx.destination);
+    const hz = ctx.sampleRate / FFT_SIZE;
+    const bins = node.frequencyBinCount;
+    const edge = BANDS_HZ.map((f) => Math.min(bins - 1, Math.max(1, Math.round(f / hz))));
+    const [b0, b1, b2, b3] = edge;
+    const spectrum = new Float32Array(bins);
+    const previous = new Float32Array(b3 + 1);
+    const wave = new Float32Array(FFT_SIZE);
+    const history = new Float32Array(HISTORY);
+    const sorted = new Float32Array(HISTORY);
+    const raw = new Float64Array(4);
+    const peaks = new Float64Array(4);
+    const shown = new Float64Array(4);
+    const out = { level: 0, bass: 0, mid: 0, high: 0, onset: 0 };
+    let historyCount = 0;
+    let historyAt = 0;
+    let lastTime = 0;
+    let sinceSpectrum = 0;
+    let lastOnset = -1;
+    let clock = 0;
+    let wasAbove = false;
+    let warmup = 0;
+    function reset() {
+      warmup = WARMUP;
+      previous.fill(DB_FLOOR);
+      peaks[0] = LEVEL_FLOOR;
+      peaks[1] = peaks[2] = peaks[3] = BAND_FLOOR;
+      shown.fill(0);
+      historyCount = historyAt = 0;
+      sinceSpectrum = MIN_STEP;
+      lastTime = 0;
+      lastOnset = -1;
+      wasAbove = false;
+      out.level = out.bass = out.mid = out.high = out.onset = 0;
+    }
+    reset();
+    function medianFlux() {
+      const n = historyCount;
+      for (let i = 0; i < n; i++) {
+        const v = history[i];
+        let j = i - 1;
+        while (j >= 0 && sorted[j] > v) {
+          sorted[j + 1] = sorted[j];
+          j--;
+        }
+        sorted[j + 1] = v;
+      }
+      return n ? sorted[n >> 1] : 0;
+    }
+    function measure(gain) {
+      const flush = warmup > 0;
+      if (flush) node.smoothingTimeConstant = 0;
+      node.getFloatFrequencyData(spectrum);
+      if (flush) node.smoothingTimeConstant = SMOOTHING;
+      let bass = 0, mid = 0, high = 0, flux = 0;
+      for (let k = b0; k <= b3; k++) {
+        let db = spectrum[k];
+        if (!(db > DB_FLOOR)) db = DB_FLOOR;
+        const mag = db > DB_FLOOR ? Math.exp(db * DB_TO_LN) : 0;
+        if (k < b1) bass += mag;
+        else if (k < b2) mid += mag;
+        else high += mag;
+        const rise = db - previous[k];
+        if (rise > 0) flux += rise;
+        previous[k] = db;
+      }
+      raw[1] = bass / (b1 - b0);
+      raw[2] = mid / (b2 - b1);
+      raw[3] = high / (b3 - b2 + 1);
+      flux /= b3 - b0 + 1;
+      node.getFloatTimeDomainData(wave);
+      let sum = 0;
+      for (let i = 0; i < FFT_SIZE; i++) sum += wave[i] * wave[i];
+      raw[0] = Math.sqrt(sum / FFT_SIZE);
+      if (flush) {
+        warmup--;
+        raw.fill(0);
+        wasAbove = false;
+        return;
+      }
+      history[historyAt] = flux;
+      historyAt = (historyAt + 1) % HISTORY;
+      if (historyCount < HISTORY) historyCount++;
+      const threshold = medianFlux() * (1 + 0.6 / gain) + 1.4 / gain;
+      const above = flux > threshold && historyCount > 4;
+      const loudEnough = raw[0] > LEVEL_FLOOR * 0.5 / gain;
+      if (above && !wasAbove && loudEnough && clock - lastOnset > ONSET_GAP) {
+        out.onset = 1;
+        lastOnset = clock;
+      }
+      wasAbove = above;
+    }
+    function read(sensitivity, now) {
+      if (!lastTime || now - lastTime > 250) warmup = Math.max(warmup, WARMUP);
+      const dt = lastTime ? Math.min(Math.max((now - lastTime) / 1e3, 0), 0.25) : 0;
+      lastTime = now;
+      clock += dt;
+      const gain = Math.pow(2, (sensitivity - 0.5) * 3.2);
+      out.onset *= Math.exp(-dt / ONSET_TAU);
+      sinceSpectrum += dt;
+      if (sinceSpectrum >= MIN_STEP) {
+        sinceSpectrum = 0;
+        measure(gain);
+      }
+      const forget = Math.exp(-dt / PEAK_TAU);
+      for (let i = 0; i < 4; i++) {
+        const floor = (i === 0 ? LEVEL_FLOOR : BAND_FLOOR) / gain;
+        peaks[i] = Math.max(raw[i], peaks[i] * forget, floor);
+        const target = Math.min(1, raw[i] / peaks[i] * 1.15 * gain);
+        shown[i] = target > shown[i] ? target : shown[i] + (target - shown[i]) * (1 - Math.exp(-dt / RELEASE_TAU[i]));
+      }
+      out.level = shown[0];
+      out.bass = shown[1];
+      out.mid = shown[2];
+      out.high = shown[3];
+      return out;
+    }
+    return {
+      input,
+      read,
+      reset,
+      dispose() {
+        for (const n of [input, node, sink]) {
+          try {
+            n.disconnect();
+          } catch {
+          }
+        }
+      }
+    };
+  }
+
+  // src/js/audio/audio.js
+  var FADE_OUT2 = 0.3;
+  var SONG_LEVEL = 0.7;
+  var RESUME_RETRY = 1;
+  var AudioContextClass = typeof window !== "undefined" ? window.AudioContext : void 0;
+  var GESTURES = ["pointerup", "touchend", "click", "keydown"];
+  var volumeGain = (v) => Math.pow(clamp(Number.isFinite(v) ? v : 0.6, 0, 1), 1.2);
+  function createSoundGraph(ctx) {
+    const synth = createSynth(ctx);
+    const gate = ctx.createGain();
+    gate.gain.value = 0;
+    const limiter = ctx.createDynamicsCompressor();
+    limiter.threshold.value = -5;
+    limiter.knee.value = 5;
+    limiter.ratio.value = 14;
+    limiter.attack.value = 3e-3;
+    limiter.release.value = 0.25;
+    const master = ctx.createGain();
+    master.gain.value = 0;
+    const songLevel = ctx.createGain();
+    songLevel.gain.value = SONG_LEVEL;
+    synth.output.connect(gate);
+    gate.connect(limiter);
+    songLevel.connect(limiter);
+    limiter.connect(master);
+    master.connect(ctx.destination);
+    const analyser = createAnalyser(ctx);
+    return { synth, gate, limiter, master, songLevel, analyser };
+  }
+  function micError(e) {
+    switch (e && e.name) {
+      case "NotAllowedError":
+      case "PermissionDeniedError":
+      case "SecurityError":
+        return "The microphone is not allowed. You can turn it on in your browser or app settings.";
+      case "NotFoundError":
+      case "DevicesNotFoundError":
+      case "OverconstrainedError":
+        return "No microphone was found.";
+      case "NotReadableError":
+      case "TrackStartError":
+      case "AbortError":
+        return "The microphone is busy. Close other apps that use it and try again.";
+      case "NotSupportedError":
+        return "This browser cannot listen to the microphone here.";
+      default:
+        return "The microphone could not start.";
+    }
+  }
+  function stopStream(stream) {
+    try {
+      for (const t of stream.getTracks()) t.stop();
+    } catch {
+    }
+  }
+  function setSessionType(type) {
+    try {
+      const session = navigator.audioSession;
+      if (session && session.type !== type) session.type = type;
+    } catch {
+    }
+  }
+  function playElement(el, timeoutMs = 15e3) {
+    return new Promise((resolve) => {
+      let settled = false;
+      const finish = (result) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        el.removeEventListener("error", onError);
+        resolve(result);
+      };
+      const onError = () => finish("failed");
+      const timer = setTimeout(() => finish(el.paused ? "failed" : "playing"), timeoutMs);
+      el.addEventListener("error", onError);
+      let p;
+      try {
+        p = el.play();
+      } catch {
+        finish("failed");
+        return;
+      }
+      if (p && typeof p.then === "function") {
+        p.then(() => finish("playing"), (e) => finish(e && e.name === "NotAllowedError" ? "blocked" : "failed"));
+      } else {
+        finish("playing");
+      }
+    });
+  }
+  var cleanName = (name) => String(name || "Song").replace(/[\u0000-\u001f\u007f]/g, "").trim().slice(0, 80) || "Song";
+  function createAudio({ getSettings }) {
+    let ctx = null;
+    let graph = null;
+    let mic = null;
+    let song = null;
+    let recorder = null;
+    const handedTracks = [];
+    let applied = null;
+    let suspendTimer = 0;
+    let pending = 0;
+    let feeds = 0;
+    let lastResumeTry = -Infinity;
+    let resumedAt = -Infinity;
+    let aspect = 1;
+    let disposed = false;
+    let running = false;
+    let contextFailed = false;
+    function liveTracks() {
+      for (let i = handedTracks.length - 1; i >= 0; i--) {
+        if (handedTracks[i].readyState === "ended") handedTracks.splice(i, 1);
+      }
+      return handedTracks.length > 0;
+    }
+    const canPlay = () => !!graph && (running || ctx.state === "suspended" && performance.now() - resumedAt < 800);
+    const needsContext = () => !!(getSettings().sound || mic || song || pending || feeds || liveTracks());
+    function updateSession() {
+      if (mic) setSessionType("auto");
+      else setSessionType(getSettings().sound || song ? "playback" : "auto");
+    }
+    function scheduleSuspend() {
+      clearTimeout(suspendTimer);
+      suspendTimer = setTimeout(() => {
+        suspendTimer = 0;
+        if (!ctx || disposed || needsContext()) return;
+        graph.synth.silence();
+        ctx.suspend().catch(() => {
+        });
+      }, FADE_OUT2 * 1e3 + 80);
+    }
+    function resume() {
+      if (!ctx || ctx.state === "running" || ctx.state === "closed" || document.hidden) return;
+      clearTimeout(suspendTimer);
+      suspendTimer = 0;
+      resumedAt = performance.now();
+      try {
+        const p = ctx.resume();
+        if (p && typeof p.catch === "function") p.catch(() => {
+        });
+      } catch {
+      }
+    }
+    function applySettings(s) {
+      if (!graph) return;
+      const now = ctx.currentTime;
+      const prev = applied;
+      applied = s;
+      if (!prev || s.volume !== prev.volume) {
+        graph.master.gain.setTargetAtTime(volumeGain(s.volume), now, prev ? 0.06 : 5e-3);
+      }
+      if (!prev || s.sound !== prev.sound) {
+        const gate = graph.gate.gain;
+        gate.cancelScheduledValues(now);
+        gate.setTargetAtTime(s.sound ? 1 : 0, now, s.sound ? 0.04 : FADE_OUT2 / 5);
+        graph.synth.setEnabled(s.sound);
+        if (!s.sound) scheduleSuspend();
+        updateSession();
+      }
+      if (!prev || s.calm !== prev.calm) graph.synth.setCalm(s.calm);
+      if (prev && s.react !== prev.react) {
+        if (s.react === "off" && !pending) {
+          stopMic();
+          stopFile();
+        }
+        graph.analyser.reset();
+      }
+    }
+    function ensureContext() {
+      if (ctx) return true;
+      if (disposed || contextFailed || !AudioContextClass) return false;
+      const activation = navigator.userActivation;
+      if (activation && !activation.hasBeenActive) return false;
+      try {
+        ctx = new AudioContextClass({ latencyHint: "interactive" });
+        graph = createSoundGraph(ctx);
+      } catch (e) {
+        console.warn("Tactilume: sound could not start", e);
+        try {
+          if (ctx) ctx.close();
+        } catch {
+        }
+        ctx = null;
+        graph = null;
+        contextFailed = true;
+        return false;
+      }
+      const created = ctx;
+      running = created.state === "running";
+      created.addEventListener("statechange", () => {
+        if (ctx === created) running = created.state === "running";
+      });
+      graph.synth.setAspect(aspect);
+      applied = null;
+      applySettings(getSettings());
+      try {
+        const blip = ctx.createBufferSource();
+        blip.buffer = ctx.createBuffer(1, 1, ctx.sampleRate);
+        blip.connect(ctx.destination);
+        blip.start();
+      } catch {
+      }
+      return true;
+    }
+    const noContextReason = () => AudioContextClass && !disposed && !contextFailed ? "Tap the screen once, then try again." : "Sound is not available in this browser.";
+    function startSong() {
+      if (!song) return;
+      const el = song.el;
+      playElement(el).then((result) => {
+        if (!song || song.el !== el) return;
+        song.waiting = result !== "playing";
+      });
+    }
+    function stopMic() {
+      if (!mic) return;
+      try {
+        mic.source.disconnect();
+      } catch {
+      }
+      stopStream(mic.stream);
+      mic = null;
+      if (graph) graph.analyser.reset();
+      updateSession();
+    }
+    function stopFile() {
+      if (!song) return;
+      const { el, url, source } = song;
+      song = null;
+      try {
+        el.pause();
+      } catch {
+      }
+      try {
+        source.disconnect();
+      } catch {
+      }
+      try {
+        el.removeAttribute("src");
+        el.load();
+      } catch {
+      }
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+      }
+      if (graph) graph.analyser.reset();
+      updateSession();
+    }
+    function unlock() {
+      if (disposed) return;
+      const s = getSettings();
+      if (!s.sound && s.react === "off" && !mic && !song) return;
+      if (!ensureContext()) return;
+      if (s !== applied) applySettings(s);
+      if (needsContext()) resume();
+      if (song && song.waiting) startSong();
+    }
+    function onVisibility() {
+      if (!ctx) return;
+      if (document.hidden) {
+        if (song) {
+          try {
+            song.el.pause();
+          } catch {
+          }
+        }
+        if (ctx.state === "running") ctx.suspend().catch(() => {
+        });
+      } else if (needsContext()) {
+        resume();
+        if (song) startSong();
+      }
+    }
+    function measureAspect() {
+      try {
+        aspect = innerWidth / innerHeight || 1;
+      } catch {
+        aspect = 1;
+      }
+      if (graph) graph.synth.setAspect(aspect);
+    }
+    const onGesture = () => unlock();
+    for (const name of GESTURES) addEventListener(name, onGesture, { capture: true, passive: true });
+    document.addEventListener("visibilitychange", onVisibility);
+    addEventListener("resize", measureAspect);
+    measureAspect();
+    const audio = {
+      unlock,
+      update(dt, frame) {
+        if (!graph) return;
+        const s = getSettings();
+        if (s !== applied) applySettings(s);
+        if (!running) {
+          const now = performance.now() / 1e3;
+          if (needsContext() && now - lastResumeTry > RESUME_RETRY) {
+            lastResumeTry = now;
+            resume();
+          }
+          return;
+        }
+        if (frame) {
+          if (Number.isFinite(frame.aspect) && frame.aspect !== aspect) {
+            aspect = frame.aspect;
+            graph.synth.setAspect(aspect);
+          }
+          graph.synth.update(dt, frame.poles, frame.behaviour);
+        }
+        if (!suspendTimer && !needsContext()) scheduleSuspend();
+      },
+      noteDown(e) {
+        if (canPlay()) graph.synth.noteDown(e);
+      },
+      noteUp(e) {
+        if (canPlay()) graph.synth.noteUp(e);
+      },
+      behaviourChanged(key) {
+        if (graph) graph.synth.behaviourChanged(key);
+      },
+      analysis() {
+        if (!graph || !mic && !song && !feeds || !running) return SILENT;
+        const s = getSettings();
+        if (s.react === "off" && !feeds) return SILENT;
+        return graph.analyser.read(s.sensitivity, performance.now());
+      },
+      async startMic() {
+        if (mic) return { ok: true };
+        const devices = typeof navigator !== "undefined" ? navigator.mediaDevices : null;
+        if (!devices || typeof devices.getUserMedia !== "function") {
+          return { ok: false, error: "This browser cannot listen to the microphone here." };
+        }
+        if (!ensureContext()) return { ok: false, error: noContextReason() };
+        resume();
+        pending++;
+        let stream;
+        try {
+          stream = await devices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
+        } catch (e) {
+          return { ok: false, error: micError(e) };
+        } finally {
+          pending--;
+        }
+        if (disposed || !graph) {
+          stopStream(stream);
+          return { ok: false, error: "Sound was switched off." };
+        }
+        if (mic) {
+          stopStream(stream);
+          return { ok: true };
+        }
+        let source;
+        try {
+          source = ctx.createMediaStreamSource(stream);
+        } catch (e) {
+          console.warn("Tactilume: microphone source failed", e);
+          stopStream(stream);
+          return { ok: false, error: "The microphone could not start." };
+        }
+        stopFile();
+        source.connect(graph.analyser.input);
+        graph.analyser.reset();
+        mic = { stream, source };
+        for (const t of stream.getAudioTracks()) t.addEventListener("ended", () => {
+          if (mic && mic.stream === stream) stopMic();
+        });
+        updateSession();
+        resume();
+        return { ok: true };
+      },
+      stopMic,
+      async playFile(file) {
+        if (!file || typeof file !== "object" || typeof file.size !== "number") return { ok: false, error: "No song was chosen." };
+        if (file.type && !/^(audio|video)\//.test(file.type)) {
+          return { ok: false, error: "That file is not a song. Try an MP3, M4A, OGG or WAV file." };
+        }
+        if (!ensureContext()) return { ok: false, error: noContextReason() };
+        resume();
+        stopFile();
+        stopMic();
+        let url, el, source;
+        try {
+          url = URL.createObjectURL(file);
+          el = document.createElement("audio");
+          el.loop = true;
+          el.preload = "auto";
+          el.src = url;
+          source = ctx.createMediaElementSource(el);
+        } catch (e) {
+          console.warn("Tactilume: song could not open", e);
+          try {
+            if (url) URL.revokeObjectURL(url);
+          } catch {
+          }
+          return { ok: false, error: "That song could not be opened." };
+        }
+        source.connect(graph.songLevel);
+        source.connect(graph.analyser.input);
+        song = { el, url, source, name: cleanName(file.name), waiting: false };
+        pending++;
+        const result = await playElement(el);
+        pending--;
+        if (!song || song.el !== el) return { ok: false, error: "The song was stopped." };
+        if (result === "failed") {
+          stopFile();
+          return { ok: false, error: "That song could not be played. Try an MP3, M4A, OGG or WAV file." };
+        }
+        song.waiting = result === "blocked";
+        el.addEventListener("error", () => {
+          if (song && song.el === el) stopFile();
+        });
+        graph.analyser.reset();
+        updateSession();
+        return { ok: true };
+      },
+      stopFile,
+      get fileName() {
+        return song ? song.name : "";
+      },
+      // What the app plays (instrument and song, never the microphone), as a track a
+      // recording can stop without affecting the app. Null when nothing would be heard.
+      recordTrack() {
+        if (!graph || ctx.state === "closed") return null;
+        if (!getSettings().sound && !song) return null;
+        try {
+          if (!recorder) {
+            recorder = ctx.createMediaStreamDestination();
+            graph.master.connect(recorder);
+          }
+          const track = recorder.stream.getAudioTracks()[0];
+          if (!track) return null;
+          const copy = track.clone();
+          handedTracks.push(copy);
+          return copy;
+        } catch (e) {
+          console.warn("Tactilume: no sound track for the recording", e);
+          return null;
+        }
+      },
+      // For the UI: is sound running, and what is it listening to?
+      state() {
+        const c = !ctx || ctx.state === "closed" ? "none" : ctx.state === "running" ? "running" : "suspended";
+        return { context: c, mic: !!mic, file: !!song };
+      },
+      dispose() {
+        if (disposed) return;
+        disposed = true;
+        clearTimeout(suspendTimer);
+        for (const name of GESTURES) removeEventListener(name, onGesture, { capture: true });
+        document.removeEventListener("visibilitychange", onVisibility);
+        removeEventListener("resize", measureAspect);
+        stopMic();
+        stopFile();
+        for (const t of handedTracks) {
+          try {
+            t.stop();
+          } catch {
+          }
+        }
+        handedTracks.length = 0;
+        if (graph) {
+          graph.synth.dispose();
+          graph.analyser.dispose();
+        }
+        if (ctx) ctx.close().catch(() => {
+        });
+        running = false;
+        ctx = null;
+        graph = null;
+        recorder = null;
+      },
+      // Test seams for the automated checks: the live context and master, a way to feed a
+      // test signal into the analyser (returns a function that unplugs it), voice counts.
+      _debug: {
+        get context() {
+          return ctx;
+        },
+        get master() {
+          return graph ? graph.master : null;
+        },
+        feed(node) {
+          if (!graph) return () => {
+          };
+          node.connect(graph.analyser.input);
+          feeds++;
+          graph.analyser.reset();
+          let plugged = true;
+          return () => {
+            if (!plugged) return;
+            plugged = false;
+            feeds--;
+            try {
+              node.disconnect(graph.analyser.input);
+            } catch {
+            }
+          };
+        },
+        stats() {
+          return graph ? graph.synth.stats() : null;
+        }
+      }
+    };
+    return audio;
+  }
+
+  // src/js/platform/platform.js
+  var APP_ORIGIN = "https://appassets.androidplatform.net";
+  var CHUNK_BYTES = 384 * 1024;
+  var ENCODE_BYTES = 3 * 8192;
+  var HELLO_WAIT_MS = 1e3;
+  var DONE_WAIT_MS = 2e4;
+  var DONE_WAIT_PER_MB = 2e3;
+  var VIBRATE_GAP_MS = 40;
+  var REVOKE_AFTER_MS = 12e4;
+  var WAKE_RETRY_MS = 5e3;
+  function findBridge() {
+    try {
+      const bridge = globalThis.TactilumeNative;
+      if (bridge && typeof bridge.postMessage === "function" && location.origin === APP_ORIGIN) return bridge;
+    } catch {
+    }
+    return null;
+  }
+  function readBytes(blob) {
+    if (typeof blob.arrayBuffer === "function") return blob.arrayBuffer().then((b) => new Uint8Array(b));
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(new Uint8Array(reader.result));
+      reader.onerror = () => reject(reader.error || new Error("read failed"));
+      reader.readAsArrayBuffer(blob);
+    });
+  }
+  function toBase64(bytes) {
+    const parts = [];
+    for (let i = 0; i < bytes.length; i += ENCODE_BYTES) {
+      parts.push(btoa(String.fromCharCode.apply(null, bytes.subarray(i, i + ENCODE_BYTES))));
+    }
+    return parts.join("");
+  }
+  var isBlob = (b) => !!b && typeof b.size === "number" && typeof b.slice === "function";
+  var optionalString = (v) => typeof v === "string" && v ? v : void 0;
+  function touchFirst() {
+    try {
+      return matchMedia("(pointer: coarse)").matches;
+    } catch {
+      return (navigator.maxTouchPoints || 0) > 0;
+    }
+  }
+  function canShare(data) {
+    try {
+      return typeof navigator.share === "function" && (typeof navigator.canShare !== "function" || navigator.canShare(data));
+    } catch {
+      return false;
+    }
+  }
+  function legacyCopy(text) {
+    if (!document.body) return false;
+    const area = document.createElement("textarea");
+    const focused = document.activeElement;
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.setAttribute("aria-hidden", "true");
+    area.style.cssText = "position:fixed;top:0;left:-9999px;width:1px;height:1px;opacity:0;font-size:16px;";
+    document.body.appendChild(area);
+    let ok = false;
+    try {
+      area.select();
+      area.setSelectionRange(0, text.length);
+      ok = document.execCommand("copy");
+    } catch {
+      ok = false;
+    }
+    area.remove();
+    try {
+      if (focused && typeof focused.focus === "function") focused.focus({ preventScroll: true });
+    } catch {
+    }
+    return ok;
+  }
+  async function copyText(text) {
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+    }
+    return legacyCopy(text);
+  }
+  function download(blob, name) {
+    let url = "";
+    try {
+      url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.rel = "noopener";
+      a.hidden = true;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), REVOKE_AFTER_MS);
+      return { ok: true, where: "downloads" };
+    } catch (e) {
+      console.warn("Tactilume: could not start the download", e);
+      if (url) URL.revokeObjectURL(url);
+      return { ok: false, error: "Could not save the file." };
+    }
+  }
+  function fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+  function createPlatform() {
+    const bridge = findBridge();
+    const native = !!bridge;
+    let info = Object.freeze({ native });
+    const transfers = /* @__PURE__ */ new Map();
+    let transferCount = 0;
+    let queue = Promise.resolve();
+    let backHandler = null;
+    let helloDone = null;
+    function send(msg) {
+      try {
+        bridge.postMessage(JSON.stringify(msg));
+        return true;
+      } catch (e) {
+        console.warn("Tactilume: the app did not take a message", e);
+        return false;
+      }
+    }
+    function answerBack() {
+      let result = false;
+      try {
+        result = backHandler ? backHandler() : false;
+      } catch (e) {
+        console.warn("Tactilume: the back handler failed", e);
+      }
+      Promise.resolve(result).then((handled) => send({ t: "back", handled: !!handled }), () => send({ t: "back", handled: false }));
+    }
+    function onAppMessage(event) {
+      let msg = event && event.data;
+      if (typeof msg === "string") {
+        try {
+          msg = JSON.parse(msg);
+        } catch {
+          return;
+        }
+      }
+      if (!msg || typeof msg !== "object") return;
+      if (msg.t === "hello") {
+        const sdk = Number(msg.sdk);
+        info = Object.freeze({
+          native: true,
+          version: optionalString(msg.version),
+          sdk: Number.isFinite(sdk) ? sdk : void 0,
+          device: optionalString(msg.device)
+        });
+        if (helloDone) helloDone(info);
+      } else if (msg.t === "done") {
+        const transfer2 = transfers.get(String(msg.id));
+        if (!transfer2) return;
+        const result = { ok: !!msg.ok };
+        if (optionalString(msg.where)) result.where = msg.where;
+        if (!result.ok) result.error = optionalString(msg.error) || "Could not save the file.";
+        transfer2.finish(result);
+      } else if (msg.t === "back") {
+        answerBack();
+      }
+    }
+    function transfer(blob, name, mime, action, text) {
+      const id = `f${Date.now().toString(36)}${(++transferCount).toString(36)}`;
+      return new Promise((resolve) => {
+        let settled = false;
+        let timer = 0;
+        const finish = (result) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          transfers.delete(id);
+          resolve(result);
+        };
+        const fail = (error) => {
+          send({ t: "abort", id });
+          finish({ ok: false, error });
+        };
+        transfers.set(id, { finish });
+        (async () => {
+          if (!send({ t: "begin", id, name, mime, size: blob.size })) return fail("Could not reach the app.");
+          for (let offset = 0, seq = 0; offset < blob.size; offset += CHUNK_BYTES, seq++) {
+            const bytes = await readBytes(blob.slice(offset, offset + CHUNK_BYTES));
+            if (settled) return;
+            if (!send({ t: "chunk", id, seq, data: toBase64(bytes) })) return fail("Could not reach the app.");
+          }
+          const end = { t: "end", id, action };
+          if (text) end.text = String(text);
+          if (!send(end)) return fail("Could not reach the app.");
+          timer = setTimeout(() => fail("The app did not answer in time."), DONE_WAIT_MS + blob.size / 1e6 * DONE_WAIT_PER_MB);
+        })().catch((e) => {
+          console.warn("Tactilume: could not read the file for the app", e);
+          fail("Could not read the file.");
+        });
+      });
+    }
+    function queued(fn) {
+      const run = queue.then(fn);
+      queue = run.catch(() => {
+      });
+      return run;
+    }
+    const ready = native ? new Promise((resolve) => {
+      helloDone = resolve;
+      setTimeout(() => resolve(info), HELLO_WAIT_MS);
+    }) : Promise.resolve(info);
+    if (native) {
+      try {
+        if (typeof bridge.addEventListener === "function") bridge.addEventListener("message", onAppMessage);
+        else bridge.onmessage = onAppMessage;
+      } catch (e) {
+        console.warn("Tactilume: could not listen to the app", e);
+      }
+      send({ t: "hello" });
+    }
+    let wantAwake = false;
+    let wakeLock = null;
+    let wakeRequest = null;
+    let lastWakeTry = -Infinity;
+    async function acquireWakeLock() {
+      if (!wantAwake || wakeLock || wakeRequest || document.hidden) return;
+      if (!navigator.wakeLock || typeof navigator.wakeLock.request !== "function") return;
+      lastWakeTry = performance.now();
+      try {
+        wakeRequest = navigator.wakeLock.request("screen");
+        const lock = await wakeRequest;
+        if (!wantAwake) {
+          lock.release().catch(() => {
+          });
+          return;
+        }
+        wakeLock = lock;
+        lock.addEventListener("release", () => {
+          if (wakeLock === lock) wakeLock = null;
+        });
+      } catch {
+      } finally {
+        wakeRequest = null;
+      }
+    }
+    function releaseWakeLock() {
+      const lock = wakeLock;
+      wakeLock = null;
+      if (lock) lock.release().catch(() => {
+      });
+    }
+    if (!native) {
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) acquireWakeLock();
+      });
+      addEventListener("pointerdown", () => {
+        if (wantAwake && !wakeLock && performance.now() - lastWakeTry > WAKE_RETRY_MS) acquireWakeLock();
+      }, { capture: true, passive: true });
+    }
+    let lastBuzz = -Infinity;
+    return {
+      native,
+      get info() {
+        return info;
+      },
+      // resolves with info once the app has said hello (or after 1 s without an answer)
+      ready,
+      async saveFile(blob, name, mime) {
+        if (!isBlob(blob)) return { ok: false, error: "There was nothing to save." };
+        const type = mime || blob.type || "application/octet-stream";
+        if (native) return queued(() => transfer(blob, name, type, "save"));
+        return download(blob, name);
+      },
+      async shareFile(blob, name, mime, text) {
+        if (!isBlob(blob)) return { ok: false, error: "There was nothing to share." };
+        const type = mime || blob.type || "application/octet-stream";
+        if (native) return queued(() => transfer(blob, name, type, "share", text));
+        let file = null;
+        try {
+          file = new File([blob], name, { type });
+        } catch {
+        }
+        if (file) {
+          const data = { files: [file], title: "Tactilume" };
+          if (text) data.text = String(text);
+          if (canShare(data)) {
+            try {
+              await navigator.share(data);
+              return { ok: true };
+            } catch (e) {
+              if (e && e.name === "AbortError") return { ok: false, error: "cancelled" };
+            }
+          }
+        }
+        return download(blob, name);
+      },
+      async shareLink(url, text) {
+        const link = String(url);
+        if (touchFirst()) {
+          const data = { url: link, title: text ? String(text) : "Tactilume" };
+          if (text) data.text = String(text);
+          if (canShare(data)) {
+            try {
+              await navigator.share(data);
+              return { ok: true };
+            } catch (e) {
+              if (e && e.name === "AbortError") return { ok: false, error: "cancelled" };
+            }
+          }
+        }
+        if (await copyText(link)) return { ok: true, copied: true };
+        return { ok: false, error: "Could not share or copy the link." };
+      },
+      vibrate(ms) {
+        const duration = Math.round(Number(ms));
+        if (!(duration > 0)) return false;
+        const now = performance.now();
+        if (now - lastBuzz < VIBRATE_GAP_MS) return false;
+        lastBuzz = now;
+        const d = Math.min(duration, 1e3);
+        if (native) return send({ t: "vibrate", ms: d });
+        try {
+          return typeof navigator.vibrate === "function" && navigator.vibrate(d) === true;
+        } catch {
+          return false;
+        }
+      },
+      keepAwake(on) {
+        wantAwake = !!on;
+        if (native) {
+          send({ t: "awake", on: wantAwake });
+          return;
+        }
+        if (wantAwake) acquireWakeLock();
+        else releaseWakeLock();
+      },
+      // the app is always immersive, so it offers no fullscreen switch of its own
+      canFullscreen() {
+        if (native) return false;
+        return !!(document.fullscreenEnabled || document.webkitFullscreenEnabled);
+      },
+      isFullscreen() {
+        return native || !!fullscreenElement();
+      },
+      // resolves false when the browser cannot or will not do it; the older webkit calls
+      // give no answer, so for them true means the request was made
+      async setFullscreen(on) {
+        if (native) return true;
+        const want = !!on;
+        if (want === !!fullscreenElement()) return true;
+        const el = document.documentElement;
+        try {
+          if (want) {
+            if (el.requestFullscreen) await el.requestFullscreen({ navigationUI: "hide" });
+            else if (el.webkitRequestFullscreen) el.webkitRequestFullscreen();
+            else return false;
+          } else if (document.exitFullscreen) await document.exitFullscreen();
+          else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+          else return false;
+          return true;
+        } catch {
+          return false;
+        }
+      },
+      // fn(isFullscreen) whenever fullscreen starts or ends; returns off()
+      onFullscreenChange(fn) {
+        if (native) return () => {
+        };
+        const handler = () => fn(!!fullscreenElement());
+        document.addEventListener("fullscreenchange", handler);
+        document.addEventListener("webkitfullscreenchange", handler);
+        return () => {
+          document.removeEventListener("fullscreenchange", handler);
+          document.removeEventListener("webkitfullscreenchange", handler);
+        };
+      },
+      // Android Back. In a browser tab Back belongs to the browser, so nothing is hooked.
+      onBack(fn) {
+        if (!native) return () => {
+        };
+        backHandler = fn;
+        return () => {
+          if (backHandler === fn) backHandler = null;
+        };
+      },
+      // opens a web page outside Tactilume; returns false when the address is not allowed
+      open(url) {
+        let target;
+        try {
+          target = new URL(String(url), location.href);
+        } catch {
+          return false;
+        }
+        if (native) return target.protocol === "https:" && send({ t: "open", url: target.href });
+        if (!["https:", "http:", "mailto:"].includes(target.protocol)) return false;
+        try {
+          window.open(target.href, "_blank", "noopener");
+          return true;
+        } catch {
+          return false;
+        }
       }
     };
   }
 
   // src/js/capture/capture.js
+  var NOT_AVAILABLE = "Recording is not available in this browser.";
+  var MIME_CANDIDATES = [
+    "video/mp4;codecs=avc1.42E01E,mp4a.40.2",
+    "video/mp4;codecs=avc1",
+    "video/mp4",
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm"
+  ];
+  var TIMESLICE_MS = 1e3;
+  var TICK_MS = 250;
+  var PHOTO_WAIT_MS = 4e3;
+  var STOP_WAIT_MS = 4e3;
+  var AUDIO_BPS = 16e4;
+  var FULL_HD = 1920 * 1080;
+  var pad = (n) => String(n).padStart(2, "0");
+  function stamp(d) {
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}.${pad(d.getMinutes())}.${pad(d.getSeconds())}`;
+  }
+  var withoutAudioCodec = (mime) => mime.replace(/,(?:mp4a\.[\d.]+|opus)$/, "");
+  var baseType = (mime) => (mime || "").split(";")[0].trim().toLowerCase();
+  function recordableMimes(withAudio) {
+    if (typeof MediaRecorder.isTypeSupported !== "function") return [""];
+    const list = [];
+    for (const m of MIME_CANDIDATES) {
+      const mime = withAudio ? m : withoutAudioCodec(m);
+      try {
+        if (!list.includes(mime) && MediaRecorder.isTypeSupported(mime)) list.push(mime);
+      } catch {
+      }
+    }
+    list.push("");
+    return list;
+  }
+  function timeout(ms) {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+  function stopTrack(track) {
+    try {
+      if (track && track.readyState !== "ended") track.stop();
+    } catch {
+    }
+  }
   function createCapture({ engine, audio, platform }) {
     const ev = createEmitter();
+    let rec = null;
+    let saving = 0;
+    let lastElapsed = 0;
+    let lastMime = "";
+    function elapsedOf(r) {
+      const ms = r.activeMs + (r.paused ? 0 : performance.now() - r.resumedAt);
+      return Math.min(ms / 1e3, r.maxSeconds);
+    }
+    function emitState(r) {
+      lastElapsed = elapsedOf(r);
+      ev.emit("state", { recording: rec === r && !r.stopping, elapsed: lastElapsed, paused: r.paused, limit: r.maxSeconds });
+    }
+    function release(r) {
+      for (const t of r.canvasStream.getTracks()) stopTrack(t);
+      stopTrack(r.videoTrack);
+      stopTrack(r.audioTrack);
+    }
+    function startRecorder(r) {
+      while (r.candidates.length) {
+        const mime = r.candidates.shift();
+        const options = { videoBitsPerSecond: r.videoBps };
+        if (r.audioTrack) options.audioBitsPerSecond = AUDIO_BPS;
+        if (mime) options.mimeType = mime;
+        let recorder = null;
+        try {
+          recorder = new MediaRecorder(r.stream, options);
+          const stopped = new Promise((resolve) => recorder.addEventListener("stop", resolve, { once: true }));
+          recorder.addEventListener("dataavailable", (e) => {
+            if (r.recorder !== recorder || !e.data || !e.data.size) return;
+            r.chunks.push(e.data);
+            r.gotData = true;
+          });
+          recorder.addEventListener("error", (e) => onRecorderError(r, recorder, e));
+          recorder.start(TIMESLICE_MS);
+          r.recorder = recorder;
+          r.stopped = stopped;
+          r.mime = recorder.mimeType || mime;
+          lastMime = r.mime;
+          return true;
+        } catch {
+          try {
+            if (recorder && recorder.state !== "inactive") recorder.stop();
+          } catch {
+          }
+        }
+      }
+      return false;
+    }
+    function onRecorderError(r, recorder, e) {
+      if (r.recorder !== recorder || r.stopping) return;
+      console.warn("Tactilume: the recorder stopped", e && e.error || e);
+      if (!r.gotData && startRecorder(r)) return;
+      finish(r, "error");
+    }
+    function onVisibility() {
+      const r = rec;
+      if (!r || r.stopping) return;
+      try {
+        if (document.hidden && !r.paused && r.recorder.state === "recording") {
+          r.recorder.pause();
+          r.activeMs += performance.now() - r.resumedAt;
+          r.paused = true;
+        } else if (!document.hidden && r.paused) {
+          r.recorder.resume();
+          r.resumedAt = performance.now();
+          r.paused = false;
+        }
+      } catch {
+      }
+      emitState(r);
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    function tick(r) {
+      if (rec !== r || r.stopping) return;
+      emitState(r);
+      if (elapsedOf(r) >= r.maxSeconds) finish(r, "limit");
+    }
+    async function save(blob, name, mime) {
+      saving++;
+      try {
+        return await platform.saveFile(blob, name, mime);
+      } catch (e) {
+        console.warn("Tactilume: saving failed", e);
+        return { ok: false, error: "Could not save the file." };
+      } finally {
+        saving--;
+      }
+    }
+    function finish(r, reason) {
+      if (r.stopping) return r.stopping;
+      r.stopping = (async () => {
+        clearInterval(r.timer);
+        if (!r.paused) r.activeMs += performance.now() - r.resumedAt;
+        r.paused = false;
+        r.resumedAt = performance.now();
+        try {
+          if (r.recorder.state !== "inactive") r.recorder.stop();
+        } catch {
+        }
+        await Promise.race([r.stopped, timeout(STOP_WAIT_MS)]);
+        release(r);
+        rec = null;
+        emitState(r);
+        const type = baseType(r.mime) || baseType(r.chunks[0] && r.chunks[0].type) || "video/webm";
+        const blob = new Blob(r.chunks, { type });
+        r.chunks = [];
+        const result = blob.size > 0 ? await save(blob, `Tactilume ${stamp(r.startedAt)}.${type.includes("mp4") ? "mp4" : "webm"}`, type) : { ok: false, error: "The recording came out empty." };
+        ev.emit("finished", result, reason);
+        return result;
+      })();
+      return r.stopping;
+    }
     return {
       async photo() {
-        return { ok: false, error: "not built yet" };
+        let blob = null;
+        try {
+          blob = await Promise.race([engine.capture("image/png"), timeout(PHOTO_WAIT_MS)]);
+        } catch (e) {
+          console.warn("Tactilume: the photo failed", e);
+        }
+        if (!blob || !blob.size) return { ok: false, error: "Could not take a photo just now." };
+        return save(blob, `Tactilume ${stamp(/* @__PURE__ */ new Date())}.png`, "image/png");
       },
-      startRecording() {
-        return { ok: false, error: "not built yet" };
+      startRecording({ maxSeconds = 60, withSound = true } = {}) {
+        if (rec) return { ok: false, error: rec.stopping ? "The last clip is still finishing. Try again in a moment." : "Already recording." };
+        if (typeof MediaRecorder === "undefined" || typeof MediaStream === "undefined") return { ok: false, error: NOT_AVAILABLE };
+        let canvasStream = null;
+        try {
+          canvasStream = engine.captureStream(60);
+        } catch (e) {
+          console.warn("Tactilume: no video from the canvas", e);
+        }
+        const videoTrack = canvasStream && canvasStream.getVideoTracks()[0];
+        if (!videoTrack) {
+          if (canvasStream) for (const t of canvasStream.getTracks()) stopTrack(t);
+          return { ok: false, error: NOT_AVAILABLE };
+        }
+        let audioTrack = null;
+        if (withSound) {
+          try {
+            audioTrack = audio.recordTrack() || null;
+          } catch (e) {
+            console.warn("Tactilume: no sound for the recording", e);
+          }
+        }
+        const limit = Number(maxSeconds);
+        const { width = 0, height = 0 } = engine.stats || {};
+        const now = performance.now();
+        const r = {
+          canvasStream,
+          videoTrack,
+          audioTrack,
+          stream: null,
+          recorder: null,
+          stopped: null,
+          mime: "",
+          candidates: [],
+          chunks: [],
+          gotData: false,
+          videoBps: width * height >= FULL_HD ? 12e6 : 8e6,
+          maxSeconds: limit > 0 ? limit : 60,
+          startedAt: /* @__PURE__ */ new Date(),
+          activeMs: 0,
+          resumedAt: now,
+          paused: false,
+          timer: 0,
+          stopping: null
+        };
+        try {
+          r.stream = new MediaStream(audioTrack ? [videoTrack, audioTrack] : [videoTrack]);
+          r.candidates = recordableMimes(!!audioTrack);
+        } catch (e) {
+          console.warn("Tactilume: could not prepare the recording", e);
+        }
+        if (!r.stream || !startRecorder(r)) {
+          release(r);
+          return { ok: false, error: NOT_AVAILABLE };
+        }
+        videoTrack.addEventListener("ended", () => finish(r, "ended"));
+        rec = r;
+        r.timer = setInterval(() => tick(r), TICK_MS);
+        if (document.hidden) onVisibility();
+        else emitState(r);
+        return { ok: true };
       },
       async stopRecording() {
-        return { ok: false, error: "not built yet" };
+        if (!rec) return { ok: false, error: "Nothing is being recorded." };
+        return finish(rec, "stopped");
       },
-      recording: false,
-      elapsed: 0,
-      mime: "",
+      get recording() {
+        return !!rec && !rec.stopping;
+      },
+      get elapsed() {
+        return rec ? elapsedOf(rec) : lastElapsed;
+      },
+      get mime() {
+        return rec ? rec.mime : lastMime;
+      },
+      // true while a photo or a clip is on its way to storage
+      get saving() {
+        return saving > 0;
+      },
+      // 'state' {recording, elapsed, paused, limit}; 'finished' (result, reason) after a
+      // clip ends for any reason ('stopped' | 'limit' | 'ended' | 'error')
       on: ev.on
     };
   }
@@ -1009,7 +4749,7 @@ html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
     const capture = createCapture({ engine, audio, platform });
     let uiHidden = false;
     let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
-    let lastActivity = performance.now();
+    let lastActivity = -Infinity;
     let autopilotForced = false;
     const actions = {
       loadPreset(key) {

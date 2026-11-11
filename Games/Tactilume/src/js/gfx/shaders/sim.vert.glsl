@@ -130,7 +130,7 @@ vec3 bWell(vec3 p, vec3 v, inout float heat) {
     acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);
     // a soft core keeps the centre from collapsing to a single point
     acc -= d / r * w * 26.0 * exp(-r2 * 700.0);
-    heat += w * 1.4 * exp(-r2 * 16.0);
+    heat += w * 0.9 * exp(-r2 * 34.0);
   }
   return acc;
 }
