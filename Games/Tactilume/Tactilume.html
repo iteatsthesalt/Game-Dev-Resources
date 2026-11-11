@@ -571,6 +571,14 @@ body {
 @container (max-width: 12em) {
   .tl-seg { grid-template-columns: minmax(0, 1fr); }
 }
+/* The same, decided by measurement (fitLabels in controls.js) for fonts wider than the
+   em guess above. */
+.tl-seg[data-fit] { gap: var(--gutter); }
+.tl-seg[data-fit] .tl-seg-thumb { display: none; }
+.tl-seg[data-fit] .tl-opt[aria-checked='true'] { background: var(--seg-on); box-shadow: inset 0 0 0 1px var(--line-2), var(--shine); }
+.tl-seg[data-fit='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tl-seg[data-fit='2'] .tl-opt:last-child:nth-child(even) { grid-column: 1 / -1; }
+.tl-seg[data-fit='1'] { grid-template-columns: minmax(0, 1fr); }
 
 /* ---- chips and swatches -------------------------------------------------------------------- */
 
@@ -5888,6 +5896,33 @@ void main() {
     return { el, set: g.set, group: g.group, buttons: g.buttons };
   }
   var gridColumns = (el) => getComputedStyle(el).gridTemplateColumns.split(" ").filter((t) => t && t !== "none").length || 1;
+  function overflow(el) {
+    let most = 0;
+    for (const t of el.querySelectorAll(".tl-opt-text, .tl-swatch-name")) {
+      if (!t.getClientRects().length) continue;
+      most = Math.max(most, t.scrollWidth - t.clientWidth);
+    }
+    return most > 1 ? most : 0;
+  }
+  function fitLabels(root) {
+    for (const seg of root.querySelectorAll(".tl-seg")) {
+      seg.removeAttribute("data-fit");
+      for (const fit of ["2", "1"]) {
+        if (!overflow(seg)) break;
+        seg.setAttribute("data-fit", fit);
+      }
+    }
+    for (const grid of root.querySelectorAll(".tl-chips")) {
+      grid.style.removeProperty("--chip-min");
+      for (let i = 0; i < 3; i++) {
+        const extra = overflow(grid);
+        const chip = grid.querySelector(".tl-opt");
+        if (!extra || !chip) break;
+        const width = chip.getBoundingClientRect().width;
+        grid.style.setProperty("--chip-min", `${Math.ceil(width + extra + 2)}px`);
+      }
+    }
+  }
   function chips(field, { value, onSelect, render, className = "tl-chips", labels = (o) => optionLabel(field, o) }) {
     const g = radioGroup(field, {
       value,
@@ -6304,6 +6339,19 @@ void main() {
   function createPanel(root, { store, actions, platform, audio, run, toast, announce, onClosed }) {
     const sideQuery = typeof matchMedia === "function" ? matchMedia(SIDE_QUERY) : null;
     const isSheet = () => !(sideQuery && sideQuery.matches);
+    let fitQueued = 0;
+    function queueFit() {
+      if (fitQueued) return;
+      fitQueued = requestAnimationFrame(() => {
+        fitQueued = 0;
+        const t = tabs.get(current);
+        if (t && t.built && !t.panel.hidden) fitLabels(t.panel);
+      });
+    }
+    addEventListener("resize", queueFit, { passive: true });
+    store.on("settings", (s, keys) => {
+      if (keys.includes("uiScale")) queueFit();
+    });
     const pending = { scene: null, settings: null };
     let raf = 0;
     function flush() {
@@ -6416,6 +6464,7 @@ void main() {
       body.scrollTop = 0;
       if (tablist.scrollWidth > tablist.clientWidth) t.btn.scrollIntoView({ block: "nearest", inline: "nearest" });
       if (focus) t.btn.focus({ preventScroll: true });
+      queueFit();
     }
     let isOpen = false;
     function open(tab) {

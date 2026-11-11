@@ -556,6 +556,14 @@ body {
 @container (max-width: 12em) {
   .tl-seg { grid-template-columns: minmax(0, 1fr); }
 }
+/* The same, decided by measurement (fitLabels in controls.js) for fonts wider than the
+   em guess above. */
+.tl-seg[data-fit] { gap: var(--gutter); }
+.tl-seg[data-fit] .tl-seg-thumb { display: none; }
+.tl-seg[data-fit] .tl-opt[aria-checked='true'] { background: var(--seg-on); box-shadow: inset 0 0 0 1px var(--line-2), var(--shine); }
+.tl-seg[data-fit='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tl-seg[data-fit='2'] .tl-opt:last-child:nth-child(even) { grid-column: 1 / -1; }
+.tl-seg[data-fit='1'] { grid-template-columns: minmax(0, 1fr); }
 
 /* ---- chips and swatches -------------------------------------------------------------------- */
 

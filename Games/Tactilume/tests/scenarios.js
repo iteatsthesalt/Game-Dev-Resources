@@ -518,21 +518,27 @@ export default [
         t.store.setScene({ lock: 'fountain', form: 'lattice', colorBy: 'direction', palette: 'peacock' }, { source: 'test' });
         t.store.setSettings({ quality: 'balanced' }, { source: 'test' });
       });
-      for (const uiScale of [1, 1.3, 1.6]) {
-        const clipped = await page.evaluate(async (uiScale) => {
-          const t = window.TACTILUME;
-          t.store.setSettings({ uiScale }, { source: 'test' });
-          const out = [];
-          for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
-            t.ui.open(tab);
-            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-            for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
-              if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+      // In the device's own font, then in DejaVu Sans, a wide font many Linux systems fall
+      // back to (and what GitHub's runners use): names must fit whatever the font.
+      for (const font of ['', "'DejaVu Sans'"]) {
+        const style = font ? await page.addStyleTag({ content: `#ui#ui { --font: ${font}, sans-serif !important; }` }) : null;
+        for (const uiScale of [1, 1.3, 1.6]) {
+          const clipped = await page.evaluate(async (uiScale) => {
+            const t = window.TACTILUME;
+            t.store.setSettings({ uiScale }, { source: 'test' });
+            const out = [];
+            for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
+              t.ui.open(tab);
+              await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+              for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
+                if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+              }
             }
-          }
-          return out;
-        }, uiScale);
-        c.push(h.check(`no option name is cut short at Control size ${Math.round(uiScale * 100)}%`, !clipped.length, clipped.join('; ')));
+            return out;
+          }, uiScale);
+          c.push(h.check(`no option name is cut short at Control size ${Math.round(uiScale * 100)}%${font ? ` in ${font}` : ''}`, !clipped.length, clipped.join('; ')));
+        }
+        if (style) await style.evaluate((el) => el.remove());
       }
 
       // the chips now wrap to fewer columns: Down still moves one row
@@ -648,6 +654,117 @@ export default [
         h.check('a plain message says why it cannot run', shown && /WebGL 2/.test(text), text),
         h.check('the message is on screen', box.w > 0 && box.h > 0 && box.inside, box),
       ];
+    },
+  },
+
+  {
+    // Devices whose WebGL2 cannot render half floats draw 8-bit light. The flash guard
+    // used to round its own state away there and hold the screen almost black.
+    name: '8-bit light',
+    needsEngine: true,
+    open: false,
+    async run(page, context, h) {
+      const c = [];
+      await page.addInitScript(() => {
+        const P = WebGL2RenderingContext.prototype;
+        const hidden = /^EXT_color_buffer_(half_)?float$/;
+        const get = P.getExtension;
+        P.getExtension = function (name) { return hidden.test(name) ? null : get.call(this, name); };
+        const list = P.getSupportedExtensions;
+        P.getSupportedExtensions = function () { return (list.call(this) || []).filter((n) => !hidden.test(n)); };
+      });
+      await h.open(page);
+      const info = await page.evaluate(() => ({ hdr: window.TACTILUME.engine.caps.halfFloat, guard: window.TACTILUME.store.settings.flashGuard }));
+      c.push(h.check('the engine took the 8-bit path', info.hdr === false, info));
+      c.push(h.check('the flash guard is on', info.guard === true, info));
+      await h.waitFrames(page, 40, 30000);
+      const ins = await page.evaluate(() => window.TACTILUME.engine.inspect(1));
+      const [adapted, shown, exposure] = ins.adapt;
+      c.push(h.check('the guard state is real numbers, not rounded to zero', Number.isFinite(adapted) && Number.isFinite(shown) && shown > 0 && exposure > 0.5, ins.adapt));
+      const L = h.light(await h.shot(page));
+      c.push(h.check('the 8-bit light is clearly visible', L.mean > 4 && L.lit > 0.05, L));
+      c.push(h.check('no GL errors', ins.error === 0, ins.error));
+      return c;
+    },
+  },
+  {
+    // A link's scene plays once; what the person does after it survives a reload.
+    name: 'link used once',
+    open: false,
+    async run(page, context, h) {
+      const c = [];
+      const linked = sanitizeScene({ hue: 0.5, palette: 'abyss', name: 'Linked' });
+      await h.open(page, { hash: '#s=' + encodeScene(linked) });
+      const first = await page.evaluate(() => ({ hash: location.hash, name: window.TACTILUME.store.scene.name, hue: window.TACTILUME.store.scene.hue }));
+      c.push(h.check('the link\'s scene plays', first.name === 'Linked' && first.hue === 0.5, first));
+      c.push(h.check('the code leaves the address', first.hash === '', first.hash));
+      await page.evaluate(() => {
+        window.TACTILUME.store.setScene({ hue: 0.1, name: 'Mine now' }, { source: 'test' });
+        window.TACTILUME.store.flush();
+      });
+      await page.reload();
+      await h.ready(page);
+      const after = await page.evaluate(() => ({ name: window.TACTILUME.store.scene.name, hue: window.TACTILUME.store.scene.hue }));
+      c.push(h.check('a reload keeps the person\'s changes, not the link\'s scene', after.name === 'Mine now' && after.hue === 0.1, after));
+      return c;
+    },
+  },
+  {
+    // A acts on the autoplay you can see, and says what it did.
+    name: 'autoplay key',
+    open: false,
+    query: '?particles=16000',
+    async run(page, context, h) {
+      const c = [];
+      // skip the first-run intro, so keys go straight to the light
+      await page.addInitScript(() => {
+        if (!localStorage.getItem('tactilume.v1')) localStorage.setItem('tactilume.v1', JSON.stringify({ v: 1, settings: { introSeen: true } }));
+      });
+      await h.open(page, { query: '?particles=16000' });
+      const autoplay = () => page.evaluate(() => window.TACTILUME.autoplay);
+      const toasts = () => page.evaluate(() => (document.querySelector('.tl-toasts') || {}).textContent || '');
+      c.push(h.check('autoplay is playing at the start', await h.until(page, () => window.TACTILUME.autoplay === true, undefined, 10000)));
+      await page.keyboard.press('a');
+      c.push(h.check('A stops the autoplay on screen', await h.until(page, () => window.TACTILUME.autoplay === false, undefined, 5000), await autoplay()));
+      c.push(h.check('and says so', /Autoplay off/.test(await toasts()), await toasts()));
+      await page.waitForTimeout(1500);
+      c.push(h.check('it stays stopped', (await autoplay()) === false));
+      await page.keyboard.press('a');
+      c.push(h.check('A again starts it', await h.until(page, () => window.TACTILUME.autoplay === true, undefined, 5000)));
+      await page.keyboard.press(']');
+      c.push(h.check('the next scene is named', /is playing/.test(await toasts()), await toasts()));
+      return c;
+    },
+  },
+  {
+    // Strength scales how hard touches pull and push. (A strong Well flings light through
+    // and out the far side, so how close it gathers is no measure; how fast it moves is.)
+    name: 'strength',
+    needsEngine: true,
+    async run(page, context, h) {
+      const c = [];
+      const cdp = await context.newCDPSession(page);
+      const spread = async (strength) => {
+        await page.evaluate((strength) => {
+          window.TACTILUME.store.setScene({ lock: 'well', strength, form: 'nebula', flow: 0, speed: 1 }, { source: 'test' });
+          window.TACTILUME.engine.reset();
+        }, strength);
+        await h.waitFrames(page, 3);
+        const vp = page.viewportSize();
+        await h.touch(cdp, [{ x: vp.width / 2, y: vp.height / 2 }]);
+        await h.waitFrames(page, 45, 30000);
+        const r = await page.evaluate(() => {
+          const ps = window.TACTILUME.engine.inspect(3000).particles;
+          return ps.reduce((s, p) => s + Math.hypot(p[4], p[5], p[6]), 0) / ps.length;
+        });
+        await h.lift(cdp);
+        await h.waitFrames(page, 3);
+        return r;
+      };
+      const weak = await spread(0.2);
+      const strong = await spread(3);
+      c.push(h.check('a strong Well moves the light much faster than a weak one', strong > weak * 1.5, { weakSpeed: weak, strongSpeed: strong }));
+      return c;
     },
   },
 ];

@@ -244,6 +244,43 @@ export function segmented(field, { value, onSelect, selectOnMove = true, labels 
 // The columns a grid has laid out right now.
 const gridColumns = (el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter((t) => t && t !== 'none').length || 1;
 
+// ---- fitting names whatever the font --------------------------------------------
+
+// Labels that are wider than their box (laid-out ones only), and by how much at most.
+function overflow(el) {
+  let most = 0;
+  for (const t of el.querySelectorAll('.tl-opt-text, .tl-swatch-name')) {
+    if (!t.getClientRects().length) continue;
+    most = Math.max(most, t.scrollWidth - t.clientWidth);
+  }
+  return most > 1 ? most : 0;
+}
+
+// System fonts differ in width (Roboto, DejaVu Sans and San Francisco can be 15% apart),
+// so the layout rules in style.css are only a first guess. This measures: a segmented
+// control whose names do not fit drops to two rows, then one; a chip grid widens its
+// columns until every name fits. Cheap enough to run when a tab is shown, the window
+// resizes or the Control size changes, never per frame.
+export function fitLabels(root) {
+  for (const seg of root.querySelectorAll('.tl-seg')) {
+    seg.removeAttribute('data-fit');
+    for (const fit of ['2', '1']) {
+      if (!overflow(seg)) break;
+      seg.setAttribute('data-fit', fit);
+    }
+  }
+  for (const grid of root.querySelectorAll('.tl-chips')) {
+    grid.style.removeProperty('--chip-min');
+    for (let i = 0; i < 3; i++) {
+      const extra = overflow(grid);
+      const chip = grid.querySelector('.tl-opt');
+      if (!extra || !chip) break;
+      const width = chip.getBoundingClientRect().width;
+      grid.style.setProperty('--chip-min', `${Math.ceil(width + extra + 2)}px`);
+    }
+  }
+}
+
 // More choices than fit in a row: a grid of chips, as many across as fit at the Control
 // size (style.css). `render` can draw richer chips (palette swatches, behaviour names).
 export function chips(field, { value, onSelect, render, className = 'tl-chips', labels = (o) => optionLabel(field, o) }) {

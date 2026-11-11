@@ -11,7 +11,7 @@ import { PALETTES, paletteCSS } from '../core/palettes.js';
 import { PRESETS } from '../core/presets.js';
 import { SCHEMA, SETTINGS_SCHEMA, SCENE_FIELDS, SETTINGS_FIELDS } from '../core/scene.js';
 import {
-  h, uid, roving, slider, toggle, segmented, chips, stepper, select, button, confirmButton, section,
+  h, uid, roving, slider, toggle, segmented, chips, stepper, select, button, confirmButton, section, fitLabels,
 } from './controls.js';
 import { icon } from './icons.js';
 import { formatClock, RESTORE_HINT } from './hud.js';
@@ -125,6 +125,20 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
   const sideQuery = typeof matchMedia === 'function' ? matchMedia(SIDE_QUERY) : null;
   const isSheet = () => !(sideQuery && sideQuery.matches);
 
+  // Names are fitted to the device's own font once the tab is laid out (see fitLabels):
+  // after a tab is shown, the window changes size, or the Control size changes.
+  let fitQueued = 0;
+  function queueFit() {
+    if (fitQueued) return;
+    fitQueued = requestAnimationFrame(() => {
+      fitQueued = 0;
+      const t = tabs.get(current);
+      if (t && t.built && !t.panel.hidden) fitLabels(t.panel);
+    });
+  }
+  addEventListener('resize', queueFit, { passive: true });
+  store.on('settings', (s, keys) => { if (keys.includes('uiScale')) queueFit(); });
+
   // ---- writing to the store ---------------------------------------------------
   // Sliders write at most once a frame; discrete controls write at once (after any
   // slider value still waiting, so changes land in the order they were made).
@@ -223,6 +237,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     // with large controls the tabs scroll sideways: keep the chosen one in view
     if (tablist.scrollWidth > tablist.clientWidth) t.btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (focus) t.btn.focus({ preventScroll: true });
+    queueFit();
   }
 
   // ---- opening and closing --------------------------------------------------------
