@@ -20,14 +20,19 @@ Open `Tactilume.html` in a browser to play. Nothing else is needed, and it works
 - **Sound.** An optional generated instrument played by your touches. The light can also move with
   the microphone or a song you pick. Sound and the microphone stay off until you turn them on.
 - **Tilt.** Optional. Tilting the device tips the light.
-- **Scenes.** Fourteen built-in scenes, "Surprise me", saved scenes and share links. A share link
-  carries the whole scene in its address.
+- **Scenes.** Fourteen built-in scenes, "Surprise me", up to 60 saved scenes on the device, and share
+  links. A share link carries the whole scene in its address. Inside the Android app, which has no
+  public address, "Share scene code" copies a short code instead. Paste a link or a code into
+  Scenes > Open a shared scene to play it.
 - **Capture.** Photos (PNG) and video clips with sound (MP4 or WebM, whichever the device can make).
 - **Comfort and access.** A flash guard (on by default) limits how fast the whole screen may
-  brighten. Calm mode makes everything slower, softer and dimmer, and the system's reduced-motion
-  setting is respected. Every control can be reached by keyboard and screen reader.
+  brighten, glow included. Calm mode makes everything slower, softer and dimmer, and the system's
+  reduced-motion setting is respected. Every control can be reached by keyboard and screen reader,
+  and hidden controls always come back with one tap on their corner, Back, Esc or H.
 - **Adapts to the device.** The particle count and resolution adjust as it plays to keep the motion
-  smooth. A WebGL context loss is survived.
+  smooth, also under a frame-rate cap. Devices that cannot draw HDR light fall back to 8-bit light.
+  A WebGL context loss is survived. The screen is only kept on while someone is around (or while
+  recording, or with Autoplay set to Always), so a phone left alone can still sleep.
 
 ### Keys
 
