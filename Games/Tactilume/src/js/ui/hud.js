@@ -13,6 +13,9 @@ const ANNOUNCE_GAP_MS = 1500;
 const TOAST_MS = 2800;
 const MAX_TOASTS = 3;
 
+// How hidden controls come back, in the same words wherever it is said.
+export const RESTORE_HINT = 'To bring them back, tap the faint button at the top right, press H, or hold three fingers still for a second.';
+
 export const formatClock = (s) => {
   const t = Math.max(0, Math.floor(s));
   return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, '0')}`;
@@ -184,5 +187,7 @@ export function createHUD(root, { onOpen, onStopRecording, reducedMotion }) {
     openBtn, recBtn,
     wake, beckon, setRecording, showBehaviour, toast, announce,
     setOpen(isOpen) { openBtn.setAttribute('aria-expanded', isOpen ? 'true' : 'false'); },
+    // while the controls are hidden the button stays, faint, as the one-tap way back
+    setHidden(on) { openBtn.setAttribute('aria-label', on ? 'Show controls' : 'Open controls'); },
   };
 }

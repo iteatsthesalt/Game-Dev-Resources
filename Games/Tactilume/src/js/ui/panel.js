@@ -14,7 +14,7 @@ import {
   h, uid, roving, slider, toggle, segmented, chips, stepper, select, button, confirmButton, section,
 } from './controls.js';
 import { icon } from './icons.js';
-import { formatClock } from './hud.js';
+import { formatClock, RESTORE_HINT } from './hud.js';
 
 export const TABS = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes' },
@@ -324,7 +324,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
       case 'bool': return toggle(field, { value, onChange: now });
       case 'enum': return field.options.length <= 4
         ? segmented(field, { value, onSelect: now })
-        : chips(field, { value, onSelect: now, cols: field.options.length % 3 === 0 || field.options.length > 6 ? 3 : 2 });
+        : chips(field, { value, onSelect: now });
       default: return null;
     }
   }
@@ -407,7 +407,6 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     // the caption below the chips explains Auto and every behaviour, so the field's help would repeat it
     const c = chips({ ...field, help: null }, {
       value: selected,
-      cols: 3,
       className: 'tl-chips tl-chips--behaviours',
       onSelect: (v) => {
         if (pressed && pressed.long && pressed.key === v) { pressed = null; return; }
@@ -452,7 +451,6 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     const help = safe.length ? `${listNames(safe)} stay clear for every kind of colour vision.` : null;
     const c = chips({ ...field, help }, {
       value: store.scene.palette,
-      cols: 3,
       className: 'tl-chips tl-swatches',
       onSelect: (v) => write('scene', 'palette', v, true),
       render: (key) => {
@@ -553,7 +551,11 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
           file.click();
           return;
         }
-        if (mode === store.settings.react) return;
+        // choosing the current source again does nothing, unless it stopped by itself
+        // (a microphone unplugged): then the setting still names it, but it needs starting
+        const live = mode === 'off' || !(audio && typeof audio.state === 'function')
+          || (mode === 'mic' ? audio.state().mic : audio.state().file);
+        if (mode === store.settings.react && live) return;
         choose(mode);
       },
     });
@@ -668,6 +670,11 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     form.addEventListener('submit', (e) => {
       e.preventDefault();
       const entry = store.saveUserScene(saveInput.value.trim());
+      // the list is full: say so, and keep the typed name for after a delete
+      if (!entry) {
+        toast(`You have ${store.userScenes().length} saved scenes. Delete one to save another.`);
+        return;
+      }
       saveInput.value = '';
       saveInput.blur();
       toast(`Saved “${entry.name}”`);
@@ -751,7 +758,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     clean.body.append(
       h('div', { class: 'tl-field' },
         button('Hide controls', { iconName: 'hide', onClick: () => actions.toggleUI() }),
-        h('p', { class: 'tl-help' }, 'Press H, or tap with three fingers held for a second, to bring them back.')));
+        h('p', { class: 'tl-help' }, RESTORE_HINT)));
     panel.append(sec.el, clean.el);
     setRecording(recording.on, recording.elapsed);
   }

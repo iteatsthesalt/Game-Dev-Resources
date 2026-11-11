@@ -87,7 +87,8 @@ function helpText(field) {
 }
 
 // Arrow-key movement inside a group of radios or tabs, with one tab stop for the
-// whole group (the checked item). `cols` makes Up/Down jump a row in a grid.
+// whole group (the checked item). `cols` makes Up/Down jump a row in a grid: a number,
+// or a function for a grid whose column count follows the space it has.
 export function roving(items, { cols = 1, selectOnMove = true, onPick }) {
   const move = (from, to) => {
     const next = items[(to + items.length) % items.length];
@@ -99,12 +100,13 @@ export function roving(items, { cols = 1, selectOnMove = true, onPick }) {
   };
   items.forEach((item, i) => {
     item.addEventListener('keydown', (e) => {
-      const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+      const across = typeof cols === 'function' ? cols() : cols;
+      const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: across, ArrowUp: -across }[e.key];
       if (step) {
         e.preventDefault();
         const target = i + step;
         // in a grid, Up/Down stop at the edges instead of wrapping into another column
-        if (cols > 1 && Math.abs(step) === cols && (target < 0 || target >= items.length)) return;
+        if (across > 1 && Math.abs(step) === across && (target < 0 || target >= items.length)) return;
         move(i, target);
       } else if (e.key === 'Home' || e.key === 'End') {
         e.preventDefault();
@@ -203,7 +205,11 @@ function radioGroup(field, { value, options, onSelect, selectOnMove = true, cols
     return b;
   });
   group.append(...buttons);
-  const rove = roving(buttons, { cols, selectOnMove, onPick: (b) => onSelect(b.dataset.value) });
+  const rove = roving(buttons, {
+    cols: typeof cols === 'function' ? () => cols(group) : cols,
+    selectOnMove,
+    onPick: (b) => onSelect(b.dataset.value),
+  });
 
   let current = null;
   const set = (v) => {
@@ -235,14 +241,16 @@ export function segmented(field, { value, onSelect, selectOnMove = true, labels 
   return { el, set: g.set, group: g.group, buttons: g.buttons };
 }
 
-// More choices than fit in a row: a grid of chips. `render` can draw richer chips
-// (palette swatches, behaviour names).
-export function chips(field, { value, onSelect, cols = 3, render, className = 'tl-chips', labels = (o) => optionLabel(field, o) }) {
+// The columns a grid has laid out right now.
+const gridColumns = (el) => getComputedStyle(el).gridTemplateColumns.split(' ').filter((t) => t && t !== 'none').length || 1;
+
+// More choices than fit in a row: a grid of chips, as many across as fit at the Control
+// size (style.css). `render` can draw richer chips (palette swatches, behaviour names).
+export function chips(field, { value, onSelect, render, className = 'tl-chips', labels = (o) => optionLabel(field, o) }) {
   const g = radioGroup(field, {
-    value, options: field.options, onSelect, cols, className,
+    value, options: field.options, onSelect, cols: gridColumns, className,
     render: render || ((o) => [h('span', { class: 'tl-opt-text' }, labels(o)), icon('check', 'tl-icon tl-opt-check')]),
   });
-  g.group.style.setProperty('--cols', String(cols));
   const el = h('div', { class: 'tl-field tl-field--chips' },
     head(h('span', { class: 'tl-label', id: g.labelId }, field.label)),
     g.group, g.help.node);

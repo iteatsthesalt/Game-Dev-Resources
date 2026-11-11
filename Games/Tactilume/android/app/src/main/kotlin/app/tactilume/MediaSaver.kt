@@ -76,36 +76,52 @@ internal object MediaSaver {
         )
         val dir = File(base, FOLDER)
         if (!dir.isDirectory && !dir.mkdirs()) throw IOException("could not create $dir")
-        val target = uniqueFile(dir, received.name)
-        received.file.copyTo(target)
-        val now = System.currentTimeMillis()
-        val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DATA, target.absolutePath)
-            put(MediaStore.MediaColumns.DISPLAY_NAME, target.name)
-            put(MediaStore.MediaColumns.TITLE, target.nameWithoutExtension)
-            put(MediaStore.MediaColumns.MIME_TYPE, received.mime)
-            put(MediaStore.MediaColumns.SIZE, target.length())
-            put(MediaStore.MediaColumns.DATE_ADDED, now / 1000)
-            put(MediaStore.MediaColumns.DATE_MODIFIED, now / 1000)
-            put(if (video) MediaStore.Video.VideoColumns.DATE_TAKEN else MediaStore.Images.ImageColumns.DATE_TAKEN, now)
-        }
         val collection = if (video) MediaStore.Video.Media.EXTERNAL_CONTENT_URI else MediaStore.Images.Media.EXTERNAL_CONTENT_URI
-        val uri = context.contentResolver.insert(collection, values)
-        if (uri == null) {
-            target.delete()
-            throw IOException("MediaStore did not create an entry")
+        val target = createUniqueFile(dir, received.name)
+        val uri = copyThenRegister(received.file, target) {
+            val now = System.currentTimeMillis()
+            val values = ContentValues().apply {
+                put(MediaStore.MediaColumns.DATA, target.absolutePath)
+                put(MediaStore.MediaColumns.DISPLAY_NAME, target.name)
+                put(MediaStore.MediaColumns.TITLE, target.nameWithoutExtension)
+                put(MediaStore.MediaColumns.MIME_TYPE, received.mime)
+                put(MediaStore.MediaColumns.SIZE, target.length())
+                put(MediaStore.MediaColumns.DATE_ADDED, now / 1000)
+                put(MediaStore.MediaColumns.DATE_MODIFIED, now / 1000)
+                put(if (video) MediaStore.Video.VideoColumns.DATE_TAKEN else MediaStore.Images.ImageColumns.DATE_TAKEN, now)
+            }
+            context.contentResolver.insert(collection, values)
         }
         // fills in the dimensions and duration that galleries show
         MediaScannerConnection.scanFile(context, arrayOf(target.absolutePath), arrayOf(received.mime), null)
         return uri
     }
 
-    private fun uniqueFile(dir: File, name: String): File {
+    /**
+     * Copies [source] into [target], then registers it. If either step fails (storage fills
+     * up partway, MediaStore refuses or throws), [target] is deleted, so no truncated photo or
+     * clip is left in the shared folder for the next media scan to put in the gallery.
+     */
+    @Throws(IOException::class)
+    internal fun <T : Any> copyThenRegister(source: File, target: File, register: () -> T?): T = try {
+        source.inputStream().use { input -> target.outputStream().use { input.copyTo(it, COPY_BUFFER) } }
+        register() ?: throw IOException("MediaStore did not create an entry")
+    } catch (e: Exception) {
+        target.delete()
+        throw e as? IOException ?: IOException(e)
+    }
+
+    /**
+     * Creates an empty file with a free name in [dir]. Creating it claims the name in one
+     * step, so the file written, and deleted after a failure, is never someone else's.
+     */
+    @Throws(IOException::class)
+    internal fun createUniqueFile(dir: File, name: String): File {
         val stem = name.substringBeforeLast('.')
         val ext = name.substringAfterLast('.', "")
         var candidate = File(dir, name)
         var n = 2
-        while (candidate.exists()) {
+        while (!candidate.createNewFile()) {
             candidate = File(dir, if (ext.isEmpty()) "$stem ($n)" else "$stem ($n).$ext")
             n++
         }

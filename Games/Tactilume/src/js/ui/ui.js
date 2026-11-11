@@ -8,7 +8,7 @@
 // ui.update runs every frame, so it only counts time; text changes a few times a second.
 
 import { PALETTES, paletteCSS } from '../core/palettes.js';
-import { createHUD } from './hud.js';
+import { createHUD, RESTORE_HINT } from './hud.js';
 import { createPanel, SIDE_QUERY } from './panel.js';
 import { createIntro } from './intro.js';
 
@@ -72,6 +72,7 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
   });
 
   let panel = null;
+  let opener = null; // what had focus when the panel opened
 
   // ---- results people should hear about ------------------------------------------------
   let finishedCount = 0; // recordings that reported themselves through capture's 'finished'
@@ -134,7 +135,11 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
         onClosed: ({ returnFocus }) => {
           hud.setOpen(false);
           hud.wake();
-          if (returnFocus && !hidden) hud.openBtn.focus({ preventScroll: true });
+          // back to the open button only if it opened the panel; otherwise to the light,
+          // where Space and the arrow keys play (a focused button would keep Space)
+          const back = opener === hud.openBtn ? hud.openBtn : document.getElementById('stage');
+          opener = null;
+          if (returnFocus && !hidden && back) back.focus({ preventScroll: true });
         },
       });
       panel.setRecording(recOn, capture ? capture.elapsed || 0 : 0);
@@ -253,12 +258,15 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       }
     },
 
-    showBehaviour(b) {
+    // opts.autopilot, when given, says whether autoplay made this change; main knows that
+    // for this frame, while the flag from ui.update is a frame old
+    showBehaviour(b, opts) {
       if (!b || !b.name || introOpen()) return;
+      const byAuto = opts && 'autopilot' in opts ? !!opts.autopilot : autopilotOn;
       // autoplay changes behaviour on its own: name it, but save the explanations for people
       const times = seen.get(b.key) || 0;
-      const explain = !autopilotOn && times < BLURB_TIMES;
-      if (!autopilotOn) {
+      const explain = !byAuto && times < BLURB_TIMES;
+      if (!byAuto) {
         seen.set(b.key, times + 1);
         hud.announce(b.name);
       }
@@ -271,6 +279,7 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
     open(tab) {
       if (introOpen()) return;
       if (hidden) restore();
+      if (!ui.isOpen()) opener = document.activeElement;
       ensurePanel().open(tab);
       hud.setOpen(true);
     },
@@ -289,16 +298,18 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       if (want === hidden) return;
       hidden = want;
       if (want && panel && panel.isOpen()) panel.close({ returnFocus: false });
-      // focus must not stay on a control that is about to vanish
+      // focus must not stay on a control that is about to vanish, or light the faint open button
       if (want && root.contains(document.activeElement)) document.activeElement.blur();
       root.classList.toggle('is-hidden', want);
-      // the recording dot stays in sight while hidden, but out of the Tab order
+      // the open button stays, faint, as a way back for one tap, a switch or a screen
+      // reader; the recording dot stays in sight, but out of the Tab order
+      hud.setHidden(want);
       hud.recBtn.tabIndex = want ? -1 : 0;
       watchHold(want);
       if (want) {
         if (!toldHidden) {
           toldHidden = true;
-          hud.toast('Controls hidden. Press H, or hold three fingers still for a second, to bring them back.', 5200);
+          hud.toast(`Controls hidden. ${RESTORE_HINT}`, 5200);
         }
       } else {
         hud.wake();

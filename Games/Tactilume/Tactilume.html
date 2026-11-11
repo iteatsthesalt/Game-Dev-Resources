@@ -29,6 +29,11 @@ body {
   overscroll-behavior: none;
 }
 #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+/* The light takes keyboard focus, so Space and the arrow keys play it. Arriving by key
+   shows a soft ring that settles to a faint one; a touch or a click shows none. */
+#stage:focus { outline: none; }
+#stage:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.2); outline-offset: -3px; animation: tl-stage-ring 2.4s ease-out; }
+@keyframes tl-stage-ring { from { outline-color: rgba(255, 255, 255, 0.8); } }
 #fatal:not([hidden]) {
   position: fixed; inset: 0; z-index: 10; display: grid; place-content: center; gap: 4px;
   padding: 24px; color: #eceef3; background: #000; text-align: center;
@@ -99,8 +104,10 @@ body {
 
   /* colour */
   --text: #f5f6fa;
-  --text-2: #babecb;                           /* help text: over 9:1 on the glass */
-  --text-3: #9297a5;                           /* quiet labels: over 6:1 */
+  /* The glass lets the light through, so contrast is reckoned over the brightest it can
+     get: white light behind the panel, which its blur dims to about rgb(72, 72, 76). */
+  --text-2: #babecb;                           /* help text: 4.9:1 there, 10:1 over the dark */
+  --text-3: #b4b9c5;                           /* quiet labels: 4.6:1 there, 9:1 over the dark */
   --text-ink: #0b0c11;                         /* text on light buttons */
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.06);
@@ -191,6 +198,10 @@ body {
 }
 .tl-open-icon { position: relative; width: calc(22 * var(--u)); height: calc(22 * var(--u)); }
 .tl-open.is-dim { opacity: 0.25; }
+/* hidden controls keep the open button, faint, as the way back for one tap, a switch or a
+   screen reader (photos and clips come from the canvas, so it never shows in them) */
+.is-hidden .tl-open { opacity: 0.12; }
+.is-hidden .tl-open:hover, .is-hidden .tl-open:focus-visible { opacity: 1; }
 .tl-open:hover .tl-open-glass { background: var(--hover); border-color: var(--line-strong); }
 .tl-open:active { transform: scale(0.92); }
 #ui .tl-open:focus-visible { outline-offset: -2px; box-shadow: 0 0 0 4px var(--focus-halo); }
@@ -203,7 +214,7 @@ body {
   0% { opacity: 0.9; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.9); }
 }
-.is-panel-open .tl-open, .is-hidden .tl-open, .is-intro .tl-open {
+.is-panel-open .tl-open, .is-intro .tl-open {
   opacity: 0; visibility: hidden; pointer-events: none;
   transition: opacity var(--t) var(--ease), visibility 0s linear var(--t);
 }
@@ -545,12 +556,32 @@ body {
 .tl-seg .tl-opt:hover { color: var(--text); }
 .tl-seg .tl-opt[aria-checked='true'] { color: var(--text); }
 .tl-opt-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Too narrow for one row (large Control size, small phone): two rows, then one, with the
+   chosen option lit in place of the sliding highlight. em here is the field's text size,
+   so these widths grow with the Control size. */
+.tl-field--seg { container-type: inline-size; }
+@container (max-width: 18em) {
+  .tl-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gutter); }
+  .tl-seg-thumb { display: none; }
+  .tl-seg .tl-opt[aria-checked='true'] { background: var(--seg-on); box-shadow: inset 0 0 0 1px var(--line-2), var(--shine); }
+  /* an odd one out takes the whole last row (the thumb is the first child) */
+  .tl-seg .tl-opt:last-child:nth-child(even) { grid-column: 1 / -1; }
+}
+@container (max-width: 12em) {
+  .tl-seg { grid-template-columns: minmax(0, 1fr); }
+}
 
 /* ---- chips and swatches -------------------------------------------------------------------- */
 
-.tl-chips { display: grid; grid-template-columns: repeat(var(--cols, 3), minmax(0, 1fr)); gap: var(--sp-2); margin-top: var(--sp-3); }
+/* as many across as fit: three on most phones, fewer as the Control size grows, so a
+   name and its tick always have room */
+.tl-chips {
+  --chip-min: calc(88 * var(--u));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--chip-min)), 1fr));
+  gap: var(--sp-2); margin-top: var(--sp-3);
+}
 .tl-chips .tl-opt {
-  position: relative; min-height: var(--tap); padding: var(--sp-2) var(--sp-2);
+  position: relative; min-height: var(--tap); padding: var(--sp-2) calc(6 * var(--u));
   display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
   border-radius: var(--r-s); background: var(--fill-1); border: 1px solid var(--line);
   color: var(--text-2); font-size: var(--fs-s); font-weight: 600;
@@ -565,6 +596,7 @@ body {
 .tl-opt-check { display: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); color: var(--accent); }
 .tl-opt[aria-checked='true'] .tl-opt-check { display: block; }
 
+.tl-swatches { --chip-min: calc(80 * var(--u)); } /* the tick sits on the swatch, not beside the name */
 .tl-swatches .tl-opt { flex-direction: column; align-items: stretch; padding: calc(6 * var(--u)) calc(6 * var(--u)) var(--sp-2); gap: calc(7 * var(--u)); }
 .tl-swatch-bar {
   display: block; height: calc(30 * var(--u)); border-radius: var(--r-xs);
@@ -824,6 +856,9 @@ body {
     --track: #55566a; --switch-off: #4a4b58;
   }
   .tl-namecard-blurb { opacity: 1; }
+  /* the way into the controls never fades (hidden controls stay faint: that was asked for) */
+  #ui:not(.is-hidden) .tl-open.is-dim { opacity: 1; }
+  #stage:focus-visible { outline-color: #fff; animation: none; }
 }
 
 @media (forced-colors: active) {
@@ -839,12 +874,14 @@ body {
   .tl-range-wrap::before { display: none; }
   .tl-rec-dot { forced-color-adjust: none; }
   #ui :focus-visible { outline-color: Highlight; }
+  #stage:focus-visible { outline-color: Highlight; animation: none; }
+  #ui:not(.is-hidden) .tl-open.is-dim { opacity: 1; }
 }
 
 </style>
 </head>
 <body>
-<canvas id="stage" role="img" aria-label="Field of light. Touch, drag or press keys to play."></canvas>
+<canvas id="stage" tabindex="0" role="img" aria-label="Field of light. Touch, drag or press keys to play."></canvas>
 <div id="ui"></div>
 <div id="fatal" hidden role="alert"></div>
 <noscript><p class="noscript">Tactilume needs JavaScript to draw its light.</p></noscript>
@@ -2915,33 +2952,15 @@ void main() {
   var EDGE = 0.97;
   var MAX_SYMMETRY = SCENE_FIELDS.get("symmetry").max;
   var ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
-  var KEEPS_KEYS = [
-    "button",
-    "a[href]",
-    "summary",
-    "audio",
-    "video",
-    ...[
-      "button",
-      "tab",
-      "tablist",
-      "radio",
-      "radiogroup",
-      "slider",
-      "switch",
-      "checkbox",
-      "menuitem",
-      "option",
-      "listbox",
-      "spinbutton",
-      "scrollbar"
-    ].map((r) => `[role="${r}"]`)
-  ].join(",");
+  var ARROW_WIDGETS = ["tab", "tablist", "radio", "radiogroup", "slider", "menuitem", "option", "listbox", "spinbutton", "scrollbar"];
+  var byRole = (roles) => roles.map((r) => `[role="${r}"]`);
+  var KEEPS_SPACE = ["button", "a[href]", "summary", "audio", "video", ...byRole(["button", "switch", "checkbox", ...ARROW_WIDGETS])].join(",");
+  var KEEPS_ARROWS = ["audio", "video", ...byRole([...ARROW_WIDGETS, "dialog"])].join(",");
   function isTyping(el) {
     if (!el || !el.tagName) return false;
     return el.isContentEditable || el.tagName === "INPUT" || el.tagName === "TEXTAREA" || el.tagName === "SELECT";
   }
-  var keepsKeys = (el) => !!(el && typeof el.closest === "function" && el.closest(KEEPS_KEYS));
+  var keeps = (el, selector) => !!(el && typeof el.closest === "function" && el.closest(selector));
   var altGraph = (e) => typeof e.getModifierState === "function" && e.getModifierState("AltGraph");
   function letterOf(e, byCode) {
     if (typeof e.key === "string" && /^[a-z]$/i.test(e.key)) return e.key.toLowerCase();
@@ -3110,13 +3129,13 @@ void main() {
       if (isTyping(e.target) || isTyping(focus)) return;
       const byCode = !altGr;
       if (ARROWS[e.key]) {
-        if (keepsKeys(focus)) return;
+        if (keeps(focus, KEEPS_ARROWS)) return;
         e.preventDefault();
         arrowsDown.add(e.key);
         return;
       }
       if (e.code === "Space" || e.key === " ") {
-        if (keepsKeys(focus)) return;
+        if (keeps(focus, KEEPS_SPACE)) return;
         e.preventDefault();
         if (!e.repeat) toggleDot();
         return;
@@ -5712,11 +5731,12 @@ void main() {
     };
     items.forEach((item, i) => {
       item.addEventListener("keydown", (e) => {
-        const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: cols, ArrowUp: -cols }[e.key];
+        const across = typeof cols === "function" ? cols() : cols;
+        const step = { ArrowRight: 1, ArrowLeft: -1, ArrowDown: across, ArrowUp: -across }[e.key];
         if (step) {
           e.preventDefault();
           const target = i + step;
-          if (cols > 1 && Math.abs(step) === cols && (target < 0 || target >= items.length)) return;
+          if (across > 1 && Math.abs(step) === across && (target < 0 || target >= items.length)) return;
           move(i, target);
         } else if (e.key === "Home" || e.key === "End") {
           e.preventDefault();
@@ -5824,7 +5844,11 @@ void main() {
       return b;
     });
     group.append(...buttons);
-    const rove = roving(buttons, { cols, selectOnMove, onPick: (b) => onSelect(b.dataset.value) });
+    const rove = roving(buttons, {
+      cols: typeof cols === "function" ? () => cols(group) : cols,
+      selectOnMove,
+      onPick: (b) => onSelect(b.dataset.value)
+    });
     let current = null;
     const set = (v) => {
       current = v;
@@ -5862,16 +5886,16 @@ void main() {
     );
     return { el, set: g.set, group: g.group, buttons: g.buttons };
   }
-  function chips(field, { value, onSelect, cols = 3, render, className = "tl-chips", labels = (o) => optionLabel(field, o) }) {
+  var gridColumns = (el) => getComputedStyle(el).gridTemplateColumns.split(" ").filter((t) => t && t !== "none").length || 1;
+  function chips(field, { value, onSelect, render, className = "tl-chips", labels = (o) => optionLabel(field, o) }) {
     const g = radioGroup(field, {
       value,
       options: field.options,
       onSelect,
-      cols,
+      cols: gridColumns,
       className,
       render: render || ((o) => [h("span", { class: "tl-opt-text" }, labels(o)), icon("check", "tl-icon tl-opt-check")])
     });
-    g.group.style.setProperty("--cols", String(cols));
     const el = h(
       "div",
       { class: "tl-field tl-field--chips" },
@@ -6002,6 +6026,7 @@ void main() {
   var ANNOUNCE_GAP_MS = 1500;
   var TOAST_MS = 2800;
   var MAX_TOASTS = 3;
+  var RESTORE_HINT = "To bring them back, tap the faint button at the top right, press H, or hold three fingers still for a second.";
   var formatClock = (s) => {
     const t = Math.max(0, Math.floor(s));
     return `${Math.floor(t / 60)}:${String(t % 60).padStart(2, "0")}`;
@@ -6173,6 +6198,10 @@ void main() {
       announce,
       setOpen(isOpen) {
         openBtn.setAttribute("aria-expanded", isOpen ? "true" : "false");
+      },
+      // while the controls are hidden the button stays, faint, as the one-tap way back
+      setHidden(on) {
+        openBtn.setAttribute("aria-label", on ? "Show controls" : "Open controls");
       }
     };
   }
@@ -6480,7 +6509,7 @@ void main() {
         case "bool":
           return toggle(field, { value, onChange: now });
         case "enum":
-          return field.options.length <= 4 ? segmented(field, { value, onSelect: now }) : chips(field, { value, onSelect: now, cols: field.options.length % 3 === 0 || field.options.length > 6 ? 3 : 2 });
+          return field.options.length <= 4 ? segmented(field, { value, onSelect: now }) : chips(field, { value, onSelect: now });
         default:
           return null;
       }
@@ -6555,7 +6584,6 @@ void main() {
       let pressed = null;
       const c = chips({ ...field, help: null }, {
         value: selected,
-        cols: 3,
         className: "tl-chips tl-chips--behaviours",
         onSelect: (v) => {
           if (pressed && pressed.long && pressed.key === v) {
@@ -6622,7 +6650,6 @@ void main() {
       const help = safe.length ? `${listNames(safe)} stay clear for every kind of colour vision.` : null;
       const c = chips({ ...field, help }, {
         value: store.scene.palette,
-        cols: 3,
         className: "tl-chips tl-swatches",
         onSelect: (v) => write("scene", "palette", v, true),
         render: (key) => {
@@ -6732,7 +6759,8 @@ void main() {
             file.click();
             return;
           }
-          if (mode === store.settings.react) return;
+          const live = mode === "off" || !(audio && typeof audio.state === "function") || (mode === "mic" ? audio.state().mic : audio.state().file);
+          if (mode === store.settings.react && live) return;
           choose(mode);
         }
       });
@@ -6890,6 +6918,10 @@ void main() {
       form.addEventListener("submit", (e) => {
         e.preventDefault();
         const entry = store.saveUserScene(saveInput.value.trim());
+        if (!entry) {
+          toast(`You have ${store.userScenes().length} saved scenes. Delete one to save another.`);
+          return;
+        }
         saveInput.value = "";
         saveInput.blur();
         toast(`Saved “${entry.name}”`);
@@ -6989,7 +7021,7 @@ void main() {
           "div",
           { class: "tl-field" },
           button("Hide controls", { iconName: "hide", onClick: () => actions.toggleUI() }),
-          h("p", { class: "tl-help" }, "Press H, or tap with three fingers held for a second, to bring them back.")
+          h("p", { class: "tl-help" }, RESTORE_HINT)
         )
       );
       panel.append(sec.el, clean.el);
@@ -7207,6 +7239,7 @@ void main() {
       reducedMotion
     });
     let panel = null;
+    let opener = null;
     let finishedCount = 0;
     const toast = (text, ms) => hud.toast(text, ms);
     function report(what, r) {
@@ -7274,7 +7307,9 @@ void main() {
           onClosed: ({ returnFocus }) => {
             hud.setOpen(false);
             hud.wake();
-            if (returnFocus && !hidden) hud.openBtn.focus({ preventScroll: true });
+            const back = opener === hud.openBtn ? hud.openBtn : document.getElementById("stage");
+            opener = null;
+            if (returnFocus && !hidden && back) back.focus({ preventScroll: true });
           }
         });
         panel.setRecording(recOn, capture ? capture.elapsed || 0 : 0);
@@ -7393,11 +7428,14 @@ void main() {
           }
         }
       },
-      showBehaviour(b) {
+      // opts.autopilot, when given, says whether autoplay made this change; main knows that
+      // for this frame, while the flag from ui.update is a frame old
+      showBehaviour(b, opts) {
         if (!b || !b.name || introOpen()) return;
+        const byAuto = opts && "autopilot" in opts ? !!opts.autopilot : autopilotOn;
         const times = seen.get(b.key) || 0;
-        const explain = !autopilotOn && times < BLURB_TIMES;
-        if (!autopilotOn) {
+        const explain = !byAuto && times < BLURB_TIMES;
+        if (!byAuto) {
           seen.set(b.key, times + 1);
           hud.announce(b.name);
         }
@@ -7412,6 +7450,7 @@ void main() {
       open(tab) {
         if (introOpen()) return;
         if (hidden) restore();
+        if (!ui.isOpen()) opener = document.activeElement;
         ensurePanel().open(tab);
         hud.setOpen(true);
       },
@@ -7435,12 +7474,13 @@ void main() {
         if (want && panel && panel.isOpen()) panel.close({ returnFocus: false });
         if (want && root.contains(document.activeElement)) document.activeElement.blur();
         root.classList.toggle("is-hidden", want);
+        hud.setHidden(want);
         hud.recBtn.tabIndex = want ? -1 : 0;
         watchHold(want);
         if (want) {
           if (!toldHidden) {
             toldHidden = true;
-            hud.toast("Controls hidden. Press H, or hold three fingers still for a second, to bring them back.", 5200);
+            hud.toast(`Controls hidden. ${RESTORE_HINT}`, 5200);
           }
         } else {
           hud.wake();

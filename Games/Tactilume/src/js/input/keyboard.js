@@ -21,19 +21,21 @@ const MAX_SYMMETRY = SCENE_FIELDS.get('symmetry').max;
 
 const ARROWS = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, 1], ArrowDown: [0, -1] };
 
-// Focused controls that use Space or the arrows themselves keep them.
-const KEEPS_KEYS = [
-  'button', 'a[href]', 'summary', 'audio', 'video',
-  ...['button', 'tab', 'tablist', 'radio', 'radiogroup', 'slider', 'switch', 'checkbox',
-    'menuitem', 'option', 'listbox', 'spinbutton', 'scrollbar'].map((r) => `[role="${r}"]`),
-].join(',');
+// Focused controls that use Space or the arrows themselves keep them. Space presses every
+// kind of button. The arrows are kept only by widgets that move a choice or a value with
+// them, and inside a dialog, whose body they scroll; a plain button such as the open
+// button leaves them to the light. Text fields and other inputs never get here (isTyping).
+const ARROW_WIDGETS = ['tab', 'tablist', 'radio', 'radiogroup', 'slider', 'menuitem', 'option', 'listbox', 'spinbutton', 'scrollbar'];
+const byRole = (roles) => roles.map((r) => `[role="${r}"]`);
+const KEEPS_SPACE = ['button', 'a[href]', 'summary', 'audio', 'video', ...byRole(['button', 'switch', 'checkbox', ...ARROW_WIDGETS])].join(',');
+const KEEPS_ARROWS = ['audio', 'video', ...byRole([...ARROW_WIDGETS, 'dialog'])].join(',');
 
 function isTyping(el) {
   if (!el || !el.tagName) return false;
   return el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT';
 }
 
-const keepsKeys = (el) => !!(el && typeof el.closest === 'function' && el.closest(KEEPS_KEYS));
+const keeps = (el, selector) => !!(el && typeof el.closest === 'function' && el.closest(selector));
 
 // AltGr types characters (on many layouts it is the only way to type "[" and "]"),
 // so it is not a shortcut modifier, but then only the character counts, not the key.
@@ -228,13 +230,13 @@ export function createKeyboard({ store, actions, pointers }) {
     const byCode = !altGr;
 
     if (ARROWS[e.key]) {
-      if (keepsKeys(focus)) return;
+      if (keeps(focus, KEEPS_ARROWS)) return;
       e.preventDefault();
       arrowsDown.add(e.key);
       return;
     }
     if (e.code === 'Space' || e.key === ' ') {
-      if (keepsKeys(focus)) return;
+      if (keeps(focus, KEEPS_SPACE)) return;
       e.preventDefault();
       if (!e.repeat) toggleDot();
       return;

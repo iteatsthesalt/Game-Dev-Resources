@@ -42,8 +42,10 @@
             android:name="android.webkit.WebView.MetricsOptOut"
             android:value="true" />
 
-        <!-- Every configuration change is handled in place, so turning the phone, folding it or
-             plugging in a keyboard never reloads the page and never loses what is on screen.
+        <!-- Every configuration change is handled in place, so turning the phone, folding it,
+             plugging in a keyboard, Bold text, a new SIM or a system overlay being turned on
+             (assetsPaths) never reloads the page and never loses what is on screen. Older
+             Android versions ignore the flags they do not know.
              fullUser turns with the phone to all four sides, unless the person has locked
              rotation (then it stays put, as they asked). It is not a fixed orientation, so lint's
              warning about those does not apply; the page fits any size and shape anyway. -->
@@ -52,7 +54,7 @@
             android:exported="true"
             android:screenOrientation="fullUser"
             tools:ignore="DiscouragedApi"
-            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale|colorMode"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|touchscreen|uiMode|density|fontScale|fontWeightAdjustment|layoutDirection|locale|grammaticalGender|colorMode|mcc|mnc|assetsPaths"
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize"
             android:theme="@style/Theme.Tactilume">

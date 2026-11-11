@@ -141,7 +141,6 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         DisplayTuning.preferHighestRefreshRate(this)
         // the hardware volume keys set the volume of Tactilume's sound, even before it plays
         volumeControlStream = AudioManager.STREAM_MUSIC
-        setKeepAwake(true)
 
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         setContentView(root)
@@ -200,6 +199,8 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
     private fun startWebView() {
         webViewWanted = false
         hideNotice()
+        // on until the page's 'awake' message says otherwise; on for good if the bridge cannot attach
+        setKeepAwake(true)
         val view = try {
             WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
             WebView(this)
@@ -515,20 +516,22 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         // nothing in the page to go back through, so Back simply leaves
         backCallback.isEnabled = false
         val missing = problem == WebViewProblem.MISSING
+        // no button where the Play Store cannot help, such as Huawei's own WebView
+        val store = WebViewCheck.storePackage(WebViewCheck.providerPackage(this))
         showNotice(
             title = if (missing) R.string.webview_missing_title else R.string.webview_old_title,
             body = if (missing) R.string.webview_missing_body else R.string.webview_old_body,
-            button = R.string.webview_open_store,
-            onButton = ::openWebViewInStore,
+            button = store?.let { R.string.webview_open_store },
+            onButton = store?.let { pkg -> { openInStore(pkg) } },
         )
     }
 
-    private fun openWebViewInStore() {
-        val market = Intent(Intent.ACTION_VIEW, "market://details?id=$WEBVIEW_PACKAGE".toUri())
+    private fun openInStore(packageName: String) {
+        val market = Intent(Intent.ACTION_VIEW, "market://details?id=$packageName".toUri())
         try {
             startActivity(market)
         } catch (e: ActivityNotFoundException) {
-            openExternal("https://play.google.com/store/apps/details?id=$WEBVIEW_PACKAGE".toUri())
+            openExternal("https://play.google.com/store/apps/details?id=$packageName".toUri())
         }
     }
 
@@ -540,6 +543,8 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         onButton: (() -> Unit)? = null,
         onTap: (() -> Unit)? = null,
     ) {
+        // no page is left to let the screen sleep, and a still message has no reason to keep it lit
+        setKeepAwake(false)
         hideNotice()
         releaseFirstDraw()
         val dp = resources.displayMetrics.density
@@ -605,7 +610,6 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
 
     private companion object {
         const val TAG = "Tactilume"
-        const val WEBVIEW_PACKAGE = "com.google.android.webview"
         const val FIRST_DRAW_MAX_WAIT_MS = 1500L
         const val REVEAL_MAX_WAIT_MS = 1500L
         const val REVEAL_FADE_MS = 260L
