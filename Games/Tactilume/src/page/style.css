@@ -559,8 +559,8 @@ body {
 
 /* ---- chips and swatches -------------------------------------------------------------------- */
 
-/* as many across as fit: three on most phones, fewer as the Control size grows, so a
-   name and its tick always have room */
+/* as many across as fit, so a name and its tick always have room: three on most phones,
+   fewer on the narrowest and as the Control size grows */
 .tl-chips {
   --chip-min: calc(88 * var(--u));
   display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--chip-min)), 1fr));
