@@ -458,6 +458,127 @@ export default [
   },
 
   {
+    name: 'keyboard play after the controls close',
+    async run(page, context, h) {
+      const c = [];
+      // the keyboard's own touch (Space), where focus is, and whether the controls are open
+      const read = () => page.evaluate(() => {
+        const t = window.TACTILUME, el = document.activeElement;
+        const dot = t.keyboard.poles().find((p) => p.held);
+        const focus = el && el.id === 'stage' ? 'the light' : el && el.classList.contains('tl-open') ? 'the open button' : el && el.tagName;
+        return { fingers: t.fingers, open: t.ui.isOpen(), focus, x: dot ? dot.x : null };
+      });
+      const hold = async (key) => {
+        await page.keyboard.down(key);
+        await h.waitFrames(page, 6);
+        await page.keyboard.up(key);
+      };
+      // Space places the touch at the mouse: rest it mid-screen, away from the edges
+      await page.mouse.move(450, 300);
+
+      await page.keyboard.press('Escape');
+      const opened = (await read()).open;
+      await page.keyboard.press('Escape');
+      const closed = await read();
+      c.push(h.check('Esc opens the controls and Esc closes them', opened && !closed.open, { opened, closed }));
+      c.push(h.check('closing them by key gives focus to the light', closed.focus === 'the light', closed));
+
+      await page.keyboard.press('Space');
+      const down = await h.until(page, () => window.TACTILUME.fingers === 1, undefined, 5000);
+      const placed = await read();
+      c.push(h.check('then Space puts a touch down instead of opening the controls again', down && !placed.open && placed.x !== null, placed));
+      await hold('ArrowLeft');
+      const left = await read();
+      c.push(h.check('and ArrowLeft moves it left', placed.x !== null && left.x < placed.x - 0.02, { before: placed.x, after: left.x }));
+
+      // a plain button keeps Space (Space presses it) but leaves the arrows to the light
+      await page.evaluate(() => document.querySelector('.tl-open').focus());
+      await hold('ArrowRight');
+      const right = await read();
+      c.push(h.check('with the open button focused, the arrows still move the touch', right.x > left.x + 0.02 && !right.open, { before: left.x, after: right.x, open: right.open }));
+      await page.keyboard.press('Enter');
+      const viaButton = (await read()).open;
+      await page.keyboard.press('Escape');
+      const back = await read();
+      c.push(h.check('controls opened from the open button give focus back to it', viaButton && !back.open && back.focus === 'the open button', { viaButton, back }));
+      return c;
+    },
+  },
+
+  {
+    name: 'large controls keep every name readable',
+    viewport: { width: 360, height: 780 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      // the longest names chosen, so their ticks take room too
+      await page.evaluate(() => {
+        const t = window.TACTILUME;
+        t.store.setScene({ lock: 'fountain', form: 'lattice', colorBy: 'direction', palette: 'peacock' }, { source: 'test' });
+        t.store.setSettings({ quality: 'balanced' }, { source: 'test' });
+      });
+      for (const uiScale of [1, 1.3, 1.6]) {
+        const clipped = await page.evaluate(async (uiScale) => {
+          const t = window.TACTILUME;
+          t.store.setSettings({ uiScale }, { source: 'test' });
+          const out = [];
+          for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
+            t.ui.open(tab);
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
+              if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+            }
+          }
+          return out;
+        }, uiScale);
+        c.push(h.check(`no option name is cut short at Control size ${Math.round(uiScale * 100)}%`, !clipped.length, clipped.join('; ')));
+      }
+
+      // the chips now wrap to fewer columns: Down still moves one row
+      await page.evaluate(() => window.TACTILUME.ui.open('play'));
+      await page.focus('.tl-chips--behaviours .tl-opt[data-value="well"]');
+      await page.keyboard.press('ArrowDown');
+      const rove = await page.evaluate(() => {
+        const group = document.querySelector('.tl-chips--behaviours');
+        const chips = [...group.querySelectorAll('.tl-opt')];
+        const cols = getComputedStyle(group).gridTemplateColumns.split(' ').length;
+        return { cols, moved: chips.indexOf(document.activeElement) - chips.findIndex((b) => b.dataset.value === 'well') };
+      });
+      c.push(h.check('Down moves one row in the behaviour chips', rove.cols < 3 && rove.moved === rove.cols, rove));
+      return c;
+    },
+  },
+
+  {
+    name: 'hidden controls come back with one tap',
+    viewport: { width: 390, height: 844 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const openButton = () => page.evaluate(() => {
+        const b = document.querySelector('.tl-open'), s = getComputedStyle(b), r = b.getBoundingClientRect();
+        const x = r.left + r.width / 2, y = r.top + r.height / 2;
+        const hit = document.elementFromPoint(x, y);
+        return { x, y, label: b.getAttribute('aria-label'), opacity: Number(s.opacity), shown: s.visibility === 'visible', tappable: !!hit && b.contains(hit), tabIndex: b.tabIndex, hidden: window.TACTILUME.ui.hidden };
+      });
+      await page.evaluate(() => window.TACTILUME.actions.toggleUI());
+      await h.wait(900); // the button's fade
+      const hiddenState = await openButton();
+      c.push(h.check('the controls hide', hiddenState.hidden, hiddenState));
+      c.push(h.check('the open button stays, faint, in the Tab order and under a finger', hiddenState.shown && hiddenState.opacity > 0.05 && hiddenState.opacity < 0.3 && hiddenState.tappable && hiddenState.tabIndex === 0, hiddenState));
+      c.push(h.check('while hidden it is called Show controls', hiddenState.label === 'Show controls', hiddenState));
+      await page.touchscreen.tap(hiddenState.x, hiddenState.y);
+      const back = await h.until(page, () => !window.TACTILUME.ui.hidden, undefined, 3000);
+      const shownState = await openButton();
+      c.push(h.check('one tap on it brings the controls back', back, shownState));
+      c.push(h.check('and it is called Open controls again', shownState.label === 'Open controls', shownState));
+      return c;
+    },
+  },
+
+  {
     name: 'photo',
     needsEngine: true,
     async run(page, context, h) {

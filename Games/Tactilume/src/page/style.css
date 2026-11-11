@@ -89,10 +89,11 @@ body {
 
   /* colour */
   --text: #f5f6fa;
-  /* The glass lets the light through, so contrast is reckoned over the brightest it can
-     get: white light behind the panel, which its blur dims to about rgb(72, 72, 76). */
-  --text-2: #babecb;                           /* help text: 4.9:1 there, 10:1 over the dark */
-  --text-3: #b4b9c5;                           /* quiet labels: 4.6:1 there, 9:1 over the dark */
+  /* The glass lets the light through, so contrast is reckoned over the brightest it gets:
+     white light behind the panel, which the glass dims to about rgb(72, 72, 76) (a little
+     brighter under the sheen along the top edge). */
+  --text-2: #babecb;                           /* help text: 4.9:1 there, 10.7:1 over the dark */
+  --text-3: #b4b9c5;                           /* quiet labels: 4.6:1 there, 10:1 over the dark */
   --text-ink: #0b0c11;                         /* text on light buttons */
   --line: rgba(255, 255, 255, 0.09);
   --line-soft: rgba(255, 255, 255, 0.06);
@@ -566,8 +567,8 @@ body {
   gap: var(--sp-2); margin-top: var(--sp-3);
 }
 .tl-chips .tl-opt {
-  position: relative; min-height: var(--tap); padding: var(--sp-2) calc(6 * var(--u));
-  display: flex; align-items: center; justify-content: center; gap: calc(6 * var(--u));
+  position: relative; min-height: var(--tap); padding: var(--sp-2) calc(5 * var(--u));
+  display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u));
   border-radius: var(--r-s); background: var(--fill-1); border: 1px solid var(--line);
   color: var(--text-2); font-size: var(--fs-s); font-weight: 600;
   transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease), transform var(--t-fast) var(--ease);
