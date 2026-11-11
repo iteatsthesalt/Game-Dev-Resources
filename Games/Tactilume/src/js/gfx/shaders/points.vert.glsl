@@ -64,7 +64,11 @@ void main() {
   else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);
   // a touch of per-particle spread keeps flat regions from looking banded
   t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);
-  vec3 col = mix(texture(uLUT, vec2(t, uPalA)).rgb, texture(uLUT, vec2(t, uPalB)).rgb, uPalMix);
+  // The palette texture holds sRGB bytes in a plain RGBA8 texture, decoded here: some phone
+  // drivers sample sRGB-format textures wrongly in a vertex shader. textureLod, because a
+  // vertex shader has no derivatives to pick a level from.
+  vec3 enc = mix(textureLod(uLUT, vec2(t, uPalA), 0.0).rgb, textureLod(uLUT, vec2(t, uPalB), 0.0).rgb, uPalMix);
+  vec3 col = mix(enc / 12.92, pow((enc + 0.055) / 1.055, vec3(2.4)), step(0.04045, enc));
   if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);
   // partly even out how bright the colours are (a deep red is far darker than a pale
   // yellow), so the palette sets the hue and heat sets the brightness
@@ -81,4 +85,10 @@ void main() {
   float energy = uEnergy * persp * bright * (base * base) / (px * px);
   vColor = col * min(energy, uEnergyCap);
   vSoft = smoothstep(1.6, 3.6, px);
+  // a broken particle draws nothing, off screen, rather than a NaN that would spread
+  if (bad3(p) || bad3(vColor) || badf(heat)) {
+    vColor = vec3(0.0);
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    gl_PointSize = 1.0;
+  }
 }

@@ -1,6 +1,12 @@
 // The full-screen passes. Kept together because each is short and they share the
 // one vertex shader (a single triangle that covers the screen, no buffers needed).
 
+// NaN or infinity, tested on the bits (phone GPU compilers may drop isnan()/isinf()).
+const BAD = `
+bool badf(float x) { return (floatBitsToUint(x) & 0x7f800000u) == 0x7f800000u; }
+bool bad3(vec3 v) { return badf(v.x) || badf(v.y) || badf(v.z); }
+`;
+
 export const QUAD_VS = `#version 300 es
 precision highp float;
 out vec2 vUv;
@@ -33,11 +39,12 @@ uniform sampler2D uSrc;
 uniform vec2 uTexel;
 uniform int uFirst;
 out vec4 o;
+${BAD}
 vec3 tap(vec2 off) {
   vec3 c = texture(uSrc, vUv + uTexel * off).rgb;
   if (uFirst == 1) {
+    if (bad3(c)) c = vec3(0.0);
     c = clamp(c, 0.0, 30000.0);
-    if (any(isnan(c))) c = vec3(0.0);
   }
   return c;
 }
@@ -94,15 +101,18 @@ uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
 uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
 out uvec4 o;
+${BAD}
 void main() {
   float sum = 0.0;
   for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
     vec3 c = texture(uLum, (vec2(float(x), float(y)) + 0.5) / 4.0).rgb;
+    if (bad3(c)) c = vec3(0.0);
     sum += dot(clamp(c, 0.0, 30000.0), vec3(0.2126, 0.7152, 0.0722));
   }
   float L = max(sum / 16.0, 0.0);
   vec4 prev = uintBitsToFloat(texelFetch(uPrev, ivec2(0), 0));
-  bool first = !(prev.a > 0.5);   // cleared to zero bits (0.0), or never written
+  // cleared to zero bits (0.0), never written, or broken: start afresh
+  bool first = !(prev.a > 0.5) || badf(prev.r) || badf(prev.g) || badf(prev.b) || prev.b <= 0.0;
   float La = first ? L : prev.r + (L - prev.r) * (1.0 - exp(-uDt / (L > prev.r ? 0.45 : 1.3)));
   float e = clamp(pow(0.06 / max(La, 0.0005), uAuto), 0.35, 3.5) * uBase;
   // what reaches the screen includes the bloom the composite adds
@@ -113,7 +123,7 @@ void main() {
   float k = D > 1e-6 ? shown / D : 1.0;
   vec4 next = vec4(La, shown, e * k, 1.0);
   // never let a bad value stick: NaN or infinity starts afresh next frame
-  if (any(isnan(next)) || any(isinf(next))) next = vec4(0.0);
+  if (bad3(next.rgb)) next = vec4(0.0);
   o = floatBitsToUint(next);
 }`;
 
@@ -132,6 +142,7 @@ uniform float uSat;
 uniform float uTime;
 uniform vec2 uRes;
 out vec4 o;
+${BAD}
 
 // AgX (Troy Sobotka), in Benjamin Wrensch's compact form: hot light rolls off to white
 // gracefully instead of clipping into flat primaries.
@@ -177,10 +188,15 @@ void main() {
     col = texture(uScene, uv).rgb;
     bl = texture(uBloom, uv).rgb;
   }
+  if (bad3(col)) col = vec3(0.0);
+  if (bad3(bl)) bl = vec3(0.0);
   col = clamp(col, 0.0, 30000.0) + bl * uGlow;
-  if (any(isnan(col))) col = vec3(0.0);
 
-  col *= uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
+  // the exposure from eye adaptation; if it is ever broken (NaN, zero, absurd) on some
+  // GPU, show the light at a plain exposure rather than a black screen
+  float ex = uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
+  if (badf(ex) || ex < 0.02 || ex > 50.0) ex = 1.5;
+  col *= ex;
   col = agx(col);
 
   float aspect = uRes.x / uRes.y;

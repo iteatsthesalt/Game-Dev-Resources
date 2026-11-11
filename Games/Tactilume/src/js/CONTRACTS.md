@@ -73,7 +73,17 @@ Throws `Error('webgl2')` when WebGL2 is missing. `opts`: `{ maxParticles, onLost
 - `engine.capture(mime = 'image/png')` → `Promise<Blob>` of the next frame.
 - `engine.captureStream(fps)` → `MediaStream` of the canvas.
 - `engine.stats` → `{ particles, renderScale, width, height }`.
+- `engine.health` → `{ checks, heals, lastIssue, issues }`: a background check (every ~90
+  frames, read through a fence so the GPU never waits) that repairs NaN particles or a broken
+  brightness state.
+- `engine.diagnose()` → the Device check's facts (GPU, limits, particles, brightness state).
+  Slow; on demand only. `engine.inspect(n)`, `engine.reset()` and `engine._poison()` are for
+  tests and debugging.
 - `engine.dispose()`.
+
+Shader rules (enforced by tests/unit/shaders.test.js), because phone GPUs are stricter than
+the software renderer the browser tests use: no `isnan()`/`isinf()` (compilers may drop them;
+use `badf()`/`bad3()`), and `pow()` only on a base listed there as never negative.
 
 ---
 

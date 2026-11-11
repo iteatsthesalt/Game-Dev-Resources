@@ -767,4 +767,25 @@ export default [
       return c;
     },
   },
+  {
+    // A GPU whose maths differs from the software renderer (a phone) can make a NaN. It must
+    // never black out the screen: the shaders drop bad values and the light comes back.
+    name: 'recovers from NaN',
+    needsEngine: true,
+    async run(page, context, h) {
+      const c = [];
+      await h.waitFrames(page, 20, 30000);
+      const before = h.light(await h.shot(page));
+      await page.evaluate(() => window.TACTILUME.engine._poison());
+      await h.waitFrames(page, 40, 30000);
+      const after = h.light(await h.shot(page));
+      c.push(h.check('the light is back after NaN reached particles and brightness', after.mean > Math.max(2, before.mean * 0.4) && after.lit > 0.03, { before, after }));
+      const d = await page.evaluate(() => window.TACTILUME.engine.diagnose());
+      c.push(h.check('no particle is left broken', d.particles.bad === 0, d.particles));
+      c.push(h.check('the brightness state is numbers again', d.adapt.every(Number.isFinite) && d.adapt[2] > 0, d.adapt));
+      const text = await page.evaluate(() => window.TACTILUME.actions.diagnose());
+      c.push(h.check('the Device check report has its key lines', /GPU: /.test(text) && /Screen light: mean \d/.test(text) && /Particles: /.test(text), text.slice(0, 300)));
+      return c;
+    },
+  },
 ];

@@ -770,6 +770,14 @@ body {
 }
 .tl-about-title { margin: 0; font-size: var(--fs-m); font-weight: 500; line-height: 1.45; }
 .tl-stats { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* the Device check report: selectable, wrapped, scrolls when long */
+.tl-diag {
+  margin: var(--sp-3) 0 0; padding: var(--sp-3); max-height: calc(260 * var(--u)); overflow: auto;
+  font: var(--fs-xs)/1.45 ui-monospace, 'SFMono-Regular', 'Roboto Mono', 'DejaVu Sans Mono', monospace;
+  color: var(--text-2); background: var(--fill-inset); border: 1px solid var(--line); border-radius: var(--r-s);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  user-select: text; -webkit-user-select: text; -webkit-touch-callout: default;
+}
 
 /* ---- first-run intro ----------------------------------------------------------------------- */
 

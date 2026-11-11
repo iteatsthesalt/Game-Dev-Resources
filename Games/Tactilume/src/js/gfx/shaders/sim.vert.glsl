@@ -169,7 +169,9 @@ vec3 bBurst(vec3 p, vec3 v, inout float heat) {
     // rings go out every 0.9 s while held, the first one at touch-down
     float ph = mod(uPole[i].w, 0.9);
     float R = ph * 1.5;
-    float band = exp(-pow((length(d.xy) - R) / 0.04, 2.0)) * (1.0 - ph / 0.9);
+    // (a square, never pow(x, 2.0): pow is undefined for negative x and NaN on phone GPUs)
+    float off = (length(d.xy) - R) / 0.04;
+    float band = exp(-off * off) * (1.0 - ph / 0.9);
     acc += n * band * w * 14.0;
     heat += band * w * 3.0;
     // and the light drifts back in between rings
@@ -468,7 +470,8 @@ void main() {
     vec2 d = p.xy - pu.xy;
     float r = length(d) + 1e-4;
     float R = pu.w * 1.25;
-    float band = exp(-pow((r - R) / 0.035, 2.0)) * pu.z * (1.0 - pu.w / 1.6);
+    float off = (r - R) / 0.035;
+    float band = exp(-off * off) * pu.z * (1.0 - pu.w / 1.6);
     gain += band * 9.0;
     acc.xy += d / r * band * 2.5;
   }
@@ -525,11 +528,13 @@ void main() {
   heat = heat * exp(-dt * 1.7) + gain * dt;
   heat = min(heat, 6.0);
 
-  // anything lost to rounding or flung far away comes back into the shape
-  if (any(isnan(p)) || any(isinf(p)) || any(isnan(v)) || dot(p, p) > 64.0) {
+  // anything lost to rounding or flung far away comes back into the shape (tested on the
+  // bits: a NaN that survived here would spread through the glow to the whole screen)
+  if (bad3(p) || bad3(v) || badf(heat) || badf(life) || dot(p, p) > 64.0) {
     p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);
     v = vec3(0.0);
     heat = 0.0;
+    life = s.x * 3.0;
   }
   vPos = vec4(p, heat);
   vVel = vec4(v, life);

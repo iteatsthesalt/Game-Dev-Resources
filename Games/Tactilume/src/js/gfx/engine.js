@@ -20,6 +20,7 @@ const STRIDE = 32; // bytes per particle: vec4 position+heat, vec4 velocity+life
 const MAX_PULSES = 8;
 const MAX_RELEASES = 4;
 const REF_COUNT = 262144;
+const PROBE_PARTICLES = 64; // particles the health check samples each time
 
 function stringHash(s) {
   let h = 2166136261;
@@ -91,12 +92,12 @@ export function createEngine(canvas, opts = {}) {
     const tf = gl.createTransformFeedback();
     const empty = gl.createVertexArray();
 
-    // the palettes, one per row, decoded from sRGB by the texture unit
+    // the palettes, one per row, as plain sRGB bytes (the points shader decodes them)
     const lut = bakeLUT(256);
     const lutTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, lutTex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, lut.width, lut.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, lut.width, lut.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -117,7 +118,92 @@ export function createEngine(canvas, opts = {}) {
     for (const t of adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4)); }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
 
-    R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true };
+    // where the health check copies its samples (see checkHealth)
+    const probeBuf = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probeBuf);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, 16, gl.STREAM_READ);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    const sampleBuf = gl.createBuffer();
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, sampleBuf);
+    gl.bufferData(gl.COPY_WRITE_BUFFER, PROBE_PARTICLES * STRIDE, gl.STREAM_READ);
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
+
+    R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null };
+  }
+
+  // ---- health ---------------------------------------------------------------------
+  // Phone GPUs differ from the software renderer the tests run on, and a single NaN can
+  // black out the screen through the glow and the eye adaptation. So every few seconds
+  // the engine copies its brightness state and a few particles aside, reads them once the
+  // GPU has finished (a fence, so nothing waits), and heals whatever has gone bad.
+  const health = { checks: 0, heals: 0, lastIssue: '', issues: [] };
+  const finite = (x) => Number.isFinite(x);
+
+  function resetAdaptation() {
+    for (const t of R.adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4)); }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  }
+
+  function heal(issue) {
+    health.heals++;
+    health.lastIssue = issue;
+    health.issues.push(issue);
+    if (health.issues.length > 8) health.issues.shift();
+    console.warn(`Tactilume: ${issue}; reset`);
+    resetAdaptation();
+    if (/particle/.test(issue)) {
+      R.needsInit = true;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+      gl.clearColor(0, 0, 0, 1);
+      gl.clear(gl.COLOR_BUFFER_BIT);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+  }
+
+  function startProbe(N) {
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, R.probeBuf);
+    gl.readPixels(0, 0, 1, 1, gl.RGBA_INTEGER, gl.UNSIGNED_INT, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+    // a different stretch of particles each time
+    const span = Math.max(1, N - PROBE_PARTICLES);
+    const first = (health.checks * 7919) % span;
+    gl.bindBuffer(gl.COPY_READ_BUFFER, R.bufs[R.cur]);
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, R.sampleBuf);
+    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, first * STRIDE, 0, Math.min(PROBE_PARTICLES, N) * STRIDE);
+    gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+    gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
+    R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N) };
+    gl.flush();
+  }
+
+  function finishProbe() {
+    const p = R.probe;
+    if (!p.sync || gl.clientWaitSync(p.sync, 0, 0) === gl.TIMEOUT_EXPIRED) return;
+    gl.deleteSync(p.sync);
+    R.probe = null;
+    health.checks++;
+    const bits = new Uint32Array(4);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, R.probeBuf);
+    gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bits);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    const parts = new Float32Array(p.count * 8);
+    gl.bindBuffer(gl.COPY_READ_BUFFER, R.sampleBuf);
+    gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, parts);
+    gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+    const adapt = new Float32Array(bits.buffer);
+    let badParticles = 0;
+    for (let i = 0; i < parts.length; i += 8) {
+      for (let k = 0; k < 8; k++) if (!finite(parts[i + k])) { badParticles++; break; }
+    }
+    if (badParticles) heal(`${badParticles} of ${p.count} sampled particles were not numbers`);
+    else if (![...adapt].every(finite) || (adapt[3] > 0.5 && !(adapt[2] > 0))) heal(`the brightness state was broken (${[...adapt].map((v) => +v.toPrecision(3)).join(', ')})`);
+  }
+
+  function checkHealth(N) {
+    if (R.probe) finishProbe();
+    else if (frameNo % 90 === 0) startProbe(N);
   }
 
   function destroy() {
@@ -129,6 +215,9 @@ export function createEngine(canvas, opts = {}) {
     gl.deleteTransformFeedback(R.tf);
     gl.deleteTexture(R.lutTex);
     R.adaptT.forEach((t) => destroyTarget(gl, t));
+    gl.deleteBuffer(R.probeBuf);
+    gl.deleteBuffer(R.sampleBuf);
+    if (R.probe && R.probe.sync) gl.deleteSync(R.probe.sync);
     destroyTarget(gl, R.scene);
     R.levels.forEach((t) => destroyTarget(gl, t));
     R = null;
@@ -490,6 +579,8 @@ export function createEngine(canvas, opts = {}) {
         try { canvas.toBlob((b) => resolve(b), mime, 0.95); } catch { resolve(null); }
       }
     }
+
+    checkHealth(N);
   }
 
   // ---- context loss ------------------------------------------------------------------
@@ -570,6 +661,52 @@ export function createEngine(canvas, opts = {}) {
       return { capacity, drawN, hdr, levels: R ? R.levels.length : 0, poles: poleState.size, lost, palettes: PALETTES.length, touch: touchAmt, engage };
     },
 
+    // { checks, heals, lastIssue, issues }: what the background health check has found
+    get health() { return { ...health, issues: [...health.issues] }; },
+
+    // Everything that tells why a device might show no light. Reads back from the GPU
+    // (slow): for the Device check in Settings, never per frame.
+    diagnose() {
+      const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health };
+      if (!R || lost) return out;
+      const p = (name) => { try { return gl.getParameter(name); } catch { return null; } };
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      out.renderer = renderer;
+      out.vendor = dbg ? p(dbg.UNMASKED_VENDOR_WEBGL) : p(gl.VENDOR);
+      out.version = p(gl.VERSION);
+      out.glsl = p(gl.SHADING_LANGUAGE_VERSION);
+      out.extensions = ['EXT_color_buffer_float', 'EXT_color_buffer_half_float', 'OES_texture_float_linear', 'EXT_float_blend']
+        .filter((e) => (gl.getSupportedExtensions() || []).includes(e));
+      out.limits = {
+        texture: p(gl.MAX_TEXTURE_SIZE),
+        points: Array.from(p(gl.ALIASED_POINT_SIZE_RANGE) || []),
+        vertexUniforms: p(gl.MAX_VERTEX_UNIFORM_VECTORS),
+        vertexTextures: p(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS),
+      };
+      const ins = engine.inspect(256);
+      out.adapt = ins.adapt;
+      const ps = ins.particles;
+      const bad = ps.filter((q) => !q.every(Number.isFinite)).length;
+      const good = ps.filter((q) => q.every(Number.isFinite));
+      const mean = (f) => (good.length ? good.reduce((s, q) => s + f(q), 0) / good.length : 0);
+      out.particles = { sampled: ps.length, bad, meanDistance: +mean((q) => Math.hypot(q[0], q[1], q[2])).toFixed(3), meanHeat: +mean((q) => q[3]).toFixed(3), meanSpeed: +mean((q) => Math.hypot(q[4], q[5], q[6])).toFixed(3) };
+      if (ins.scene) out.sceneLight = { mean: +ins.scene.mean.toFixed(5), max: +ins.scene.max.toFixed(3), litShare: +(ins.scene.lit / (ins.scene.w * ins.scene.h)).toFixed(3) };
+      out.glError = ins.error;
+      return out;
+    },
+
+    // Test seam: writes NaN into some particles and into the brightness state, as a GPU
+    // with different maths might. The light must come back by itself.
+    _poison() {
+      if (!R) return;
+      gl.bindBuffer(gl.ARRAY_BUFFER, R.bufs[R.cur]);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(Math.min(capacity, 4096) * 8).fill(NaN));
+      gl.bindBuffer(gl.ARRAY_BUFFER, null);
+      const nanBits = new Uint32Array(4).fill(0x7fc00000);
+      for (const t of R.adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearBufferuiv(gl.COLOR, 0, nanBits); }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    },
+
     // Puts every particle back in the resting shape (and clears the trails) next frame.
     reset() {
       if (!R) return;
@@ -607,7 +744,8 @@ export function createEngine(canvas, opts = {}) {
         }
         return { mean: sum / (t.w * t.h), max, lit, w: t.w, h: t.h };
       };
-      if (hdr) {
+      // reading half floats back as floats needs this extension; without it, skip the scene
+      if (hdr && gl.getExtension('EXT_color_buffer_float')) {
         out.scene = readMean(R.scene);
         out.bloom = readMean(R.levels[0]);
       }

@@ -785,6 +785,14 @@ body {
 }
 .tl-about-title { margin: 0; font-size: var(--fs-m); font-weight: 500; line-height: 1.45; }
 .tl-stats { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* the Device check report: selectable, wrapped, scrolls when long */
+.tl-diag {
+  margin: var(--sp-3) 0 0; padding: var(--sp-3); max-height: calc(260 * var(--u)); overflow: auto;
+  font: var(--fs-xs)/1.45 ui-monospace, 'SFMono-Regular', 'Roboto Mono', 'DejaVu Sans Mono', monospace;
+  color: var(--text-2); background: var(--fill-inset); border: 1px solid var(--line); border-radius: var(--r-s);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  user-select: text; -webkit-user-select: text; -webkit-touch-callout: default;
+}
 
 /* ---- first-run intro ----------------------------------------------------------------------- */
 
@@ -1870,6 +1878,10 @@ ${near}`);
   }
 
   // src/js/gfx/shaders/post.glsl.js
+  var BAD = `
+bool badf(float x) { return (floatBitsToUint(x) & 0x7f800000u) == 0x7f800000u; }
+bool bad3(vec3 v) { return badf(v.x) || badf(v.y) || badf(v.z); }
+`;
   var QUAD_VS = `#version 300 es
 precision highp float;
 out vec2 vUv;
@@ -1894,11 +1906,12 @@ uniform sampler2D uSrc;
 uniform vec2 uTexel;
 uniform int uFirst;
 out vec4 o;
+${BAD}
 vec3 tap(vec2 off) {
   vec3 c = texture(uSrc, vUv + uTexel * off).rgb;
   if (uFirst == 1) {
+    if (bad3(c)) c = vec3(0.0);
     c = clamp(c, 0.0, 30000.0);
-    if (any(isnan(c))) c = vec3(0.0);
   }
   return c;
 }
@@ -1945,15 +1958,18 @@ uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
 uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
 out uvec4 o;
+${BAD}
 void main() {
   float sum = 0.0;
   for (int y = 0; y < 4; y++) for (int x = 0; x < 4; x++) {
     vec3 c = texture(uLum, (vec2(float(x), float(y)) + 0.5) / 4.0).rgb;
+    if (bad3(c)) c = vec3(0.0);
     sum += dot(clamp(c, 0.0, 30000.0), vec3(0.2126, 0.7152, 0.0722));
   }
   float L = max(sum / 16.0, 0.0);
   vec4 prev = uintBitsToFloat(texelFetch(uPrev, ivec2(0), 0));
-  bool first = !(prev.a > 0.5);   // cleared to zero bits (0.0), or never written
+  // cleared to zero bits (0.0), never written, or broken: start afresh
+  bool first = !(prev.a > 0.5) || badf(prev.r) || badf(prev.g) || badf(prev.b) || prev.b <= 0.0;
   float La = first ? L : prev.r + (L - prev.r) * (1.0 - exp(-uDt / (L > prev.r ? 0.45 : 1.3)));
   float e = clamp(pow(0.06 / max(La, 0.0005), uAuto), 0.35, 3.5) * uBase;
   // what reaches the screen includes the bloom the composite adds
@@ -1964,7 +1980,7 @@ void main() {
   float k = D > 1e-6 ? shown / D : 1.0;
   vec4 next = vec4(La, shown, e * k, 1.0);
   // never let a bad value stick: NaN or infinity starts afresh next frame
-  if (any(isnan(next)) || any(isinf(next))) next = vec4(0.0);
+  if (bad3(next.rgb)) next = vec4(0.0);
   o = floatBitsToUint(next);
 }`;
   var COMPOSITE_FS = `#version 300 es
@@ -1981,6 +1997,7 @@ uniform float uSat;
 uniform float uTime;
 uniform vec2 uRes;
 out vec4 o;
+${BAD}
 
 // AgX (Troy Sobotka), in Benjamin Wrensch's compact form: hot light rolls off to white
 // gracefully instead of clipping into flat primaries.
@@ -2026,10 +2043,15 @@ void main() {
     col = texture(uScene, uv).rgb;
     bl = texture(uBloom, uv).rgb;
   }
+  if (bad3(col)) col = vec3(0.0);
+  if (bad3(bl)) bl = vec3(0.0);
   col = clamp(col, 0.0, 30000.0) + bl * uGlow;
-  if (any(isnan(col))) col = vec3(0.0);
 
-  col *= uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
+  // the exposure from eye adaptation; if it is ever broken (NaN, zero, absurd) on some
+  // GPU, show the light at a plain exposure rather than a black screen
+  float ex = uintBitsToFloat(texelFetch(uAdapt, ivec2(0), 0).b);
+  if (badf(ex) || ex < 0.02 || ex > 50.0) ex = 1.5;
+  col *= ex;
   col = agx(col);
 
   float aspect = uRes.x / uRes.y;
@@ -2045,13 +2067,13 @@ void main() {
 }`;
 
   // src/js/gfx/shaders/common.glsl
-  var common_default = "// ---- shared by the simulation and the point renderer --------------------------\n\nconst float TAU = 6.28318530718;\n\n// PCG3D (Jarzynski & Olano 2020): good, fast integer hashing on any GPU.\nuvec3 pcg3d(uvec3 v) {\n  v = v * 1664525u + 1013904223u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  v ^= v >> 16u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  return v;\n}\n\n// Four fixed random numbers in 0..1 for particle `i`, the same every frame.\nvec4 seeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x9e3779b9u, 0x85ebca6bu));\n  uvec3 b = pcg3d(uvec3(a.x ^ i, 0xc2b2ae35u, 0x27d4eb2fu));\n  return vec4(vec3(a), float(b.x)) * (1.0 / 4294967295.0);\n}\n\n// Three more fixed numbers per particle, roughly bell-shaped around 0 (-1.5..1.5),\n// independent of seeds(): for offsets that should look organic, not gridded.\nvec3 bellSeeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x165667b1u, 0xd3a2646cu));\n  uvec3 b = pcg3d(a ^ uvec3(0xfd7046c5u, 0xb55a4f09u, i));\n  vec3 u = vec3(a) * (1.0 / 4294967295.0);\n  vec3 v = vec3(b) * (1.0 / 4294967295.0);\n  vec3 w = vec3(pcg3d(b + i)) * (1.0 / 4294967295.0);\n  return u + v + w - 1.5;\n}\n\n// Three random numbers in 0..1 that change with `salt` (for example the frame number).\nvec3 rand3(uint i, uint salt) {\n  return vec3(pcg3d(uvec3(i, salt, i ^ (salt * 747796405u)))) * (1.0 / 4294967295.0);\n}\n\n// Arnold-Beltrami-Childress flow in two octaves: divergence-free (so the light\n// never bunches up or thins out on its own), smooth and endlessly varied.\n// The second octave is evaluated in rotated coordinates and rotated back, which\n// keeps it divergence-free because the rotation is orthonormal.\nconst mat3 ROT = mat3(0.8, 0.6, 0.0, -0.48, 0.64, 0.6, 0.36, -0.48, 0.8);\nvec3 abcFlow(vec3 p, float t) {\n  vec3 q = p * 2.1 + vec3(0.31 * t, -0.23 * t, 0.17 * t);\n  vec3 u = vec3(sin(q.z) + cos(q.y), sin(q.x) + cos(q.z), sin(q.y) + cos(q.x));\n  vec3 r = ROT * p * 4.3 + vec3(-0.13 * t, 0.29 * t, 0.11 * t);\n  vec3 w = vec3(sin(r.z) + cos(r.y), sin(r.x) + cos(r.z), sin(r.y) + cos(r.x));\n  return u * 0.62 + (transpose(ROT) * w) * 0.3;\n}\n";
+  var common_default = "// ---- shared by the simulation and the point renderer --------------------------\n\nconst float TAU = 6.28318530718;\n\n// NaN or infinity, tested on the bits. Phone GPU compilers may treat isnan()/isinf() as\n// always false (fast math), so a NaN would slip past them and black out the screen.\nbool badf(float x) { return (floatBitsToUint(x) & 0x7f800000u) == 0x7f800000u; }\nbool bad3(vec3 v) { return badf(v.x) || badf(v.y) || badf(v.z); }\n\n// PCG3D (Jarzynski & Olano 2020): good, fast integer hashing on any GPU.\nuvec3 pcg3d(uvec3 v) {\n  v = v * 1664525u + 1013904223u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  v ^= v >> 16u;\n  v.x += v.y * v.z; v.y += v.z * v.x; v.z += v.x * v.y;\n  return v;\n}\n\n// Four fixed random numbers in 0..1 for particle `i`, the same every frame.\nvec4 seeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x9e3779b9u, 0x85ebca6bu));\n  uvec3 b = pcg3d(uvec3(a.x ^ i, 0xc2b2ae35u, 0x27d4eb2fu));\n  return vec4(vec3(a), float(b.x)) * (1.0 / 4294967295.0);\n}\n\n// Three more fixed numbers per particle, roughly bell-shaped around 0 (-1.5..1.5),\n// independent of seeds(): for offsets that should look organic, not gridded.\nvec3 bellSeeds(uint i) {\n  uvec3 a = pcg3d(uvec3(i, 0x165667b1u, 0xd3a2646cu));\n  uvec3 b = pcg3d(a ^ uvec3(0xfd7046c5u, 0xb55a4f09u, i));\n  vec3 u = vec3(a) * (1.0 / 4294967295.0);\n  vec3 v = vec3(b) * (1.0 / 4294967295.0);\n  vec3 w = vec3(pcg3d(b + i)) * (1.0 / 4294967295.0);\n  return u + v + w - 1.5;\n}\n\n// Three random numbers in 0..1 that change with `salt` (for example the frame number).\nvec3 rand3(uint i, uint salt) {\n  return vec3(pcg3d(uvec3(i, salt, i ^ (salt * 747796405u)))) * (1.0 / 4294967295.0);\n}\n\n// Arnold-Beltrami-Childress flow in two octaves: divergence-free (so the light\n// never bunches up or thins out on its own), smooth and endlessly varied.\n// The second octave is evaluated in rotated coordinates and rotated back, which\n// keeps it divergence-free because the rotation is orthonormal.\nconst mat3 ROT = mat3(0.8, 0.6, 0.0, -0.48, 0.64, 0.6, 0.36, -0.48, 0.8);\nvec3 abcFlow(vec3 p, float t) {\n  vec3 q = p * 2.1 + vec3(0.31 * t, -0.23 * t, 0.17 * t);\n  vec3 u = vec3(sin(q.z) + cos(q.y), sin(q.x) + cos(q.z), sin(q.y) + cos(q.x));\n  vec3 r = ROT * p * 4.3 + vec3(-0.13 * t, 0.29 * t, 0.11 * t);\n  vec3 w = vec3(sin(r.z) + cos(r.y), sin(r.x) + cos(r.z), sin(r.y) + cos(r.x));\n  return u * 0.62 + (transpose(ROT) * w) * 0.3;\n}\n";
 
   // src/js/gfx/shaders/sim.vert.glsl
-  var sim_vert_default = "#version 300 es\n// One step of the particle simulation. Runs once per particle with rasterisation\n// off; transform feedback writes vPos/vVel into the other buffer.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz position, w heat (how lit-up it is)\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life (fountain only)\n\nout vec4 vPos;\nout vec4 vVel;\n\n#include common\n\n#define MAX_POLES 32\nuniform vec4 uPole[MAX_POLES];    // x, y, weight (power with fade), age\nuniform vec4 uPoleV[MAX_POLES];   // vx, vy, raw power, spin sign\nuniform int uPoleCount;\nuniform vec4 uPulse[8];           // x, y, power, age   (age >= 9 means unused)\nuniform vec4 uRelease[4];         // x, y, charge, age  (charge 0 means unused)\nuniform int uBehA;\nuniform int uBehB;\nuniform float uMix;               // 0 = all A, 1 = all B\nuniform float uDt;\nuniform float uTime;\nuniform uint uFrame;\nuniform float uStrength;\nuniform float uDrag;\nuniform float uFlow;\nuniform float uDepth;\nuniform float uTouch;             // 0..1, how much anyone is touching right now\nuniform float uEngage;            // like uTouch but lets go slowly\nuniform int uForm;\nuniform vec3 uGravity;            // acceleration, already scaled\nuniform float uAspect;\nuniform vec4 uAudio;              // level, bass, mid, high\nuniform float uOnset;\nuniform int uInit;                // 1: place every particle in the resting shape\n\n// Behaviour ids, as in core/behaviours.js\n#define B_WELL 0\n#define B_WHIRL 1\n#define B_BURST 2\n#define B_HALO 3\n#define B_CURRENT 4\n#define B_WEAVE 5\n#define B_CHIME 6\n#define B_STORM 7\n#define B_LATTICE 8\n#define B_NOVA 9\n#define B_MURMUR 10\n#define B_FOUNTAIN 11\n\n// Forms, as in core/scene.js FORMS\n#define F_NEBULA 0\n#define F_DISC 1\n#define F_SHELL 2\n#define F_RING 3\n#define F_LATTICE 4\n#define F_NONE 5\n\nvec3 poleAt(int i) { return vec3(uPole[i].xy, 0.0); }\n\n// A point on the lattice: glowing grid lines. Each particle sits on one line.\nvec3 latticeHome(vec4 s) {\n  float sp = 0.25;\n  float ax = uAspect * 1.05;\n  float dz = 0.15 + uDepth * 0.75;\n  int fam = int(s.w * (uDepth > 0.15 ? 3.0 : 2.0));\n  float nx = floor(ax / sp), ny = floor(1.05 / sp), nz = max(1.0, floor(dz / sp));\n  float gx = (floor(s.y * (2.0 * nx + 1.0)) - nx) * sp;\n  float gy = (floor(s.z * (2.0 * ny + 1.0)) - ny) * sp;\n  float gz = (floor(s.z * (2.0 * nz + 1.0)) - nz) * sp;\n  float gz2 = (floor(s.y * (2.0 * nz + 1.0)) - nz) * sp;\n  float u = s.x * 2.0 - 1.0;\n  if (fam == 0) return vec3(u * ax, gy, gz2 * uDepth);\n  if (fam == 1) return vec3(gx, u * 1.05, gz * uDepth);\n  return vec3(gx, gy, u * dz);\n}\n\n// Where a particle rests in each shape. The shapes turn slowly, so the targets move.\nvec3 formTarget(int form, vec4 s, float t) {\n  float R = min(uAspect, 1.0) * 0.86;\n  if (form == F_DISC) {\n    float r = 0.06 + 0.94 * sqrt(s.x);\n    float a = s.y * TAU + t * 0.32 / (0.22 + r);\n    // two soft spiral arms\n    r *= 1.0 + 0.07 * sin(2.0 * a - 7.0 * r);\n    float z = (s.z - 0.5) * 0.16 * uDepth * (1.0 - 0.7 * r);\n    // a little wider than tall on wide screens, so the disc fills them\n    return vec3(cos(a) * r * R * clamp(uAspect, 1.0, 1.35), sin(a) * r * R, z);\n  }\n  if (form == F_SHELL) {\n    float z = s.x * 2.0 - 1.0;\n    float a = s.y * TAU + t * 0.12;\n    float rr = sqrt(1.0 - z * z);\n    vec3 p = vec3(cos(a) * rr, z, sin(a) * rr) * R * 0.92;\n    p.z *= uDepth;\n    return p + (s.zwx - 0.5) * 0.02;\n  }\n  if (form == F_RING) {\n    float a = s.x * TAU + t * 0.18;\n    float b = s.y * TAU;\n    float minor = 0.05 + 0.04 * s.z;\n    vec3 p = vec3(cos(a) * (R + minor * cos(b)), sin(a) * (R + minor * cos(b)), minor * sin(b));\n    float tilt = uDepth * 1.05;\n    float c = cos(tilt), sn = sin(tilt);\n    p = vec3(p.x, p.y * c - p.z * sn, p.y * sn + p.z * c);\n    return p;\n  }\n  if (form == F_LATTICE) return latticeHome(s);\n  // nebula and none: a soft cloud\n  float r1 = sqrt(-2.0 * log(max(s.x, 1e-6)));\n  vec3 g = vec3(r1 * cos(TAU * s.y), r1 * sin(TAU * s.y), (s.z - 0.5) * 2.4);\n  return g * vec3(uAspect * 0.34, 0.34, 0.32 * uDepth);\n}\n\n// ---------------------------------------------------------------------------------\n// The behaviours. Each returns an acceleration and adds to `heat` (how bright it gets).\n\nvec3 bWell(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.0025;\n    float r = sqrt(r2);\n    acc += d / r * min(w * 0.6 / r2, 45.0);\n    // a sideways pull, so the light settles into discs instead of falling straight through\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);\n    // a soft core keeps the centre from collapsing to a single point\n    acc -= d / r * w * 26.0 * exp(-r2 * 700.0);\n    heat += w * 0.9 * exp(-r2 * 34.0);\n  }\n  return acc;\n}\n\nvec3 bWhirl(vec3 p, vec3 v, inout float heat) {\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d.xy, d.xy) + 0.004;\n    float r = sqrt(r2);\n    // a solid core that turns into a 1/r swirl outside: neighbouring touches turn opposite ways\n    float sign = (i % 2 == 0) ? 1.0 : -1.0;\n    vec3 t = vec3(-d.y, d.x, 0.0) / r * (w * 1.7 * r / (r2 + 0.045)) * sign;\n    t += d * w * 0.4 / (r + 0.35);\n    t.z += sin(r * 13.0 - uTime * 2.2 + float(i)) * 0.22 * w * uDepth;\n    float f = exp(-r * 1.1);\n    field += t * f;\n    wsum += f * w;\n    heat += w * 0.9 * exp(-r2 * 10.0);\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6;\n}\n\nvec3 bBurst(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d) + 0.003;\n    float r = sqrt(r2);\n    vec3 n = d / r;\n    // a short-range push keeps a clear space around the touch\n    acc += n * w * 0.3 / (r2 + 0.04) * exp(-r * 1.5);\n    // rings go out every 0.9 s while held, the first one at touch-down\n    float ph = mod(uPole[i].w, 0.9);\n    float R = ph * 1.5;\n    float band = exp(-pow((length(d.xy) - R) / 0.04, 2.0)) * (1.0 - ph / 0.9);\n    acc += n * band * w * 14.0;\n    heat += band * w * 3.0;\n    // and the light drifts back in between rings\n    acc -= n * w * 0.35 * smoothstep(0.25, 1.2, r);\n  }\n  return acc;\n}\n\nvec3 bHalo(vec3 p, vec3 v, vec4 s, inout float heat) {\n  // Each particle belongs to one touch's halo. (Pulling toward every ring at once\n  // would trap the light at the balance point between two touches.)\n  int i = min(int(s.y * float(uPoleCount)), uPoleCount - 1);\n  float w = uPole[i].z;\n  vec3 d = p - poleAt(i);\n  float r = length(d) + 1e-4;\n  vec3 n = d / r;\n  // rings within the ring: each particle keeps to its own shell\n  float R0 = (0.15 + 0.06 * uPoleV[i].z) * (0.8 + 0.4 * s.z) + 0.025 * sin(uPole[i].w * 2.3 + float(i));\n  vec3 acc = -n * (r - R0) * 14.0 * w;\n  acc += vec3(-n.y, n.x, 0.0) * (0.9 + 0.8 * s.x) * w * uPoleV[i].w;\n  acc -= v * 1.5 * w;\n  heat += w * (0.25 + exp(-abs(r - R0) * 24.0) * 1.1);\n  return acc;\n}\n\n// closest point on segment a-b to p, and the segment direction\nvec3 closestOnSegment(vec3 p, vec3 a, vec3 b, out vec3 dir, out float t) {\n  vec3 ab = b - a;\n  float L2 = max(dot(ab, ab), 1e-6);\n  t = clamp(dot(p - a, ab) / L2, 0.0, 1.0);\n  dir = ab * inversesqrt(L2);\n  return a + ab * t;\n}\n\nvec3 bCurrent(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.8) return vec3(0.0);   // some light stays loose, as atmosphere\n  // each particle swims in its own lane, so the river has width and grain\n  vec3 lane3 = bellSeeds(uint(gl_VertexID)) * 0.045;\n  if (n == 1) {\n    // one touch: a circular river around it\n    float w = uPole[0].z;\n    vec3 d = p - poleAt(0);\n    float r = length(d.xy) + 1e-3;\n    vec3 tang = vec3(-d.y, d.x, 0.0) / r;\n    vec3 target = tang * 1.3 - d / r * (r - 0.32) * 3.0;\n    target.z = -p.z * 1.5;\n    float f = w * exp(-abs(r - 0.32) * 3.0);\n    heat += f * 0.8;\n    return (target - v) * 2.4 * f;\n  }\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  vec3 pull = vec3(0.0);\n  for (int i = 0; i < n; i++) {\n    int j = (i + 1) % n;\n    vec3 a = poleAt(i), b = poleAt(j);\n    // with two touches the river runs out on one side and back on the other\n    if (n == 2) {\n      vec3 ab = b - a;\n      vec3 side = normalize(vec3(-ab.y, ab.x, 0.0) + 1e-5) * 0.08;\n      a += side; b += side;\n    }\n    vec3 dir; float t;\n    vec3 c = closestOnSegment(p, a, b, dir, t);\n    vec3 side = vec3(-dir.y, dir.x, 0.0);\n    c += side * lane3.x + vec3(0.0, 0.0, lane3.y * uDepth);\n    vec3 dd = p - c;\n    float dist2 = dot(dd, dd);\n    float w = min(uPole[i].z, uPole[j].z);\n    float f = exp(-dist2 / 0.03) * w;\n    // faster in the middle of the stream than at its banks\n    field += dir * (1.1 + 0.7 * exp(-lane3.x * lane3.x * 600.0)) * f;\n    wsum += f;\n    pull += -dd / (sqrt(dist2) + 0.05) * 0.7 * exp(-dist2 / 0.2) * w;\n    heat += f * 0.8;\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6 + pull;\n}\n\nvec3 bWeave(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.72) return vec3(0.0);   // some light stays loose, as atmosphere\n  if (n == 1) {\n    float w = uPole[0].z;\n    float a = s.x * TAU + uTime * 0.6;\n    vec3 target = poleAt(0) + vec3(cos(a), sin(a), sin(a * 2.0 + s.y * TAU) * 0.3 * uDepth) * (0.22 + 0.02 * sin(a * 5.0 + uTime * 3.0));\n    heat += w * 0.4;\n    return ((target - p) * 16.0 - v * 3.0) * w;\n  }\n  // threads: each touch to the next, and (from 4 touches) to the one after that too\n  int segs = n == 2 ? 1 : (n == 3 ? 3 : 2 * n);\n  int k = min(int(s.x * float(segs)), segs - 1);\n  int i = k < n ? k : k - n;\n  int j = k < n ? (i + 1) % n : (i + 2) % n;\n  vec3 a = poleAt(i), b = poleAt(j);\n  vec3 ab = b - a;\n  float L = length(ab) + 1e-4;\n  vec3 side = vec3(-ab.y, ab.x, 0.0) / L;\n  float tp = fract(s.y + uTime * 0.04 * (s.z - 0.5));\n  // the thread vibrates like a plucked string, in its own harmonic\n  float harmonic = float(1 + k % 3);\n  float vib = sin(3.14159 * tp * harmonic) * sin(uTime * (3.0 + harmonic * 1.7) + float(k)) * 0.05 * min(L, 1.0);\n  vec2 jit = (s.zw - 0.5) * 0.022;\n  vec3 target = a + ab * tp + side * (jit.x + vib) + vec3(0.0, 0.0, jit.y + vib * 0.8 * uDepth);\n  float w = min(uPole[i].z, uPole[j].z);\n  heat += w * 0.55;\n  return ((target - p) * 20.0 - v * 3.2) * w;\n}\n\nvec3 bChime(vec3 p, vec3 v, uint id, inout float heat) {\n  // the touches ring like bells; light gathers on the still lines between the waves\n  float F = 0.0;\n  vec3 G = vec3(0.0);\n  float k = 15.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r = length(d.xy) + 1e-4;\n    float ph = k * r - 3.2 * uPole[i].w;\n    float fall = exp(-r * 0.9);\n    F += w * sin(ph) * fall;\n    G += w * (k * cos(ph) - 0.9 * sin(ph)) * fall * vec3(d.xy / r, 0.0);\n  }\n  vec3 acc = -F * G * 0.1;\n  acc.z -= p.z * 5.0 * (1.0 - 0.6 * uDepth);\n  // shaken off the moving parts of the plate, like sand\n  vec3 shake = rand3(id, uFrame) - 0.5;\n  acc += shake * abs(F) * 3.5;\n  heat += abs(F) * 0.25 + 0.15 * float(uPoleCount > 0);\n  return acc - v * 1.2;\n}\n\nvec3 bStorm(vec3 p, vec3 v, inout float heat) {\n  float near = 0.0;\n  vec3 gust = vec3(0.0);\n  vec3 swirl = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d.xy, d.xy);\n    float e = exp(-r2 / 0.22);\n    near += w * e;\n    // a flick throws the air along with it\n    gust += vec3(uPoleV[i].xy, 0.0) * w * exp(-r2 / 0.05) * 3.2;\n    swirl += vec3(-d.y, d.x, 0.0) * w * e * 1.8;\n  }\n  vec3 field = abcFlow(p * 1.35, uTime * 1.6) * (0.35 + near * 2.4) + swirl;\n  field.z *= uDepth;\n  heat += near * 0.6 + length(gust) * 0.15;\n  return (field - v) * 1.9 + gust;\n}\n\nvec3 bLattice(vec3 p, vec3 v, vec4 s, inout float heat) {\n  vec3 h = latticeHome(s);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 q = poleAt(i);\n    vec2 dh = h.xy - q.xy;\n    float r2 = dot(dh, dh) + 1e-5;\n    // each touch is a lens: the lattice bulges and twists around it\n    float bulge = w * 0.2 * exp(-r2 / 0.07);\n    h.xy += dh * inversesqrt(r2) * bulge;\n    float tw = w * 1.1 * exp(-r2 / 0.05) * uPoleV[i].w;\n    float c = cos(tw), sn = sin(tw);\n    vec2 rel = h.xy - q.xy;\n    h.xy = q.xy + vec2(rel.x * c - rel.y * sn, rel.x * sn + rel.y * c);\n    h.z += bulge * 0.8 * uDepth;\n    heat += bulge * 5.0;\n  }\n  heat += 0.1;\n  return ((h - p) * 11.0 - v * 2.6) * uEngage;\n}\n\nvec3 bNova(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.002;\n    float r = sqrt(r2);\n    float charge = min(uPole[i].w, 3.0) / 3.0;\n    acc += d / r * w * (1.1 + charge * 3.2) / (r + 0.09);\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 1.6 * uPoleV[i].w / (r + 0.2);\n    acc -= v * w * 1.4 * exp(-r * 2.0);\n    heat += w * (0.3 + charge * 2.2) * exp(-r2 * 26.0);\n  }\n  return acc;\n}\n\nvec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  int m = min(int(s.y * float(n)), n - 1);\n  float w = uPole[m].z;\n  // five flocks per touch, each following its own leader on a looping path\n  float j = floor(s.x * 5.0);\n  float dirn = mod(j, 2.0) < 0.5 ? 1.0 : -1.0;\n  float R = 0.2 + 0.1 * j;\n  float om = (0.55 + 0.22 * j) * dirn;\n  float ph = j * 1.7 + float(m) * 2.3;\n  float t = uTime;\n  vec3 c = poleAt(m);\n  vec3 lead = c + vec3(cos(om * t + ph) * R * 1.25, sin(om * t * 1.3 + ph) * R * 0.85, sin(om * t * 0.7 + ph) * R * 0.7 * uDepth);\n  vec3 leadV = vec3(-sin(om * t + ph) * R * 1.25 * om, cos(om * t * 1.3 + ph) * R * 0.85 * om * 1.3, cos(om * t * 0.7 + ph) * R * 0.7 * uDepth * om * 0.7);\n  // each bird keeps its own place in the flock: a soft cloud, stretched along the\n  // direction of flight\n  vec3 b = bellSeeds(uint(gl_VertexID));\n  vec3 off = b * vec3(0.045, 0.035, 0.035 * uDepth);\n  vec3 fwd = normalize(leadV + 1e-4);\n  off += fwd * b.z * 0.06;\n  vec3 target = lead + off + abcFlow(p * 3.1, t * 0.8) * 0.025;\n  vec3 desired = (target - p) * 3.2 + leadV;\n  heat += w * 0.45;\n  return (desired - v) * 2.3 * w;\n}\n\nvec3 bFountain(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  // gravity pulls the spray down; the floor bounces it\n  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);\n  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)\n  for (int i = 0; i < uPoleCount; i++) {\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d);\n    heat += uPole[i].z * exp(-r2 * 30.0) * 1.5;\n  }\n  return acc;\n}\n\nvec3 behaviour(int b, vec3 p, vec3 v, vec4 s, uint id, inout float heat) {\n  if (uPoleCount == 0) return vec3(0.0);\n  if (b == B_WELL) return bWell(p, v, heat);\n  if (b == B_WHIRL) return bWhirl(p, v, heat);\n  if (b == B_BURST) return bBurst(p, v, heat);\n  if (b == B_HALO) return bHalo(p, v, s, heat);\n  if (b == B_CURRENT) return bCurrent(p, v, s, heat);\n  if (b == B_WEAVE) return bWeave(p, v, s, heat);\n  if (b == B_CHIME) return bChime(p, v, id, heat);\n  if (b == B_STORM) return bStorm(p, v, heat);\n  if (b == B_LATTICE) return bLattice(p, v, s, heat);\n  if (b == B_NOVA) return bNova(p, v, heat);\n  if (b == B_MURMUR) return bMurmur(p, v, s, heat);\n  return bFountain(p, v, heat);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n  float life = aVel.w;\n\n  if (uInit == 1) {\n    vPos = vec4(formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime), 0.0);\n    vVel = vec4((s.wzy - 0.5) * 0.05, s.x * 3.0);\n    return;\n  }\n\n  float dt = uDt;\n  float gain = 0.0;\n\n  // --- the touches -------------------------------------------------------------\n  // Strength (and calm mode, and the music's bass) scales how hard touches push and pull;\n  // the clamps further down keep even the springiest behaviours stable at 3x.\n  vec3 acc = vec3(0.0);\n  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix) * uStrength;\n  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix * uStrength;\n  int lead = uMix < 0.5 ? uBehA : uBehB;\n\n  // fountains respawn spent particles at a touch\n  if (lead == B_FOUNTAIN && uPoleCount > 0 && s.w < 0.85) {\n    life -= dt * (0.5 + s.y * 0.6);\n    if (life <= 0.0) {\n      vec3 r = rand3(id, uFrame);\n      int m = min(int(r.x * float(uPoleCount)), uPoleCount - 1);\n      vec3 up = length(uGravity) > 0.05 ? -normalize(uGravity) : vec3(0.0, 1.0, 0.0);\n      vec3 side = normalize(cross(up, vec3(0.0, 0.0, 1.0)) + 1e-5);\n      // a spray that arcs over and lands within the screen\n      vec3 b = bellSeeds(id ^ uFrame);\n      float power = 0.75 + uPole[m].z * 0.35;\n      p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);\n      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;\n      v += vec3(uPoleV[m].xy, 0.0) * 0.4;\n      // a random head start within the frame, so each frame's batch does not travel as a band\n      p += v * dt * r.y;\n      life = 1.4 + s.z * 1.2;\n      heat = 0.9;\n    }\n  }\n\n  // --- rings where a touch lands, and the release of a gathered nova --------------\n  for (int k = 0; k < 8; k++) {\n    vec4 pu = uPulse[k];\n    if (pu.w > 1.6) continue;\n    vec2 d = p.xy - pu.xy;\n    float r = length(d) + 1e-4;\n    float R = pu.w * 1.25;\n    float band = exp(-pow((r - R) / 0.035, 2.0)) * pu.z * (1.0 - pu.w / 1.6);\n    gain += band * 9.0;\n    acc.xy += d / r * band * 2.5;\n  }\n  for (int k = 0; k < 4; k++) {\n    vec4 re = uRelease[k];\n    if (re.z <= 0.0) continue;\n    vec3 d = p - vec3(re.xy, 0.0);\n    float r = length(d) + 1e-3;\n    float e = re.z * exp(-re.w * 5.0) * exp(-r * 1.3);\n    acc += d / r * e * 55.0;\n    gain += e * 14.0;\n  }\n\n  // --- the light's own life --------------------------------------------------------\n  // the resting shape, which lets go while someone is touching\n  float formPull = (1.0 - 0.88 * uTouch) * (uForm == F_NONE || uForm == F_NEBULA ? 0.0 : 1.0);\n  if (formPull > 0.0) {\n    vec3 home = formTarget(uForm, s, uTime);\n    acc += ((home - p) * 1.6 - v * 0.6) * formPull;\n  }\n  // currents that keep everything moving\n  vec3 flowV = abcFlow(p, uTime * 0.35) * 0.28;\n  flowV.z *= uDepth;\n  acc += (flowV - v) * uFlow * (1.0 - 0.6 * uTouch) * 1.2;\n\n  // music: the beat kicks out from the middle\n  acc += normalize(p + 1e-4) * uOnset * 1.8;\n  gain += uOnset * 1.2 + uAudio.x * 0.4;\n\n  acc += uGravity;\n\n  // soft walls just beyond the screen, and a floor of depth\n  vec3 lim = vec3(uAspect * 1.12, 1.12, 0.2 + uDepth * 1.1);\n  vec3 over = max(abs(p) - lim, 0.0) * sign(p);\n  acc -= over * 40.0;\n  // flatten toward the screen as depth goes to zero\n  acc.z -= p.z * 9.0 * (1.0 - uDepth);\n\n  float am = length(acc);\n  if (am > 90.0) acc *= 90.0 / am;\n\n  // semi-implicit Euler with frame-rate-independent drag (spray flies almost freely,\n  // so it arcs instead of dropping straight down)\n  v += acc * dt;\n  bool spray = lead == B_FOUNTAIN && s.w < 0.85;\n  v *= exp(-dt * (spray ? 0.1 + uDrag * 0.25 : 0.12 + uDrag * 2.6));\n  float sp = length(v);\n  if (sp > 4.5) v *= 4.5 / sp;\n  p += v * dt;\n\n  // fountain spray bounces off the floor\n  if (lead == B_FOUNTAIN && p.y < -1.02 && v.y < 0.0) { v.y = -v.y * 0.32; v.xz *= 0.8; p.y = -1.02; gain += 0.6; }\n\n  heat = heat * exp(-dt * 1.7) + gain * dt;\n  heat = min(heat, 6.0);\n\n  // anything lost to rounding or flung far away comes back into the shape\n  if (any(isnan(p)) || any(isinf(p)) || any(isnan(v)) || dot(p, p) > 64.0) {\n    p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);\n    v = vec3(0.0);\n    heat = 0.0;\n  }\n  vPos = vec4(p, heat);\n  vVel = vec4(v, life);\n}\n";
+  var sim_vert_default = "#version 300 es\n// One step of the particle simulation. Runs once per particle with rasterisation\n// off; transform feedback writes vPos/vVel into the other buffer.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz position, w heat (how lit-up it is)\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life (fountain only)\n\nout vec4 vPos;\nout vec4 vVel;\n\n#include common\n\n#define MAX_POLES 32\nuniform vec4 uPole[MAX_POLES];    // x, y, weight (power with fade), age\nuniform vec4 uPoleV[MAX_POLES];   // vx, vy, raw power, spin sign\nuniform int uPoleCount;\nuniform vec4 uPulse[8];           // x, y, power, age   (age >= 9 means unused)\nuniform vec4 uRelease[4];         // x, y, charge, age  (charge 0 means unused)\nuniform int uBehA;\nuniform int uBehB;\nuniform float uMix;               // 0 = all A, 1 = all B\nuniform float uDt;\nuniform float uTime;\nuniform uint uFrame;\nuniform float uStrength;\nuniform float uDrag;\nuniform float uFlow;\nuniform float uDepth;\nuniform float uTouch;             // 0..1, how much anyone is touching right now\nuniform float uEngage;            // like uTouch but lets go slowly\nuniform int uForm;\nuniform vec3 uGravity;            // acceleration, already scaled\nuniform float uAspect;\nuniform vec4 uAudio;              // level, bass, mid, high\nuniform float uOnset;\nuniform int uInit;                // 1: place every particle in the resting shape\n\n// Behaviour ids, as in core/behaviours.js\n#define B_WELL 0\n#define B_WHIRL 1\n#define B_BURST 2\n#define B_HALO 3\n#define B_CURRENT 4\n#define B_WEAVE 5\n#define B_CHIME 6\n#define B_STORM 7\n#define B_LATTICE 8\n#define B_NOVA 9\n#define B_MURMUR 10\n#define B_FOUNTAIN 11\n\n// Forms, as in core/scene.js FORMS\n#define F_NEBULA 0\n#define F_DISC 1\n#define F_SHELL 2\n#define F_RING 3\n#define F_LATTICE 4\n#define F_NONE 5\n\nvec3 poleAt(int i) { return vec3(uPole[i].xy, 0.0); }\n\n// A point on the lattice: glowing grid lines. Each particle sits on one line.\nvec3 latticeHome(vec4 s) {\n  float sp = 0.25;\n  float ax = uAspect * 1.05;\n  float dz = 0.15 + uDepth * 0.75;\n  int fam = int(s.w * (uDepth > 0.15 ? 3.0 : 2.0));\n  float nx = floor(ax / sp), ny = floor(1.05 / sp), nz = max(1.0, floor(dz / sp));\n  float gx = (floor(s.y * (2.0 * nx + 1.0)) - nx) * sp;\n  float gy = (floor(s.z * (2.0 * ny + 1.0)) - ny) * sp;\n  float gz = (floor(s.z * (2.0 * nz + 1.0)) - nz) * sp;\n  float gz2 = (floor(s.y * (2.0 * nz + 1.0)) - nz) * sp;\n  float u = s.x * 2.0 - 1.0;\n  if (fam == 0) return vec3(u * ax, gy, gz2 * uDepth);\n  if (fam == 1) return vec3(gx, u * 1.05, gz * uDepth);\n  return vec3(gx, gy, u * dz);\n}\n\n// Where a particle rests in each shape. The shapes turn slowly, so the targets move.\nvec3 formTarget(int form, vec4 s, float t) {\n  float R = min(uAspect, 1.0) * 0.86;\n  if (form == F_DISC) {\n    float r = 0.06 + 0.94 * sqrt(s.x);\n    float a = s.y * TAU + t * 0.32 / (0.22 + r);\n    // two soft spiral arms\n    r *= 1.0 + 0.07 * sin(2.0 * a - 7.0 * r);\n    float z = (s.z - 0.5) * 0.16 * uDepth * (1.0 - 0.7 * r);\n    // a little wider than tall on wide screens, so the disc fills them\n    return vec3(cos(a) * r * R * clamp(uAspect, 1.0, 1.35), sin(a) * r * R, z);\n  }\n  if (form == F_SHELL) {\n    float z = s.x * 2.0 - 1.0;\n    float a = s.y * TAU + t * 0.12;\n    float rr = sqrt(1.0 - z * z);\n    vec3 p = vec3(cos(a) * rr, z, sin(a) * rr) * R * 0.92;\n    p.z *= uDepth;\n    return p + (s.zwx - 0.5) * 0.02;\n  }\n  if (form == F_RING) {\n    float a = s.x * TAU + t * 0.18;\n    float b = s.y * TAU;\n    float minor = 0.05 + 0.04 * s.z;\n    vec3 p = vec3(cos(a) * (R + minor * cos(b)), sin(a) * (R + minor * cos(b)), minor * sin(b));\n    float tilt = uDepth * 1.05;\n    float c = cos(tilt), sn = sin(tilt);\n    p = vec3(p.x, p.y * c - p.z * sn, p.y * sn + p.z * c);\n    return p;\n  }\n  if (form == F_LATTICE) return latticeHome(s);\n  // nebula and none: a soft cloud\n  float r1 = sqrt(-2.0 * log(max(s.x, 1e-6)));\n  vec3 g = vec3(r1 * cos(TAU * s.y), r1 * sin(TAU * s.y), (s.z - 0.5) * 2.4);\n  return g * vec3(uAspect * 0.34, 0.34, 0.32 * uDepth);\n}\n\n// ---------------------------------------------------------------------------------\n// The behaviours. Each returns an acceleration and adds to `heat` (how bright it gets).\n\nvec3 bWell(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.0025;\n    float r = sqrt(r2);\n    acc += d / r * min(w * 0.6 / r2, 45.0);\n    // a sideways pull, so the light settles into discs instead of falling straight through\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 0.85 * uPoleV[i].w / (r + 0.14);\n    // a soft core keeps the centre from collapsing to a single point\n    acc -= d / r * w * 26.0 * exp(-r2 * 700.0);\n    heat += w * 0.9 * exp(-r2 * 34.0);\n  }\n  return acc;\n}\n\nvec3 bWhirl(vec3 p, vec3 v, inout float heat) {\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d.xy, d.xy) + 0.004;\n    float r = sqrt(r2);\n    // a solid core that turns into a 1/r swirl outside: neighbouring touches turn opposite ways\n    float sign = (i % 2 == 0) ? 1.0 : -1.0;\n    vec3 t = vec3(-d.y, d.x, 0.0) / r * (w * 1.7 * r / (r2 + 0.045)) * sign;\n    t += d * w * 0.4 / (r + 0.35);\n    t.z += sin(r * 13.0 - uTime * 2.2 + float(i)) * 0.22 * w * uDepth;\n    float f = exp(-r * 1.1);\n    field += t * f;\n    wsum += f * w;\n    heat += w * 0.9 * exp(-r2 * 10.0);\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6;\n}\n\nvec3 bBurst(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d) + 0.003;\n    float r = sqrt(r2);\n    vec3 n = d / r;\n    // a short-range push keeps a clear space around the touch\n    acc += n * w * 0.3 / (r2 + 0.04) * exp(-r * 1.5);\n    // rings go out every 0.9 s while held, the first one at touch-down\n    float ph = mod(uPole[i].w, 0.9);\n    float R = ph * 1.5;\n    // (a square, never pow(x, 2.0): pow is undefined for negative x and NaN on phone GPUs)\n    float off = (length(d.xy) - R) / 0.04;\n    float band = exp(-off * off) * (1.0 - ph / 0.9);\n    acc += n * band * w * 14.0;\n    heat += band * w * 3.0;\n    // and the light drifts back in between rings\n    acc -= n * w * 0.35 * smoothstep(0.25, 1.2, r);\n  }\n  return acc;\n}\n\nvec3 bHalo(vec3 p, vec3 v, vec4 s, inout float heat) {\n  // Each particle belongs to one touch's halo. (Pulling toward every ring at once\n  // would trap the light at the balance point between two touches.)\n  int i = min(int(s.y * float(uPoleCount)), uPoleCount - 1);\n  float w = uPole[i].z;\n  vec3 d = p - poleAt(i);\n  float r = length(d) + 1e-4;\n  vec3 n = d / r;\n  // rings within the ring: each particle keeps to its own shell\n  float R0 = (0.15 + 0.06 * uPoleV[i].z) * (0.8 + 0.4 * s.z) + 0.025 * sin(uPole[i].w * 2.3 + float(i));\n  vec3 acc = -n * (r - R0) * 14.0 * w;\n  acc += vec3(-n.y, n.x, 0.0) * (0.9 + 0.8 * s.x) * w * uPoleV[i].w;\n  acc -= v * 1.5 * w;\n  heat += w * (0.25 + exp(-abs(r - R0) * 24.0) * 1.1);\n  return acc;\n}\n\n// closest point on segment a-b to p, and the segment direction\nvec3 closestOnSegment(vec3 p, vec3 a, vec3 b, out vec3 dir, out float t) {\n  vec3 ab = b - a;\n  float L2 = max(dot(ab, ab), 1e-6);\n  t = clamp(dot(p - a, ab) / L2, 0.0, 1.0);\n  dir = ab * inversesqrt(L2);\n  return a + ab * t;\n}\n\nvec3 bCurrent(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.8) return vec3(0.0);   // some light stays loose, as atmosphere\n  // each particle swims in its own lane, so the river has width and grain\n  vec3 lane3 = bellSeeds(uint(gl_VertexID)) * 0.045;\n  if (n == 1) {\n    // one touch: a circular river around it\n    float w = uPole[0].z;\n    vec3 d = p - poleAt(0);\n    float r = length(d.xy) + 1e-3;\n    vec3 tang = vec3(-d.y, d.x, 0.0) / r;\n    vec3 target = tang * 1.3 - d / r * (r - 0.32) * 3.0;\n    target.z = -p.z * 1.5;\n    float f = w * exp(-abs(r - 0.32) * 3.0);\n    heat += f * 0.8;\n    return (target - v) * 2.4 * f;\n  }\n  vec3 field = vec3(0.0);\n  float wsum = 0.0;\n  vec3 pull = vec3(0.0);\n  for (int i = 0; i < n; i++) {\n    int j = (i + 1) % n;\n    vec3 a = poleAt(i), b = poleAt(j);\n    // with two touches the river runs out on one side and back on the other\n    if (n == 2) {\n      vec3 ab = b - a;\n      vec3 side = normalize(vec3(-ab.y, ab.x, 0.0) + 1e-5) * 0.08;\n      a += side; b += side;\n    }\n    vec3 dir; float t;\n    vec3 c = closestOnSegment(p, a, b, dir, t);\n    vec3 side = vec3(-dir.y, dir.x, 0.0);\n    c += side * lane3.x + vec3(0.0, 0.0, lane3.y * uDepth);\n    vec3 dd = p - c;\n    float dist2 = dot(dd, dd);\n    float w = min(uPole[i].z, uPole[j].z);\n    float f = exp(-dist2 / 0.03) * w;\n    // faster in the middle of the stream than at its banks\n    field += dir * (1.1 + 0.7 * exp(-lane3.x * lane3.x * 600.0)) * f;\n    wsum += f;\n    pull += -dd / (sqrt(dist2) + 0.05) * 0.7 * exp(-dist2 / 0.2) * w;\n    heat += f * 0.8;\n  }\n  return (field - v * min(wsum, 1.0)) * 2.6 + pull;\n}\n\nvec3 bWeave(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  if (s.w > 0.72) return vec3(0.0);   // some light stays loose, as atmosphere\n  if (n == 1) {\n    float w = uPole[0].z;\n    float a = s.x * TAU + uTime * 0.6;\n    vec3 target = poleAt(0) + vec3(cos(a), sin(a), sin(a * 2.0 + s.y * TAU) * 0.3 * uDepth) * (0.22 + 0.02 * sin(a * 5.0 + uTime * 3.0));\n    heat += w * 0.4;\n    return ((target - p) * 16.0 - v * 3.0) * w;\n  }\n  // threads: each touch to the next, and (from 4 touches) to the one after that too\n  int segs = n == 2 ? 1 : (n == 3 ? 3 : 2 * n);\n  int k = min(int(s.x * float(segs)), segs - 1);\n  int i = k < n ? k : k - n;\n  int j = k < n ? (i + 1) % n : (i + 2) % n;\n  vec3 a = poleAt(i), b = poleAt(j);\n  vec3 ab = b - a;\n  float L = length(ab) + 1e-4;\n  vec3 side = vec3(-ab.y, ab.x, 0.0) / L;\n  float tp = fract(s.y + uTime * 0.04 * (s.z - 0.5));\n  // the thread vibrates like a plucked string, in its own harmonic\n  float harmonic = float(1 + k % 3);\n  float vib = sin(3.14159 * tp * harmonic) * sin(uTime * (3.0 + harmonic * 1.7) + float(k)) * 0.05 * min(L, 1.0);\n  vec2 jit = (s.zw - 0.5) * 0.022;\n  vec3 target = a + ab * tp + side * (jit.x + vib) + vec3(0.0, 0.0, jit.y + vib * 0.8 * uDepth);\n  float w = min(uPole[i].z, uPole[j].z);\n  heat += w * 0.55;\n  return ((target - p) * 20.0 - v * 3.2) * w;\n}\n\nvec3 bChime(vec3 p, vec3 v, uint id, inout float heat) {\n  // the touches ring like bells; light gathers on the still lines between the waves\n  float F = 0.0;\n  vec3 G = vec3(0.0);\n  float k = 15.0;\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r = length(d.xy) + 1e-4;\n    float ph = k * r - 3.2 * uPole[i].w;\n    float fall = exp(-r * 0.9);\n    F += w * sin(ph) * fall;\n    G += w * (k * cos(ph) - 0.9 * sin(ph)) * fall * vec3(d.xy / r, 0.0);\n  }\n  vec3 acc = -F * G * 0.1;\n  acc.z -= p.z * 5.0 * (1.0 - 0.6 * uDepth);\n  // shaken off the moving parts of the plate, like sand\n  vec3 shake = rand3(id, uFrame) - 0.5;\n  acc += shake * abs(F) * 3.5;\n  heat += abs(F) * 0.25 + 0.15 * float(uPoleCount > 0);\n  return acc - v * 1.2;\n}\n\nvec3 bStorm(vec3 p, vec3 v, inout float heat) {\n  float near = 0.0;\n  vec3 gust = vec3(0.0);\n  vec3 swirl = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d.xy, d.xy);\n    float e = exp(-r2 / 0.22);\n    near += w * e;\n    // a flick throws the air along with it\n    gust += vec3(uPoleV[i].xy, 0.0) * w * exp(-r2 / 0.05) * 3.2;\n    swirl += vec3(-d.y, d.x, 0.0) * w * e * 1.8;\n  }\n  vec3 field = abcFlow(p * 1.35, uTime * 1.6) * (0.35 + near * 2.4) + swirl;\n  field.z *= uDepth;\n  heat += near * 0.6 + length(gust) * 0.15;\n  return (field - v) * 1.9 + gust;\n}\n\nvec3 bLattice(vec3 p, vec3 v, vec4 s, inout float heat) {\n  vec3 h = latticeHome(s);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 q = poleAt(i);\n    vec2 dh = h.xy - q.xy;\n    float r2 = dot(dh, dh) + 1e-5;\n    // each touch is a lens: the lattice bulges and twists around it\n    float bulge = w * 0.2 * exp(-r2 / 0.07);\n    h.xy += dh * inversesqrt(r2) * bulge;\n    float tw = w * 1.1 * exp(-r2 / 0.05) * uPoleV[i].w;\n    float c = cos(tw), sn = sin(tw);\n    vec2 rel = h.xy - q.xy;\n    h.xy = q.xy + vec2(rel.x * c - rel.y * sn, rel.x * sn + rel.y * c);\n    h.z += bulge * 0.8 * uDepth;\n    heat += bulge * 5.0;\n  }\n  heat += 0.1;\n  return ((h - p) * 11.0 - v * 2.6) * uEngage;\n}\n\nvec3 bNova(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  for (int i = 0; i < uPoleCount; i++) {\n    float w = uPole[i].z;\n    vec3 d = poleAt(i) - p;\n    float r2 = dot(d, d) + 0.002;\n    float r = sqrt(r2);\n    float charge = min(uPole[i].w, 3.0) / 3.0;\n    acc += d / r * w * (1.1 + charge * 3.2) / (r + 0.09);\n    acc += vec3(-d.y, d.x, 0.0) / r * w * 1.6 * uPoleV[i].w / (r + 0.2);\n    acc -= v * w * 1.4 * exp(-r * 2.0);\n    heat += w * (0.3 + charge * 2.2) * exp(-r2 * 26.0);\n  }\n  return acc;\n}\n\nvec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {\n  int n = uPoleCount;\n  int m = min(int(s.y * float(n)), n - 1);\n  float w = uPole[m].z;\n  // five flocks per touch, each following its own leader on a looping path\n  float j = floor(s.x * 5.0);\n  float dirn = mod(j, 2.0) < 0.5 ? 1.0 : -1.0;\n  float R = 0.2 + 0.1 * j;\n  float om = (0.55 + 0.22 * j) * dirn;\n  float ph = j * 1.7 + float(m) * 2.3;\n  float t = uTime;\n  vec3 c = poleAt(m);\n  vec3 lead = c + vec3(cos(om * t + ph) * R * 1.25, sin(om * t * 1.3 + ph) * R * 0.85, sin(om * t * 0.7 + ph) * R * 0.7 * uDepth);\n  vec3 leadV = vec3(-sin(om * t + ph) * R * 1.25 * om, cos(om * t * 1.3 + ph) * R * 0.85 * om * 1.3, cos(om * t * 0.7 + ph) * R * 0.7 * uDepth * om * 0.7);\n  // each bird keeps its own place in the flock: a soft cloud, stretched along the\n  // direction of flight\n  vec3 b = bellSeeds(uint(gl_VertexID));\n  vec3 off = b * vec3(0.045, 0.035, 0.035 * uDepth);\n  vec3 fwd = normalize(leadV + 1e-4);\n  off += fwd * b.z * 0.06;\n  vec3 target = lead + off + abcFlow(p * 3.1, t * 0.8) * 0.025;\n  vec3 desired = (target - p) * 3.2 + leadV;\n  heat += w * 0.45;\n  return (desired - v) * 2.3 * w;\n}\n\nvec3 bFountain(vec3 p, vec3 v, inout float heat) {\n  vec3 acc = vec3(0.0);\n  // gravity pulls the spray down; the floor bounces it\n  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);\n  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)\n  for (int i = 0; i < uPoleCount; i++) {\n    vec3 d = p - poleAt(i);\n    float r2 = dot(d, d);\n    heat += uPole[i].z * exp(-r2 * 30.0) * 1.5;\n  }\n  return acc;\n}\n\nvec3 behaviour(int b, vec3 p, vec3 v, vec4 s, uint id, inout float heat) {\n  if (uPoleCount == 0) return vec3(0.0);\n  if (b == B_WELL) return bWell(p, v, heat);\n  if (b == B_WHIRL) return bWhirl(p, v, heat);\n  if (b == B_BURST) return bBurst(p, v, heat);\n  if (b == B_HALO) return bHalo(p, v, s, heat);\n  if (b == B_CURRENT) return bCurrent(p, v, s, heat);\n  if (b == B_WEAVE) return bWeave(p, v, s, heat);\n  if (b == B_CHIME) return bChime(p, v, id, heat);\n  if (b == B_STORM) return bStorm(p, v, heat);\n  if (b == B_LATTICE) return bLattice(p, v, s, heat);\n  if (b == B_NOVA) return bNova(p, v, heat);\n  if (b == B_MURMUR) return bMurmur(p, v, s, heat);\n  return bFountain(p, v, heat);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n  float life = aVel.w;\n\n  if (uInit == 1) {\n    vPos = vec4(formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime), 0.0);\n    vVel = vec4((s.wzy - 0.5) * 0.05, s.x * 3.0);\n    return;\n  }\n\n  float dt = uDt;\n  float gain = 0.0;\n\n  // --- the touches -------------------------------------------------------------\n  // Strength (and calm mode, and the music's bass) scales how hard touches push and pull;\n  // the clamps further down keep even the springiest behaviours stable at 3x.\n  vec3 acc = vec3(0.0);\n  if (uMix < 0.999) acc += behaviour(uBehA, p, v, s, id, gain) * (1.0 - uMix) * uStrength;\n  if (uMix > 0.001) acc += behaviour(uBehB, p, v, s, id, gain) * uMix * uStrength;\n  int lead = uMix < 0.5 ? uBehA : uBehB;\n\n  // fountains respawn spent particles at a touch\n  if (lead == B_FOUNTAIN && uPoleCount > 0 && s.w < 0.85) {\n    life -= dt * (0.5 + s.y * 0.6);\n    if (life <= 0.0) {\n      vec3 r = rand3(id, uFrame);\n      int m = min(int(r.x * float(uPoleCount)), uPoleCount - 1);\n      vec3 up = length(uGravity) > 0.05 ? -normalize(uGravity) : vec3(0.0, 1.0, 0.0);\n      vec3 side = normalize(cross(up, vec3(0.0, 0.0, 1.0)) + 1e-5);\n      // a spray that arcs over and lands within the screen\n      vec3 b = bellSeeds(id ^ uFrame);\n      float power = 0.75 + uPole[m].z * 0.35;\n      p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);\n      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;\n      v += vec3(uPoleV[m].xy, 0.0) * 0.4;\n      // a random head start within the frame, so each frame's batch does not travel as a band\n      p += v * dt * r.y;\n      life = 1.4 + s.z * 1.2;\n      heat = 0.9;\n    }\n  }\n\n  // --- rings where a touch lands, and the release of a gathered nova --------------\n  for (int k = 0; k < 8; k++) {\n    vec4 pu = uPulse[k];\n    if (pu.w > 1.6) continue;\n    vec2 d = p.xy - pu.xy;\n    float r = length(d) + 1e-4;\n    float R = pu.w * 1.25;\n    float off = (r - R) / 0.035;\n    float band = exp(-off * off) * pu.z * (1.0 - pu.w / 1.6);\n    gain += band * 9.0;\n    acc.xy += d / r * band * 2.5;\n  }\n  for (int k = 0; k < 4; k++) {\n    vec4 re = uRelease[k];\n    if (re.z <= 0.0) continue;\n    vec3 d = p - vec3(re.xy, 0.0);\n    float r = length(d) + 1e-3;\n    float e = re.z * exp(-re.w * 5.0) * exp(-r * 1.3);\n    acc += d / r * e * 55.0;\n    gain += e * 14.0;\n  }\n\n  // --- the light's own life --------------------------------------------------------\n  // the resting shape, which lets go while someone is touching\n  float formPull = (1.0 - 0.88 * uTouch) * (uForm == F_NONE || uForm == F_NEBULA ? 0.0 : 1.0);\n  if (formPull > 0.0) {\n    vec3 home = formTarget(uForm, s, uTime);\n    acc += ((home - p) * 1.6 - v * 0.6) * formPull;\n  }\n  // currents that keep everything moving\n  vec3 flowV = abcFlow(p, uTime * 0.35) * 0.28;\n  flowV.z *= uDepth;\n  acc += (flowV - v) * uFlow * (1.0 - 0.6 * uTouch) * 1.2;\n\n  // music: the beat kicks out from the middle\n  acc += normalize(p + 1e-4) * uOnset * 1.8;\n  gain += uOnset * 1.2 + uAudio.x * 0.4;\n\n  acc += uGravity;\n\n  // soft walls just beyond the screen, and a floor of depth\n  vec3 lim = vec3(uAspect * 1.12, 1.12, 0.2 + uDepth * 1.1);\n  vec3 over = max(abs(p) - lim, 0.0) * sign(p);\n  acc -= over * 40.0;\n  // flatten toward the screen as depth goes to zero\n  acc.z -= p.z * 9.0 * (1.0 - uDepth);\n\n  float am = length(acc);\n  if (am > 90.0) acc *= 90.0 / am;\n\n  // semi-implicit Euler with frame-rate-independent drag (spray flies almost freely,\n  // so it arcs instead of dropping straight down)\n  v += acc * dt;\n  bool spray = lead == B_FOUNTAIN && s.w < 0.85;\n  v *= exp(-dt * (spray ? 0.1 + uDrag * 0.25 : 0.12 + uDrag * 2.6));\n  float sp = length(v);\n  if (sp > 4.5) v *= 4.5 / sp;\n  p += v * dt;\n\n  // fountain spray bounces off the floor\n  if (lead == B_FOUNTAIN && p.y < -1.02 && v.y < 0.0) { v.y = -v.y * 0.32; v.xz *= 0.8; p.y = -1.02; gain += 0.6; }\n\n  heat = heat * exp(-dt * 1.7) + gain * dt;\n  heat = min(heat, 6.0);\n\n  // anything lost to rounding or flung far away comes back into the shape (tested on the\n  // bits: a NaN that survived here would spread through the glow to the whole screen)\n  if (bad3(p) || bad3(v) || badf(heat) || badf(life) || dot(p, p) > 64.0) {\n    p = formTarget(uForm == F_NONE ? F_NEBULA : uForm, s, uTime);\n    v = vec3(0.0);\n    heat = 0.0;\n    life = s.x * 3.0;\n  }\n  vPos = vec4(p, heat);\n  vVel = vec4(v, life);\n}\n";
 
   // src/js/gfx/shaders/points.vert.glsl
-  var points_vert_default = "#version 300 es\n// Draws each particle as a point of light: colour from the palette, size from\n// perspective and soft focus, brightness spread so a blurred speck keeps its energy.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz, w heat\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life\n\n#include common\n\nuniform mat4 uViewProj;\nuniform float uCamDist;       // distance from the camera to the touch plane (in focus)\nuniform float uPointPx;       // base speck size in pixels, in focus\nuniform float uDofPx;         // extra blur in pixels per unit of distance from focus\nuniform float uMaxPx;\nuniform float uEnergy;        // light per particle (normalised by count and trails)\nuniform float uEnergyCap;     // keeps any single pixel well inside half-float range\nuniform float uSparkle;\nuniform float uHigh;          // treble from the music, makes sparkles busier\nuniform float uTime;\nuniform int uColorBy;         // core/scene.js COLOR_BY: speed, heat, seed, direction, depth\nuniform float uPalA;          // palette rows (texel centres, 0..1)\nuniform float uPalB;\nuniform float uPalMix;\nuniform float uHue;           // radians\nuniform float uDepthRange;\nuniform sampler2D uLUT;\n\nout vec3 vColor;\nout float vSoft;\n\nvec3 hueRotate(vec3 c, float a) {\n  const vec3 k = vec3(0.57735027);\n  float ca = cos(a);\n  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n\n  vec4 clip = uViewProj * vec4(p, 1.0);\n  gl_Position = clip;\n\n  float dist = max(clip.w, 0.05);\n  float persp = uCamDist / dist;\n  float base = uPointPx * persp * (0.75 + 0.5 * s.z);\n  float blur = uDofPx * abs(dist - uCamDist);\n  float size = min(sqrt(base * base + blur * blur), uMaxPx);\n  float px = max(size, 1.0);\n  gl_PointSize = px;\n\n  // where on the palette this speck sits\n  float speed = length(v);\n  float t;\n  if (uColorBy == 0) t = 1.0 - exp(-speed * 1.1);\n  else if (uColorBy == 1) t = 1.0 - exp(-heat * 0.7);\n  else if (uColorBy == 2) t = s.x;\n  else if (uColorBy == 3) t = 0.5 + 0.5 * sin(atan(v.y, v.x + 1e-6));\n  else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);\n  // a touch of per-particle spread keeps flat regions from looking banded\n  t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);\n  vec3 col = mix(texture(uLUT, vec2(t, uPalA)).rgb, texture(uLUT, vec2(t, uPalB)).rgb, uPalMix);\n  if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);\n  // partly even out how bright the colours are (a deep red is far darker than a pale\n  // yellow), so the palette sets the hue and heat sets the brightness\n  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));\n  col *= min(pow(0.3 / max(lum, 0.004), 0.55), 5.0);\n\n  // hot light burns brighter; resting light glows softly\n  float bright = 0.45 + 0.55 * min(heat, 3.0) + 0.25 * min(speed, 2.0);\n  // now and then a speck catches the light\n  float tw = sin(uTime * (1.3 + s.w * 3.7 + uHigh * 6.0) + s.x * 97.0);\n  bright *= 1.0 + uSparkle * pow(max(tw, 0.0), 24.0) * 6.0;\n\n  // the same light spread over a larger disc when out of focus or sub-pixel\n  float energy = uEnergy * persp * bright * (base * base) / (px * px);\n  vColor = col * min(energy, uEnergyCap);\n  vSoft = smoothstep(1.6, 3.6, px);\n}\n";
+  var points_vert_default = "#version 300 es\n// Draws each particle as a point of light: colour from the palette, size from\n// perspective and soft focus, brightness spread so a blurred speck keeps its energy.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz, w heat\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life\n\n#include common\n\nuniform mat4 uViewProj;\nuniform float uCamDist;       // distance from the camera to the touch plane (in focus)\nuniform float uPointPx;       // base speck size in pixels, in focus\nuniform float uDofPx;         // extra blur in pixels per unit of distance from focus\nuniform float uMaxPx;\nuniform float uEnergy;        // light per particle (normalised by count and trails)\nuniform float uEnergyCap;     // keeps any single pixel well inside half-float range\nuniform float uSparkle;\nuniform float uHigh;          // treble from the music, makes sparkles busier\nuniform float uTime;\nuniform int uColorBy;         // core/scene.js COLOR_BY: speed, heat, seed, direction, depth\nuniform float uPalA;          // palette rows (texel centres, 0..1)\nuniform float uPalB;\nuniform float uPalMix;\nuniform float uHue;           // radians\nuniform float uDepthRange;\nuniform sampler2D uLUT;\n\nout vec3 vColor;\nout float vSoft;\n\nvec3 hueRotate(vec3 c, float a) {\n  const vec3 k = vec3(0.57735027);\n  float ca = cos(a);\n  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n\n  vec4 clip = uViewProj * vec4(p, 1.0);\n  gl_Position = clip;\n\n  float dist = max(clip.w, 0.05);\n  float persp = uCamDist / dist;\n  float base = uPointPx * persp * (0.75 + 0.5 * s.z);\n  float blur = uDofPx * abs(dist - uCamDist);\n  float size = min(sqrt(base * base + blur * blur), uMaxPx);\n  float px = max(size, 1.0);\n  gl_PointSize = px;\n\n  // where on the palette this speck sits\n  float speed = length(v);\n  float t;\n  if (uColorBy == 0) t = 1.0 - exp(-speed * 1.1);\n  else if (uColorBy == 1) t = 1.0 - exp(-heat * 0.7);\n  else if (uColorBy == 2) t = s.x;\n  else if (uColorBy == 3) t = 0.5 + 0.5 * sin(atan(v.y, v.x + 1e-6));\n  else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);\n  // a touch of per-particle spread keeps flat regions from looking banded\n  t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);\n  // The palette texture holds sRGB bytes in a plain RGBA8 texture, decoded here: some phone\n  // drivers sample sRGB-format textures wrongly in a vertex shader. textureLod, because a\n  // vertex shader has no derivatives to pick a level from.\n  vec3 enc = mix(textureLod(uLUT, vec2(t, uPalA), 0.0).rgb, textureLod(uLUT, vec2(t, uPalB), 0.0).rgb, uPalMix);\n  vec3 col = mix(enc / 12.92, pow((enc + 0.055) / 1.055, vec3(2.4)), step(0.04045, enc));\n  if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);\n  // partly even out how bright the colours are (a deep red is far darker than a pale\n  // yellow), so the palette sets the hue and heat sets the brightness\n  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));\n  col *= min(pow(0.3 / max(lum, 0.004), 0.55), 5.0);\n\n  // hot light burns brighter; resting light glows softly\n  float bright = 0.45 + 0.55 * min(heat, 3.0) + 0.25 * min(speed, 2.0);\n  // now and then a speck catches the light\n  float tw = sin(uTime * (1.3 + s.w * 3.7 + uHigh * 6.0) + s.x * 97.0);\n  bright *= 1.0 + uSparkle * pow(max(tw, 0.0), 24.0) * 6.0;\n\n  // the same light spread over a larger disc when out of focus or sub-pixel\n  float energy = uEnergy * persp * bright * (base * base) / (px * px);\n  vColor = col * min(energy, uEnergyCap);\n  vSoft = smoothstep(1.6, 3.6, px);\n  // a broken particle draws nothing, off screen, rather than a NaN that would spread\n  if (bad3(p) || bad3(vColor) || badf(heat)) {\n    vColor = vec3(0.0);\n    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n    gl_PointSize = 1.0;\n  }\n}\n";
 
   // src/js/gfx/shaders/points.frag.glsl
   var points_frag_default = "#version 300 es\nprecision highp float;\n\nin vec3 vColor;\nin float vSoft;\nout vec4 outColor;\n\nvoid main() {\n  // small specks are flat squares; larger ones are soft discs with the same total light\n  // (5.14 is 1 / the mean of exp(-4 r^2) over the point's square)\n  vec2 c = gl_PointCoord * 2.0 - 1.0;\n  float shape = mix(1.0, exp(-4.0 * dot(c, c)) * 5.14, vSoft);\n  outColor = vec4(vColor * shape, 1.0);\n}\n";
@@ -2061,6 +2083,7 @@ void main() {
   var MAX_PULSES = 8;
   var MAX_RELEASES = 4;
   var REF_COUNT = 262144;
+  var PROBE_PARTICLES = 64;
   function stringHash(s) {
     let h2 = 2166136261;
     for (let i = 0; i < s.length; i++) {
@@ -2132,7 +2155,7 @@ void main() {
       const lutTex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, lutTex);
       gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.SRGB8_ALPHA8, lut.width, lut.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, lut.width, lut.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, lut.data);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -2159,7 +2182,84 @@ void main() {
         gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4));
       }
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true };
+      const probeBuf = gl.createBuffer();
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, probeBuf);
+      gl.bufferData(gl.PIXEL_PACK_BUFFER, 16, gl.STREAM_READ);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      const sampleBuf = gl.createBuffer();
+      gl.bindBuffer(gl.COPY_WRITE_BUFFER, sampleBuf);
+      gl.bufferData(gl.COPY_WRITE_BUFFER, PROBE_PARTICLES * STRIDE, gl.STREAM_READ);
+      gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
+      R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null };
+    }
+    const health = { checks: 0, heals: 0, lastIssue: "", issues: [] };
+    const finite2 = (x) => Number.isFinite(x);
+    function resetAdaptation() {
+      for (const t of R.adaptT) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+        gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4));
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    function heal(issue) {
+      health.heals++;
+      health.lastIssue = issue;
+      health.issues.push(issue);
+      if (health.issues.length > 8) health.issues.shift();
+      console.warn(`Tactilume: ${issue}; reset`);
+      resetAdaptation();
+      if (/particle/.test(issue)) {
+        R.needsInit = true;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+    }
+    function startProbe(N) {
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, R.probeBuf);
+      gl.readPixels(0, 0, 1, 1, gl.RGBA_INTEGER, gl.UNSIGNED_INT, 0);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
+      const span = Math.max(1, N - PROBE_PARTICLES);
+      const first = health.checks * 7919 % span;
+      gl.bindBuffer(gl.COPY_READ_BUFFER, R.bufs[R.cur]);
+      gl.bindBuffer(gl.COPY_WRITE_BUFFER, R.sampleBuf);
+      gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, first * STRIDE, 0, Math.min(PROBE_PARTICLES, N) * STRIDE);
+      gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+      gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
+      R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N) };
+      gl.flush();
+    }
+    function finishProbe() {
+      const p = R.probe;
+      if (!p.sync || gl.clientWaitSync(p.sync, 0, 0) === gl.TIMEOUT_EXPIRED) return;
+      gl.deleteSync(p.sync);
+      R.probe = null;
+      health.checks++;
+      const bits = new Uint32Array(4);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, R.probeBuf);
+      gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bits);
+      gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      const parts = new Float32Array(p.count * 8);
+      gl.bindBuffer(gl.COPY_READ_BUFFER, R.sampleBuf);
+      gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, parts);
+      gl.bindBuffer(gl.COPY_READ_BUFFER, null);
+      const adapt = new Float32Array(bits.buffer);
+      let badParticles = 0;
+      for (let i = 0; i < parts.length; i += 8) {
+        for (let k = 0; k < 8; k++) if (!finite2(parts[i + k])) {
+          badParticles++;
+          break;
+        }
+      }
+      if (badParticles) heal(`${badParticles} of ${p.count} sampled particles were not numbers`);
+      else if (![...adapt].every(finite2) || adapt[3] > 0.5 && !(adapt[2] > 0)) heal(`the brightness state was broken (${[...adapt].map((v) => +v.toPrecision(3)).join(", ")})`);
+    }
+    function checkHealth(N) {
+      if (R.probe) finishProbe();
+      else if (frameNo % 90 === 0) startProbe(N);
     }
     function destroy() {
       if (!R) return;
@@ -2170,6 +2270,9 @@ void main() {
       gl.deleteTransformFeedback(R.tf);
       gl.deleteTexture(R.lutTex);
       R.adaptT.forEach((t) => destroyTarget(gl, t));
+      gl.deleteBuffer(R.probeBuf);
+      gl.deleteBuffer(R.sampleBuf);
+      if (R.probe && R.probe.sync) gl.deleteSync(R.probe.sync);
       destroyTarget(gl, R.scene);
       R.levels.forEach((t) => destroyTarget(gl, t));
       R = null;
@@ -2505,6 +2608,7 @@ void main() {
           }
         }
       }
+      checkHealth(N);
     }
     canvas.addEventListener("webglcontextlost", (e) => {
       e.preventDefault();
@@ -2573,6 +2677,59 @@ void main() {
       get debug() {
         return { capacity, drawN, hdr, levels: R ? R.levels.length : 0, poles: poleState.size, lost, palettes: PALETTES.length, touch: touchAmt, engage };
       },
+      // { checks, heals, lastIssue, issues }: what the background health check has found
+      get health() {
+        return { ...health, issues: [...health.issues] };
+      },
+      // Everything that tells why a device might show no light. Reads back from the GPU
+      // (slow): for the Device check in Settings, never per frame.
+      diagnose() {
+        const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health };
+        if (!R || lost) return out;
+        const p = (name) => {
+          try {
+            return gl.getParameter(name);
+          } catch {
+            return null;
+          }
+        };
+        const dbg = gl.getExtension("WEBGL_debug_renderer_info");
+        out.renderer = renderer;
+        out.vendor = dbg ? p(dbg.UNMASKED_VENDOR_WEBGL) : p(gl.VENDOR);
+        out.version = p(gl.VERSION);
+        out.glsl = p(gl.SHADING_LANGUAGE_VERSION);
+        out.extensions = ["EXT_color_buffer_float", "EXT_color_buffer_half_float", "OES_texture_float_linear", "EXT_float_blend"].filter((e) => (gl.getSupportedExtensions() || []).includes(e));
+        out.limits = {
+          texture: p(gl.MAX_TEXTURE_SIZE),
+          points: Array.from(p(gl.ALIASED_POINT_SIZE_RANGE) || []),
+          vertexUniforms: p(gl.MAX_VERTEX_UNIFORM_VECTORS),
+          vertexTextures: p(gl.MAX_VERTEX_TEXTURE_IMAGE_UNITS)
+        };
+        const ins = engine.inspect(256);
+        out.adapt = ins.adapt;
+        const ps = ins.particles;
+        const bad = ps.filter((q) => !q.every(Number.isFinite)).length;
+        const good = ps.filter((q) => q.every(Number.isFinite));
+        const mean = (f) => good.length ? good.reduce((s, q) => s + f(q), 0) / good.length : 0;
+        out.particles = { sampled: ps.length, bad, meanDistance: +mean((q) => Math.hypot(q[0], q[1], q[2])).toFixed(3), meanHeat: +mean((q) => q[3]).toFixed(3), meanSpeed: +mean((q) => Math.hypot(q[4], q[5], q[6])).toFixed(3) };
+        if (ins.scene) out.sceneLight = { mean: +ins.scene.mean.toFixed(5), max: +ins.scene.max.toFixed(3), litShare: +(ins.scene.lit / (ins.scene.w * ins.scene.h)).toFixed(3) };
+        out.glError = ins.error;
+        return out;
+      },
+      // Test seam: writes NaN into some particles and into the brightness state, as a GPU
+      // with different maths might. The light must come back by itself.
+      _poison() {
+        if (!R) return;
+        gl.bindBuffer(gl.ARRAY_BUFFER, R.bufs[R.cur]);
+        gl.bufferSubData(gl.ARRAY_BUFFER, 0, new Float32Array(Math.min(capacity, 4096) * 8).fill(NaN));
+        gl.bindBuffer(gl.ARRAY_BUFFER, null);
+        const nanBits = new Uint32Array(4).fill(2143289344);
+        for (const t of R.adaptT) {
+          gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
+          gl.clearBufferuiv(gl.COLOR, 0, nanBits);
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      },
       // Puts every particle back in the resting shape (and clears the trails) next frame.
       reset() {
         if (!R) return;
@@ -2611,7 +2768,7 @@ void main() {
           }
           return { mean: sum / (t.w * t.h), max, lit, w: t.w, h: t.h };
         };
-        if (hdr) {
+        if (hdr && gl.getExtension("EXT_color_buffer_float")) {
           out.scene = readMean(R.scene);
           out.bloom = readMean(R.levels[0]);
         }
@@ -7122,6 +7279,50 @@ void main() {
       });
       reset.body.append(h("div", { class: "tl-field" }, r.el));
       panel.append(reset.el);
+      const check = section("Device check");
+      const report = h("pre", { class: "tl-diag", hidden: true, tabindex: "0", "aria-label": "Device check results" });
+      const copy = button("Copy", {
+        iconName: "share",
+        onClick: async () => {
+          let ok = false;
+          try {
+            await navigator.clipboard.writeText(report.textContent);
+            ok = true;
+          } catch {
+          }
+          if (!ok) {
+            const range2 = document.createRange();
+            range2.selectNodeContents(report);
+            const sel = getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range2);
+          }
+          toast(ok ? "Copied" : "Selected: copy it from here");
+        }
+      });
+      copy.hidden = true;
+      const run2 = button("Check this device", {
+        iconName: "surprise",
+        onClick: async () => {
+          report.hidden = false;
+          report.textContent = "Checking…";
+          try {
+            report.textContent = await actions.diagnose();
+          } catch (e) {
+            report.textContent = `The check itself failed: ${e && e.message}`;
+          }
+          copy.hidden = false;
+          announce("Device check finished");
+        }
+      });
+      check.body.append(h(
+        "div",
+        { class: "tl-field" },
+        h("p", { class: "tl-help" }, "If the light does not show or move, this shows what your device's graphics are doing. Copy it into a message to get help."),
+        h("div", { class: "tl-actions-row" }, run2, copy),
+        report
+      ));
+      panel.append(check.el);
       const about = section("About");
       statsEl = h("p", { class: "tl-stats", "aria-live": "off" }, " ");
       about.body.append(h(
@@ -7665,6 +7866,7 @@ void main() {
     let autopilotPaused = false;
     let autoShown = false;
     let due = 0;
+    let toldRepairs = false;
     let awake = null;
     const actions = {
       loadPreset(key) {
@@ -7744,6 +7946,50 @@ void main() {
       },
       unlock() {
         audio.unlock();
+      },
+      // The Device check in Settings: what the GPU says, what the light is doing, and how bright
+      // the screen really is. Plain text, so it can be copied into a message.
+      async diagnose() {
+        const d = engine.diagnose();
+        let screenLight = "unknown";
+        try {
+          const blob = await Promise.race([engine.capture("image/png"), new Promise((r) => setTimeout(() => r(null), 3e3))]);
+          if (blob) {
+            const bmp = await createImageBitmap(blob);
+            const c = document.createElement("canvas");
+            c.width = 96;
+            c.height = Math.max(1, Math.round(96 * bmp.height / bmp.width));
+            const x = c.getContext("2d");
+            x.drawImage(bmp, 0, 0, c.width, c.height);
+            const px = x.getImageData(0, 0, c.width, c.height).data;
+            let sum = 0, max = 0;
+            for (let i = 0; i < px.length; i += 4) {
+              const l = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2];
+              sum += l;
+              max = Math.max(max, l);
+            }
+            screenLight = `mean ${(sum / (px.length / 4)).toFixed(1)} / 255, brightest ${Math.round(max)}`;
+          }
+        } catch (e) {
+          screenLight = `could not read (${e && e.message})`;
+        }
+        const lines = [
+          `Tactilume ${VERSION}${platform.native ? " (Android app)" : ""}`,
+          `Device: ${navigator.userAgent}`,
+          `GPU: ${d.renderer || "?"} | ${d.vendor || "?"}`,
+          `WebGL: ${d.version || "?"} | ${d.glsl || "?"}`,
+          `Extensions: ${(d.extensions || []).join(", ") || "none of the float ones"}`,
+          `Limits: ${JSON.stringify(d.limits || {})}`,
+          `Tier ${d.tier}, HDR ${d.hdr}, particles ${d.drawN} of ${d.capacity}, scale ${d.renderScale}`,
+          `Canvas ${d.canvas.join("x")} for ${d.css.join("x")} at ${d.dpr}x, frames ${d.frames}, ${Math.round(fps)} fps`,
+          `Screen light: ${screenLight}`,
+          `Scene light: ${d.sceneLight ? JSON.stringify(d.sceneLight) : "not readable here"}`,
+          `Brightness state: ${(d.adapt || []).map((v) => +Number(v).toPrecision(3)).join(", ")}`,
+          `Particles: ${JSON.stringify(d.particles || {})}`,
+          `Health: ${d.health.checks} checks, ${d.health.heals} repairs${d.health.lastIssue ? `, last: ${d.health.lastIssue}` : ""}`,
+          `GL error: ${d.glError}${d.lost ? ", context lost" : ""}`
+        ];
+        return lines.join("\n");
       },
       // Works on what is on screen: if autoplay is showing, A stops it (until the next touch
       // or A); otherwise A starts it now. Returns whether autoplay is now wanted.
@@ -7902,6 +8148,10 @@ void main() {
       }
       ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
       updateAwake(now);
+      if (!toldRepairs && engine.health.heals >= 3) {
+        toldRepairs = true;
+        ui.toast("The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.", 8e3);
+      }
       frames++;
       if (frames === 2) hook.ready = true;
       schedule();

@@ -150,6 +150,7 @@ function boot() {
   let autopilotPaused = false;  // A turned it off; the next touch or A clears this
   let autoShown = false;        // autoplay was what was on screen last frame
   let due = 0;                  // with a frame-rate cap: when the next frame may be drawn
+  let toldRepairs = false;      // the engine's repeated self-repairs were mentioned
   let awake = null;             // whether the screen is being kept on right now
 
   const actions = {
@@ -220,6 +221,43 @@ function boot() {
       return ok;
     },
     unlock() { audio.unlock(); },
+    // The Device check in Settings: what the GPU says, what the light is doing, and how bright
+    // the screen really is. Plain text, so it can be copied into a message.
+    async diagnose() {
+      const d = engine.diagnose();
+      let screenLight = 'unknown';
+      try {
+        const blob = await Promise.race([engine.capture('image/png'), new Promise((r) => setTimeout(() => r(null), 3000))]);
+        if (blob) {
+          const bmp = await createImageBitmap(blob);
+          const c = document.createElement('canvas');
+          c.width = 96; c.height = Math.max(1, Math.round(96 * bmp.height / bmp.width));
+          const x = c.getContext('2d');
+          x.drawImage(bmp, 0, 0, c.width, c.height);
+          const px = x.getImageData(0, 0, c.width, c.height).data;
+          let sum = 0, max = 0;
+          for (let i = 0; i < px.length; i += 4) { const l = 0.2126 * px[i] + 0.7152 * px[i + 1] + 0.0722 * px[i + 2]; sum += l; max = Math.max(max, l); }
+          screenLight = `mean ${(sum / (px.length / 4)).toFixed(1)} / 255, brightest ${Math.round(max)}`;
+        }
+      } catch (e) { screenLight = `could not read (${e && e.message})`; }
+      const lines = [
+        `Tactilume ${VERSION}${platform.native ? ' (Android app)' : ''}`,
+        `Device: ${navigator.userAgent}`,
+        `GPU: ${d.renderer || '?'} | ${d.vendor || '?'}`,
+        `WebGL: ${d.version || '?'} | ${d.glsl || '?'}`,
+        `Extensions: ${(d.extensions || []).join(', ') || 'none of the float ones'}`,
+        `Limits: ${JSON.stringify(d.limits || {})}`,
+        `Tier ${d.tier}, HDR ${d.hdr}, particles ${d.drawN} of ${d.capacity}, scale ${d.renderScale}`,
+        `Canvas ${d.canvas.join('x')} for ${d.css.join('x')} at ${d.dpr}x, frames ${d.frames}, ${Math.round(fps)} fps`,
+        `Screen light: ${screenLight}`,
+        `Scene light: ${d.sceneLight ? JSON.stringify(d.sceneLight) : 'not readable here'}`,
+        `Brightness state: ${(d.adapt || []).map((v) => +Number(v).toPrecision(3)).join(', ')}`,
+        `Particles: ${JSON.stringify(d.particles || {})}`,
+        `Health: ${d.health.checks} checks, ${d.health.heals} repairs${d.health.lastIssue ? `, last: ${d.health.lastIssue}` : ''}`,
+        `GL error: ${d.glError}${d.lost ? ', context lost' : ''}`,
+      ];
+      return lines.join('\n');
+    },
     // Works on what is on screen: if autoplay is showing, A stops it (until the next touch
     // or A); otherwise A starts it now. Returns whether autoplay is now wanted.
     toggleAutopilot() {
@@ -393,6 +431,11 @@ function boot() {
 
     ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
     updateAwake(now);
+    // the engine repairs itself; if it keeps having to, say so once and where to look
+    if (!toldRepairs && engine.health.heals >= 3) {
+      toldRepairs = true;
+      ui.toast('The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.', 8000);
+    }
     frames++;
     if (frames === 2) hook.ready = true;
     schedule();

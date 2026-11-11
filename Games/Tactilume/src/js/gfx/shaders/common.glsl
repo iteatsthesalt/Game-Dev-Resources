@@ -2,6 +2,11 @@
 
 const float TAU = 6.28318530718;
 
+// NaN or infinity, tested on the bits. Phone GPU compilers may treat isnan()/isinf() as
+// always false (fast math), so a NaN would slip past them and black out the screen.
+bool badf(float x) { return (floatBitsToUint(x) & 0x7f800000u) == 0x7f800000u; }
+bool bad3(vec3 v) { return badf(v.x) || badf(v.y) || badf(v.z); }
+
 // PCG3D (Jarzynski & Olano 2020): good, fast integer hashing on any GPU.
 uvec3 pcg3d(uvec3 v) {
   v = v * 1664525u + 1013904223u;

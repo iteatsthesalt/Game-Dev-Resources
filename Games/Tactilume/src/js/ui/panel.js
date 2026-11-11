@@ -827,6 +827,46 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     reset.body.append(h('div', { class: 'tl-field' }, r.el));
     panel.append(reset.el);
 
+    // For when the light does not show or move: what this device's graphics are doing,
+    // as text to copy into a message.
+    const check = section('Device check');
+    const report = h('pre', { class: 'tl-diag', hidden: true, tabindex: '0', 'aria-label': 'Device check results' });
+    const copy = button('Copy', {
+      iconName: 'share',
+      onClick: async () => {
+        let ok = false;
+        try { await navigator.clipboard.writeText(report.textContent); ok = true; } catch { /* below */ }
+        if (!ok) {
+          // no clipboard access here: select the text so it can be copied by hand
+          const range = document.createRange();
+          range.selectNodeContents(report);
+          const sel = getSelection();
+          sel.removeAllRanges();
+          sel.addRange(range);
+        }
+        toast(ok ? 'Copied' : 'Selected: copy it from here');
+      },
+    });
+    copy.hidden = true;
+    const run = button('Check this device', {
+      iconName: 'surprise',
+      onClick: async () => {
+        report.hidden = false;
+        report.textContent = 'Checking…';
+        try {
+          report.textContent = await actions.diagnose();
+        } catch (e) {
+          report.textContent = `The check itself failed: ${e && e.message}`;
+        }
+        copy.hidden = false;
+        announce('Device check finished');
+      },
+    });
+    check.body.append(h('div', { class: 'tl-field' },
+      h('p', { class: 'tl-help' }, 'If the light does not show or move, this shows what your device\'s graphics are doing. Copy it into a message to get help.'),
+      h('div', { class: 'tl-actions-row' }, run, copy), report));
+    panel.append(check.el);
+
     const about = section('About');
     statsEl = h('p', { class: 'tl-stats', 'aria-live': 'off' }, ' ');
     about.body.append(h('div', { class: 'tl-field tl-about' },
