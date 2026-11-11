@@ -308,6 +308,8 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
     // extras, not in the contract: for tests and the console
     get hidden() { return hidden; },
     get tab() { return panel ? panel.tab : null; },
+    // photo, record and share with their results shown as toasts (the keyboard uses these)
+    run,
   };
   return ui;
 }

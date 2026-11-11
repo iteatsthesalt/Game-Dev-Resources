@@ -1,0 +1,69 @@
+name: Tactilume
+on:
+  push:
+    paths: ['Games/Tactilume/**', '.github/workflows/tactilume.yml']
+  pull_request:
+    paths: ['Games/Tactilume/**', '.github/workflows/tactilume.yml']
+permissions:
+  contents: read
+concurrency:
+  group: tactilume-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Games/Tactilume
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Games/Tactilume/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # checks Tactilume.html matches src/, then the unit tests, then plays it headless
+      - run: npm test
+
+  android:
+    needs: web
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: Games/Tactilume
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Games/Tactilume/package-lock.json
+      - run: npm ci
+      # the APK packs the page built from src/, never a stale copy
+      - run: npm run build
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      # caches Gradle and checks the wrapper jar against Gradle's published checksums
+      - uses: gradle/actions/setup-gradle@v4
+      # ubuntu-latest ships an Android SDK; Gradle fetches any platform or build-tools it lacks
+      - name: Point Gradle at the Android SDK
+        run: echo "ANDROID_HOME=${ANDROID_HOME:-$ANDROID_SDK_ROOT}" >> "$GITHUB_ENV"
+      - name: Build the debug APK, run the unit tests and lint
+        working-directory: Games/Tactilume/android
+        run: ./gradlew assembleDebug testDebugUnitTest lintDebug
+      - uses: actions/upload-artifact@v4
+        with:
+          name: tactilume-debug-apk
+          path: Games/Tactilume/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+      # when lint or a test fails, its report says why
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: tactilume-android-reports
+          path: Games/Tactilume/android/app/build/reports/
+          if-no-files-found: ignore

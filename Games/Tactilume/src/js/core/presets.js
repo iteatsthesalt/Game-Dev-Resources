@@ -49,7 +49,7 @@ export const PRESETS = [
     scene: { palette: 'silver', colorBy: 'speed', form: 'nebula', lock: 'storm', drag: 0.25, flow: 0.7, trails: 0.6, glow: 0.75, exposure: 0.15 },
   },
   {
-    key: 'peacock-eye', name: 'Peacock Eye', blurb: 'Rings within rings, mirrored eight ways.',
+    key: 'peacock-eye', name: 'Peacock Eye', blurb: 'Rings within rings, eight ways round.',
     scene: { palette: 'peacock', colorBy: 'heat', form: 'ring', symmetry: 8, mirror: false, lock: 'burst', trails: 0.8, depth: 0.25, glow: 0.65 },
   },
   {

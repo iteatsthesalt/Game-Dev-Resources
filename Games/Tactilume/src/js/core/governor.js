@@ -29,14 +29,21 @@ export const MODES = {
 };
 
 // maxParticles: what the engine allocated. startParticles: where to begin.
-export function createGovernor({ maxParticles, startParticles, minParticles = 8192, mode = 'auto', startScale = 1 }) {
-  let cfg = MODES[mode] || MODES.auto;
+export function createGovernor({ maxParticles, startParticles, minParticles = 8192, mode: askedMode = 'auto', startScale = 1 }) {
+  let mode = MODES[askedMode] ? askedMode : 'auto';
+  let cfg = MODES[mode];
   let particles = clamp(startParticles, minParticles, maxParticles * cfg.maxShare);
   let scale = clamp(startScale, 0.5, cfg.maxScale);
   const intervals = [];
   let refreshHz = 60;
   let slowFor = 0, fastFor = 0, settleFor = 1.0; // seconds
   let frozen = false;
+  // Frames that are slow from the very first one make a 60 Hz screen measure as 30 Hz,
+  // and 33 ms frames then look on budget. So at an apparent 30 Hz the governor sheds
+  // particles as a probe now and then; a real 30 Hz display (battery saver) stops it
+  // after a couple of tries.
+  const PROBES = 2, PROBE_EVERY = 5;
+  let probesLeft = PROBES, sinceProbe = 0;
 
   function budgetMs() {
     const hz = cfg.targetHz || refreshHz;
@@ -66,9 +73,21 @@ export function createGovernor({ maxParticles, startParticles, minParticles = 81
     sample(intervalMs, dtSeconds = intervalMs / 1000) {
       intervals.push(intervalMs);
       if (intervals.length > 120) intervals.shift();
-      if (intervals.length % 30 === 0) refreshHz = estimateRefresh(intervals);
+      if (intervals.length % 30 === 0) {
+        refreshHz = estimateRefresh(intervals);
+        if (refreshHz > 30) probesLeft = PROBES;
+      }
       if (frozen || mode === 'max') return false;
+      sinceProbe += dtSeconds;
       if (settleFor > 0) { settleFor -= dtSeconds; return false; }
+
+      if (!cfg.targetHz && refreshHz <= 30 && probesLeft > 0 && sinceProbe > PROBE_EVERY && particles > minParticles * 1.5) {
+        particles = Math.max(minParticles, particles * 0.7);
+        probesLeft--;
+        sinceProbe = 0;
+        settleFor = 1.0;
+        return true;
+      }
 
       const budget = budgetMs();
       // the median of the last 20 frames ignores one-off hitches
@@ -102,10 +121,11 @@ export function guessTier({ renderer = '', maxTextureSize = 4096, deviceMemory =
   const software = /swiftshader|llvmpipe|software|basic render/.test(r);
   if (software) return 'low';
   if (!touch && (discrete || (deviceMemory >= 8 && cores >= 8))) return 'ultra';
-  if (/adreno \(tm\) (7[3-9]\d|8\d\d)|adreno.*8\d\d|mali-g7[1-9]\d|mali-g9\d\d|immortalis|xclipse|apple gpu|apple m/.test(r)) return 'high';
+  // Mali-G76 and later (G76/77/78, G710-G720, G9xx), Immortalis, recent Adreno, Xclipse, Apple
+  if (/adreno \(tm\) (7[3-9]\d|8\d\d)|adreno.*8\d\d|mali-g7[6-9]\b|mali-g7[1-9]\d|mali-g9\d\d|immortalis|xclipse|apple gpu|apple m/.test(r)) return 'high';
   if (maxTextureSize >= 16384 && deviceMemory >= 6) return 'high';
   if (deviceMemory <= 2 || cores <= 4 || /adreno \(tm\) [1-5]\d\d|mali-[4t]|powervr/.test(r)) return 'low';
-  return screenPixels > 3.5e6 && touch ? 'mid' : 'mid';
+  return 'mid';
 }
 
 // Particle buffers to allocate, and where to start, for each tier.

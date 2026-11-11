@@ -66,6 +66,8 @@ function boot() {
   const store = createStore({ initialScene: linked });
   if (!linked && !store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: 'preset' });
   if (TEST) store.setSettings({ introSeen: true, autopilot: 'off', haptics: false });
+  // a microphone or a song never survives a reload, so neither may the setting that says it is on
+  if (store.settings.react !== 'off') store.setSettings({ react: 'off' }, { source: 'boot' });
 
   // ---- graphics -------------------------------------------------------------
   let engine;
@@ -145,7 +147,8 @@ function boot() {
     },
     clearPins() { pointers.clearPins(); },
     toggleFullscreen() { platform.setFullscreen(!platform.isFullscreen()); },
-    toggleUI() { uiHidden = !uiHidden; ui.setHidden(uiHidden); },
+    // the UI can also restore itself (three fingers held), so its own state is the truth
+    toggleUI() { uiHidden = !ui.hidden; ui.setHidden(uiHidden); },
     async setReact(mode, file) {
       audio.unlock();
       if (mode === 'mic') {
@@ -176,8 +179,9 @@ function boot() {
     },
   };
 
-  const keyboard = createKeyboard({ store, actions, pointers });
   const ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
+  // the keyboard's photo and record go through the UI too, so their results are shown
+  const keyboard = createKeyboard({ store, actions: { ...actions, photo: () => ui.run.photo(), toggleRecord: () => ui.run.record() }, pointers });
 
   // ---- reacting to input and settings ---------------------------------------
   const activity = () => { lastActivity = performance.now(); if (autopilotForced && store.settings.autopilot !== 'always') autopilotForced = false; };
@@ -194,7 +198,9 @@ function boot() {
   // the first touch or key anywhere unlocks sound (browsers require a gesture)
   const unlockOnce = () => { audio.unlock(); };
   addEventListener('pointerdown', unlockOnce, { capture: true });
-  addEventListener('keydown', (e) => { activity(); unlockOnce(e); }, { capture: true });
+  // keys reset the idle timer but leave forced autoplay to the A key (key poles take over
+  // from autoplay anyway, because user poles always come first)
+  addEventListener('keydown', (e) => { lastActivity = performance.now(); unlockOnce(e); }, { capture: true });
 
   store.on('settings', (s, keys) => {
     if (keys.includes('quality') && !forcedParticles && !TEST) {
@@ -266,7 +272,7 @@ function boot() {
     lastFingers = fingers;
 
     const sound = audio.analysis();
-    audio.update(dt, { poles, fingers, behaviour: blend.b, scene });
+    audio.update(dt, { poles, fingers, behaviour: blend.b, scene, aspect: engine.aspect });
 
     engine.frame({
       dt, time, scene, settings, poles, fingers,
@@ -295,7 +301,7 @@ function boot() {
   // what the automated tests (and curious people in the console) can reach
   const hook = {
     version: VERSION, ready: false, test: TEST,
-    store, engine, governor, pointers, keyboard, autopilot, audio, capture, platform, ui, actions,
+    store, engine, governor, pointers, keyboard, autopilot, tilt, audio, capture, platform, ui, actions,
     get frames() { return frames; },
     get fingers() { return lastFingers; },
     get behaviour() { return { ...blend }; },

@@ -282,9 +282,7 @@ describe('damaged or missing storage', () => {
     assert.equal(safeStorage(refusingBacking()).set('a', '1'), false);
   });
 
-  test('a storage adapter whose set throws does not break flush', {
-    todo: 'createStore guards storage.get (and JSON.parse) but not storage.set: persistNow calls it bare, so an adapter that throws makes store.flush() throw, and the debounced save throws from a timer. The default safeStorage() wrapper catches this, so the app is safe today; wrapping the set in persistNow would make any adapter safe.',
-  }, () => {
+  test('a storage adapter whose set throws does not break flush', () => {
     const store = make({ storage: { get() { throw new Error('nope'); }, set() { throw new Error('nope'); } } });
     store.setScene({ speed: 0.5 });
     try {

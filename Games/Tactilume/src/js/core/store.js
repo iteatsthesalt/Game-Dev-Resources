@@ -51,7 +51,8 @@ export function createStore({ storage = safeStorage(), initialScene = null, pers
   let timer = null;
   function persistNow() {
     timer = null;
-    storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user }));
+    // a custom storage adapter may throw; losing one save must not break the app
+    try { storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user })); } catch { /* not saved */ }
   }
   function persist() {
     if (timer) clearTimeout(timer);

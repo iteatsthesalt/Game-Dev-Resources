@@ -25,14 +25,19 @@ body {
 
 /* ---- tokens ---------------------------------------------------------------------- */
 
-#ui {
-  --ui-scale: 1;
-  --u: calc(1px * var(--ui-scale));
-  --kb: 0px;                                   /* on-screen keyboard height, set by ui.js */
+/* Safe areas live on :root, not #ui, so the Android app can override them with an inline
+   style on <html> (some WebViews do not report display cutouts to env()). */
+:root {
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
+}
+
+#ui {
+  --ui-scale: 1;
+  --u: calc(1px * var(--ui-scale));
+  --kb: 0px;                                   /* on-screen keyboard height, set by ui.js */
 
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
   --fs-2xs: calc(10.5 * var(--u));

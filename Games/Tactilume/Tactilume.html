@@ -40,14 +40,19 @@ body {
 
 /* ---- tokens ---------------------------------------------------------------------- */
 
-#ui {
-  --ui-scale: 1;
-  --u: calc(1px * var(--ui-scale));
-  --kb: 0px;                                   /* on-screen keyboard height, set by ui.js */
+/* Safe areas live on :root, not #ui, so the Android app can override them with an inline
+   style on <html> (some WebViews do not report display cutouts to env()). */
+:root {
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
   --safe-l: env(safe-area-inset-left, 0px);
+}
+
+#ui {
+  --ui-scale: 1;
+  --u: calc(1px * var(--ui-scale));
+  --kb: 0px;                                   /* on-screen keyboard height, set by ui.js */
 
   --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
   --fs-2xs: calc(10.5 * var(--u));
@@ -1036,7 +1041,8 @@ body {
         return typeof v === "string" && field.options.includes(v) ? v : field.def;
       case "str": {
         if (typeof v !== "string") return field.def;
-        return v.replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, field.maxLen);
+        const stripped = v.replace(/[\u0000-\u001f\u007f<>]/g, "").trim();
+        return Array.from(stripped).slice(0, field.maxLen).join("").trim();
       }
       case "chords": {
         const arr = Array.isArray(v) ? v : [];
@@ -1185,7 +1191,7 @@ body {
     {
       key: "peacock-eye",
       name: "Peacock Eye",
-      blurb: "Rings within rings, mirrored eight ways.",
+      blurb: "Rings within rings, eight ways round.",
       scene: { palette: "peacock", colorBy: "heat", form: "ring", symmetry: 8, mirror: false, lock: "burst", trails: 0.8, depth: 0.25, glow: 0.65 }
     },
     {
@@ -1257,7 +1263,10 @@ body {
     let timer = null;
     function persistNow() {
       timer = null;
-      storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user }));
+      try {
+        storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user }));
+      } catch {
+      }
     }
     function persist() {
       if (timer) clearTimeout(timer);
@@ -1419,14 +1428,17 @@ body {
     max: { targetHz: 0, maxScale: 1, maxShare: 1 },
     auto: { targetHz: 0, maxScale: 1, maxShare: 1 }
   };
-  function createGovernor({ maxParticles, startParticles, minParticles = 8192, mode = "auto", startScale = 1 }) {
-    let cfg = MODES[mode] || MODES.auto;
+  function createGovernor({ maxParticles, startParticles, minParticles = 8192, mode: askedMode = "auto", startScale = 1 }) {
+    let mode = MODES[askedMode] ? askedMode : "auto";
+    let cfg = MODES[mode];
     let particles = clamp(startParticles, minParticles, maxParticles * cfg.maxShare);
     let scale = clamp(startScale, 0.5, cfg.maxScale);
     const intervals = [];
     let refreshHz = 60;
     let slowFor = 0, fastFor = 0, settleFor = 1;
     let frozen = false;
+    const PROBES = 2, PROBE_EVERY = 5;
+    let probesLeft = PROBES, sinceProbe = 0;
     function budgetMs() {
       const hz = cfg.targetHz || refreshHz;
       return 1e3 / hz;
@@ -1464,11 +1476,22 @@ body {
       sample(intervalMs, dtSeconds = intervalMs / 1e3) {
         intervals.push(intervalMs);
         if (intervals.length > 120) intervals.shift();
-        if (intervals.length % 30 === 0) refreshHz = estimateRefresh(intervals);
+        if (intervals.length % 30 === 0) {
+          refreshHz = estimateRefresh(intervals);
+          if (refreshHz > 30) probesLeft = PROBES;
+        }
         if (frozen || mode === "max") return false;
+        sinceProbe += dtSeconds;
         if (settleFor > 0) {
           settleFor -= dtSeconds;
           return false;
+        }
+        if (!cfg.targetHz && refreshHz <= 30 && probesLeft > 0 && sinceProbe > PROBE_EVERY && particles > minParticles * 1.5) {
+          particles = Math.max(minParticles, particles * 0.7);
+          probesLeft--;
+          sinceProbe = 0;
+          settleFor = 1;
+          return true;
         }
         const budget = budgetMs();
         const recent = intervals.slice(-20).sort((a, b) => a - b);
@@ -1507,10 +1530,10 @@ body {
     const software = /swiftshader|llvmpipe|software|basic render/.test(r);
     if (software) return "low";
     if (!touch && (discrete || deviceMemory >= 8 && cores >= 8)) return "ultra";
-    if (/adreno \(tm\) (7[3-9]\d|8\d\d)|adreno.*8\d\d|mali-g7[1-9]\d|mali-g9\d\d|immortalis|xclipse|apple gpu|apple m/.test(r)) return "high";
+    if (/adreno \(tm\) (7[3-9]\d|8\d\d)|adreno.*8\d\d|mali-g7[6-9]\b|mali-g7[1-9]\d|mali-g9\d\d|immortalis|xclipse|apple gpu|apple m/.test(r)) return "high";
     if (maxTextureSize >= 16384 && deviceMemory >= 6) return "high";
     if (deviceMemory <= 2 || cores <= 4 || /adreno \(tm\) [1-5]\d\d|mali-[4t]|powervr/.test(r)) return "low";
-    return screenPixels > 35e5 && touch ? "mid" : "mid";
+    return "mid";
   }
   var TIERS = {
     low: { max: 1 << 17, start: 1 << 16 },
@@ -7301,7 +7324,9 @@ void main() {
       },
       get tab() {
         return panel ? panel.tab : null;
-      }
+      },
+      // photo, record and share with their results shown as toasts (the keyboard uses these)
+      run
     };
     return ui;
   }
@@ -7346,6 +7371,7 @@ void main() {
     const store = createStore({ initialScene: linked });
     if (!linked && !store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: "preset" });
     if (TEST) store.setSettings({ introSeen: true, autopilot: "off", haptics: false });
+    if (store.settings.react !== "off") store.setSettings({ react: "off" }, { source: "boot" });
     let engine;
     try {
       engine = createEngine(canvas, {
@@ -7429,8 +7455,9 @@ void main() {
       toggleFullscreen() {
         platform.setFullscreen(!platform.isFullscreen());
       },
+      // the UI can also restore itself (three fingers held), so its own state is the truth
       toggleUI() {
-        uiHidden = !uiHidden;
+        uiHidden = !ui.hidden;
         ui.setHidden(uiHidden);
       },
       async setReact(mode, file) {
@@ -7464,8 +7491,8 @@ void main() {
         return autopilotForced;
       }
     };
-    const keyboard = createKeyboard({ store, actions, pointers });
     const ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
+    const keyboard = createKeyboard({ store, actions: { ...actions, photo: () => ui.run.photo(), toggleRecord: () => ui.run.record() }, pointers });
     const activity = () => {
       lastActivity = performance.now();
       if (autopilotForced && store.settings.autopilot !== "always") autopilotForced = false;
@@ -7485,7 +7512,7 @@ void main() {
     };
     addEventListener("pointerdown", unlockOnce, { capture: true });
     addEventListener("keydown", (e) => {
-      activity();
+      lastActivity = performance.now();
       unlockOnce(e);
     }, { capture: true });
     store.on("settings", (s, keys) => {
@@ -7550,7 +7577,7 @@ void main() {
       blend.mix = Math.min(1, blend.mix + dt / 0.45);
       lastFingers = fingers;
       const sound = audio.analysis();
-      audio.update(dt, { poles, fingers, behaviour: blend.b, scene });
+      audio.update(dt, { poles, fingers, behaviour: blend.b, scene, aspect: engine.aspect });
       engine.frame({
         dt,
         time,
@@ -7592,6 +7619,7 @@ void main() {
       pointers,
       keyboard,
       autopilot,
+      tilt,
       audio,
       capture,
       platform,

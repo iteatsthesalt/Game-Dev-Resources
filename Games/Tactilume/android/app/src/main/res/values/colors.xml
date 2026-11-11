@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="black">#FF000000</color>
+    <color name="notice_title">#FFFFF3E0</color>
+    <color name="notice_body">#FFC9BBA8</color>
+    <color name="notice_accent">#FFFFB74D</color>
+    <color name="ic_launcher_background">#FF000000</color>
+</resources>

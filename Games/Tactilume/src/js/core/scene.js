@@ -97,8 +97,11 @@ export function cleanValue(field, v) {
       return typeof v === 'string' && field.options.includes(v) ? v : field.def;
     case 'str': {
       if (typeof v !== 'string') return field.def;
-      // printable text only, no markup characters; the UI also inserts it as text, never HTML
-      return v.replace(/[\u0000-\u001f\u007f<>]/g, '').trim().slice(0, field.maxLen);
+      // printable text only, no markup characters; the UI also inserts it as text, never HTML.
+      // Cut by characters, not UTF-16 units, so an emoji is never split; trim after the cut
+      // so a cleaned name stays the same when cleaned again (share links round-trip).
+      const stripped = v.replace(/[\u0000-\u001f\u007f<>]/g, '').trim();
+      return Array.from(stripped).slice(0, field.maxLen).join('').trim();
     }
     case 'chords': {
       const arr = Array.isArray(v) ? v : [];

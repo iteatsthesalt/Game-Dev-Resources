@@ -48,8 +48,12 @@ Time is in seconds. `dt` is already clamped by `main.js` to at most 1/20 s.
   age,           // seconds since it went down
   held,          // true while pressed; a released pole is kept briefly with held = false
   id,            // stable string for the life of the touch
-  kind }         // 'touch' | 'pin' | 'auto' | 'virtual' | 'mirror'
+  kind,          // 'touch' | 'pin' | 'auto' | 'virtual' | 'mirror'
+  fade }         // optional 0..1: 1 while held, falls to 0 over the 0.35 s after release
+                 // (autoplay: equals power). The engine smooths weights by id itself.
 ```
+
+A released touch keeps its flick velocity and glides while it fades.
 
 ---
 
@@ -90,6 +94,14 @@ browser's own gestures (scroll, zoom, text selection, callouts, context menu).
   - `'up' {x, y, vx, vy, power, heldFor, id}`
   - `'activity' ()` — any input at all (resets the autoplay idle timer).
 - `pointers.dispose()`.
+- Extras: `pinCount()`, `target`, `clientToWorld(clientX, clientY)` (the engine's mapping,
+  camera included), and `relay(name, payload)`, which the keyboard uses so key presses
+  pulse, chime and vibrate exactly like touches.
+- Held touches are re-cast from their screen position every frame, so the light stays under
+  a resting finger while the camera drifts. Pins stay fixed in world space.
+- Pins: lifting a touch that becomes a pin emits no `'up'` (the pin keeps holding); tapping
+  a pin away emits `'up'` for the pin; `clearPins()` and switching pinning off fade pins
+  without an `'up'`.
 - Rules: `pointercancel` counts as `'up'`. Pressure: use `e.pressure` for pens and
   touches that report it (not 0 / 0.5 defaults); else contact size when reported; else 1.
   When `settings.pin` is on, lifting a touch leaves a `'pin'` pole; tapping within 0.08
@@ -136,8 +148,15 @@ picks the microphone.
 - `audio.analysis()` → `{ level, bass, mid, high, onset }`, each 0..1 (all 0 when off).
 - `audio.startMic()` → `Promise<{ok, error?}>`, `audio.stopMic()`.
 - `audio.playFile(file)` → `Promise<{ok, error?}>`, `audio.stopFile()`, `audio.fileName`.
-- `audio.recordTrack()` → `MediaStreamTrack | null`: what the app plays, for recordings.
+- `audio.recordTrack()` → `MediaStreamTrack | null`: a copy of what the app plays (instrument
+  and song, never the microphone). Stop it when the recording ends: a live copy keeps the
+  sound system awake.
+- `audio.state()` → `{ context: 'none'|'suspended'|'running', mic, file }`, for the UI.
 - `audio.dispose()`.
+- The module adds its own capture listeners for `pointerup`, `touchend`, `click` and
+  `keydown`: a touch's `pointerdown` does not count as a user gesture on Android Chrome or
+  iOS Safari, so unlocking on it alone would miss the first touch.
+- `audio._debug` is a test seam (`feed(node)` lets `analysis()` run on a test signal).
 
 ---
 
@@ -151,17 +170,29 @@ Hides the difference between a browser tab and the Android app.
 - `platform.shareLink(url, text)` → `Promise<{ok, copied?, error?}>`.
 - `platform.vibrate(ms)`, `platform.keepAwake(on)`.
 - `platform.canFullscreen()`, `platform.isFullscreen()`, `platform.setFullscreen(on)`.
-- `platform.onBack(fn)`: Android back; `fn()` returns true when it handled it.
+- `platform.onBack(fn)` → `off()`: Android back; `fn()` returns true (or a promise of true)
+  when it handled it.
+- Extras: `platform.ready` (a promise of `info`, after the app's hello or 1 s),
+  `platform.open(url)` → bool, `platform.onFullscreenChange(fn)` → `off()`;
+  `setFullscreen(on)` returns `Promise<boolean>`. In a browser `where` is `'downloads'`.
+  A share the person dismissed returns `{ ok: false, error: 'cancelled' }`.
 
 Android bridge (WebView, `WebViewCompat.addWebMessageListener`, object name
 `TactilumeNative`, allowed origin `https://appassets.androidplatform.net` only). JSON
 string messages, page to app:
-`{t:'hello'}`, `{t:'begin', id, name, mime}`, `{t:'chunk', id, data}` (base64, ≤ 512 KiB),
-`{t:'end', id, action: 'save'|'share', text?}`, `{t:'abort', id}`, `{t:'vibrate', ms}`,
-`{t:'awake', on}`, `{t:'open', url}` (https only, opens the browser).
-App to page (`reply` on the listener's proxy): `{t:'hello', version, sdk, device}`,
-`{t:'done', id, ok, where?, error?}`, `{t:'back'}` (Back was pressed; page answers
-`{t:'back', handled}`).
+`{t:'hello'}`, `{t:'begin', id, name, mime, size?}`, `{t:'chunk', id, seq?, data}` (base64,
+≤ 512 KiB; the app checks `seq` when present and refuses a declared size over 512 MB),
+`{t:'end', id, action: 'save'|'share', text?}`, `{t:'abort', id}`, `{t:'vibrate', ms}` (the
+app clamps to 1..60 ms), `{t:'awake', on}`, `{t:'open', url}` (https only, opens the browser).
+App to page (`reply` on the listener's proxy): `{t:'hello', version, sdk, device, webview?}`,
+`{t:'done', id, ok, where?, error?}` (for `'share'` the file is saved first; if the share
+sheet cannot open, `done` is `{ok:false, where, error}`), `{t:'back'}` (Back was pressed;
+the page answers `{t:'back', handled}`).
+Files go one at a time; the page queues transfers.
+
+Safe areas: when the device has a display cutout, the app may set `--safe-t`, `--safe-r`,
+`--safe-b` and `--safe-l` inline on `<html>` (not every WebView reports cutouts to `env()`).
+style.css therefore defines those four on `:root`, never on a descendant.
 
 ## capture/capture.js — `createCapture({ engine, audio, platform })`
 
@@ -169,7 +200,10 @@ App to page (`reply` on the listener's proxy): `{t:'hello', version, sdk, device
 - `capture.startRecording({ maxSeconds = 60, withSound = true })` → `{ok, error?}`.
 - `capture.stopRecording()` → `Promise<{ok, where?, error?}>`.
 - `capture.recording` (bool), `capture.elapsed` (s), `capture.mime`.
-- `capture.on('state', fn)` → `off()`; state `{ recording, elapsed }`.
+- `capture.on('state', fn)` → `off()`; state `{ recording, elapsed, paused, limit }`.
+- `capture.on('finished', (result, reason))`: after any clip ends and is saved; `reason` is
+  `'stopped' | 'limit' | 'ended' | 'error'`. The UI shows recording results from this.
+- `capture.saving` (bool). Recording pauses while the page is hidden.
 
 ---
 
@@ -182,7 +216,20 @@ never as HTML.
 - `ui.showBehaviour(behaviour)`: brief name card when the behaviour changes.
 - `ui.toast(text)`, `ui.announce(text)` (screen-reader live region, rate-limited).
 - `ui.open(tab?)`, `ui.close()`, `ui.isOpen()`, `ui.back()` → bool, `ui.setHidden(bool)`.
+- `ui.hidden`, `ui.tab`, and `ui.run.photo() / record() / shareLink()`: the actions with their
+  results shown as toasts (the keyboard goes through these).
 
-`actions` (from main): `loadPreset(key)`, `surprise()`, `photo()`, `toggleRecord()`,
-`shareLink()`, `clearPins()`, `resetScene()`, `toggleFullscreen()`, `toggleUI()`,
-`setReact(mode, file?)`, `enableTilt()`, `unlock()`, `toggleAutopilot()`.
+`actions` (from main): `loadPreset(key)`, `stepPreset(delta)`, `surprise()`, `photo()`,
+`toggleRecord()`, `shareLink()`, `clearPins()`, `resetScene()`, `toggleFullscreen()`,
+`toggleUI()`, `setReact(mode, file?)`, `enableTilt()`, `unlock()`, `toggleAutopilot()`.
+
+---
+
+## Test hook (main.js → `window.TACTILUME`)
+
+`?test=1` starts deterministically: intro seen, autoplay off, haptics off, governor at
+'max' (frozen when `?particles=N` is given). The browser tests rely on `version`, `ready`
+(true after two frames), `test`, `frames`, `fingers`, `behaviour` (`{a, b, mix}`; `b` is a
+behaviour key), `store`, `engine` (`stats`, `inspect()`, `reset()`), `pointers` (`active()`,
+`poles()`), `capture`, `ui` (`isOpen()`), `tilt` and `actions` (`photo`, `loadPreset`).
+Renaming or removing any of these breaks the browser tests.

@@ -43,11 +43,15 @@
             android:value="true" />
 
         <!-- Every configuration change is handled in place, so turning the phone, folding it or
-             plugging in a keyboard never reloads the page and never loses what is on screen -->
+             plugging in a keyboard never reloads the page and never loses what is on screen.
+             fullUser turns with the phone to all four sides, unless the person has locked
+             rotation (then it stays put, as they asked). It is not a fixed orientation, so lint's
+             warning about those does not apply; the page fits any size and shape anyway. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
-            android:screenOrientation="fullSensor"
+            android:screenOrientation="fullUser"
+            tools:ignore="DiscouragedApi"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboard|keyboardHidden|navigation|uiMode|density|fontScale|layoutDirection|locale|colorMode"
             android:resizeableActivity="true"
             android:windowSoftInputMode="adjustResize"

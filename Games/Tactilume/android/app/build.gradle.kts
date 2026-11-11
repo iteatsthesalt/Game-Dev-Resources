@@ -43,6 +43,7 @@ dependencies {
     implementation(libs.androidx.activity)
     implementation(libs.androidx.core)
     implementation(libs.androidx.webkit)
+    testImplementation(libs.junit)
 }
 
 // The web app is built into one file one folder up (npm run build). It is copied into the

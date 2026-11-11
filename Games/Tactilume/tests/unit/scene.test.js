@@ -200,16 +200,12 @@ describe('cleanValue for text', () => {
     for (const bad of [42, null, undefined, {}, ['a'], true]) assert.equal(cleanValue(f, bad), f.def);
   });
 
-  test('cleaning twice gives the same text (so a name survives a share link unchanged)', {
-    todo: 'cleanValue(str) trims BEFORE slicing to maxLen, so a long name whose 40th character is a space keeps a trailing space; the next clean trims it, so decodeScene(encodeScene(s)).name !== s.name. Fix: slice first, then trim.',
-  }, () => {
+  test('cleaning twice gives the same text (so a name survives a share link unchanged)', () => {
     const once = cleanValue(f, 'a'.repeat(39) + ' bcd');
     assert.equal(cleanValue(f, once), once);
   });
 
-  test('length cap never splits an emoji in half', {
-    todo: 'cleanValue(str) slices by UTF-16 code units, so an emoji straddling character 40 leaves a lone surrogate; TextEncoder turns it into U+FFFD, so the name changes after a share-link round trip. Fix: slice by code points, e.g. [...s].slice(0, maxLen).join(\'\') or drop a trailing high surrogate.',
-  }, () => {
+  test('length cap never splits an emoji in half', () => {
     const out = cleanValue(f, 'a'.repeat(39) + '🌟');
     assert.ok(!/[\ud800-\udbff]$/.test(out), 'ends with half an emoji');
   });

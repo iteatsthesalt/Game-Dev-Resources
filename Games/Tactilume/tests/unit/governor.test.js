@@ -55,9 +55,7 @@ describe('createGovernor', () => {
     assert.equal(createGovernor({ maxParticles: MAX, startParticles: 1 << 19, startScale: 0.1 }).renderScale, 0.5);
   });
 
-  test('an unknown starting mode reads back as auto, as setMode does', {
-    todo: 'createGovernor uses the auto settings for an unknown mode but keeps the unknown name, so governor.mode reports e.g. "nonsense" (setMode normalises it). Harmless today; fix by normalising `mode` in createGovernor too.',
-  }, () => {
+  test('an unknown starting mode reads back as auto, as setMode does', () => {
     assert.equal(createGovernor({ maxParticles: MAX, startParticles: 1 << 19, mode: 'nonsense' }).mode, 'auto');
   });
 
@@ -76,9 +74,7 @@ describe('createGovernor', () => {
     assert.ok(g.particles < before, `particles ${before} -> ${g.particles}`);
   });
 
-  test('settles at the display rate when it starts with more than the device can draw', {
-    todo: 'estimateRefresh takes the median of the intervals the app actually drew. When frames are slow from the first one (the tier guess started too high), every interval is 33 ms, the estimate becomes 30 Hz as the first settle period ends, 33 ms frames then count as on budget, and Auto stays at 30 fps with the start particle count on a 60 Hz display. (A 30 Hz rAF is real under Android battery saver, so the estimate cannot simply be floored at 60.) Suggested fix: when the estimate is 30 Hz, probe once by cutting particles and see whether frames reach 16.7 ms.',
-  }, () => {
+  test('settles at the display rate when it starts with more than the device can draw', () => {
     // a GPU that needs 25 ms per million particles, shown on a 60 Hz display
     const vsync = 1000 / 60;
     const cost = (g) => Math.max(1, Math.ceil(((g.particles / 1e6) * 25) / vsync)) * vsync;
