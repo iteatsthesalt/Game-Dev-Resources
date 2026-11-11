@@ -38,7 +38,7 @@ export const PRESETS = [
   },
   {
     key: 'prism-rain', name: 'Prism Rain', blurb: 'Fountains of every colour fall under their own weight.',
-    scene: { palette: 'prism', colorBy: 'seed', form: 'none', lock: 'fountain', gravity: 0.55, trails: 0.5, glow: 0.7, sparkle: 0.7, depth: 0.5 },
+    scene: { palette: 'prism', colorBy: 'speed', form: 'none', lock: 'fountain', gravity: 0.3, trails: 0.3, glow: 0.65, sparkle: 0.7, depth: 0.5, size: 0.9 },
   },
   {
     key: 'night-garden', name: 'Night Garden', blurb: 'A soft field that bends around each finger like water round a stone.',

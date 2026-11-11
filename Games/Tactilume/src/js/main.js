@@ -113,7 +113,8 @@ function boot() {
 
   let uiHidden = false;
   let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
-  let lastActivity = performance.now();
+  // nobody has touched yet: autoplay starts at once, so the app opens already alive
+  let lastActivity = -Infinity;
   let autopilotForced = false;
 
   const actions = {

@@ -389,8 +389,8 @@ vec3 bMurmur(vec3 p, vec3 v, vec4 s, inout float heat) {
 vec3 bFountain(vec3 p, vec3 v, inout float heat) {
   vec3 acc = vec3(0.0);
   // gravity pulls the spray down; the floor bounces it
-  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.4, 0.0);
-  acc += g * 0.9;
+  vec3 g = length(uGravity) > 0.05 ? uGravity : vec3(0.0, -1.0, 0.0);
+  acc += normalize(g) * 1.9 - uGravity;   // (scene gravity is added later for everyone)
   for (int i = 0; i < uPoleCount; i++) {
     vec3 d = p - poleAt(i);
     float r2 = dot(d, d);
@@ -450,9 +450,11 @@ void main() {
       vec3 b = bellSeeds(id ^ uFrame);
       float power = 0.75 + uPole[m].z * 0.35;
       p = poleAt(m) + vec3(b.xy * 0.012, b.z * 0.012 * uDepth);
-      v = (up * (1.05 + r.z * 0.45) + side * b.x * 0.42 + vec3(0.0, 0.0, b.y * 0.35 * uDepth)) * power;
+      v = (up * (1.3 + r.z * 0.35) + side * b.x * 0.5 + vec3(0.0, 0.0, b.y * 0.4 * uDepth)) * power;
       v += vec3(uPoleV[m].xy, 0.0) * 0.4;
-      life = 1.2 + s.z * 1.4;
+      // a random head start within the frame, so each frame's batch does not travel as a band
+      p += v * dt * r.y;
+      life = 1.4 + s.z * 1.2;
       heat = 0.9;
     }
   }
