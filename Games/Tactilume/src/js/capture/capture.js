@@ -67,13 +67,22 @@ export function createCapture({ engine, audio, platform }) {
   let lastMime = '';
 
   function elapsedOf(r) {
-    const ms = r.activeMs + (r.paused ? 0 : performance.now() - r.resumedAt);
+    const ms = r.activeMs + (r.paused || r.ended ? 0 : performance.now() - r.resumedAt);
     return Math.min(ms / 1000, r.maxSeconds);
+  }
+
+  // a listener that throws must not stop a clip from being saved
+  function emit(name, ...args) {
+    try {
+      ev.emit(name, ...args);
+    } catch (e) {
+      console.warn(`Tactilume: a capture '${name}' listener failed`, e);
+    }
   }
 
   function emitState(r) {
     lastElapsed = elapsedOf(r);
-    ev.emit('state', { recording: rec === r && !r.stopping, elapsed: lastElapsed, paused: r.paused, limit: r.maxSeconds });
+    emit('state', { recording: rec === r && !r.stopping, elapsed: lastElapsed, paused: r.paused, limit: r.maxSeconds });
   }
 
   function release(r) {
@@ -167,9 +176,10 @@ export function createCapture({ engine, audio, platform }) {
     if (r.stopping) return r.stopping;
     r.stopping = (async () => {
       clearInterval(r.timer);
+      // the clip's length is fixed from here, however long the recorder takes to stop
       if (!r.paused) r.activeMs += performance.now() - r.resumedAt;
       r.paused = false;
-      r.resumedAt = performance.now();
+      r.ended = true;
       try {
         if (r.recorder.state !== 'inactive') r.recorder.stop();
       } catch {
@@ -186,7 +196,7 @@ export function createCapture({ engine, audio, platform }) {
       const result = blob.size > 0
         ? await save(blob, `Tactilume ${stamp(r.startedAt)}.${type.includes('mp4') ? 'mp4' : 'webm'}`, type)
         : { ok: false, error: 'The recording came out empty.' };
-      ev.emit('finished', result, reason);
+      emit('finished', result, reason);
       return result;
     })();
     return r.stopping;
@@ -239,7 +249,7 @@ export function createCapture({ engine, audio, platform }) {
         videoBps: width * height >= FULL_HD ? 12e6 : 8e6,
         maxSeconds: limit > 0 ? limit : 60,
         startedAt: new Date(), activeMs: 0, resumedAt: now, paused: false,
-        timer: 0, stopping: null,
+        timer: 0, stopping: null, ended: false,
       };
       try {
         r.stream = new MediaStream(audioTrack ? [videoTrack, audioTrack] : [videoTrack]);

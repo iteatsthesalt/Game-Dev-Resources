@@ -165,13 +165,12 @@ export function createSynth(ctx) {
   let aspect = 1;
   let modeKey = 'well';
   let mode = MODES.well;
-  reverb.setMix(mode, ctx.currentTime, 0.01);
 
   const bells = [];
   const whooshes = [];
   const pads = Array.from({ length: MAX_PADS }, () => ({
     state: IDLE, id: '', seen: 0, o1: null, o2: null, filter: null, env: null, panner: null,
-    chord: 0, deg: 0, lastStrum: -9, endAt: 0, freq: 0, cut: 0, pan: 0, level: 0,
+    chord: 0, deg: 0, lastStrum: -9, endAt: 0, freq: 0, cut: 0, pan: 0, level: 0, waveGain: 1,
   }));
   // the strongest held poles this frame, best first (fixed arrays: no garbage per frame)
   const chosen = new Array(MAX_PADS).fill(null);
@@ -190,8 +189,10 @@ export function createSynth(ctx) {
   let pendingKey = '';
   let pendingAt = 0;
   let lastSwell = -Infinity;
+  applyMix(ctx.currentTime, 0.01);
 
   const panFor = (x) => clamp(finite(x, 0) / aspect, -1, 1) * 0.75;
+  const bellDegree = (y) => Math.round(unitY(y) * bellSteps(mode));
 
   // About -2 dB for gentle play (a note or two a second, a pad or two), about -11 dB
   // for a ten-finger flurry. Slow, so it never pumps.
@@ -205,7 +206,6 @@ export function createSynth(ctx) {
       riderLevel = level;
     }
   }
-  const bellDegree = (y) => Math.round(unitY(y) * bellSteps(mode));
 
   // ---- bells ------------------------------------------------------------------
 
@@ -226,7 +226,8 @@ export function createSynth(ctx) {
     }
     if (best < 0) best = 0;
     const v = bells[best];
-    for (const g of v.gains) g.gain.setTargetAtTime(0, now, 0.012);
+    // the voice's own gain has no envelope on it, so this fade cannot fight one
+    v.out.gain.setTargetAtTime(0, now, 0.012);
     for (const o of v.oscs) stopSafely(o, now + 0.09);
     bells.splice(best, 1);
   }
@@ -239,10 +240,12 @@ export function createSynth(ctx) {
     const gain = (level * t.gain * (calm ? 0.8 : 1)) / Math.sqrt(1 + 0.3 * bells.length);
     if (!(gain > 1e-4)) return;
     const f0 = mtof(midi) * Math.pow(2, ((Math.random() - 0.5) * 7) / 1200);
+    const out = ctx.createGain();
     const panner = ctx.createStereoPanner();
     panner.pan.value = clamp(pan, -1, 1);
+    out.connect(panner);
     panner.connect(bus);
-    const voice = { gains: [], oscs: [], level: gain, tau: 1, attackEnd: at + t.attack, end: at, alive: 0 };
+    const voice = { out, oscs: [], level: gain, tau: 1, attackEnd: at + t.attack, end: at, alive: 0 };
     const shine = (calm ? 0.6 : 1) * bright;
     for (const [ratio, amp, share] of t.partials) {
       const f = f0 * ratio;
@@ -258,20 +261,20 @@ export function createSynth(ctx) {
       g.gain.linearRampToValueAtTime(a, at + t.attack);
       g.gain.setTargetAtTime(0, at + t.attack, dur / 6.9); // -60 dB at `dur`
       osc.connect(g);
-      g.connect(panner);
+      g.connect(out);
       const stopAt = at + t.attack + dur;
       osc.start(at);
       osc.stop(stopAt);
       if (share === 1) voice.tau = dur / 6.9;
       voice.end = Math.max(voice.end, stopAt);
       voice.oscs.push(osc);
-      voice.gains.push(g);
       voice.alive++;
       osc.onended = () => {
         disconnectAll(osc, g);
-        if (--voice.alive === 0) disconnectAll(panner);
+        if (--voice.alive === 0) disconnectAll(out, panner);
       };
     }
+    if (!voice.alive) { disconnectAll(out, panner); return; }
     bells.push(voice);
     busy += 1;
   }
@@ -564,7 +567,7 @@ export function createSynth(ctx) {
     whooshes.length = w;
     if (whooshes.length >= MAX_WHOOSH) {
       const old = whooshes.shift();
-      old.gain.gain.setTargetAtTime(0, at, 0.03);
+      old.out.gain.setTargetAtTime(0, at, 0.03);
       stopSafely(old.src, at + 0.2);
     }
     const dur = 0.7 + 1.5 * h;
@@ -583,26 +586,33 @@ export function createSynth(ctx) {
     gain.gain.setValueAtTime(0, at);
     gain.gain.linearRampToValueAtTime(WHOOSH * (0.45 + 0.55 * h) * (calm ? 0.7 : 1), peakAt);
     gain.gain.setTargetAtTime(0, peakAt, tau);
+    const out = ctx.createGain(); // no envelope here, so a steal can fade it cleanly
     const panner = ctx.createStereoPanner();
     panner.pan.value = clamp(pan, -1, 1);
     src.connect(filter);
     filter.connect(gain);
-    gain.connect(panner);
+    gain.connect(out);
+    out.connect(panner);
     panner.connect(bus);
     const end = peakAt + tau * 7;
     src.start(at, Math.random() * 1.5);
     src.stop(end);
-    src.onended = () => disconnectAll(src, filter, gain, panner);
-    whooshes.push({ src, gain, end });
+    src.onended = () => disconnectAll(src, filter, gain, out, panner);
+    whooshes.push({ src, out, end });
   }
 
   // ---- behaviours -----------------------------------------------------------------
+
+  // calm play sits a little further back in the room
+  function applyMix(now, glide = 0.5) {
+    reverb.setMix({ wet: mode.wet * (calm ? 1.15 : 1), bloom: mode.bloom }, now, glide);
+  }
 
   function setMode(key, now) {
     if (key === modeKey || !MODES[key]) return;
     modeKey = key;
     mode = MODES[key];
-    reverb.setMix({ wet: mode.wet * (calm ? 1.1 : 1), bloom: mode.bloom }, now);
+    applyMix(now);
     if (drone) {
       const [fa, fb] = droneFreqs();
       drone.a.frequency.setTargetAtTime(fa, now, 0.8);
@@ -632,13 +642,16 @@ export function createSynth(ctx) {
 
   return {
     output,
-    get mode() { return modeKey; },
 
     setEnabled(on) {
       enabled = !!on;
       if (enabled) lastHeld = -Infinity; // a fresh start breathes at once
     },
-    setCalm(on) { calm = !!on; },
+    setCalm(on) {
+      if (calm === !!on) return;
+      calm = !!on;
+      applyMix(ctx.currentTime);
+    },
     setAspect(a) { if (Number.isFinite(a) && a > 0) aspect = a; },
 
     noteDown(note, at = ctx.currentTime) {

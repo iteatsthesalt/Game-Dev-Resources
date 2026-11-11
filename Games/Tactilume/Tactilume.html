@@ -2802,7 +2802,6 @@ void main() {
     let aspect = 1;
     let modeKey = "well";
     let mode = MODES2.well;
-    reverb.setMix(mode, ctx.currentTime, 0.01);
     const bells = [];
     const whooshes = [];
     const pads = Array.from({ length: MAX_PADS }, () => ({
@@ -2821,7 +2820,8 @@ void main() {
       freq: 0,
       cut: 0,
       pan: 0,
-      level: 0
+      level: 0,
+      waveGain: 1
     }));
     const chosen = new Array(MAX_PADS).fill(null);
     const chosenScore = new Float64Array(MAX_PADS);
@@ -2839,7 +2839,9 @@ void main() {
     let pendingKey = "";
     let pendingAt = 0;
     let lastSwell = -Infinity;
+    applyMix(ctx.currentTime, 0.01);
     const panFor = (x) => clamp(finite(x, 0) / aspect, -1, 1) * 0.75;
+    const bellDegree = (y) => Math.round(unitY(y) * bellSteps(mode));
     function rideLevel(now, dt) {
       busy *= Math.exp(-dt / 1.2);
       let held = 0;
@@ -2850,7 +2852,6 @@ void main() {
         riderLevel = level;
       }
     }
-    const bellDegree = (y) => Math.round(unitY(y) * bellSteps(mode));
     function pruneBells(now) {
       let w = 0;
       for (let i = 0; i < bells.length; i++) if (bells[i].end > now) bells[w++] = bells[i];
@@ -2869,7 +2870,7 @@ void main() {
       }
       if (best < 0) best = 0;
       const v = bells[best];
-      for (const g of v.gains) g.gain.setTargetAtTime(0, now, 0.012);
+      v.out.gain.setTargetAtTime(0, now, 0.012);
       for (const o of v.oscs) stopSafely(o, now + 0.09);
       bells.splice(best, 1);
     }
@@ -2880,10 +2881,12 @@ void main() {
       const gain = level * t.gain * (calm ? 0.8 : 1) / Math.sqrt(1 + 0.3 * bells.length);
       if (!(gain > 1e-4)) return;
       const f0 = mtof(midi) * Math.pow(2, (Math.random() - 0.5) * 7 / 1200);
+      const out = ctx.createGain();
       const panner = ctx.createStereoPanner();
       panner.pan.value = clamp(pan, -1, 1);
+      out.connect(panner);
       panner.connect(bus);
-      const voice = { gains: [], oscs: [], level: gain, tau: 1, attackEnd: at + t.attack, end: at, alive: 0 };
+      const voice = { out, oscs: [], level: gain, tau: 1, attackEnd: at + t.attack, end: at, alive: 0 };
       const shine = (calm ? 0.6 : 1) * bright;
       for (const [ratio, amp, share] of t.partials) {
         const f = f0 * ratio;
@@ -2898,19 +2901,22 @@ void main() {
         g.gain.linearRampToValueAtTime(a, at + t.attack);
         g.gain.setTargetAtTime(0, at + t.attack, dur / 6.9);
         osc.connect(g);
-        g.connect(panner);
+        g.connect(out);
         const stopAt = at + t.attack + dur;
         osc.start(at);
         osc.stop(stopAt);
         if (share === 1) voice.tau = dur / 6.9;
         voice.end = Math.max(voice.end, stopAt);
         voice.oscs.push(osc);
-        voice.gains.push(g);
         voice.alive++;
         osc.onended = () => {
           disconnectAll(osc, g);
-          if (--voice.alive === 0) disconnectAll(panner);
+          if (--voice.alive === 0) disconnectAll(out, panner);
         };
+      }
+      if (!voice.alive) {
+        disconnectAll(out, panner);
+        return;
       }
       bells.push(voice);
       busy += 1;
@@ -3175,7 +3181,7 @@ void main() {
       whooshes.length = w;
       if (whooshes.length >= MAX_WHOOSH) {
         const old = whooshes.shift();
-        old.gain.gain.setTargetAtTime(0, at, 0.03);
+        old.out.gain.setTargetAtTime(0, at, 0.03);
         stopSafely(old.src, at + 0.2);
       }
       const dur = 0.7 + 1.5 * h;
@@ -3194,23 +3200,28 @@ void main() {
       gain.gain.setValueAtTime(0, at);
       gain.gain.linearRampToValueAtTime(WHOOSH * (0.45 + 0.55 * h) * (calm ? 0.7 : 1), peakAt);
       gain.gain.setTargetAtTime(0, peakAt, tau);
+      const out = ctx.createGain();
       const panner = ctx.createStereoPanner();
       panner.pan.value = clamp(pan, -1, 1);
       src.connect(filter);
       filter.connect(gain);
-      gain.connect(panner);
+      gain.connect(out);
+      out.connect(panner);
       panner.connect(bus);
       const end = peakAt + tau * 7;
       src.start(at, Math.random() * 1.5);
       src.stop(end);
-      src.onended = () => disconnectAll(src, filter, gain, panner);
-      whooshes.push({ src, gain, end });
+      src.onended = () => disconnectAll(src, filter, gain, out, panner);
+      whooshes.push({ src, out, end });
+    }
+    function applyMix(now, glide = 0.5) {
+      reverb.setMix({ wet: mode.wet * (calm ? 1.15 : 1), bloom: mode.bloom }, now, glide);
     }
     function setMode(key, now) {
       if (key === modeKey || !MODES2[key]) return;
       modeKey = key;
       mode = MODES2[key];
-      reverb.setMix({ wet: mode.wet * (calm ? 1.1 : 1), bloom: mode.bloom }, now);
+      applyMix(now);
       if (drone) {
         const [fa, fb] = droneFreqs();
         drone.a.frequency.setTargetAtTime(fa, now, 0.8);
@@ -3237,15 +3248,14 @@ void main() {
     }
     return {
       output,
-      get mode() {
-        return modeKey;
-      },
       setEnabled(on) {
         enabled = !!on;
         if (enabled) lastHeld = -Infinity;
       },
       setCalm(on) {
+        if (calm === !!on) return;
         calm = !!on;
+        applyMix(ctx.currentTime);
       },
       setAspect(a) {
         if (Number.isFinite(a) && a > 0) aspect = a;
@@ -4430,12 +4440,19 @@ void main() {
     let lastElapsed = 0;
     let lastMime = "";
     function elapsedOf(r) {
-      const ms = r.activeMs + (r.paused ? 0 : performance.now() - r.resumedAt);
+      const ms = r.activeMs + (r.paused || r.ended ? 0 : performance.now() - r.resumedAt);
       return Math.min(ms / 1e3, r.maxSeconds);
+    }
+    function emit(name, ...args) {
+      try {
+        ev.emit(name, ...args);
+      } catch (e) {
+        console.warn(`Tactilume: a capture '${name}' listener failed`, e);
+      }
     }
     function emitState(r) {
       lastElapsed = elapsedOf(r);
-      ev.emit("state", { recording: rec === r && !r.stopping, elapsed: lastElapsed, paused: r.paused, limit: r.maxSeconds });
+      emit("state", { recording: rec === r && !r.stopping, elapsed: lastElapsed, paused: r.paused, limit: r.maxSeconds });
     }
     function release(r) {
       for (const t of r.canvasStream.getTracks()) stopTrack(t);
@@ -4519,7 +4536,7 @@ void main() {
         clearInterval(r.timer);
         if (!r.paused) r.activeMs += performance.now() - r.resumedAt;
         r.paused = false;
-        r.resumedAt = performance.now();
+        r.ended = true;
         try {
           if (r.recorder.state !== "inactive") r.recorder.stop();
         } catch {
@@ -4532,7 +4549,7 @@ void main() {
         const blob = new Blob(r.chunks, { type });
         r.chunks = [];
         const result = blob.size > 0 ? await save(blob, `Tactilume ${stamp(r.startedAt)}.${type.includes("mp4") ? "mp4" : "webm"}`, type) : { ok: false, error: "The recording came out empty." };
-        ev.emit("finished", result, reason);
+        emit("finished", result, reason);
         return result;
       })();
       return r.stopping;
@@ -4591,7 +4608,8 @@ void main() {
           resumedAt: now,
           paused: false,
           timer: 0,
-          stopping: null
+          stopping: null,
+          ended: false
         };
         try {
           r.stream = new MediaStream(audioTrack ? [videoTrack, audioTrack] : [videoTrack]);
