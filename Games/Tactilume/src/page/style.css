@@ -1,0 +1,4 @@
+/* STUB: replaced by the UI module's real styles. */
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+#fatal:not([hidden]) { position: fixed; inset: 0; display: grid; place-content: center; color: #eee; font: 16px/1.5 system-ui, sans-serif; text-align: center; padding: 24px; }

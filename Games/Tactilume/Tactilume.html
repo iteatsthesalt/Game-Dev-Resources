@@ -1,0 +1,1241 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=overlays-content">
+<meta name="theme-color" content="#000000">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tactilume">
+<meta name="description" content="Tactilume: touch the dark and play with a million specks of light.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Cdefs%3E%3CradialGradient id='g'%3E%3Cstop offset='0' stop-color='%23fff6e0'/%3E%3Cstop offset='.35' stop-color='%23ff8a1e'/%3E%3Cstop offset='1' stop-color='%23140202' stop-opacity='0'/%3E%3C/radialGradient%3E%3C/defs%3E%3Crect width='64' height='64' rx='14' fill='%23000'/%3E%3Ccircle cx='32' cy='32' r='26' fill='url(%23g)'/%3E%3C/svg%3E">
+<title>Tactilume</title>
+<style>
+/* STUB: replaced by the UI module's real styles. */
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+#fatal:not([hidden]) { position: fixed; inset: 0; display: grid; place-content: center; color: #eee; font: 16px/1.5 system-ui, sans-serif; text-align: center; padding: 24px; }
+
+</style>
+</head>
+<body>
+<canvas id="stage" role="img" aria-label="Field of light. Touch, drag or press keys to play."></canvas>
+<div id="ui"></div>
+<div id="fatal" hidden role="alert"></div>
+<noscript><p class="noscript">Tactilume needs JavaScript to draw its light.</p></noscript>
+<script>
+(() => {
+  // src/js/core/util.js
+  var clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  var approach = (dt, tau) => tau <= 0 ? 1 : 1 - Math.exp(-dt / tau);
+  function createEmitter() {
+    const map = /* @__PURE__ */ new Map();
+    return {
+      on(name, fn) {
+        if (!map.has(name)) map.set(name, /* @__PURE__ */ new Set());
+        map.get(name).add(fn);
+        return () => map.get(name).delete(fn);
+      },
+      emit(name, ...args) {
+        const set = map.get(name);
+        if (!set) return;
+        for (const fn of [...set]) fn(...args);
+      }
+    };
+  }
+
+  // src/js/core/behaviours.js
+  var BEHAVIOURS = [
+    { id: 0, key: "well", name: "Well", blurb: "Light falls toward each touch and settles into orbit." },
+    { id: 1, key: "whirl", name: "Whirl", blurb: "Each touch spins the field. Neighbouring touches spin opposite ways." },
+    { id: 2, key: "burst", name: "Burst", blurb: "Touches push the light away and send out rings." },
+    { id: 3, key: "halo", name: "Halo", blurb: "Light gathers into a ring around each touch." },
+    { id: 4, key: "current", name: "Current", blurb: "Light streams from one touch to the next." },
+    { id: 5, key: "weave", name: "Weave", blurb: "Threads of light stretch between your touches." },
+    { id: 6, key: "chime", name: "Chime", blurb: "Touches ring like bells. Light settles on the still lines between the waves." },
+    { id: 7, key: "storm", name: "Storm", blurb: "Touches stir the air. Flick to throw a gust." },
+    { id: 8, key: "lattice", name: "Lattice", blurb: "Light holds a pattern. Touches bend it like a lens." },
+    { id: 9, key: "nova", name: "Nova", blurb: "Hold to gather light, let go to release it." },
+    { id: 10, key: "murmur", name: "Murmur", blurb: "Light flocks around your touches like starlings." },
+    { id: 11, key: "fountain", name: "Fountain", blurb: "Light pours out of each touch." }
+  ];
+  var BEHAVIOUR_KEYS = BEHAVIOURS.map((b) => b.key);
+  var BY_KEY = new Map(BEHAVIOURS.map((b) => [b.key, b]));
+  var BY_ID = new Map(BEHAVIOURS.map((b) => [b.id, b]));
+  var behaviourByKey = (key) => BY_KEY.get(key) || null;
+  var behaviourById = (id) => BY_ID.get(id) || null;
+  var MAX_FINGERS = 10;
+  var DEFAULT_CHORDS = ["well", "current", "weave", "halo", "whirl", "chime", "storm", "murmur", "lattice", "nova"];
+  function behaviourFor(scene, fingers) {
+    if (scene.lock && scene.lock !== "auto") {
+      const locked = BY_KEY.get(scene.lock);
+      if (locked) return locked;
+    }
+    const slot = Math.min(Math.max(fingers | 0, 1), MAX_FINGERS) - 1;
+    return BY_KEY.get(scene.chords[slot]) || BEHAVIOURS[0];
+  }
+
+  // src/js/core/palettes.js
+  var PALETTES = [
+    { key: "ember", name: "Ember", stops: ["#140202", "#5c0a04", "#d23a05", "#ff8a1e", "#ffd27a", "#fff6e0"] },
+    { key: "aurora", name: "Aurora", stops: ["#020b14", "#05405a", "#09a38a", "#6cf0a0", "#d8ff9a", "#f4fff0"] },
+    { key: "abyss", name: "Abyss", stops: ["#01030d", "#071a5e", "#1155d6", "#2fb5ff", "#a8f0ff", "#f0fcff"] },
+    { key: "orchid", name: "Orchid", stops: ["#0c0214", "#3d0a5c", "#9b1fc0", "#ff4fd8", "#ffb0e8", "#fff0fb"] },
+    { key: "solar", name: "Solar", stops: ["#100600", "#6a2300", "#e86a00", "#ffc21a", "#fff38a", "#fffde8"] },
+    { key: "glacier", name: "Glacier", stops: ["#020608", "#0f3442", "#3d8fa8", "#9fe0f0", "#e4fbff", "#ffffff"] },
+    { key: "koi", name: "Koi", stops: ["#050208", "#2b0d40", "#e0402a", "#ff9a3c", "#f4f0e0", "#7fd6ff"] },
+    { key: "prism", name: "Prism", stops: ["#ff2a4a", "#ff9a1a", "#f4ff2a", "#2aff7a", "#2ad4ff", "#6a3aff", "#ff2ad8", "#ff2a4a"] },
+    { key: "moss", name: "Moss", safe: true, stops: ["#0a0418", "#30235c", "#255f86", "#1f9a8a", "#5fca5a", "#e8f028"] },
+    { key: "lantern", name: "Lantern", safe: true, stops: ["#00102e", "#1b2f6b", "#56588a", "#8f8576", "#d0b45a", "#fff0a0"] },
+    { key: "silver", name: "Silver", safe: true, stops: ["#020203", "#1a1c22", "#565c6a", "#a6adbc", "#e2e6ee", "#ffffff"] },
+    { key: "infrared", name: "Infrared", stops: ["#000000", "#2a0030", "#8a0050", "#ff2a2a", "#ffb000", "#ffffd8"] },
+    { key: "peacock", name: "Peacock", stops: ["#020a08", "#06363a", "#0a7f7a", "#2a5fd8", "#a03ae0", "#f0d8ff"] },
+    { key: "twilight", name: "Twilight", stops: ["#05030f", "#241448", "#6a2a7a", "#d0506a", "#ffa070", "#ffe8c8"] }
+  ];
+  var PALETTE_KEYS = PALETTES.map((p) => p.key);
+
+  // src/js/core/scene.js
+  var FORMS = ["nebula", "disc", "shell", "ring", "lattice", "none"];
+  var COLOR_BY = ["speed", "heat", "seed", "direction", "depth"];
+  var SCHEMA = [
+    // Play
+    { key: "lock", code: "lk", type: "enum", options: ["auto", ...BEHAVIOUR_KEYS], def: "auto", group: "play", label: "Behaviour", help: "Auto picks a behaviour from how many fingers touch. Choose one to play it with any number of fingers." },
+    { key: "chords", code: "ch", type: "chords", def: DEFAULT_CHORDS, group: "play", label: "Fingers", help: "Which behaviour each number of fingers plays." },
+    { key: "symmetry", code: "sy", type: "int", min: 1, max: 12, def: 1, group: "play", label: "Symmetry", help: "Copies every touch around the centre." },
+    { key: "mirror", code: "mi", type: "bool", def: false, group: "play", label: "Mirror", help: "Reflects the copies as well, like a kaleidoscope." },
+    { key: "strength", code: "st", type: "num", min: 0.2, max: 3, step: 0.05, def: 1, group: "play", label: "Strength", help: "How hard touches pull and push." },
+    { key: "form", code: "fo", type: "enum", options: FORMS, def: "nebula", group: "play", label: "Resting shape", help: "The shape the light drifts back into when nobody is touching." },
+    // Motion
+    { key: "speed", code: "sp", type: "num", min: 0.1, max: 2, step: 0.05, def: 1, group: "motion", label: "Time", help: "Slows down or speeds up everything." },
+    { key: "drag", code: "dr", type: "num", min: 0, max: 1, step: 0.01, def: 0.35, group: "motion", label: "Drag", help: "How quickly the light slows down." },
+    { key: "flow", code: "fl", type: "num", min: 0, max: 1, step: 0.01, def: 0.3, group: "motion", label: "Drift", help: "Gentle currents that keep the light moving on its own." },
+    { key: "gravity", code: "gr", type: "num", min: 0, max: 1, step: 0.01, def: 0, group: "motion", label: "Gravity", help: "Pulls the light down, or along your tilt when tilt is on." },
+    { key: "depth", code: "de", type: "num", min: 0, max: 1, step: 0.01, def: 0.6, group: "motion", label: "Depth", help: "How deep the space is. At zero everything lies flat." },
+    { key: "orbit", code: "or", type: "num", min: 0, max: 1, step: 0.01, def: 0.3, group: "motion", label: "Camera drift", help: "Lets the view sway slowly through the light." },
+    // Look
+    { key: "palette", code: "pa", type: "enum", options: PALETTE_KEYS, def: "ember", group: "look", label: "Palette" },
+    { key: "colorBy", code: "cb", type: "enum", options: COLOR_BY, def: "speed", group: "look", label: "Colour from", help: "What picks each speck’s colour from the palette." },
+    { key: "hue", code: "hu", type: "num", min: 0, max: 1, step: 5e-3, def: 0, group: "look", label: "Hue shift" },
+    { key: "density", code: "dn", type: "num", min: 0.05, max: 1, step: 0.01, def: 1, group: "look", label: "Amount", help: "How many specks of light, as a share of what this device can draw." },
+    { key: "size", code: "sz", type: "num", min: 0.25, max: 4, step: 0.05, def: 1, group: "look", label: "Speck size" },
+    { key: "glow", code: "gl", type: "num", min: 0, max: 1, step: 0.01, def: 0.6, group: "look", label: "Glow" },
+    { key: "trails", code: "tr", type: "num", min: 0, max: 1, step: 0.01, def: 0.5, group: "look", label: "Trails" },
+    { key: "exposure", code: "ex", type: "num", min: -3, max: 3, step: 0.05, def: 0, group: "look", label: "Brightness" },
+    { key: "focus", code: "fc", type: "num", min: 0, max: 1, step: 0.01, def: 0.3, group: "look", label: "Soft focus", help: "Blurs light that is near or far, like a camera lens." },
+    { key: "sparkle", code: "sk", type: "num", min: 0, max: 1, step: 0.01, def: 0.3, group: "look", label: "Sparkle" },
+    { key: "grain", code: "gn", type: "num", min: 0, max: 1, step: 0.01, def: 0.25, group: "look", label: "Film grain" },
+    { key: "aberration", code: "ab", type: "num", min: 0, max: 1, step: 0.01, def: 0.2, group: "look", label: "Lens fringe" },
+    { key: "vignette", code: "vi", type: "num", min: 0, max: 1, step: 0.01, def: 0.5, group: "look", label: "Vignette" },
+    { key: "name", code: "na", type: "str", maxLen: 40, def: "", group: "meta", label: "Name" }
+  ];
+  var SETTINGS_SCHEMA = [
+    { key: "quality", type: "enum", options: ["auto", "battery", "balanced", "max"], def: "auto", label: "Quality", help: "Auto keeps the motion smooth by adjusting detail as it plays." },
+    { key: "fpsCap", type: "enum", options: ["display", "60", "30"], def: "display", label: "Frame rate" },
+    { key: "sound", type: "bool", def: false, label: "Sound", help: "Touches play soft generated music." },
+    { key: "volume", type: "num", min: 0, max: 1, step: 0.01, def: 0.6, label: "Volume" },
+    { key: "react", type: "enum", options: ["off", "mic", "file"], def: "off", label: "React to", help: "Lets the light move with sound from the microphone or a song you pick." },
+    { key: "sensitivity", type: "num", min: 0, max: 1, step: 0.01, def: 0.5, label: "Sensitivity" },
+    { key: "tilt", type: "bool", def: false, label: "Tilt", help: "Tilting the device tips the light." },
+    { key: "haptics", type: "bool", def: true, label: "Vibration", help: "A tiny tap you can feel when you touch." },
+    { key: "autopilot", type: "enum", options: ["idle", "always", "off"], def: "idle", label: "Autoplay", help: "Idle plays by itself when nobody has touched for a while." },
+    { key: "idleSeconds", type: "int", min: 5, max: 300, def: 25, label: "Autoplay after (s)" },
+    { key: "virtualFingers", type: "int", min: 0, max: MAX_FINGERS, def: 0, label: "One-finger chords", help: "When set, one touch acts as this many fingers." },
+    { key: "pin", type: "bool", def: false, label: "Pin touches", help: "Lifting a finger leaves its touch in place. Tap a pinned touch to remove it." },
+    { key: "flashGuard", type: "bool", def: true, label: "Flash guard", help: "Smooths sudden bright flashes across the whole screen." },
+    { key: "calm", type: "bool", def: false, label: "Calm mode", help: "Slower, softer and dimmer, with no camera movement." },
+    { key: "hints", type: "bool", def: true, label: "Show behaviour names" },
+    { key: "uiScale", type: "num", min: 1, max: 1.6, step: 0.05, def: 1, label: "Control size" },
+    { key: "introSeen", type: "bool", def: false, label: "Intro seen", hidden: true }
+  ];
+  var defaultsOf = (schema) => Object.fromEntries(schema.map((f) => [f.key, Array.isArray(f.def) ? [...f.def] : f.def]));
+  var DEFAULT_SCENE = Object.freeze(defaultsOf(SCHEMA));
+  var DEFAULT_SETTINGS = Object.freeze(defaultsOf(SETTINGS_SCHEMA));
+  var SCENE_FIELDS = new Map(SCHEMA.map((f) => [f.key, f]));
+  var SETTINGS_FIELDS = new Map(SETTINGS_SCHEMA.map((f) => [f.key, f]));
+  var decimals = (step) => step >= 1 ? 0 : Math.min(6, Math.ceil(-Math.log10(step) - 1e-9));
+  function cleanValue(field, v) {
+    switch (field.type) {
+      case "num": {
+        const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+        if (!Number.isFinite(n)) return field.def;
+        const c = Math.min(Math.max(n, field.min), field.max);
+        const s = field.step || 0;
+        const snapped = s ? field.min + Math.round((c - field.min) / s) * s : c;
+        return Number(Math.min(Math.max(snapped, field.min), field.max).toFixed(decimals(s || 1e-4)));
+      }
+      case "int": {
+        const n = typeof v === "number" ? v : typeof v === "string" && v.trim() !== "" ? Number(v) : NaN;
+        if (!Number.isFinite(n)) return field.def;
+        return Math.min(Math.max(Math.round(n), field.min), field.max);
+      }
+      case "bool":
+        return v === true || v === 1 || v === "1" || v === "true" ? true : v === false || v === 0 || v === "0" || v === "false" ? false : field.def;
+      case "enum":
+        return typeof v === "string" && field.options.includes(v) ? v : field.def;
+      case "str": {
+        if (typeof v !== "string") return field.def;
+        return v.replace(/[\u0000-\u001f\u007f<>]/g, "").trim().slice(0, field.maxLen);
+      }
+      case "chords": {
+        const arr = Array.isArray(v) ? v : [];
+        return field.def.map((d, i) => typeof arr[i] === "string" && BEHAVIOUR_KEYS.includes(arr[i]) ? arr[i] : d);
+      }
+      default:
+        return field.def;
+    }
+  }
+  function cleanWith(schema, obj, base) {
+    const src = obj && typeof obj === "object" ? obj : {};
+    const out = {};
+    for (const f of schema) {
+      const has = Object.prototype.hasOwnProperty.call(src, f.key);
+      out[f.key] = has ? cleanValue(f, src[f.key]) : Array.isArray(base[f.key]) ? [...base[f.key]] : base[f.key];
+    }
+    return out;
+  }
+  var sanitizeScene = (obj, base = DEFAULT_SCENE) => cleanWith(SCHEMA, obj, base);
+  var sanitizeSettings = (obj, base = DEFAULT_SETTINGS) => cleanWith(SETTINGS_SCHEMA, obj, base);
+  var same = (a, b) => Array.isArray(a) ? Array.isArray(b) && a.length === b.length && a.every((x, i) => x === b[i]) : a === b;
+  function diffKeys(a, b, schema = SCHEMA) {
+    return schema.filter((f) => !same(a[f.key], b[f.key])).map((f) => f.key);
+  }
+  var CODEC_VERSION = "1";
+  var MAX_CODE_LENGTH = 2048;
+  function toBase64Url(str) {
+    const bytes = new TextEncoder().encode(str);
+    let bin = "";
+    for (const b of bytes) bin += String.fromCharCode(b);
+    return btoa(bin).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  }
+  function fromBase64Url(s) {
+    const b64 = s.replace(/-/g, "+").replace(/_/g, "/");
+    const bin = atob(b64 + "===".slice((b64.length + 3) % 4));
+    const bytes = Uint8Array.from(bin, (c) => c.charCodeAt(0));
+    return new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  }
+  function encodeScene(scene) {
+    const clean = sanitizeScene(scene);
+    const out = {};
+    for (const f of SCHEMA) {
+      const v = clean[f.key];
+      if (same(v, f.def)) continue;
+      if (f.type === "chords") out[f.code] = v.map((k) => behaviourByKey(k).id.toString(36)).join("");
+      else if (f.type === "bool") out[f.code] = v ? 1 : 0;
+      else out[f.code] = v;
+    }
+    return CODEC_VERSION + toBase64Url(JSON.stringify(out));
+  }
+  function decodeScene(code) {
+    if (typeof code !== "string" || code.length < 1 || code.length > MAX_CODE_LENGTH) return null;
+    if (code[0] !== CODEC_VERSION) return null;
+    let raw;
+    try {
+      raw = JSON.parse(fromBase64Url(code.slice(1)));
+    } catch {
+      return null;
+    }
+    if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
+    const byCode = {};
+    for (const f of SCHEMA) {
+      if (!Object.prototype.hasOwnProperty.call(raw, f.code)) continue;
+      let v = raw[f.code];
+      if (f.type === "chords") {
+        v = typeof v === "string" ? [...v.slice(0, MAX_FINGERS)].map((c) => behaviourById(parseInt(c, 36))?.key) : [];
+      }
+      byCode[f.key] = v;
+    }
+    return sanitizeScene(byCode);
+  }
+  function sceneCodeFromHash(hash) {
+    if (typeof hash !== "string") return null;
+    const m = /(?:^#|&)s=([A-Za-z0-9_-]+)/.exec(hash);
+    return m ? m[1] : null;
+  }
+
+  // src/js/core/presets.js
+  var PRESETS = [
+    {
+      key: "first-light",
+      name: "First Light",
+      blurb: "Warm embers that orbit your touch.",
+      scene: { palette: "ember", colorBy: "speed", form: "nebula", glow: 0.65, trails: 0.55, focus: 0.35, flow: 0.3 }
+    },
+    {
+      key: "aurora-loom",
+      name: "Aurora Loom",
+      blurb: "Green and gold threads stretched between fingers.",
+      scene: { palette: "aurora", colorBy: "heat", form: "ring", lock: "weave", trails: 0.75, glow: 0.7, depth: 0.45, size: 0.8 }
+    },
+    {
+      key: "deep-current",
+      name: "Deep Current",
+      blurb: "A cold river of light runs from touch to touch.",
+      scene: { palette: "abyss", colorBy: "direction", form: "disc", lock: "current", drag: 0.2, trails: 0.7, focus: 0.5, orbit: 0.45 }
+    },
+    {
+      key: "glass-bells",
+      name: "Glass Bells",
+      blurb: "Every touch rings. The light rests where the waves cancel.",
+      scene: { palette: "glacier", colorBy: "heat", form: "lattice", lock: "chime", depth: 0.15, trails: 0.3, glow: 0.55, sparkle: 0.6, size: 0.9 }
+    },
+    {
+      key: "orchid-bloom",
+      name: "Orchid Bloom",
+      blurb: "Six-fold petals unfold from a single finger.",
+      scene: { palette: "orchid", colorBy: "seed", form: "shell", symmetry: 6, mirror: true, lock: "halo", trails: 0.65, depth: 0.35, orbit: 0.15 }
+    },
+    {
+      key: "solar-wind",
+      name: "Solar Wind",
+      blurb: "Hold to gather a star. Let go to set it off.",
+      scene: { palette: "solar", colorBy: "heat", form: "nebula", lock: "nova", glow: 0.85, trails: 0.45, exposure: 0.2, focus: 0.45 }
+    },
+    {
+      key: "starling-hour",
+      name: "Starling Hour",
+      blurb: "Dusk flocks that wheel around your hands.",
+      scene: { palette: "twilight", colorBy: "direction", form: "nebula", lock: "murmur", drag: 0.15, trails: 0.4, depth: 0.85, orbit: 0.5, size: 1.2 }
+    },
+    {
+      key: "koi-pond",
+      name: "Koi Pond",
+      blurb: "Whirlpools that turn against each other.",
+      scene: { palette: "koi", colorBy: "seed", form: "disc", lock: "whirl", depth: 0.2, trails: 0.7, glow: 0.5, flow: 0.45 }
+    },
+    {
+      key: "prism-rain",
+      name: "Prism Rain",
+      blurb: "Fountains of every colour fall under their own weight.",
+      scene: { palette: "prism", colorBy: "seed", form: "none", lock: "fountain", gravity: 0.55, trails: 0.5, glow: 0.7, sparkle: 0.7, depth: 0.5 }
+    },
+    {
+      key: "night-garden",
+      name: "Night Garden",
+      blurb: "A soft field that bends around each finger like water round a stone.",
+      scene: { palette: "moss", colorBy: "depth", form: "lattice", lock: "lattice", depth: 0.7, focus: 0.6, orbit: 0.6, trails: 0.25 }
+    },
+    {
+      key: "thunderhead",
+      name: "Thunderhead",
+      blurb: "Stir the air. Flick to throw a gust.",
+      scene: { palette: "silver", colorBy: "speed", form: "nebula", lock: "storm", drag: 0.25, flow: 0.7, trails: 0.6, glow: 0.75, exposure: 0.15 }
+    },
+    {
+      key: "peacock-eye",
+      name: "Peacock Eye",
+      blurb: "Rings within rings, mirrored eight ways.",
+      scene: { palette: "peacock", colorBy: "heat", form: "ring", symmetry: 8, mirror: false, lock: "burst", trails: 0.8, depth: 0.25, glow: 0.65 }
+    },
+    {
+      key: "infrared",
+      name: "Heat Map",
+      blurb: "Light that runs hotter the faster it moves.",
+      scene: { palette: "infrared", colorBy: "speed", form: "shell", trails: 0.6, glow: 0.7, depth: 0.65, focus: 0.4 }
+    },
+    {
+      key: "lantern-walk",
+      name: "Lantern Walk",
+      blurb: "Blue and gold, clear for every kind of colour vision.",
+      scene: { palette: "lantern", colorBy: "heat", form: "disc", trails: 0.5, glow: 0.6, depth: 0.5 }
+    }
+  ];
+  var PRESET_KEYS = PRESETS.map((p) => p.key);
+  var DEFAULT_PRESET = "first-light";
+  function presetByKey(key) {
+    return PRESETS.find((p) => p.key === key) || null;
+  }
+  function presetScene(key) {
+    const p = presetByKey(key) || presetByKey(DEFAULT_PRESET);
+    return sanitizeScene({ ...p.scene, name: p.name });
+  }
+
+  // src/js/core/store.js
+  var STORAGE_KEY = "tactilume.v1";
+  var MAX_USER_SCENES = 60;
+  function safeStorage(backing) {
+    let s = backing;
+    if (s === void 0) {
+      try {
+        s = globalThis.localStorage;
+      } catch {
+        s = null;
+      }
+    }
+    return {
+      get(key) {
+        try {
+          return s ? s.getItem(key) : null;
+        } catch {
+          return null;
+        }
+      },
+      set(key, value) {
+        try {
+          if (s) s.setItem(key, value);
+          return !!s;
+        } catch {
+          return false;
+        }
+      }
+    };
+  }
+  function createStore({ storage = safeStorage(), initialScene = null, persistDelayMs = 400 } = {}) {
+    const ev = createEmitter();
+    let saved = {};
+    try {
+      const raw = storage.get(STORAGE_KEY);
+      saved = raw ? JSON.parse(raw) : {};
+      if (!saved || typeof saved !== "object") saved = {};
+    } catch {
+      saved = {};
+    }
+    let settings = Object.freeze(sanitizeSettings(saved.settings));
+    let scene = Object.freeze(sanitizeScene(initialScene || saved.scene || DEFAULT_SCENE));
+    let user = Array.isArray(saved.user) ? saved.user.filter((e) => e && typeof e === "object" && typeof e.id === "string").slice(0, MAX_USER_SCENES).map((e) => ({ id: String(e.id).slice(0, 40), name: sanitizeScene({ name: e.name }).name || "Untitled", created: Number(e.created) || 0, scene: sanitizeScene(e.scene) })) : [];
+    let timer = null;
+    function persistNow() {
+      timer = null;
+      storage.set(STORAGE_KEY, JSON.stringify({ v: 1, scene, settings, user }));
+    }
+    function persist() {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(persistNow, persistDelayMs);
+    }
+    const hadSavedScene = !!(saved.scene && typeof saved.scene === "object");
+    const store = {
+      // false on a first visit (nothing saved yet), so main can start on a preset
+      hadSavedScene,
+      get scene() {
+        return scene;
+      },
+      get settings() {
+        return settings;
+      },
+      on: ev.on,
+      // Merges `partial` into the scene (or replaces it with `replace: true`).
+      // `source` says who asked ('ui', 'preset', 'link', 'autopilot', 'keyboard', ...).
+      setScene(partial, { replace = false, source = "ui" } = {}) {
+        const next = Object.freeze(sanitizeScene(partial, replace ? DEFAULT_SCENE : scene));
+        const changed = diffKeys(scene, next);
+        if (!changed.length) return [];
+        scene = next;
+        persist();
+        ev.emit("scene", scene, changed, source);
+        return changed;
+      },
+      setSettings(partial, { source = "ui" } = {}) {
+        const next = Object.freeze(sanitizeSettings(partial, settings));
+        const changed = diffKeys(settings, next, SETTINGS_SCHEMA);
+        if (!changed.length) return [];
+        settings = next;
+        persist();
+        ev.emit("settings", settings, changed, source);
+        return changed;
+      },
+      resetSettings() {
+        return store.setSettings({ ...DEFAULT_SETTINGS, introSeen: settings.introSeen });
+      },
+      userScenes() {
+        return user.map((e) => ({ ...e }));
+      },
+      saveUserScene(name) {
+        const clean = sanitizeScene({ ...scene, name: name || scene.name || "My scene" });
+        const entry = { id: "u" + Date.now().toString(36) + Math.floor(Math.random() * 1e6).toString(36), name: clean.name, created: Date.now(), scene: clean };
+        user = [entry, ...user].slice(0, MAX_USER_SCENES);
+        persist();
+        ev.emit("user", store.userScenes());
+        return { ...entry };
+      },
+      deleteUserScene(id) {
+        const before = user.length;
+        user = user.filter((e) => e.id !== id);
+        if (user.length !== before) {
+          persist();
+          ev.emit("user", store.userScenes());
+        }
+      },
+      shareCode() {
+        return encodeScene(scene);
+      },
+      loadShareCode(code, source = "link") {
+        const s = decodeScene(code);
+        if (!s) return false;
+        store.setScene(s, { replace: true, source });
+        return true;
+      },
+      flush() {
+        if (timer) {
+          clearTimeout(timer);
+          persistNow();
+        }
+      }
+    };
+    return store;
+  }
+
+  // src/js/core/poles.js
+  var MAX_POLES = 32;
+  function constellation(pole, n, time, radius = 0.16) {
+    if (n <= 1) return [pole];
+    const out = [];
+    const spin = time * 0.35;
+    for (let i = 0; i < n; i++) {
+      const a = spin + i / n * Math.PI * 2;
+      const ca = Math.cos(a), sa = Math.sin(a);
+      out.push({
+        ...pole,
+        x: pole.x + ca * radius,
+        y: pole.y + sa * radius,
+        // the constellation turns, so its points also move
+        vx: pole.vx - sa * radius * 0.35,
+        vy: pole.vy + ca * radius * 0.35,
+        id: `${pole.id}:v${i}`,
+        kind: i === 0 ? pole.kind : "virtual"
+      });
+    }
+    return out;
+  }
+  function symmetrise(poles, symmetry, mirror) {
+    const n = Math.max(1, symmetry | 0);
+    if (n === 1 && !mirror) return poles;
+    const out = [];
+    for (const p of poles) {
+      for (let k = 0; k < n; k++) {
+        const a = k / n * Math.PI * 2;
+        const ca = Math.cos(a), sa = Math.sin(a);
+        const rot = (x2, y2) => [x2 * ca - y2 * sa, x2 * sa + y2 * ca];
+        const [x, y] = rot(p.x, p.y);
+        const [vx, vy] = rot(p.vx, p.vy);
+        out.push(k === 0 ? p : { ...p, x, y, vx, vy, id: `${p.id}:s${k}`, kind: "mirror" });
+        if (mirror) {
+          const [mx, my] = rot(p.x, -p.y);
+          const [mvx, mvy] = rot(p.vx, -p.vy);
+          out.push({ ...p, x: mx, y: my, vx: mvx, vy: mvy, id: `${p.id}:m${k}`, kind: "mirror" });
+        }
+      }
+    }
+    return out;
+  }
+  function expandPoles(poles, { symmetry = 1, mirror = false, virtualFingers = 0, time = 0 } = {}) {
+    let list = poles;
+    if (virtualFingers > 1 && poles.length === 1) list = constellation(poles[0], virtualFingers, time);
+    list = symmetrise(list, symmetry, mirror);
+    if (list.length > MAX_POLES) {
+      const real = list.filter((p) => p.kind !== "mirror");
+      const copies = list.filter((p) => p.kind === "mirror");
+      list = real.concat(copies).slice(0, MAX_POLES);
+    }
+    return list;
+  }
+  function fingerCount(poles, virtualFingers = 0) {
+    const held = poles.filter((p) => p.held && p.kind !== "mirror" && p.kind !== "virtual").length;
+    if (virtualFingers > 1 && held === 1) return virtualFingers;
+    return held;
+  }
+
+  // src/js/core/governor.js
+  var RATES = [30, 60, 72, 90, 120, 144, 165, 240];
+  function estimateRefresh(intervals) {
+    const sorted = intervals.filter((x) => x > 2 && x < 100).sort((a, b) => a - b);
+    if (sorted.length < 8) return 60;
+    const median = sorted[sorted.length >> 1];
+    const hz = 1e3 / median;
+    let best = 60, err = Infinity;
+    for (const r of RATES) {
+      const e = Math.abs(r - hz) / r;
+      if (e < err) {
+        err = e;
+        best = r;
+      }
+    }
+    return best;
+  }
+  var MODES = {
+    // frame budget as a share of the display interval, and the ceilings for each mode
+    battery: { targetHz: 30, maxScale: 0.75, maxShare: 0.45 },
+    balanced: { targetHz: 60, maxScale: 1, maxShare: 0.75 },
+    max: { targetHz: 0, maxScale: 1, maxShare: 1 },
+    auto: { targetHz: 0, maxScale: 1, maxShare: 1 }
+  };
+  function createGovernor({ maxParticles, startParticles, minParticles = 8192, mode = "auto", startScale = 1 }) {
+    let cfg = MODES[mode] || MODES.auto;
+    let particles = clamp(startParticles, minParticles, maxParticles * cfg.maxShare);
+    let scale = clamp(startScale, 0.5, cfg.maxScale);
+    const intervals = [];
+    let refreshHz = 60;
+    let slowFor = 0, fastFor = 0, settleFor = 1;
+    let frozen = false;
+    function budgetMs() {
+      const hz = cfg.targetHz || refreshHz;
+      return 1e3 / hz;
+    }
+    return {
+      get particles() {
+        return Math.round(particles);
+      },
+      get renderScale() {
+        return scale;
+      },
+      get refreshHz() {
+        return refreshHz;
+      },
+      get mode() {
+        return mode;
+      },
+      setMode(m) {
+        mode = MODES[m] ? m : "auto";
+        cfg = MODES[mode];
+        particles = Math.min(particles, maxParticles * cfg.maxShare);
+        scale = Math.min(scale, cfg.maxScale);
+        if (mode === "max") {
+          particles = maxParticles;
+          scale = 1;
+        }
+        settleFor = 1;
+      },
+      // Stops adjusting (tests, or while recording video so the clip stays steady).
+      freeze(on) {
+        frozen = !!on;
+      },
+      // Call once per displayed frame with the time since the previous one (ms).
+      // Returns true when the targets changed.
+      sample(intervalMs, dtSeconds = intervalMs / 1e3) {
+        intervals.push(intervalMs);
+        if (intervals.length > 120) intervals.shift();
+        if (intervals.length % 30 === 0) refreshHz = estimateRefresh(intervals);
+        if (frozen || mode === "max") return false;
+        if (settleFor > 0) {
+          settleFor -= dtSeconds;
+          return false;
+        }
+        const budget = budgetMs();
+        const recent = intervals.slice(-20).sort((a, b) => a - b);
+        const typical = recent[recent.length >> 1];
+        if (typical > budget * 1.25) {
+          slowFor += dtSeconds;
+          fastFor = 0;
+        } else if (typical < budget * 1.08) {
+          fastFor += dtSeconds;
+          slowFor = 0;
+        } else {
+          slowFor = 0;
+          fastFor = 0;
+        }
+        let changed = false;
+        if (slowFor > 0.6) {
+          if (particles > maxParticles * 0.25 || scale <= 0.6) particles = Math.max(minParticles, particles * 0.8);
+          else scale = Math.max(0.5, scale - 0.1);
+          slowFor = 0;
+          settleFor = 0.8;
+          changed = true;
+        } else if (fastFor > 3) {
+          if (scale < cfg.maxScale) scale = Math.min(cfg.maxScale, scale + 0.1);
+          else particles = Math.min(maxParticles * cfg.maxShare, particles * 1.15);
+          fastFor = 0;
+          settleFor = 1.5;
+          changed = true;
+        }
+        return changed;
+      }
+    };
+  }
+  var TIERS = {
+    low: { max: 1 << 17, start: 1 << 16 },
+    // 131k / 65k
+    mid: { max: 1 << 19, start: 1 << 18 },
+    // 524k / 262k
+    high: { max: 1 << 20, start: 1 << 19 },
+    // 1M / 524k
+    ultra: { max: 1 << 21, start: 1 << 20 }
+    // 2M / 1M
+  };
+
+  // src/js/core/surprise.js
+  var pick = (rnd, list) => list[Math.floor(rnd() * list.length) % list.length];
+  var range = (rnd, lo, hi) => lo + (hi - lo) * rnd();
+  var ADJECTIVES = ["Quiet", "Molten", "Drifting", "Hollow", "Silver", "Restless", "Velvet", "Distant", "Burning", "Tidal", "Paper", "Glass"];
+  var NOUNS = ["Lanterns", "Harbour", "Orchard", "Comet", "Weather", "Choir", "Lace", "Embers", "Shoal", "Meadow", "Signal", "Veil"];
+  function surpriseScene(rnd = Math.random) {
+    const character = pick(rnd, ["calm", "lively", "wild", "crystal"]);
+    const lockOne = rnd() < 0.55;
+    const symmetry = rnd() < 0.35 ? pick(rnd, [2, 3, 4, 5, 6, 8]) : 1;
+    const chords = rnd() < 0.5 ? [...DEFAULT_CHORDS] : DEFAULT_CHORDS.map(() => pick(rnd, BEHAVIOUR_KEYS));
+    const base = {
+      lock: lockOne ? pick(rnd, BEHAVIOUR_KEYS) : "auto",
+      chords,
+      symmetry,
+      mirror: symmetry > 1 && rnd() < 0.5,
+      palette: pick(rnd, PALETTE_KEYS),
+      colorBy: pick(rnd, COLOR_BY),
+      form: pick(rnd, FORMS),
+      hue: rnd() < 0.3 ? range(rnd, 0, 1) : 0,
+      name: `${pick(rnd, ADJECTIVES)} ${pick(rnd, NOUNS)}`
+    };
+    const byCharacter = {
+      calm: { speed: range(rnd, 0.5, 0.8), drag: range(rnd, 0.35, 0.6), flow: range(rnd, 0.15, 0.4), trails: range(rnd, 0.55, 0.85), glow: range(rnd, 0.45, 0.65), orbit: range(rnd, 0.1, 0.35) },
+      lively: { speed: range(rnd, 0.9, 1.2), drag: range(rnd, 0.2, 0.4), flow: range(rnd, 0.25, 0.5), trails: range(rnd, 0.35, 0.65), glow: range(rnd, 0.55, 0.75), orbit: range(rnd, 0.25, 0.55) },
+      wild: { speed: range(rnd, 1.1, 1.5), drag: range(rnd, 0.05, 0.25), flow: range(rnd, 0.4, 0.8), strength: range(rnd, 1.1, 1.8), trails: range(rnd, 0.4, 0.8), glow: range(rnd, 0.65, 0.9) },
+      crystal: { speed: range(rnd, 0.6, 1), drag: range(rnd, 0.4, 0.7), flow: range(rnd, 0, 0.15), trails: range(rnd, 0.1, 0.35), sparkle: range(rnd, 0.5, 0.9), size: range(rnd, 0.6, 0.9), depth: range(rnd, 0.1, 0.4) }
+    }[character];
+    return sanitizeScene({
+      depth: range(rnd, 0.2, 0.9),
+      focus: range(rnd, 0.15, 0.6),
+      size: range(rnd, 0.7, 1.4),
+      ...base,
+      ...byCharacter
+    });
+  }
+
+  // src/js/gfx/engine.js
+  function createEngine(canvas, opts = {}) {
+    const gl = canvas.getContext("webgl2");
+    if (!gl) throw new Error("webgl2");
+    let w = 1, h = 1, dpr = 1, particles = 0, renderScale = 1;
+    const engine = {
+      caps: { maxParticles: 1 << 18, tier: "mid", renderer: "stub", halfFloat: true },
+      get aspect() {
+        return w / h;
+      },
+      resize(cw, ch, d) {
+        w = cw;
+        h = ch;
+        dpr = d;
+        canvas.width = Math.round(cw * d);
+        canvas.height = Math.round(ch * d);
+        canvas.style.width = cw + "px";
+        canvas.style.height = ch + "px";
+      },
+      setQuality(q) {
+        particles = q.particles;
+        renderScale = q.renderScale;
+      },
+      frame(f) {
+        gl.clearColor(0.02, 0.01, 0.03, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+      },
+      pulse() {
+      },
+      release() {
+      },
+      screenToWorld(px, py) {
+        const a = w / h;
+        return { x: (px / w * 2 - 1) * a, y: 1 - py / h * 2 };
+      },
+      worldToScreen(x, y) {
+        const a = w / h;
+        return { px: (x / a + 1) * 0.5 * w, py: (1 - y) * 0.5 * h };
+      },
+      capture(mime = "image/png") {
+        return new Promise((res) => canvas.toBlob(res, mime));
+      },
+      captureStream(fps) {
+        return canvas.captureStream(fps);
+      },
+      get stats() {
+        return { particles, renderScale, width: canvas.width, height: canvas.height };
+      },
+      dispose() {
+      }
+    };
+    return engine;
+  }
+
+  // src/js/input/pointers.js
+  function createPointers(target, { screenToWorld, getSettings }) {
+    const ev = createEmitter();
+    const live = /* @__PURE__ */ new Map();
+    const onDown = (e) => {
+      const r = target.getBoundingClientRect();
+      const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+      const p = { x: w.x, y: w.y, vx: 0, vy: 0, power: 1, age: 0, held: true, id: "t" + e.pointerId, kind: "touch" };
+      live.set(e.pointerId, p);
+      target.setPointerCapture?.(e.pointerId);
+      ev.emit("activity");
+      ev.emit("down", { x: p.x, y: p.y, power: 1, id: p.id, kind: "touch" });
+    };
+    const onMove = (e) => {
+      const p = live.get(e.pointerId);
+      if (!p) return;
+      const r = target.getBoundingClientRect();
+      const w = screenToWorld(e.clientX - r.left, e.clientY - r.top);
+      p.x = w.x;
+      p.y = w.y;
+      ev.emit("activity");
+    };
+    const onUp = (e) => {
+      const p = live.get(e.pointerId);
+      if (!p) return;
+      live.delete(e.pointerId);
+      ev.emit("up", { x: p.x, y: p.y, vx: 0, vy: 0, power: 1, heldFor: p.age, id: p.id });
+    };
+    target.addEventListener("pointerdown", onDown);
+    target.addEventListener("pointermove", onMove);
+    target.addEventListener("pointerup", onUp);
+    target.addEventListener("pointercancel", onUp);
+    return {
+      update(dt) {
+        for (const p of live.values()) p.age += dt;
+      },
+      poles: () => [...live.values()].map((p) => ({ ...p })),
+      active: () => live.size,
+      clearPins() {
+      },
+      on: ev.on,
+      dispose() {
+      }
+    };
+  }
+
+  // src/js/input/keyboard.js
+  function createKeyboard({ store, actions, pointers }) {
+    return { poles: () => [], dispose() {
+    } };
+  }
+
+  // src/js/input/autopilot.js
+  function createAutopilot({ seed = 1 } = {}) {
+    return {
+      update(dt, time, aspect) {
+        const x = Math.sin(time * 0.31) * aspect * 0.5, y = Math.sin(time * 0.23 + 1) * 0.5;
+        return [{ x, y, vx: 0, vy: 0, power: 1, age: time, held: true, id: "a0", kind: "auto" }];
+      },
+      reset() {
+      }
+    };
+  }
+
+  // src/js/input/tilt.js
+  function createTilt() {
+    return { async enable() {
+      return false;
+    }, disable() {
+    }, vector: () => ({ x: 0, y: -1, z: 0 }) };
+  }
+
+  // src/js/audio/audio.js
+  var SILENT = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
+  function createAudio({ getSettings }) {
+    return {
+      unlock() {
+      },
+      update() {
+      },
+      noteDown() {
+      },
+      noteUp() {
+      },
+      behaviourChanged() {
+      },
+      analysis: () => SILENT,
+      async startMic() {
+        return { ok: false, error: "not built yet" };
+      },
+      stopMic() {
+      },
+      async playFile() {
+        return { ok: false, error: "not built yet" };
+      },
+      stopFile() {
+      },
+      fileName: "",
+      recordTrack: () => null,
+      dispose() {
+      }
+    };
+  }
+
+  // src/js/platform/platform.js
+  function createPlatform() {
+    return {
+      native: false,
+      info: { native: false },
+      async saveFile() {
+        return { ok: false, error: "not built yet" };
+      },
+      async shareFile() {
+        return { ok: false, error: "not built yet" };
+      },
+      async shareLink() {
+        return { ok: false, error: "not built yet" };
+      },
+      vibrate() {
+      },
+      keepAwake() {
+      },
+      canFullscreen: () => false,
+      isFullscreen: () => false,
+      setFullscreen() {
+      },
+      onBack() {
+      }
+    };
+  }
+
+  // src/js/capture/capture.js
+  function createCapture({ engine, audio, platform }) {
+    const ev = createEmitter();
+    return {
+      async photo() {
+        return { ok: false, error: "not built yet" };
+      },
+      startRecording() {
+        return { ok: false, error: "not built yet" };
+      },
+      async stopRecording() {
+        return { ok: false, error: "not built yet" };
+      },
+      recording: false,
+      elapsed: 0,
+      mime: "",
+      on: ev.on
+    };
+  }
+
+  // src/js/ui/ui.js
+  function createUI({ root, store, actions, platform, audio, capture }) {
+    let open = false;
+    return {
+      update() {
+      },
+      showBehaviour() {
+      },
+      toast() {
+      },
+      announce() {
+      },
+      open() {
+        open = true;
+      },
+      close() {
+        open = false;
+      },
+      isOpen: () => open,
+      back() {
+        if (open) {
+          open = false;
+          return true;
+        }
+        return false;
+      },
+      setHidden() {
+      }
+    };
+  }
+
+  // src/js/main.js
+  var VERSION = "1.0.0";
+  var params = new URLSearchParams(location.search);
+  var TEST = params.has("test");
+  var forcedParticles = params.has("particles") ? clamp(parseInt(params.get("particles"), 10) || 0, 1024, 1 << 22) : 0;
+  var reducedMotionQuery = matchMedia("(prefers-reduced-motion: reduce)");
+  function showFatal(title, detail) {
+    const el = document.getElementById("fatal");
+    el.hidden = false;
+    el.replaceChildren();
+    const h = document.createElement("h1");
+    h.textContent = title;
+    const p = document.createElement("p");
+    p.textContent = detail;
+    el.append(h, p);
+  }
+  function effectiveScene(scene, settings) {
+    const calm = settings.calm;
+    const reduce = reducedMotionQuery.matches;
+    if (!calm && !reduce) return scene;
+    const k = calm ? 1 : 0.5;
+    return {
+      ...scene,
+      speed: scene.speed * (1 - 0.45 * k),
+      strength: scene.strength * (1 - 0.3 * k),
+      orbit: scene.orbit * (1 - k),
+      exposure: scene.exposure - 0.6 * k,
+      sparkle: scene.sparkle * (1 - 0.8 * k),
+      aberration: scene.aberration * (1 - k),
+      glow: scene.glow * (1 - 0.25 * k)
+    };
+  }
+  function boot() {
+    const canvas = document.getElementById("stage");
+    const uiRoot = document.getElementById("ui");
+    const code = sceneCodeFromHash(location.hash);
+    const linked = code ? decodeScene(code) : null;
+    const store = createStore({ initialScene: linked });
+    if (!linked && !store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: "preset" });
+    if (TEST) store.setSettings({ introSeen: true, autopilot: "off", haptics: false });
+    let engine;
+    try {
+      engine = createEngine(canvas, {
+        maxParticles: forcedParticles || 0,
+        onLost: () => {
+          running = false;
+        },
+        onRestored: () => {
+          running = true;
+          schedule();
+        }
+      });
+    } catch (e) {
+      console.warn(e);
+      showFatal("This device cannot draw Tactilume", "Tactilume needs WebGL 2, which this browser does not offer, or has switched off. An up-to-date Chrome, Edge, Firefox or Safari will work.");
+      return;
+    }
+    const caps = engine.caps;
+    const tier = caps.tier;
+    const tierInfo = TIERS[tier] || TIERS.mid;
+    const governor = createGovernor({
+      maxParticles: caps.maxParticles,
+      startParticles: forcedParticles || tierInfo.start,
+      mode: TEST ? "max" : store.settings.quality,
+      startScale: tier === "low" ? 0.75 : 1
+    });
+    if (forcedParticles) governor.freeze(true);
+    engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+    function resize() {
+      const vv = window.visualViewport;
+      const w = Math.round(vv ? vv.width : innerWidth);
+      const h = Math.round(vv ? vv.height : innerHeight);
+      engine.resize(w, h, Math.min(window.devicePixelRatio || 1, tier === "ultra" ? 2 : tier === "low" ? 1.25 : 2));
+    }
+    resize();
+    addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    const platform = createPlatform();
+    const audio = createAudio({ getSettings: () => store.settings });
+    const pointers = createPointers(canvas, { screenToWorld: (px, py) => engine.screenToWorld(px, py), getSettings: () => store.settings });
+    const autopilot = createAutopilot({ seed: TEST ? 7 : Date.now() & 16777215 });
+    const tilt = createTilt();
+    const capture = createCapture({ engine, audio, platform });
+    let uiHidden = false;
+    let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
+    let lastActivity = performance.now();
+    let autopilotForced = false;
+    const actions = {
+      loadPreset(key) {
+        const i = PRESETS.findIndex((p) => p.key === key);
+        if (i < 0) return;
+        presetCursor = i;
+        store.setScene(presetScene(key), { replace: true, source: "preset" });
+      },
+      stepPreset(delta) {
+        presetCursor = (presetCursor + delta + PRESETS.length) % PRESETS.length;
+        actions.loadPreset(PRESETS[presetCursor].key);
+        return PRESETS[presetCursor];
+      },
+      surprise() {
+        store.setScene(surpriseScene(Math.random), { replace: true, source: "surprise" });
+      },
+      resetScene() {
+        const p = PRESETS[presetCursor] || PRESETS[0];
+        store.setScene(presetScene(p.key), { replace: true, source: "preset" });
+      },
+      async photo() {
+        return capture.photo();
+      },
+      async toggleRecord() {
+        if (capture.recording) return capture.stopRecording();
+        return capture.startRecording({ maxSeconds: 60, withSound: store.settings.sound || store.settings.react !== "off" });
+      },
+      async shareLink() {
+        const url = location.href.split("#")[0].split("?")[0] + "#s=" + store.shareCode();
+        return platform.shareLink(url, store.scene.name ? `${store.scene.name}, on Tactilume` : "A scene on Tactilume");
+      },
+      clearPins() {
+        pointers.clearPins();
+      },
+      toggleFullscreen() {
+        platform.setFullscreen(!platform.isFullscreen());
+      },
+      toggleUI() {
+        uiHidden = !uiHidden;
+        ui.setHidden(uiHidden);
+      },
+      async setReact(mode, file) {
+        audio.unlock();
+        if (mode === "mic") {
+          const r = await audio.startMic();
+          store.setSettings({ react: r.ok ? "mic" : "off" });
+          return r;
+        }
+        if (mode === "file" && file) {
+          const r = await audio.playFile(file);
+          store.setSettings({ react: r.ok ? "file" : "off" });
+          return r;
+        }
+        audio.stopMic();
+        audio.stopFile();
+        store.setSettings({ react: "off" });
+        return { ok: true };
+      },
+      async enableTilt() {
+        const ok = await tilt.enable();
+        store.setSettings({ tilt: ok });
+        return ok;
+      },
+      unlock() {
+        audio.unlock();
+      },
+      toggleAutopilot() {
+        autopilotForced = !autopilotForced;
+        if (autopilotForced) autopilot.reset();
+        return autopilotForced;
+      }
+    };
+    const keyboard = createKeyboard({ store, actions, pointers });
+    const ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
+    const activity = () => {
+      lastActivity = performance.now();
+      if (autopilotForced && store.settings.autopilot !== "always") autopilotForced = false;
+    };
+    pointers.on("activity", activity);
+    pointers.on("down", (e) => {
+      engine.pulse(e.x, e.y, e.power);
+      audio.noteDown(e);
+      if (store.settings.haptics) platform.vibrate(6);
+    });
+    pointers.on("up", (e) => {
+      engine.release(e.x, e.y, e.power, e.heldFor);
+      audio.noteUp(e);
+    });
+    const unlockOnce = () => {
+      audio.unlock();
+    };
+    addEventListener("pointerdown", unlockOnce, { capture: true });
+    addEventListener("keydown", (e) => {
+      activity();
+      unlockOnce(e);
+    }, { capture: true });
+    store.on("settings", (s, keys) => {
+      if (keys.includes("quality") && !forcedParticles && !TEST) {
+        governor.setMode(s.quality);
+        engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+      }
+      if (keys.includes("tilt") && !s.tilt) tilt.disable();
+      if (keys.includes("sound") || keys.includes("react")) audio.unlock();
+    });
+    addEventListener("hashchange", () => {
+      const c = sceneCodeFromHash(location.hash);
+      if (c && store.loadShareCode(c)) ui.toast("Scene loaded from the link");
+    });
+    platform.onBack(() => ui.back());
+    const blend = { a: behaviourFor(store.scene, 1).key, b: behaviourFor(store.scene, 1).key, mix: 1 };
+    let running = true;
+    let rafId = 0;
+    let last = performance.now();
+    let time = 0;
+    let frames = 0;
+    let fps = 60;
+    let lastFingers = 0;
+    function schedule() {
+      if (!rafId && running && !document.hidden) rafId = requestAnimationFrame(tick);
+    }
+    function tick(now) {
+      rafId = 0;
+      if (!running) return;
+      const interval = Math.max(0, now - last);
+      const cap = store.settings.fpsCap;
+      const minInterval = cap === "30" ? 1e3 / 30 - 2 : cap === "60" ? 1e3 / 60 - 2 : 0;
+      if (interval < minInterval) {
+        schedule();
+        return;
+      }
+      last = now;
+      const dt = Math.min(interval / 1e3, 1 / 20);
+      time += dt;
+      fps += (1e3 / Math.max(interval, 1) - fps) * approach(dt, 0.5);
+      const settings = store.settings;
+      const scene = effectiveScene(store.scene, settings);
+      pointers.update(dt);
+      const idleFor = (now - lastActivity) / 1e3;
+      const auto = !TEST && settings.autopilot !== "off" && (settings.autopilot === "always" || autopilotForced || idleFor > settings.idleSeconds);
+      const userPoles = pointers.poles().concat(keyboard.poles());
+      const autoPoles = auto && pointers.active() === 0 ? autopilot.update(dt, time, engine.aspect) : [];
+      const raw = userPoles.length ? userPoles : autoPoles;
+      const fingers = fingerCount(raw, settings.virtualFingers);
+      const poles = expandPoles(raw, { symmetry: scene.symmetry, mirror: scene.mirror, virtualFingers: settings.virtualFingers, time });
+      if (fingers > 0) {
+        const target = behaviourFor(scene, fingers).key;
+        if (target !== blend.b) {
+          blend.a = blend.mix > 0.5 ? blend.b : blend.a;
+          blend.b = target;
+          blend.mix = 0;
+          const b = behaviourByKey(target);
+          if (settings.hints) ui.showBehaviour(b);
+          audio.behaviourChanged(target);
+        }
+      }
+      blend.mix = Math.min(1, blend.mix + dt / 0.45);
+      lastFingers = fingers;
+      const sound = audio.analysis();
+      audio.update(dt, { poles, fingers, behaviour: blend.b, scene });
+      engine.frame({
+        dt,
+        time,
+        scene,
+        settings,
+        poles,
+        fingers,
+        behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
+        audio: sound,
+        gravity: settings.tilt ? tilt.vector() : { x: 0, y: -1, z: 0 }
+      });
+      if (!capture.recording && governor.sample(interval, dt)) {
+        engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+      }
+      ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: auto && !userPoles.length });
+      frames++;
+      if (frames === 2) hook.ready = true;
+      schedule();
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.hidden) {
+        store.flush();
+        platform.keepAwake(false);
+      } else {
+        last = performance.now();
+        platform.keepAwake(true);
+        schedule();
+      }
+    });
+    addEventListener("pagehide", () => store.flush());
+    platform.keepAwake(true);
+    const hook = {
+      version: VERSION,
+      ready: false,
+      test: TEST,
+      store,
+      engine,
+      governor,
+      pointers,
+      keyboard,
+      autopilot,
+      audio,
+      capture,
+      platform,
+      ui,
+      actions,
+      get frames() {
+        return frames;
+      },
+      get fingers() {
+        return lastFingers;
+      },
+      get behaviour() {
+        return { ...blend };
+      }
+    };
+    window.TACTILUME = hook;
+    schedule();
+  }
+  try {
+    boot();
+  } catch (e) {
+    console.error(e);
+    showFatal("Tactilume could not start", String(e && e.message ? e.message : e));
+  }
+})();
+
+</script>
+</body>
+</html>

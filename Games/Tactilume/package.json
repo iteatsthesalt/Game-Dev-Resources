@@ -1,0 +1,17 @@
+{
+  "name": "tactilume",
+  "private": true,
+  "type": "module",
+  "description": "Tactilume, a multi-touch particle light toy in one HTML file, built from src/",
+  "scripts": {
+    "build": "node tools/build.js",
+    "check": "node tools/build.js --check",
+    "unit": "node --test tests/unit/*.test.js",
+    "play": "node tests/run.js",
+    "test": "node tools/build.js --check && node --test tests/unit/*.test.js && node tests/run.js"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.2",
+    "playwright": "1.63.0"
+  }
+}
