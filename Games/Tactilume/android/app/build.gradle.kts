@@ -79,16 +79,17 @@ abstract class CopyWebApp : DefaultTask() {
     }
 }
 
-val copyWebApp = tasks.register<CopyWebApp>("copyWebApp") {
-    description = "Copies ../Tactilume.html into the app's assets as index.html."
-    page.from(rootProject.layout.projectDirectory.file("../Tactilume.html"))
-    outputDir.set(layout.buildDirectory.dir("generated/webassets"))
-}
+val webApp = rootProject.layout.projectDirectory.file("../Tactilume.html")
 
-// Registering the folder as a generated asset source makes every task that reads assets
-// (merging, lint, packaging) depend on copyWebApp automatically.
+// One copy task per variant, registered as a generated asset folder: every task that reads
+// assets (merging, lint, packaging) then depends on it without hand-made wiring, and AGP
+// gives each variant its own folder under build/generated/assets/.
 androidComponents {
     onVariants { variant ->
-        variant.sources.assets?.addGeneratedSourceDirectory(copyWebApp, CopyWebApp::outputDir)
+        val copy = tasks.register<CopyWebApp>("copy${variant.name.replaceFirstChar(Char::uppercase)}WebApp") {
+            description = "Copies ../Tactilume.html into the ${variant.name} assets as index.html."
+            page.from(webApp)
+        }
+        variant.sources.assets?.addGeneratedSourceDirectory(copy, CopyWebApp::outputDir)
     }
 }
