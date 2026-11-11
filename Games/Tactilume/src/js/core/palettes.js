@@ -2,24 +2,28 @@
 // renderer bakes every palette into one row of a lookup texture and picks a
 // position along the row from the particle's speed, heat, seed, direction or depth.
 //
+// Palettes carry colour, not brightness: no stop is near black, because how bright a
+// speck is comes from its energy and heat. Low t is the deep, saturated end; high t
+// runs toward white-hot.
+//
 // Keys are saved in scenes and share links: never rename one. New palettes go at the end.
 // `safe` marks palettes that stay distinguishable for the common kinds of colour-vision deficiency.
 
 export const PALETTES = [
-  { key: 'ember', name: 'Ember', stops: ['#140202', '#5c0a04', '#d23a05', '#ff8a1e', '#ffd27a', '#fff6e0'] },
-  { key: 'aurora', name: 'Aurora', stops: ['#020b14', '#05405a', '#09a38a', '#6cf0a0', '#d8ff9a', '#f4fff0'] },
-  { key: 'abyss', name: 'Abyss', stops: ['#01030d', '#071a5e', '#1155d6', '#2fb5ff', '#a8f0ff', '#f0fcff'] },
-  { key: 'orchid', name: 'Orchid', stops: ['#0c0214', '#3d0a5c', '#9b1fc0', '#ff4fd8', '#ffb0e8', '#fff0fb'] },
-  { key: 'solar', name: 'Solar', stops: ['#100600', '#6a2300', '#e86a00', '#ffc21a', '#fff38a', '#fffde8'] },
-  { key: 'glacier', name: 'Glacier', stops: ['#020608', '#0f3442', '#3d8fa8', '#9fe0f0', '#e4fbff', '#ffffff'] },
-  { key: 'koi', name: 'Koi', stops: ['#050208', '#2b0d40', '#e0402a', '#ff9a3c', '#f4f0e0', '#7fd6ff'] },
+  { key: 'ember', name: 'Ember', stops: ['#8a1405', '#d2380a', '#ff7a1a', '#ffb347', '#ffe0a0', '#fff8ec'] },
+  { key: 'aurora', name: 'Aurora', stops: ['#0b4f6c', '#0a8f88', '#20d39a', '#8cf58c', '#e4ffa8', '#f6fff2'] },
+  { key: 'abyss', name: 'Abyss', stops: ['#1a2a9e', '#1f5ee0', '#2aa4ff', '#5fdcff', '#bff4ff', '#f2fdff'] },
+  { key: 'orchid', name: 'Orchid', stops: ['#5a138c', '#a41fc4', '#e83ad8', '#ff7ad0', '#ffc2ea', '#fff2fb'] },
+  { key: 'solar', name: 'Solar', stops: ['#a03200', '#e86400', '#ffa012', '#ffd23a', '#fff28a', '#fffdea'] },
+  { key: 'glacier', name: 'Glacier', stops: ['#1d5670', '#3b8eb0', '#6fc4e0', '#a8e8f6', '#e2fbff', '#ffffff'] },
+  { key: 'koi', name: 'Koi', stops: ['#c2281a', '#f05a2a', '#ff9a3c', '#ffd9a0', '#f4f2ea', '#8fd8ff'] },
   { key: 'prism', name: 'Prism', stops: ['#ff2a4a', '#ff9a1a', '#f4ff2a', '#2aff7a', '#2ad4ff', '#6a3aff', '#ff2ad8', '#ff2a4a'] },
-  { key: 'moss', name: 'Moss', safe: true, stops: ['#0a0418', '#30235c', '#255f86', '#1f9a8a', '#5fca5a', '#e8f028'] },
-  { key: 'lantern', name: 'Lantern', safe: true, stops: ['#00102e', '#1b2f6b', '#56588a', '#8f8576', '#d0b45a', '#fff0a0'] },
-  { key: 'silver', name: 'Silver', safe: true, stops: ['#020203', '#1a1c22', '#565c6a', '#a6adbc', '#e2e6ee', '#ffffff'] },
-  { key: 'infrared', name: 'Infrared', stops: ['#000000', '#2a0030', '#8a0050', '#ff2a2a', '#ffb000', '#ffffd8'] },
-  { key: 'peacock', name: 'Peacock', stops: ['#020a08', '#06363a', '#0a7f7a', '#2a5fd8', '#a03ae0', '#f0d8ff'] },
-  { key: 'twilight', name: 'Twilight', stops: ['#05030f', '#241448', '#6a2a7a', '#d0506a', '#ffa070', '#ffe8c8'] },
+  { key: 'moss', name: 'Moss', safe: true, stops: ['#46337e', '#355f8d', '#26828e', '#1fa187', '#6ece58', '#e8f028'] },
+  { key: 'lantern', name: 'Lantern', safe: true, stops: ['#1f3f8f', '#4a5f9a', '#7c7b8c', '#b09c6a', '#dcbc4c', '#fff0a0'] },
+  { key: 'silver', name: 'Silver', safe: true, stops: ['#4a5160', '#6e7686', '#9aa2b4', '#c4cbd8', '#e6eaf2', '#ffffff'] },
+  { key: 'infrared', name: 'Infrared', stops: ['#5a0a7a', '#a0105a', '#ff2a2a', '#ff7a00', '#ffc400', '#ffffd8'] },
+  { key: 'peacock', name: 'Peacock', stops: ['#0a6a62', '#0e9a8c', '#2a72e0', '#6a4ae8', '#b45ae8', '#f0dcff'] },
+  { key: 'twilight', name: 'Twilight', stops: ['#3c2478', '#7a2f8a', '#c84a78', '#ff7a6a', '#ffb488', '#ffeedc'] },
 ];
 
 export const PALETTE_KEYS = PALETTES.map((p) => p.key);
