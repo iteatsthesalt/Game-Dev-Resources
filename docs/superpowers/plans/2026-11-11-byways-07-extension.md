@@ -1377,39 +1377,49 @@ git commit -m "Upload the extension zips from CI and run the extension spec ther
 
 Expected on the next CI run: the web job passes and lists the `byways-extensions` artifact with two zips.
 
-### Task 9: Firefox manual checks
+### Task 9: Manual extension checks
 
-Playwright cannot drive Firefox extensions, so these checks are done by hand before each release.
+Playwright cannot drive Firefox extensions, press the real toolbar button or send real browser shortcuts, so these checks are done by hand before each release.
 
 **Files:**
-- Create or modify: `CHECKLIST.md` (add a section; Plan 09 owns the rest of the file)
+- Create: `CHECKLIST.md`. Plan 07 runs before Plan 09, so it creates the file; Plan 09 adds its own sections and keeps these two.
 
 **Interfaces:**
-- Consumes: `dist/firefox/` (Task 2).
-- Produces: the `## Firefox extension (manual)` section.
+- Consumes: `dist/firefox/` and `dist/chrome/` (Task 2).
+- Produces: the `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections.
 
-- [ ] **Step 1: Write the section**
+- [ ] **Step 1: Write the two sections**
 
-A short numbered list, each item one check with its expected result:
+Each is a short numbered list, each item one check with its expected result.
+
+`## Firefox extension (manual)`:
 1. Run `npm run build`. In Firefox 140 or later, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on…** and pick `dist/firefox/manifest.json`. It loads with no errors. The only expected warning is about `background.service_worker`.
 2. The module background starts (spec §20, "Firefox module background"). `about:debugging` → **Inspect** shows `bg.js` with no errors.
 3. The toolbar button loads a find in the current tab.
 4. Alt+Shift+B opens the sidebar, which shows that find's card.
-5. Alt+Shift+M on a web page opens the sidebar and starts a Rabbit Hole. On `about:addons` the sidebar says "More like this page works only on web pages."
+5. Alt+Shift+M on a web page opens the sidebar and asks once for Firefox's browsing-activity data permission. Refuse: the sidebar says "More like this page needs permission to send this site's address to Marginalia. Nothing was sent." Allow: a Rabbit Hole starts. On `about:addons` the sidebar says "More like this page works only on web pages." This also checks that Firefox 140 knows `permissions.request({data_collection})`, which could not be read on MDN when this plan was written.
 6. In `about:addons` → Byways → Permissions, turn off one site, then restart Firefox. The toolbar badge shows `!`, and the sidebar shows **Grant access**. Pressing it brings the access back and hides the banner.
-7. **Start** in the sidebar opens `permission.html` once when the mic is not granted. After the grant, press **Start** again and say "next". This works on Firefox 160 or later. On older versions, Settings → Voice says why there is no voice.
+7. **Start** in the sidebar opens `permission.html` once when the mic is not granted. After the grant, press **Start** again and say "next". This works on Firefox 160 or later. On older versions, Settings → Voice says why there is no voice. The sidebar reads cards aloud but never moves on by itself.
 8. In the Byways tab, **Open** uses a new tab, and lean-back moves on by itself after the dwell time.
 9. The Lab button opens `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/`.
-10. The install prompt shows no required data collection. Check `data_collection_permissions` against AMO's current list.
+10. Settings → AI → **Connect OpenRouter** asks for the identity permission, finishes in Firefox's sign-in window, and saves the key.
+11. The install prompt shows no required data collection. Check `data_collection_permissions` against AMO's current list (by hand only: there is no automatic check).
 
-- [ ] **Step 2: Check the section is there**
+`## Chrome and Edge extension (manual)`:
+1. Run `npm run build`, open `chrome://extensions` (or `edge://extensions`), turn on developer mode and **Load unpacked** `dist/chrome`. The toolbar button loads a find in the current tab, and Alt+Shift+S does the same.
+2. Alt+Shift+B opens the side panel, which shows that find's card.
+3. Alt+Shift+M on a web page opens the side panel and starts a Rabbit Hole. On `chrome://newtab` the panel says "More like this page works only on web pages."
+4. With the side panel open next to a web page, Alt+Shift+V turns listening off and on in the panel. With a Byways tab in front, it does so in that tab only.
+5. Settings → AI → **Connect OpenRouter** asks for the identity permission, finishes in the browser's sign-in window, and saves the key (spec §12.8, "to verify").
 
-Run: `grep -c "Load Temporary Add-on" CHECKLIST.md`
-Expected: `1`.
+- [ ] **Step 2: Check the sections are there**
+
+Run: `grep -c "Load Temporary Add-on" CHECKLIST.md && grep -c "extension (manual)$" CHECKLIST.md`
+Expected: `1`, then `2`.
 
 - [ ] **Step 3: Commit**
 
 ```bash
 git add CHECKLIST.md
-git commit -m "Add the Firefox extension manual checks"
+git commit -m "Add the manual extension checks"
 ```

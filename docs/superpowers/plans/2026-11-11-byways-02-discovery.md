@@ -2314,7 +2314,7 @@ git add src/ui/views/settings/taste.js src/ui/views/index.js tests/e2e/settings-
 git commit -m "Add Your taste settings and the first-run interests step"
 ```
 
-### Task 28: Sources and Data settings
+### Task 28: Sources settings and keys
 
 **Files:**
 - Create: `src/ui/views/settings/sources.js`

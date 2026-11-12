@@ -1249,21 +1249,21 @@ git commit -m "Add the daily link check and leave out links that failed twice"
 
 ---
 
-### Task 11: The daily data job
+### Task 13: The daily data job
 
 **Files:**
 - Create: `tools/data-job.js`, `tests/fixtures/http/datajob/smallweb.txt`, `tests/fixtures/http/datajob/webring.html`
 - Test: `tests/unit/data-job.test.js`
 
 **Interfaces:**
-- Consumes: `createHttp`, `createCache`, `openStore(memoryBackend())`, `mulberry32`, `fnv1a32`, `utcDate`, `makeFind`, `toPlainText`, `isHttpUrl`, `siteOrigin`, `domainOf`; `createIaClient` (Task 1); `VAULT_COLLECTIONS`, `gemQuery`, `gemScore`, `CURATED_COLLECTIONS`, `iaDocToFind`, `validateCollections` (Task 2); `dailySeed`, `wikiFeaturedToFind`, `apodToFind`, `libraryEntryToFind` (Task 3); `ITCH_FEEDS`, `parseItchRss` (Task 5); `USER_AGENT`, `checkLibrary` (Task 10).
-- Produces: `runDataJob({fetch, clock, date, outDir, srcDir = 'src/data', liveBase, apodKey = 'DEMO_KEY'}) → Promise<{written: string[], kept: string[], failed: string[]}>`. CLI: `node tools/data-job.js --out dist/pwa/data --live <Pages base URL> [--date YYYY-MM-DD]` (`npm run data`). The date defaults to today in UTC, and `apodKey` comes from `NASA_API_KEY` or `DEMO_KEY`.
+- Consumes: `createHttp`, `createCache`, `openStore(memoryBackend())`, `mulberry32`, `fnv1a32`, `utcDate`, `makeFind`, `toPlainText`, `isHttpUrl`, `siteOrigin`, `domainOf`; `createIaClient` (Task 1); `VAULT_COLLECTIONS`, `gemQuery`, `gemScore`, `CURATED_COLLECTIONS`, `iaDocToFind`, `validateCollections` (Task 2); `dailySeed`, `wikiFeaturedToFind`, `apodToFind`, `libraryEntryToFind` (Task 3); `ITCH_FEEDS`, `parseItchRss` (Task 7); `USER_AGENT`, `checkLibrary` (Task 12) and `excludeDeadLinks` (Task 12, `tools/build.js`).
+- Produces: `runDataJob({fetch, clock, date, outDir, srcDir = 'src/data', liveBase, apodKey = 'DEMO_KEY'}) → Promise<{written: string[], kept: string[], failed: string[]}>`; the `webrings.json` and `neocities.json` shapes below (read by Task 14). CLI: `node tools/data-job.js [--out dist/pwa/data] [--live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/] [--date YYYY-MM-DD]` (`npm run data`), with those defaults. The date defaults to today in UTC, and `apodKey` comes from `NASA_API_KEY` or `DEMO_KEY`.
 
 Fixtures: `smallweb.txt` has these lines: `[DEBUG] Cross-domain redirect from x`, `https://alpha.example/feed.xml`, `https://beta.example/rss`, `https://alpha.example/atom.xml`, `https://gamma.example/index.xml`, `not a url`. `webring.html` has six `<li data-lang="en" id="ring<n>"><a href="https://ring<n>.example/">ring<n></a></li>` lines for n = 1–6.
 
 - [ ] **Step 1: Write the failing tests**
 
-`job = (over) => runDataJob({fetch: net.fetch, clock: instantClock(Date.UTC(2026, 10, 11, 0, 7)), date: '2026-11-11', outDir: tmp, srcDir: 'tests/fixtures/http/daily', liveBase: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/', ...over})`, with `tmp` a fresh `fs.mkdtemp` folder per test. Default routes: the Task 7 archive.org routes, the Task 9 Wikipedia and APOD routes, `/itch\.io\/games/` → `itch/platform-web.xml`, `/raw\.githubusercontent\.com\/kagisearch/` → `datajob/smallweb.txt`, `/raw\.githubusercontent\.com\/XXIIVV/` → `datajob/webring.html`, `/neocities\.org/` → 404, `/\.example\//` → 200 and `/iteatsthesalt\.github\.io/` → 404. `read = (n) => JSON.parse(readFileSync(join(tmp, n), 'utf8'))`.
+`job = (over) => runDataJob({fetch: net.fetch, clock: instantClock(Date.UTC(2026, 10, 11, 0, 7)), date: '2026-11-11', outDir: tmp, srcDir: 'tests/fixtures/http/daily', liveBase: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/', ...over})`, with `tmp` a fresh `fs.mkdtemp` folder per test and `net = fakeFetch([...the test's own routes, ...DEFAULTS])`. `DEFAULTS`, as `fakeFetch` pairs where `file(p) = () => ({body: readFixture(p)})`: `/rows=0/` → `file('ia/count-250.json')`, `/advancedsearch/` → `file('ia/search-gems.json')`, `/\/metadata\//` → `file('ia/meta-collection.json')`, `/feed\/featured\//` → `file('daily/wiki-featured.json')`, `/api\.nasa\.gov/` → `file('daily/apod.json')`, `/itch\.io\/games/` → `file('itch/platform-web.xml')`, `/raw\.githubusercontent\.com\/kagisearch/` → `file('datajob/smallweb.txt')`, `/raw\.githubusercontent\.com\/XXIIVV/` → `file('datajob/webring.html')`, `/neocities\.org/` → 404, `/\.example\//` → 200 and `/iteatsthesalt\.github\.io/` → 404. `read = (n) => JSON.parse(readFileSync(join(tmp, n), 'utf8'))`.
 
 ```js
 test('writes the data files for a date with the main recipe', async () => {
@@ -1271,7 +1271,7 @@ test('writes the data files for a date with the main recipe', async () => {
   assert.deepEqual(r.written.sort(), ['daily.json', 'itch.json', 'linkcheck.json', 'vault-index.json', 'webrings.json']);
   const d = read('daily.json');
   assert.deepEqual([d.v, d.date, d.picks.map((p) => p.slot)], [1, '2026-11-11', ['game', 'web', 'wonder']]);
-  assert.deepEqual(d.picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth.jpg']);
+  assert.deepEqual(d.picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth']);
   const s = new URL(net.calls.find((c) => /[?&]rows=1(&|$)/.test(c.url)).url).searchParams;
   assert.equal(s.get('q'), 'collection:(softwarelibrary_c64_games) AND mediatype:software AND downloads:[20 TO 3000] AND publicdate:[* TO 2026-11-11T00:00:00Z]');
   assert.equal(s.get('page'), '92');
