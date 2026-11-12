@@ -25,11 +25,20 @@ test('axe passes in the light, dark and high-contrast themes', async ({ page }) 
     await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme); await expectNoSeriousA11y(page);
   }
 });
-test('toPlainText takes well under 200 ms on 10,000 characters of unclosed tags', async ({ page }) => {
-  expect(await page.evaluate(async () => {
+test('toPlainText survives 10,000 characters of unclosed tags', async ({ page }) => {
+  const { outputs, elapsed } = await page.evaluate(async () => {
     const { toPlainText } = await import(new URL('core/util/text.js', document.baseURI).href);
-    const start = performance.now(); toPlainText('<a'.repeat(5000)); return performance.now() - start;
-  })).toBeLessThan(200);
+    // Worst cases for backtracking: about 10,000 characters in which no tag ever closes.
+    const unclosed = ['<a'.repeat(5000), '<a "'.repeat(2500), '<a b'.repeat(2500)];
+    const start = performance.now();
+    const outputs = unclosed.map(toPlainText);
+    return { outputs, elapsed: performance.now() - start };
+  });
+  // The HTML parser drops a tag that hits the end of input unclosed, so the inert template parse leaves no text at all.
+  expect(outputs).toEqual(['', '', '']);
+  // Regression tripwire against catastrophic backtracking, not a benchmark: the old cubic pattern took seconds on
+  // 3,000 characters, so only a cubic or exponential regex crosses this bound on any machine. Measured once, around the loop.
+  expect(elapsed, `unclosed-tag inputs took ${elapsed} ms`).toBeLessThan(5000);
 });
 test('toPlainText gives the same text with the inert template parse', async ({ page }) => {
   expect(await page.evaluate(async () => {
