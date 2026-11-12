@@ -1403,7 +1403,7 @@ git commit -m "Serve the Lab on its own origin with a save-only bridge"
   - `platform.attach(app) → Promise<void>`. `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
   - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. The card's **⋯** menu and the hands-free dialogs close themselves on it and call `event.preventDefault()`.
   - `installFakeAndroidBridge(page, {hello?, update?, probe?, auth?, pending?}) → Promise<{native: () => Promise<object[]>, emit(ch, event, data)}>` in `tests/e2e/helpers/fakes.js`.
-  - In `tests/e2e/android.spec.js`, the helpers `openAndroid(page, opts)`, `sent(ch, op)` and `backResult(token)`, which Task 15 reuses.
+  - In `tests/e2e/android.spec.js`, the helpers `openAndroid(page, opts)`, `button(page, name)`, `sent(ch, op)` and `backResult(token)`, which Task 15 reuses.
 
 - [ ] **Step 1: Add the fake bridge helper**
 
@@ -1426,7 +1426,7 @@ Through `addInitScript`, `installFakeAndroidBridge` defines `window.BywaysNative
 
 - [ ] **Step 2: Write the failing e2e spec**
 
-`tests/e2e/android.spec.js` imports `test` and `expect` from `./helpers/net.js` (so `mockNet` runs first, and `unmocked(page)` and `pageProblems(page)` must stay empty), `gotoApp` and `skipFirstRun` from `./helpers/app.js`, and `installFakeAndroidBridge` from `./helpers/fakes.js`. Each test starts with `openAndroid`, so each can pass its own options:
+`tests/e2e/android.spec.js` imports `test` and `expect` from `./helpers/net.js` (so `mockNet` runs first, and `unmocked(page)` and `pageProblems(page)` must stay empty), `gotoApp` and `skipFirstRun` from `./helpers/app.js`, `installFakeAndroidBridge` from `./helpers/fakes.js` and `join` from `node:path`. The route added in `openAndroid` is newer than `mockNet`'s, so it serves the app's own files. Each test starts with `openAndroid`, so each can pass its own options:
 
 ```js
 const WWW = 'shells/android/app/src/main/assets/www';
@@ -1565,7 +1565,7 @@ git commit -m "Wire share-in, Back, the site view and hands-free into the Androi
 - Test: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `sent` and the fake (Task 14).
+- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `button`, `sent` and the fake (Task 14).
 - Produces: the UI for `goStraightToSite` (already in `DEFAULT_SETTINGS`), which Task 14's `attach` reads.
 
 - [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`)
@@ -1612,10 +1612,10 @@ test('cloud-only voice waits for the vendor opt-in', async ({ page }) => {
 });
 test('Tap to talk listens on a tap', async ({ page }) => {
   await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: 'x' } });
-  await page.getByRole('button', { name: 'Start' }).click();
-  await expect(page.getByRole('button', { name: 'Tap to talk' })).toBeVisible();
+  await button(page, 'Start').click();
+  await expect(button(page, 'Tap to talk')).toBeVisible();
   expect((await sent('voice', 'start')).length).toBe(0);
-  await page.getByRole('button', { name: 'Tap to talk' }).click();
+  await button(page, 'Tap to talk').click();
   await expect.poll(async () => (await sent('voice', 'start')).length).toBe(1);
 });
 ```
