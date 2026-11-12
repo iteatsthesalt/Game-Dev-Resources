@@ -2,7 +2,10 @@
 // See CONTRACTS.md, "preload/preload.js". The renderer gets these functions and nothing
 // else; it never sees ipcRenderer, Node or the network.
 //
-// First version, written by the spine. The shell-ui part owns this file and replaces it.
+// The bridge passes arguments through as they are: main checks every one, so a page that
+// skipped this file could not do more than a page that uses it. What it guards here is what
+// main cannot see: a listener gets the event's data only, never the IPC event object (whose
+// `sender` would hand the page ipcRenderer itself).
 import { contextBridge, ipcRenderer } from 'electron';
 
 // main.js passes the app version on the command line (webPreferences.additionalArguments)
@@ -15,20 +18,21 @@ contextBridge.exposeInMainWorld('tactilume', {
   platform: process.platform,
   link: {
     info: () => invoke('link:info'),
-    setAllowNew: (on) => invoke('link:allowNew', on === true),
+    setAllowNew: (on) => invoke('link:allowNew', on),
     rotateToken: () => invoke('link:rotate'),
     send: (player, msg) => invoke('link:send', player, msg),
-    // returns a function that stops listening; the IPC event object itself never leaks out
+    // → a function that stops listening
     onEvent(fn) {
+      if (typeof fn !== 'function') throw new TypeError('link.onEvent takes a function');
       const listener = (_event, e) => fn(e);
       ipcRenderer.on('link:event', listener);
-      return () => ipcRenderer.removeListener('link:event', listener);
+      return () => { ipcRenderer.removeListener('link:event', listener); };
     },
   },
   app: {
     getSettings: () => invoke('app:settings:get'),
     setSettings: (partial) => invoke('app:settings:set', partial),
-    setFullscreen: (on) => invoke('app:fullscreen', on === true),
+    setFullscreen: (on) => invoke('app:fullscreen', on),
     isFullscreen: () => invoke('app:fullscreen'),
     gpuInfo: () => invoke('app:gpu'),
     ready: () => invoke('app:ready'),

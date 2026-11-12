@@ -7,7 +7,15 @@
 //   present=0    draw offscreen only (headless browsers cannot present a WebGPU canvas)
 //   webgpu=0     go straight to the classic (mobile, WebGL2) engine
 //
-// First version, written by the spine. The shell-ui part owns this file and replaces it.
+// Beyond CONTRACTS.md:
+//   - The desktop settings also hold particleMode: 'auto' (the count measured once per GPU,
+//     `particles`, which the governor adjusts as it plays) or 'manual' (the count the person
+//     chose, `manualParticles`, left alone). Choosing by hand keeps the measured count, so
+//     going back to Auto needs no new measurement.
+//   - actions.measure() runs the benchmark again; actions.setParticles(n) picks a count by
+//     hand, and actions.setParticles('auto') goes back to the measured one.
+//   - The test hook also has desktop (the desktop settings), gamepads, phones, pointer and
+//     settings() (what the engine is given: the shared settings with the desktop ones).
 import { clamp, mulberry32 } from '../../../Tactilume/src/js/core/util.js';
 import { BEHAVIOUR_KEYS, behaviourFor, behaviourByKey } from '../../../Tactilume/src/js/core/behaviours.js';
 import { PALETTE_KEYS, PALETTES, paletteIndex } from '../../../Tactilume/src/js/core/palettes.js';
@@ -37,23 +45,31 @@ const forcedParticles = params.has('particles') ? clamp(parseInt(params.get('par
 const IDLE_SECONDS = 20;            // nobody has played for this long: autoplay takes over
 const BLEND_SECONDS = 0.45;         // the crossfade between behaviours, as on mobile
 const START_PARTICLES = 1 << 20;    // until the first-run benchmark has measured this computer
+const MIN_PARTICLES = 1 << 14;      // the fewest the governor or a person may choose
 const BEHAVIOUR_CYCLE = ['auto', ...BEHAVIOUR_KEYS];
 
 // What the tests and curious people in the console can reach. Filled in as boot goes on.
-const hook = { ready: false, version: '', engine: null, hub: null, store: null, audio: null, ui: null, actions: null, bridge: null, frames: 0, fallback: false };
+const hook = {
+  ready: false, version: '', engine: null, hub: null, store: null, audio: null, ui: null, actions: null, bridge: null,
+  frames: 0, fallback: false, desktop: null, gamepads: null, phones: null, pointer: null, settings: () => null,
+};
 window.TACTILUME_DESKTOP = hook;
 
 // ---- desktop-only settings ------------------------------------------------------------
 // The scene and the shared settings live in the mobile store (so a scene made on a phone
 // opens here); these few exist only on the desktop.
 const DESKTOP_KEY = 'tactilume.desktop.v1';
-const DESKTOP_DEFAULTS = Object.freeze({ particles: 0, calibratedFor: '', hdr: 'auto', teamColors: true, haptics: true, intro: true });
+const DESKTOP_DEFAULTS = Object.freeze({ particles: 0, particleMode: 'auto', manualParticles: 0, calibratedFor: '', hdr: 'auto', teamColors: true, haptics: true, intro: true });
+const isCount = (n) => Number.isInteger(n) && n >= 0 && n <= 2 ** 28;
 
 function cleanDesktop(src, base) {
   const s = src && typeof src === 'object' ? src : {};
   const out = { ...base };
-  // particles: the count in use, 0 until measured. calibratedFor: the adapter it was measured on.
-  if (Number.isInteger(s.particles) && s.particles >= 0 && s.particles <= 2 ** 28) out.particles = s.particles;
+  // particles: the measured count, 0 until measured. calibratedFor: the adapter it was
+  // measured on. manualParticles: the count chosen by hand, used while particleMode is 'manual'.
+  if (isCount(s.particles)) out.particles = s.particles;
+  if (isCount(s.manualParticles)) out.manualParticles = s.manualParticles;
+  if (s.particleMode === 'auto' || s.particleMode === 'manual') out.particleMode = s.particleMode;
   if (typeof s.calibratedFor === 'string') out.calibratedFor = s.calibratedFor.slice(0, 200);
   if (['auto', 'on', 'off'].includes(s.hdr)) out.hdr = s.hdr;
   for (const k of ['teamColors', 'haptics', 'intro']) if (typeof s[k] === 'boolean') out[k] = s[k];
@@ -67,7 +83,9 @@ function createDesktopSettings() {
   return {
     get: () => current,
     set(partial) {
-      current = cleanDesktop(partial, current);
+      const next = cleanDesktop(partial, current);
+      if (Object.keys(next).every((k) => next[k] === current[k])) return current;
+      current = next;
       try { localStorage.setItem(DESKTOP_KEY, JSON.stringify(current)); } catch { /* storage full or blocked */ }
       for (const fn of [...listeners]) fn(current);
       return current;
@@ -147,12 +165,14 @@ async function boot() {
   if (!store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: 'preset' });
   if (TEST) store.setSettings({ introSeen: true, autopilot: 'off', haptics: false }, { source: 'test' });
   const desktop = createDesktopSettings();
-  hook.store = store;
+  Object.assign(hook, { store, desktop });
+  const d = desktop.get();
+  const startCount = d.particleMode === 'manual' && d.manualParticles ? d.manualParticles : d.particles || START_PARTICLES;
 
   let engine;
   try {
     engine = await createEngine(canvas, {
-      particles: forcedParticles || desktop.get().particles || START_PARTICLES,
+      particles: forcedParticles || startCount,
       hdr: desktop.get().hdr,
       present: PRESENT,
       onLost: () => showFatal('The graphics stopped working', 'The GPU stopped answering twice. Restart Tactilume to play again.'),
@@ -167,19 +187,12 @@ async function boot() {
   resize();
   addEventListener('resize', resize);
 
-  // The first-run benchmark sets the particle count for this computer, once per GPU.
-  const refreshHz = TEST ? 60 : await measureRefresh();
-  const adapterKey = [engine.caps.adapter.vendor, engine.caps.adapter.architecture, engine.caps.adapter.description].join('|');
-  if (!TEST && !forcedParticles && desktop.get().calibratedFor !== adapterKey) {
-    const { particles } = await calibrate(engine, { refreshHz });
-    desktop.set({ particles, calibratedFor: adapterKey });
-    engine.setQuality({ particles });
-  }
-  const governor = createGovernor({ min: 1 << 14, max: engine.caps.maxParticles, start: engine.stats.particles, refreshHz });
-
   // ---- state the actions and the frame loop share ---------------------------------------
   let time = 0;                 // s of play, as the frame loop counts it
   let lastPlayed = -Infinity;   // when a person last touched or pulsed: nobody yet, so autoplay starts at once
+  let refreshHz = 60;           // measured before the first frame (60 in tests)
+  let governor = null;          // only while the count is automatic
+  let measuring = null;         // the benchmark's promise while it runs; the frame loop waits for it
   // The engine reads one settings object: the shared settings plus the desktop-only ones.
   let merged = null;
   let mergedFrom = null;
@@ -191,6 +204,35 @@ async function boot() {
     return merged;
   }
   desktop.on(() => { mergedFrom = null; });
+  const currentSettings = () => settingsFor(store.settings);
+  hook.settings = currentSettings;
+
+  // ---- the particle count --------------------------------------------------------------
+  // Measured once per GPU, so whatever computer it runs on becomes its own default; the
+  // adapter's names say which GPU a measurement belongs to.
+  const adapterKey = () => [engine.caps.adapter.vendor, engine.caps.adapter.architecture, engine.caps.adapter.description].join('|');
+  const particleRange = (n) => clamp(Math.round(n), Math.min(MIN_PARTICLES, engine.caps.maxParticles), engine.caps.maxParticles);
+  function startGovernor() {
+    const auto = !TEST && !forcedParticles && desktop.get().particleMode === 'auto';
+    governor = auto ? createGovernor({ min: MIN_PARTICLES, max: engine.caps.maxParticles, start: engine.stats.particles, refreshHz }) : null;
+  }
+  // → the count picked. The frame loop stands still meanwhile: the benchmark draws the frames.
+  function measure() {
+    if (measuring) return measuring;
+    measuring = (async () => {
+      ui?.measuring(true);
+      try {
+        const { particles } = await calibrate(engine, { refreshHz });
+        desktop.set({ particles, particleMode: 'auto', calibratedFor: adapterKey() });
+        return particles;
+      } finally {
+        measuring = null;
+        startGovernor();
+        ui?.measuring(false);
+      }
+    })();
+    return measuring;
+  }
 
   // ---- inputs, sound and the overlay ----------------------------------------------------
   const hub = createHub({ maxPoles: 64 });
@@ -247,20 +289,58 @@ async function boot() {
       say(`${f.label} ${Math.round(((store.scene[key] - f.min) / (f.max - f.min)) * 100)}%`);
     },
     toggleUI() { ui.toggle(); },
-    togglePhonePanel() { ui.showPhonePanel(!ui.isOpen()); },
+    togglePhonePanel() { ui.showPhonePanel(ui.panel !== 'phone'); },
     async toggleFullscreen() {
       const on = await bridge.app.isFullscreen();
       await bridge.app.setFullscreen(!on);
+      ui?.syncFullscreen(!on);
     },
     toast: say,
+    measure,
+    // a count picked by hand (left alone from then on), or 'auto' for the measured count
+    async setParticles(n) {
+      if (forcedParticles) return engine.stats.particles;
+      if (n === 'auto') {
+        const d = desktop.get();
+        desktop.set({ particleMode: 'auto' });
+        if (d.calibratedFor !== adapterKey() || !d.particles) return measure();
+        await engine.setQuality({ particles: d.particles });
+        startGovernor();
+        return engine.stats.particles;
+      }
+      if (!Number.isFinite(n)) return engine.stats.particles;
+      const count = particleRange(n);
+      desktop.set({ particleMode: 'manual', manualParticles: count });
+      governor = null;
+      await engine.setQuality({ particles: count });
+      return engine.stats.particles;
+    },
   };
 
   const pointer = createPointer(canvas, { engine, hub, actions });
-  const gamepads = createGamepads({ engine, hub, actions, getSettings: () => settingsFor(store.settings) });
-  const phones = createPhones({ bridge, hub, engine, actions, store });
+  const gamepads = createGamepads({ engine, hub, actions, getSettings: currentSettings });
+  const phones = createPhones({ bridge, hub, engine, actions, store, getSettings: currentSettings });
   const autopilot = createAutopilot({ seed: TEST ? 7 : Date.now() & 0xffffff });
-  ui = createUI({ root: document.getElementById('ui'), store, actions, bridge, engine, audio, hub, desktop });
-  Object.assign(hook, { hub, audio, ui, actions });
+  ui = createUI({
+    root: document.getElementById('ui'), store, actions, bridge, engine, audio, hub, desktop,
+    gamepads, cursorCanvas: document.getElementById('cursors'), test: TEST, particlesFixed: forcedParticles > 0,
+  });
+  Object.assign(hook, { hub, audio, ui, actions, gamepads, phones, pointer });
+
+  // ---- the first-run benchmark -----------------------------------------------------------
+  refreshHz = TEST ? 60 : await measureRefresh();
+  const d0 = desktop.get();
+  if (!TEST && !forcedParticles && d0.particleMode === 'auto' && d0.calibratedFor !== adapterKey()) {
+    try {
+      await measure();
+    } catch (e) {
+      // the light plays at the starting count; Settings offers to measure again
+      console.warn('The first-run measurement failed:', e);
+      say('Could not measure this computer. The light plays at a safe amount.');
+    }
+  } else {
+    startGovernor();
+  }
 
   // ---- the frame loop -------------------------------------------------------------------
   const first = behaviourFor(store.scene, 1).key;
@@ -272,6 +352,8 @@ async function boot() {
     requestAnimationFrame(tick);
     const interval = Math.max(0, now - last);
     last = now;
+    // the benchmark draws its own frames; play resumes where it was when it ends
+    if (measuring) return;
     const dt = Math.min(interval / 1000, 1 / 20);
     time += dt;
     try {
@@ -283,7 +365,7 @@ async function boot() {
   }
 
   function step(dt, interval, now) {
-    const settings = settingsFor(store.settings);
+    const settings = currentSettings();
     const scene = effectiveScene(store.scene, settings);
     pointer.update(dt);
     gamepads.update(dt, time);
@@ -319,15 +401,17 @@ async function boot() {
       players: hub.players().map(({ id, color }) => ({ id, color })),
     });
 
-    if (!TEST && !forcedParticles) {
+    if (governor) {
       const next = governor.update(interval, now);
       if (next) engine.setQuality({ particles: next });
     }
+    ui.update(dt);
 
     hook.frames++;
     if (hook.frames === 1) {
       hook.ready = true;
       bridge.app.ready().catch(() => {});
+      if (!TEST && desktop.get().intro) ui.showIntro();
     }
   }
 

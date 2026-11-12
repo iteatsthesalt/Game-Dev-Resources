@@ -1,43 +1,76 @@
-# Packaging for Windows, macOS and Linux: `npm run dist` builds dist/ and then packs it.
-# The builds are unsigned for now, so Windows SmartScreen and macOS Gatekeeper warn on the
-# first launch.
+# Packaging for Windows, macOS and Linux: `npm run dist` builds dist/ and then packs it for the
+# system it runs on, into release/. CI packs all three (.github/workflows/tactilume-desktop.yml).
 #
-# First version, written by the spine. The shell-ui part owns this file and replaces it.
+# The builds are not signed yet, so the first launch warns: Windows SmartScreen offers "More
+# info", then "Run anyway"; macOS needs System Settings, Privacy & Security, "Open Anyway".
+# Signing needs the developer accounts (docs/design.md, "Open questions").
 appId: app.tactilume.desktop
 productName: Tactilume
 directories:
   output: release
-# main.cjs bundles its dependencies, so the app needs only what the build made
+# main.cjs and preload.cjs carry their dependencies, so the app needs only what the build made
 files:
   - dist/**/*
+  - "!dist/**/*.tmp"
   - package.json
 asar: true
+# the overlay is in English, so Chromium's own words (its error pages, for one) are too
+electronLanguages:
+  - en-US
+
+# Fuses are switches compiled into Electron's binary. A shipped app does not need these, and
+# each is a way to turn the app into something else: running it as plain Node, NODE_OPTIONS,
+# --inspect, or loading code from outside its archive. The file:// privileges stay on: the
+# renderer is an ES module loaded from file://.
+electronFuses:
+  runAsNode: false
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  onlyLoadAppFromAsar: true
+  # Flipping fuses changes the binary, which breaks the ad-hoc signature Electron ships with,
+  # and Apple silicon will not start a binary without one. Unsigned (identity: null below),
+  # nothing else would sign it again.
+  resetAdHocDarwinSignature: true
 
 win:
   target:
     - target: nsis
       arch: [x64]
-# installs for the current person only, so no administrator rights are needed
+# Installs for the current person only, so no administrator rights are needed. (So it cannot
+# add a firewall rule either: Windows asks the first time phones are allowed in, and the phone
+# panel explains what to do if that was refused.)
 nsis:
   oneClick: true
   perMachine: false
+  shortcutName: Tactilume
+  artifactName: ${productName}-${version}-setup.${ext}
 
 mac:
   category: public.app-category.entertainment
+  # not signed (see the top of this file)
   identity: null
+  # Electron 45 runs on macOS 13 and later
+  minimumSystemVersion: "13.0"
   target:
     - target: dmg
       arch: [arm64, x64]
   extendInfo:
     NSMicrophoneUsageDescription: Tactilume listens to the microphone only when you choose it, to move the light with sound.
+    NSAudioCaptureUsageDescription: Tactilume listens to what this Mac plays only when you choose Computer audio, to move the light with it.
+    NSLocalNetworkUsageDescription: Phones on your network connect to Tactilume to play the light.
+dmg:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
 linux:
   category: AudioVideo
   executableName: tactilume
+  synopsis: A light show played with phones, gamepads and sound
   # a .deb needs a maintainer; without an e-mail in package.json it is named here
   maintainer: Tactilume
   target:
     - AppImage
     - deb
+appImage:
+  artifactName: ${productName}-${version}-${arch}.${ext}
 
 publish: null
