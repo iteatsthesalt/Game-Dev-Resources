@@ -35,7 +35,6 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 - **Schütz compute rasterizer:** "10 to 100 times faster than GL_POINTS", about 1B opaque points in about 8 ms on an RTX 3090, using a 64-bit `atomicMin`. Windows and NVIDIA only; MIT. [Verified: CRAST]
 - **Contended WebGPU atomics:** 62B ops/s on an RTX 4090 and 20B on an M1 Max, to a single address (aggregated); MIT. [Verified: PW]
 - **Aras (August 2025):** compute about 5x faster than built-in points on 30+ GPUs. A search summary ties the 5x to 4M points in 5x5 px (the dense case), with no subgroup tricks. [Unverified]
-- **Earlier Schütz papers:** 144.7B points/s (2022); 5.3x to 10x over GL_POINTS (2019). (search summary)
 - **Additive cost.** Additive splats issue an atomic for every particle, so plan on 1B to 10B splats/s on high-end GPUs until benchmarked; 100M particles are too slow for 240 Hz. Mitigations: per-tile accumulation, Morton order, fewer channels, subgroups. (Inference)
 - **`subgroups`:** Chrome 134+ (Linux 144+), not Firefox; present on the measured adapter with size 4. [Verified: BCD; Measured]
 
@@ -63,8 +62,7 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 - **Tone-mapping modes.** `GPUCanvasToneMappingMode` is `"standard"` (default) or `"extended"`; extended keeps values in the screen's extended range, possibly above 1. The default `colorSpace` is `"srgb"`. In the spec's example, (1.035, -0.175, -0.140) on an `'srgb'` canvas becomes P3 (0.948, 0.106, 0.01). [Verified: SPEC]
 - **Support.** Chrome 129+ on ChromeOS, macOS and Windows, Linux from 144; not Firefox or Safari. Detect it through `getConfiguration()`. Chromium 153 accepts `rgba16float` + extended and reports it back. [Verified: BCD; SPEC; Measured]
 - **Encoding.** `'srgb'` values are gamma-encoded and sign-mirrored outside [0, 1], so write sRGB_encode(L), where L = nits / SDR-white nits (L = 4 is written as 1.82). Only `'srgb-linear'` takes linear values. Its flag `ColorSpacePredefinedLinearSpaces` is experimental in Chromium 153 and 156 and stable in 157, and Electron 45 pins 156.0.8078.96. [Verified correction: HTML; CSSC4; CR156/CR157 RTE; EL45]
-- **three.js:** HalfFloat output sets canvas tone mapping to `'extended'` with RENDER_ATTACHMENT|COPY_SRC usage; MIT. [Verified: THREE]
-- **webgpu-samples particles:** `rgba16float`, standard or extended, brightness 0 to 4; BSD-3. [Verified: SAMPLES]
+- **References:** three.js HalfFloat output sets canvas tone mapping to `'extended'` (MIT), and the webgpu-samples particles sample shows `rgba16float` with either mode (BSD-3). [Verified: THREE; SAMPLES]
 - **Khronos PBR Neutral:** Apache-2.0, hue-preserving, sRGB output only with no gamut mapping, Rec.709 input. Output is linear in [0, 1], so it is SDR-only. F90 0.04, Ks 0.76, Kd 0.15. [Verified: KHR]
 - **ACES 2.0 in OCIO 2.4** (September 2024, "Preview Release"):
   - Its output transform takes 9 parameters (peak nits plus 8 limiting-gamut chromaticities), marked work in progress.
