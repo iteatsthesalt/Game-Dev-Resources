@@ -1436,8 +1436,9 @@ async function openAndroid(page, opts = {}) {
     path: join(WWW, new URL(route.request().url()).pathname.slice('/assets/www/'.length) || 'index.html') }));
   fake = await installFakeAndroidBridge(page, opts);
   await page.goto('https://appassets.androidplatform.net/assets/www/index.html'); await skipFirstRun(page);
-  await expect(page.getByRole('button', { name: 'Like' })).toBeVisible();
+  await expect(button(page, 'Like')).toBeVisible();
 }
+const button = (page, name) => page.getByRole('button', { name, exact: true });
 const sent = async (ch, op) => (await fake.native()).filter(m => m.ch === ch && m.op === op);
 const backResult = async (token) => (await sent('back', 'result')).find(m => m.args.token === token)?.args.handled;
 
@@ -1448,17 +1449,16 @@ test('boots on the Android origin with native fetch and no service worker', asyn
   expect((await sent('fetch', 'request')).length).toBeGreaterThan(0);
 });
 test('Open shows the find in the site view', async ({ page }) => {
-  await openAndroid(page); await page.getByRole('button', { name: 'Open' }).click();
+  await openAndroid(page); await button(page, 'Open').click();
   await expect.poll(async () => (await sent('app', 'openSite')).at(0)?.args.url).toMatch(/^https?:\/\//);
   await expect(page.locator('#live-polite')).toHaveText('Opened in the site view.');
 });
 test('site view Next loads the next find there', async ({ page }) => {
-  await openAndroid(page); await page.getByRole('button', { name: 'Open' }).click(); await fake.emit('app', 'siteNext', {});
+  await openAndroid(page); await button(page, 'Open').click(); await fake.emit('app', 'siteNext', {});
   await expect.poll(async () => new Set((await sent('app', 'openSite')).map(m => m.args.url)).size).toBe(2);
 });
 test('site controls follow hands-free', async ({ page }) => {
-  await openAndroid(page); await page.getByRole('button', { name: 'Start' }).click();
-  await page.getByRole('button', { name: 'Open' }).click();
+  await openAndroid(page); await button(page, 'Start').click(); await button(page, 'Open').click();
   const state = async () => (await sent('app', 'siteControls')).at(-1)?.args.state;
   await expect.poll(state).toBe('paused');
   await fake.emit('app', 'sitePause', {}); await expect.poll(state).toBe('active');
@@ -1477,7 +1477,7 @@ test('share-in of a Byways link opens Import', async ({ page }) => {
   const payload = await page.evaluate(async () => (await import(new URL('core/share.js', document.baseURI).href))
     .encodeShare({ v: 1, t: 'f', n: 'One', i: [['library', 'https://example.org/', 'Example']] }));
   await fake.emit('app', 'shared', { text: `Try https://iteatsthesalt.github.io/Game-Dev-Resources/byways/#s=${payload}.` });
-  await expect(page.getByRole('button', { name: 'Import' })).toBeVisible();
+  await expect(button(page, 'Import')).toBeVisible();
 });
 test('share-in with no link says so', async ({ page }) => {
   await openAndroid(page); await fake.emit('app', 'shared', { text: 'hello there' });
@@ -1496,7 +1496,7 @@ test('Back closes an open menu or help card first', async ({ page }) => {
   await page.keyboard.press('?'); await expect(page.getByRole('heading', { name: 'What you can say' })).toBeVisible();
   await fake.emit('back', 'request', { token: 4 }); await expect.poll(() => backResult(4)).toBe(true);
   await expect(page.getByRole('heading', { name: 'What you can say' })).toBeHidden();
-  await expect(page.getByRole('button', { name: 'Like' })).toBeVisible();
+  await expect(button(page, 'Like')).toBeVisible();
 });
 test('Back state follows views and open menus', async ({ page }) => {
   await openAndroid(page);
@@ -1623,7 +1623,7 @@ test('Tap to talk listens on a tap', async ({ page }) => {
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: the seven new tests FAIL, waiting for **Check for updates**, the checkbox, `#voice-reason` and **Tap to talk**, except `the PWA has no Go straight to the site` and `cloud-only voice waits for the vendor opt-in`, which pin behaviour that must not change.
+Expected: five of the seven new tests FAIL, waiting for **Check for updates**, the checkbox, `#voice-reason` and **Tap to talk**. `the PWA has no Go straight to the site` and `cloud-only voice waits for the vendor opt-in` pass already: they pin behaviour that must not change.
 
 - [ ] **Step 3: Implement the four changes**
 

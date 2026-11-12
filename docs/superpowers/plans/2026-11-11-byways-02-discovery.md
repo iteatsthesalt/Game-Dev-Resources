@@ -1914,20 +1914,21 @@ git commit -m "Wire the engine into boot and add the card and Stumble view"
 **Interfaces:**
 - Consumes: `renderCard`, `showResult` (Task 22), `engine.react`, `engine.rabbit` (Task 21), `showToast`, `announce`, `platform.share`, `platform.openFind`, `platform.tts.speak`, `firstSentence`, `domainOf`.
 - Produces:
-  - The card's buttons, in this order and with these exact labels: **Like**, **Not for me** (both with `aria-pressed`), **Save**, **Share**, **Open** (**Play** when `find.embedUrl` is set; action `'play'`), **More like this**, **Read it**, and **⋯** (`aria-label "More actions"`, `aria-haspopup "menu"`, `aria-expanded`) opening a `role="menu"` with `menuitem`s **Less of this topic**, **Never this site**, **Broken or spam** and **Why am I seeing this?**. Each calls `onAction(action, find, extra)` with `like dislike save share open play more read lessTopic neverSite broken why`.
-  - `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` in `card.js`, used by Stumble, Feed and Saved:
-    - `like`, `dislike`, `save`, `neverSite`, `lessTopic` (`extra.tag = find.tags[0]`): `engine.react`, then `showToast(message, {undo})`; the undo runs `r.undo()` and announces `'Undone.'`. `neverSite` then calls `advance()`. A find with no tags gives the toast `'This find has no topic to hide.'` for `lessTopic`.
-    - `broken`: the card shows `'Also block <domain>?'` with **Block site** and **Just this find**; either one reacts with `{blockDomain}`, shows the toast without undo and calls `advance()`.
+  - The card's buttons, in this order and with these exact labels: **Like**, **Not for me** (both with `aria-pressed`), **Save**, **Share**, **Open** (**Play** instead when `find.embedUrl` is set; action `'play'`), **More like this**, **Read it**, and **⋯** (`aria-label "More actions"`, `aria-haspopup "menu"`, `aria-expanded`) opening a `role="menu"` with `menuitem`s **Less of this topic**, **Never this site**, **Broken or spam** and **Why am I seeing this?**. Each calls `onAction(action, find, extra)` with `like dislike save share open play more read lessTopic neverSite broken why`.
+  - Keyboard and Back: the menu opens with focus on its first item; ArrowDown and ArrowUp move between items (wrapping); Esc, or a `byways:back` event on `window` (which it cancels with `preventDefault()`), closes it and puts focus back on **⋯**, and Esc goes no further. The inline confirms (`'Also block <domain>?'` here, and the Delete and Reset confirms of Tasks 26 and 29) close the same way.
+  - `makeActionHandler(app, {advance, whyLine = (f) => f.why.join(' · ')}) → (action, find, extra) => Promise<void>` in `card.js`, used by Stumble, Feed and Saved. `advance(action, find)` is called after `more`, `neverSite` and `broken`: Stumble's shows `engine.next({mode})` through `showResult`; Feed's and Saved's (Tasks 25–26) go to Stumble for `more` (`navigate('stumble')`) and remove that card for the other two.
+    - `like`, `dislike`, `save`, `neverSite`, `lessTopic` (`extra.tag = find.tags[0]`): `engine.react`, then `showToast(message, {undo})`; the undo runs `r.undo()` and announces `'Undone.'`. `neverSite` then calls `advance`. A find with no tags gives the toast `'This find has no topic to hide.'` for `lessTopic`.
+    - `broken`: the card shows `'Also block <domain>?'` with **Block site** and **Just this find**; either one reacts with `{blockDomain}`, shows the toast without undo and calls `advance`.
     - `share`: `platform.share({title, url})`; on `'copied'` the toast is `'Link copied.'`.
     - `open` and `play`: `platform.openFind(find, 'tab')`, then announce `'Opened in a new tab.'` (Plan 04 replaces `play`).
     - `read`: `app.handsFree.command('read')` when Plan 03 has set it up, else `platform.tts.speak('<title>. From <domain>. <firstSentence(description)>')`.
-    - `more`: `engine.rabbit.start(find)` then `advance()`.
+    - `more` (§6.3, "Start or continue a Rabbit Hole"): when `find` is the last find of `engine.rabbit.trail()`, it only calls `advance`; otherwise `engine.rabbit.start(find)`, then `advance`.
     - `why`: toggles `div.why-detail` under the card holding `whyLine(find)`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
-// same imports, `small` and `open` helper as stumble.spec.js; every test starts with: await open(page, [small[0]]);
+// same imports and helpers (`small`, `open`, `mount`) as stumble.spec.js; every test starts with: await open(page, [small[0]]);
 const menu = (page) => page.getByRole('button', { name: 'More actions' }).click();
 test('the card has every action label', async ({ page }) => {
   for (const name of ['Like', 'Not for me', 'Save', 'Share', 'Open', 'More like this', 'Read it']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
@@ -1965,6 +1966,23 @@ test('Read it speaks the card and Why explains it', async ({ page }) => {
   await menu(page); await page.getByRole('menuitem', { name: 'Why am I seeing this?' }).click();
   await expect(page.locator('.why-detail')).toHaveText('Tuned · wildcard · Starter library');
 });
+test('the ⋯ menu works by keyboard and closes on Back', async ({ page }) => {
+  const more = page.getByRole('button', { name: 'More actions' });
+  await more.focus(); await page.keyboard.press('Enter');
+  await expect(page.getByRole('menuitem', { name: 'Less of this topic' })).toBeFocused();
+  await page.keyboard.press('ArrowDown'); await expect(page.getByRole('menuitem', { name: 'Never this site' })).toBeFocused();
+  await page.keyboard.press('Escape'); await expect(page.getByRole('menu')).toBeHidden(); await expect(more).toBeFocused();
+  await more.click();
+  expect(await page.evaluate(() => !window.dispatchEvent(new CustomEvent('byways:back', { cancelable: true })))).toBe(true);
+  await expect(page.getByRole('menu')).toBeHidden();
+});
+test('a find with an embed shows Play instead of Open', async ({ page }) => {
+  await mount(page, { source: 'ia', kind: 'game', title: 'Whizz', url: 'https://archive.org/details/msdos_Whizz_1994',
+    embedUrl: 'https://archive.org/embed/msdos_Whizz_1994', safety: 'curated' });
+  const card = page.locator('article.card').last();
+  await expect(card.getByRole('button', { name: 'Play' })).toBeVisible();
+  await expect(card.getByRole('button', { name: 'Open', exact: true })).toHaveCount(0);
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -1974,12 +1992,10 @@ Expected: FAIL: no button named `Like`.
 
 - [ ] **Step 3: Add the actions to `card.js` and pass `makeActionHandler` from `stumble.js`**
 
-`advance` in Stumble is "call `engine.next` with the current mode and `showResult`".
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-- [ ] **Step 4: Run it and see it pass**
-
-Run: `npm run e2e -- tests/e2e/card-actions.spec.js tests/e2e/stumble.spec.js`
-Expected: PASS.
+Run: `npm run e2e -- tests/e2e/card-actions.spec.js tests/e2e/stumble.spec.js`, then `npm run e2e`
+Expected: PASS, 13 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 
