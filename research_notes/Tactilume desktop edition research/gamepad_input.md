@@ -162,7 +162,7 @@ These limits apply on every OS: at most 8 pads, and no gyro, accelerometer, LEDs
 ## 2. WebHID in Chrome and Electron: availability, Electron handlers, blocklisted and protected usages, which controllers can be opened (USB/Bluetooth), OS-level conflicts
 
 ### Takeaway
-WebHID works in Chromium-based browsers and in Electron through session handlers. Nothing in Chromium's static HID blocklist touches Sony, Nintendo, Microsoft or Valve gamepads. Chromium's always-protected usages cover keyboards, mice, pointers, keypads and system controls, not the Gamepad or Joystick usages. So DualSense, DualShock 4, Switch Pro and Joy-Con can be opened over USB and Bluetooth, with the caveats below. The practical blockers are elsewhere:
+WebHID works in Chromium-based browsers and in Electron through session handlers. Nothing in Chromium's static HID blocklist touches Sony, Nintendo, Microsoft or Valve gamepads. Chromium's always-protected usages cover keyboards, mice, pointers, keypads and system controls, not the Gamepad or Joystick usages. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/services/device/public/cpp/hid/hid_blocklist.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/services/device/public/cpp/hid/hid_report_utils.cc] So DualSense, DualShock 4, Switch Pro and Joy-Con can be opened over USB and Bluetooth, with the caveats below. The practical blockers are elsewhere:
 - Linux needs udev rules for hidraw access.
 - Steam's client opens many controllers' hidraw nodes itself.
 - Switch 2 controllers need a non-HID (bulk USB) initialisation.
