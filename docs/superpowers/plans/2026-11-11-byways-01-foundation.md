@@ -365,4 +365,242 @@ git add src/core/util/clock.js src/core/net/errors.js src/core/net/ratelimit.js 
 git commit -m "Add the clock helpers, NetError and the rate limiter"
 ```
 
+### Task 4: HTTP client
+
+**Files:**
+- Create: `src/core/net/http.js`
+- Test: `tests/unit/http.test.js`
+
+**Interfaces:**
+- Consumes: `NetError`, `createLimiter`, `parseRetryAfter` (Task 3); `fakeClock` (tests).
+- Produces: `createHttp({transport, clock}) → {register(sourceId, {perMinute, concurrent}), request(url, opts) → Promise<Response>, getJson(url, opts), getText(url, opts)}` with `opts = {method='GET', headers, body, source, timeoutMs=8000, privileged=false, signal}`. Constants exported for tests: `RETRY_MAX_MS = 10000`, `DEFAULT_PAUSE_MS = 60000`, `CIRCUIT_FAILS = 3`, `CIRCUIT_MS = 60000`.
+
+- [ ] **Step 1: Write the failing test**
+
+Use a scripted transport: `const calls = []; const transport = { fetch: (url, init) => { calls.push({ url, init }); return next.shift()(init); } };` where each `next` entry returns a `Response` promise or throws. Use `flush` from Task 3.
+
+```js
+test('getJson parses and passes method, headers and privileged', async () => {
+  next = [() => Promise.resolve(Response.json({ ok: 1 }))];
+  assert.deepEqual(await http.getJson('https://a.test/x', { headers: { 'Api-User-Agent': 'B' }, privileged: true, source: 's' }), { ok: 1 });
+  const { init } = calls[0];
+  assert.equal(init.method, 'GET'); assert.equal(init.headers['Api-User-Agent'], 'B');
+  assert.equal(init.privileged, true); assert.notEqual(init.credentials, 'include'); assert.ok(init.signal instanceof AbortSignal);
+});
+test('a status of 400 or more throws NetError http', async () => {
+  next = [() => Promise.resolve(new Response('no', { status: 404 }))];
+  await assert.rejects(http.getText('https://a.test/', { source: 's' }), { name: 'NetError', kind: 'http', status: 404, source: 's' });
+});
+test('a fetch TypeError becomes kind network', async () => {
+  next = [() => { throw new TypeError('Failed to fetch'); }];
+  await assert.rejects(http.request('https://a.test/'), { kind: 'network' });
+});
+test('timeoutMs aborts with kind timeout', async () => {
+  next = [init => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new DOMException('x', 'AbortError'))))];
+  const p = http.request('https://a.test/'); await flush(); clock.advance(8000);
+  await assert.rejects(p, { kind: 'timeout' });
+});
+test('a caller abort gives kind aborted', async () => { /* same hanging fetch; ac.abort() */ await assert.rejects(p, { kind: 'aborted' }); });
+test('429 with Retry-After of 10 s or less retries once', async () => {
+  next = [() => Promise.resolve(new Response('', { status: 429, headers: { 'Retry-After': '2' } })), () => Promise.resolve(new Response('ok'))];
+  const p = http.getText('https://a.test/'); await flush(); assert.equal(calls.length, 1);
+  clock.advance(2000); assert.equal(await p, 'ok'); assert.equal(calls.length, 2);
+});
+test('a second 429 in a row is not retried', async () => { /* two 429s with Retry-After 1 */ await assert.rejects(p, { kind: 'http', status: 429 }); assert.equal(calls.length, 2); });
+test('503 with Retry-After 30 pauses the source and throws', async () => {
+  http.register('s', { perMinute: 60, concurrent: 1 });
+  next = [() => Promise.resolve(new Response('', { status: 503, headers: { 'Retry-After': '30' } })), () => Promise.resolve(new Response('ok'))];
+  await assert.rejects(http.getText('https://a.test/', { source: 's' }), { status: 503, retryAfterMs: 30000 });
+  const p = http.getText('https://a.test/', { source: 's' }); await flush(); assert.equal(calls.length, 1);
+  clock.advance(30000); assert.equal(await p, 'ok');
+});
+test('bad JSON gives kind parse', async () => { /* Response('not json') */ await assert.rejects(http.getJson('https://a.test/'), { kind: 'parse' }); });
+test('3 straight network failures open the circuit for 60 s', async () => {
+  http.register('s', { perMinute: 60, concurrent: 2 });
+  next = [1, 2, 3, 4].map(() => () => { throw new TypeError('x'); });
+  for (let i = 0; i < 3; i++) await assert.rejects(http.request('https://a.test/', { source: 's' }), { kind: 'network' });
+  await assert.rejects(http.request('https://a.test/', { source: 's' }), { kind: 'circuit' }); assert.equal(calls.length, 3);
+  clock.advance(60000);
+  await assert.rejects(http.request('https://a.test/', { source: 's' }), { kind: 'network' }); assert.equal(calls.length, 4);
+});
+```
+
+Each test builds a fresh `clock = fakeClock(Date.UTC(2026,10,11))`, `calls`, and `http = createHttp({ transport, clock })`.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/http.test.js`
+Expected: FAIL with `Cannot find module`.
+
+- [ ] **Step 3: Implement `createHttp` in `src/core/net/http.js`**
+
+`request` runs through the source's limiter when one is registered, otherwise directly. It links an `AbortController` to the caller's `signal` and to a `clock.setTimeout(timeoutMs)`, and clears the timer when done. It calls `transport.fetch(url, {method, headers, body, signal, privileged})` and never adds `credentials`. Errors map as follows: caller abort → `aborted`; timer abort → `timeout`; any other throw → `network`. On 429 or 503, `ra = parseRetryAfter(res.headers.get('Retry-After'), clock.now())`. On the first attempt with `ra !== null && ra <= RETRY_MAX_MS`, it waits `ra` on the clock and tries once more. Otherwise it calls the source limiter's `pauseFor(ra ?? DEFAULT_PAUSE_MS)` and throws `NetError('http', …, {status, retryAfterMs: ra, source})`. Any other status ≥ 400 throws `http`. The circuit counts consecutive `network`/`timeout` failures per source. At `CIRCUIT_FAILS` it fails fast with `circuit` until `CIRCUIT_MS` has passed. Any response resets the count. `getJson` wraps `res.json()` failures as `parse`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/http.test.js`
+Expected: PASS, 10 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/net/http.js tests/unit/http.test.js
+git commit -m "Add the HTTP client with timeouts, Retry-After and a circuit breaker"
+```
+
+### Task 5: Store and cache
+
+**Files:**
+- Create: `src/core/store/db.js`, `src/core/store/cache.js`
+- Test: `tests/unit/db.test.js`, `tests/unit/cache.test.js`
+
+**Interfaces:**
+- Consumes: `fakeClock` (tests).
+- Produces: `STORE_NAMES`, `openStore(backend) → Promise<Store>`, `idbBackend(dbName='byways')`, `memoryBackend()`, `createCache(store, clock) → {get(key) → Promise<value|undefined>, set(key, value, ttlMs) → Promise<void>, purgeExpired() → Promise<number>}`. A backend is `{open(names: string[]) → Promise<{get, put, delete, getAll, keys, clear}>}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/unit/db.test.js` starts with `import 'fake-indexeddb/auto';`, then runs one suite per backend:
+
+```js
+const backends = [['memory', () => memoryBackend()], ['idb', () => idbBackend('t-' + Math.random())]];
+for (const [name, make] of backends) {
+  test(`${name}: put and get clone values; delete removes`, async () => {
+    const s = await openStore(make()); const v = { a: [1] };
+    await s.put('settings', 'k', v); v.a.push(2);
+    const got = await s.get('settings', 'k'); assert.deepEqual(got, { a: [1] });
+    got.a.push(3); assert.deepEqual(await s.get('settings', 'k'), { a: [1] });
+    assert.equal(await s.get('settings', 'missing'), undefined);
+    await s.delete('settings', 'k'); assert.equal(await s.get('settings', 'k'), undefined);
+  });
+  test(`${name}: getAll and keys sort by key; clear empties one store`, async () => {
+    const s = await openStore(make());
+    await s.put('seen', 'b', 2); await s.put('seen', 'a', 1); await s.put('history', 'x', 0);
+    assert.deepEqual(await s.getAll('seen'), [{ key: 'a', value: 1 }, { key: 'b', value: 2 }]);
+    assert.deepEqual(await s.keys('seen'), ['a', 'b']);
+    await s.clear('seen'); assert.deepEqual(await s.getAll('seen'), []); assert.deepEqual(await s.keys('history'), ['x']);
+  });
+  test(`${name}: every store exists and unknown names reject`, async () => {
+    const s = await openStore(make());
+    for (const n of STORE_NAMES) { await s.put(n, 'k', n); assert.equal(await s.get(n, 'k'), n); }
+    await assert.rejects(s.get('nope', 'k'), /unknown store: nope/);
+  });
+}
+test('STORE_NAMES is the §14.1 list', () => assert.deepEqual(STORE_NAMES, ['settings', 'taste', 'collections', 'history', 'seen', 'cache', 'aiCache', 'usage', 'health', 'keys']));
+test('idb data survives reopening', async () => {
+  const n = 'p-' + Math.random(); await (await openStore(idbBackend(n))).put('keys', 'k', 'v');
+  assert.equal(await (await openStore(idbBackend(n))).get('keys', 'k'), 'v');
+});
+test('idbBackend rejects when IndexedDB is missing', async () => {
+  const saved = globalThis.indexedDB; globalThis.indexedDB = undefined;
+  try { await assert.rejects(openStore(idbBackend('x')), /IndexedDB is not available/); } finally { globalThis.indexedDB = saved; }
+});
+```
+
+`tests/unit/cache.test.js`:
+
+```js
+test('cache returns a value until its ttl passes, then deletes it', async () => {
+  const c = fakeClock(0); const store = await openStore(memoryBackend()); const cache = createCache(store, c);
+  await cache.set('k', { x: 1 }, 1000);
+  c.advance(999); assert.deepEqual(await cache.get('k'), { x: 1 });
+  c.advance(1); assert.equal(await cache.get('k'), undefined); assert.equal(await store.get('cache', 'k'), undefined);
+});
+test('purgeExpired removes only expired entries', async () => {
+  /* set a ttl 10, b ttl 100; advance 50 */ assert.equal(await cache.purgeExpired(), 1); assert.deepEqual(await store.keys('cache'), ['b']);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/db.test.js tests/unit/cache.test.js`
+Expected: FAIL with `Cannot find module`.
+
+- [ ] **Step 3: Implement `src/core/store/db.js`**
+
+`openStore(backend)` awaits `backend.open(STORE_NAMES)` and wraps each method so an unknown store name rejects with `Error('unknown store: <name>')`. `memoryBackend` keeps a `Map` per store and `structuredClone`s on put and on get. `idbBackend` reads `globalThis.indexedDB` at `open()` time. If it is missing, or `indexedDB.open` throws, or the request fires `error`, it rejects with `Error('IndexedDB is not available')`. It opens version 1 and creates every missing store in `onupgradeneeded` with out-of-line keys. It sets `db.onversionchange = () => db.close()`. Each call runs in its own transaction and resolves on the request's `success`. `getAll` reads `getAllKeys()` and `getAll()` in one `readonly` transaction and zips them.
+
+- [ ] **Step 4: Implement `createCache` in `src/core/store/cache.js`**
+
+Entries are stored in `cache` as `{value, expires: clock.now() + ttlMs}`. An entry with `expires <= clock.now()` counts as expired.
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run: `node --test tests/unit/db.test.js tests/unit/cache.test.js`
+Expected: PASS, 14 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/core/store/db.js src/core/store/cache.js tests/unit/db.test.js tests/unit/cache.test.js
+git commit -m "Add the IndexedDB and memory store and the TTL cache"
+```
+
+### Task 6: Settings
+
+**Files:**
+- Create: `src/core/settings.js`
+- Test: `tests/unit/settings.test.js`
+
+**Interfaces:**
+- Consumes: `openStore`, `memoryBackend` (Task 5).
+- Produces: `DEFAULT_SETTINGS` (the overview block, verbatim), `loadSettings(store) → Promise<Settings>`, `saveSettings(store, patch) → Promise<Settings>`, `repairSettings(value) → Settings` (pure). Settings live in the `settings` store under the key `'current'`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('DEFAULT_SETTINGS holds the contract values', () => {
+  const d = DEFAULT_SETTINGS;
+  assert.deepEqual([d.v, d.mode, d.dwellSec, d.textScale, d.firstRunDone], [1, 'tuned', 20, 1, false]);
+  assert.deepEqual(d.voice, { mode: 'auto', cloudOptIn: false, voiceURI: null, rate: 1, volume: 1, lang: 'en-US' });
+  assert.deepEqual([d.ai.runCapUsd, d.ai.dailySearchCap, d.ai.dailySpendCapUsd], [0.5, 50, 2]);
+  assert.deepEqual(d.ai.team, { enabled: false, captain: false, roles: { scout: null, digger: null, wildcard: null, captain: null } });
+  assert.deepEqual(d.sources, {});
+});
+test('loadSettings on an empty store returns a fresh copy of the defaults', async () => {
+  const store = await openStore(memoryBackend()); const s = await loadSettings(store);
+  assert.deepEqual(s, DEFAULT_SETTINGS); s.voice.rate = 2; assert.equal(DEFAULT_SETTINGS.voice.rate, 1);
+});
+test('saveSettings deep-merges a patch and persists it', async () => {
+  const store = await openStore(memoryBackend());
+  const s = await saveSettings(store, { voice: { rate: 1.5 }, ai: { team: { roles: { scout: { provider: 'groq', model: 'm' } } } } });
+  assert.equal(s.voice.lang, 'en-US');
+  const again = await loadSettings(store);
+  assert.equal(again.voice.rate, 1.5); assert.deepEqual(again.ai.team.roles.scout, { provider: 'groq', model: 'm' });
+  assert.equal(again.ai.team.roles.digger, null);
+});
+test('loadSettings repairs bad stored values', async () => {
+  const store = await openStore(memoryBackend());
+  await store.put('settings', 'current', { dwellSec: 9999, textScale: 0.2, theme: 7, voice: null, ai: { team: 'x' },
+    sessionLengthMin: 30, sources: { wikipedia: { enabled: false, fateWeight: 9 } }, extra: 'kept' });
+  const s = await loadSettings(store);
+  assert.equal(s.dwellSec, 300); assert.equal(s.textScale, 1); assert.equal(s.theme, 'system');
+  assert.deepEqual(s.voice, DEFAULT_SETTINGS.voice); assert.deepEqual(s.ai.team, DEFAULT_SETTINGS.ai.team);
+  assert.equal(s.sessionLengthMin, 30); assert.deepEqual(s.sources.wikipedia, { enabled: false, fateWeight: 3 });
+  assert.equal(s.extra, 'kept');
+  await store.put('settings', 'current', 'garbage'); assert.deepEqual(await loadSettings(store), DEFAULT_SETTINGS);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/settings.test.js`
+Expected: FAIL with `Cannot find module`.
+
+- [ ] **Step 3: Implement `src/core/settings.js`**
+
+`repairSettings(stored)` walks `DEFAULT_SETTINGS`. Where the default is a plain object with keys, it recurses (a non-object stored value gives the default). Where the default is `{}` (`sources`), it keeps a stored plain object. Where the default is `null`, it accepts a string, number, plain object or `null`. Otherwise it keeps the stored value only when its `typeof` matches the default. Keys the defaults do not know are kept as they are. Then it clamps `dwellSec` to 5–300, `textScale` to 1–2, `voice.rate` to 0.5–2, `voice.volume` to 0–1, and each `sources[id].fateWeight` to 0–3. It always returns a new object and never shares references with `DEFAULT_SETTINGS`. `saveSettings` deep-merges `patch` over the loaded settings (plain objects merge; arrays and other values replace), repairs, puts and returns.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/settings.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/settings.js tests/unit/settings.test.js
+git commit -m "Add settings defaults with load, repair and save"
+```
+
 <!-- PLAN CONTINUES -->

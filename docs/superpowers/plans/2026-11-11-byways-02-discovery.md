@@ -83,4 +83,241 @@ All paths are under `Apps/Byways/`.
 
 **Adapter conventions (every `sources/<id>.js`).** Each file default-exports one adapter in the contract shape. Methods a source does not support return `[]`. Network failures propagate as `NetError` (the engine skips that source silently). Every find is built with `makeFind`, with `source: id`, the adapter's base tags (Task 5 table) and a first `why` chip naming the pool, for example `'Wikipedia: random article'`. Every request goes through `ctx.http` with `source: id`. Search responses are cached in `ctx.cache` for 24 h and item details for 7 days, keyed by the request URL.
 
+### Task 1: The Find model
+
+**Files:**
+- Create: `src/core/model/find.js`
+- Test: `tests/unit/find.test.js`
+
+**Interfaces:**
+- Consumes: `hash64(str)` (util/hash.js), `normalizeUrl(u)`, `isHttpUrl(u)` (util/url.js), `toPlainText(html)`, `truncate(text, max)` (util/text.js).
+- Produces: `FIND_KINDS = ['site','article','image','game','video','audio','book','project']`, `SAFETY = ['curated','mostly','mixed']`, `makeFind(partial) → Find|null`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+import { test } from 'node:test'; import assert from 'node:assert/strict';
+import { makeFind } from '../../src/core/model/find.js';
+import { hash64 } from '../../src/core/util/hash.js';
+const base = { source: 'library', kind: 'site', title: 'Tiny Synth', description: 'Make sounds.', url: 'https://www.Example.com/a/?utm_source=x', safety: 'curated' };
+
+test('makeFind fills defaults and a url id', () => {
+  const f = makeFind(base);
+  assert.equal(f.id, 'url:' + hash64('https://example.com/a'));
+  assert.deepEqual(f.tags, []); assert.deepEqual(f.why, []);
+  assert.equal(makeFind({ ...base, id: 'wiki:en:Ada_Lovelace' }).id, 'wiki:en:Ada_Lovelace');
+});
+test('makeFind returns null for a bad url, title or kind', () => {
+  for (const url of ['javascript:alert(1)', 'ftp://x.org/', '']) assert.equal(makeFind({ ...base, url }), null);
+  assert.equal(makeFind({ ...base, title: '   ' }), null);
+  assert.equal(makeFind({ ...base, kind: 'toy' }), null);
+});
+test('makeFind applies the length limits and plain text', () => {
+  const f = makeFind({ ...base, title: 'x'.repeat(250), description: '<b>Bold</b> ' + 'y'.repeat(500) });
+  assert.equal(f.title.length, 200); assert.ok(f.title.endsWith('…'));
+  assert.equal(f.description.length, 400); assert.ok(f.description.startsWith('Bold y'));
+});
+test('makeFind drops non-http image urls', () => {
+  assert.equal(makeFind({ ...base, imageUrl: 'data:image/png;base64,AA' }).imageUrl, undefined);
+  assert.equal(makeFind({ ...base, imageUrl: 'javascript:x' }).imageUrl, undefined);
+  assert.equal(makeFind({ ...base, embedUrl: 'https://evil.example/embed/x' }).embedUrl, undefined);
+  assert.equal(makeFind({ ...base, embedUrl: 'https://archive.org/embed/abc' }).embedUrl, 'https://archive.org/embed/abc');
+});
+test('makeFind treats an unknown safety as mixed', () => {
+  assert.equal(makeFind({ ...base, safety: 'whatever' }).safety, 'mixed');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/find.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/model/find.js`.
+
+- [ ] **Step 3: Implement `makeFind(partial) → Find|null` in `src/core/model/find.js`**
+
+Title and description go through `toPlainText` then `truncate` (200 and 400). `author`, `licence` and `attribution` go through `toPlainText` and `truncate(…, 200)`. `embedUrl` is kept only when it matches `^https://archive\.org/embed/[A-Za-z0-9._-]+$`. `tags` and `why` become de-duplicated string arrays. Unknown keys pass through only for `meta`, `foundBy` and `teamPick`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/find.test.js`
+Expected: PASS, 5 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/model/find.js tests/unit/find.test.js
+git commit -m "Add the Find model with url ids and length limits"
+```
+
+### Task 2: Seen-set and Back history
+
+**Files:**
+- Create: `src/core/seen.js`, `src/core/history.js`
+- Test: `tests/unit/seen.test.js`, `tests/unit/history.test.js`
+
+**Interfaces:**
+- Consumes: `openStore(backend)`, `memoryBackend()` (store/db.js), `hash64`, `normalizeUrl`, `domainOf`, `makeFind` (Task 1).
+- Produces: `createSeen(store) → {has(url) → Promise<boolean>, add(url) → Promise<void>, count() → Promise<number>, reset() → Promise<void>}`; values are `{t: <ms>}` under key `hash64(normalizeUrl(url))` in the `seen` store. `createHistory(store, {max=50}) → {ready: Promise<void>, push(find), back() → Find|null, forward() → Find|null, current() → Find|null, list() → Find[], recentDomains(n) → string[]}`; it persists `{items, cursor}` under key `'trail'` in the `history` store.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/seen.test.js
+test('seen treats url variants as one find', async () => {
+  const store = await openStore(memoryBackend()); const seen = createSeen(store);
+  await seen.add('https://www.example.com/a/?utm_source=x#top');
+  assert.equal(await seen.has('https://example.com/a'), true);
+  assert.equal(await seen.has('https://example.com/b'), false);
+  assert.equal(typeof (await store.get('seen', hash64('https://example.com/a'))).t, 'number');
+  assert.equal(await seen.count(), 1);
+});
+test('seen ignores non-http urls and resets', async () => {
+  const seen = createSeen(await openStore(memoryBackend()));
+  await seen.add('javascript:x'); assert.equal(await seen.count(), 0);
+  assert.equal(await seen.has('not a url'), false);
+  await seen.add('https://example.org/'); await seen.reset(); assert.equal(await seen.count(), 0);
+});
+```
+
+```js
+// tests/unit/history.test.js  (f(t, url) = makeFind({source:'library',kind:'site',title:t,url,safety:'curated'}))
+test('history keeps max finds and walks back and forward', async () => {
+  const store = await openStore(memoryBackend()); const h = createHistory(store, { max: 3 }); await h.ready;
+  for (const t of ['a','b','c','d']) h.push(f(t, `https://${t}.example.com/`));
+  assert.deepEqual(h.list().map(x => x.title), ['b','c','d']);
+  assert.equal(h.back().title, 'c'); assert.equal(h.back().title, 'b'); assert.equal(h.back(), null);
+  assert.equal(h.forward().title, 'c');
+  h.push(f('e', 'https://e.example.com/'));
+  assert.deepEqual(h.list().map(x => x.title), ['b','c','e']);
+  assert.deepEqual(h.recentDomains(2), ['e.example.com', 'c.example.com']);
+});
+test('history survives a restart', async () => {
+  const store = await openStore(memoryBackend()); const h = createHistory(store); await h.ready;
+  h.push(f('a', 'https://a.example.com/')); await new Promise(r => setTimeout(r, 0));
+  const h2 = createHistory(store); await h2.ready; assert.equal(h2.current().title, 'a');
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/seen.test.js tests/unit/history.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `createSeen` and `createHistory`**
+
+`push` drops entries after the cursor, appends, trims the oldest beyond `max`, moves the cursor to the end and writes to the store without awaiting (writes are chained so they land in order). `recentDomains(n)` reads the last `n` entries up to the cursor, newest first, unique.
+
+- [ ] **Step 4: Run them and see them pass**
+
+Run: `node --test tests/unit/seen.test.js tests/unit/history.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/seen.js src/core/history.js tests/unit/seen.test.js tests/unit/history.test.js
+git commit -m "Add the seen-set and the Back history"
+```
+
+### Task 3: Tag vocabulary and taste
+
+**Files:**
+- Create (or replace Plan 01's stub): `src/data/tags.json`
+- Create: `src/core/taste.js`
+- Test: `tests/unit/tags-data.test.js`, `tests/unit/taste.test.js`
+
+**Interfaces:**
+- Consumes: `domainOf(u)`.
+- Produces: `src/data/tags.json` in the overview shape; `DEFAULT_TASTE`; `applyReaction(taste, find, reaction, extra?) → {taste, change}` (pure, never mutates its input); `describeChange(change) → string`. `extra` is `{tag}` for `interest` and `lessTopic` (default `find.tags[0]`), and `{blockDomain: true}` for `broken`.
+
+`tags.json` holds exactly these 40 tags (id, then label), in this group order:
+
+| Group id · label | Tags |
+|---|---|
+| `tech-science` · Tech & Science | science Science, programming Programming, diy DIY, hardware Hardware, tech Tech, web Web, ai AI, space Space, nature Nature, maths Maths |
+| `culture-creative` · Culture & Creative | art Art, design Design, photography Photography, music Music, books Books, film Film, comics Comics, essays Essays, humanities Humanities, history History, culture Culture, oldweb Old web |
+| `life-world` · Life & World | food Food, travel Travel, society Society, life Life, politics Politics, economy Economy, education Education, work Work, health Health, sports Sports |
+| `games` · Games | retro Retro, indie Indie, puzzle Puzzle, arcade Arcade, adventure Adventure, art-game Art game, jam Jam, toy Toy |
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/tags-data.test.js  (reads src/data/tags.json with fs)
+test('tags.json has 40 unique kebab-case tags in four groups', () => {
+  assert.equal(tags.v, 1);
+  assert.deepEqual(tags.groups.map(g => g.id), ['tech-science','culture-creative','life-world','games']);
+  const ids = tags.groups.flatMap(g => g.tags.map(t => t.id));
+  assert.equal(ids.length, 40); assert.equal(new Set(ids).size, 40);
+  for (const id of ids) assert.match(id, /^[a-z][a-z0-9-]*$/);
+});
+```
+
+```js
+// tests/unit/taste.test.js  (find = {source:'library', tags:['retro','indie'], url:'https://www.example.com/x'})
+test('DEFAULT_TASTE matches the spec', () => assert.deepEqual(DEFAULT_TASTE,
+  { v: 1, tags: {}, sources: {}, hiddenTags: [], blockedDomains: [], strangeness: 0.25, interests: [], reactions: 0 }));
+test('like adds 1 per tag and 0.5 to the source', () => {
+  const { taste, change } = applyReaction(Object.freeze(structuredClone(DEFAULT_TASTE)), find, 'like');
+  assert.deepEqual(taste.tags, { retro: 1, indie: 1 }); assert.deepEqual(taste.sources, { library: 0.5 });
+  assert.equal(taste.reactions, 1); assert.deepEqual(change.tagDeltas, { retro: 1, indie: 1 }); assert.equal(change.sourceDelta, 0.5);
+});
+test('weights cap at +3', () => {
+  const { taste, change } = applyReaction({ ...DEFAULT_TASTE, tags: { retro: 3 } }, find, 'save');
+  assert.equal(taste.tags.retro, 3); assert.equal(change.tagDeltas.retro, 0);
+});
+test('not for me takes 0.5 per tag and 0.25 from the source', () => {
+  const { taste } = applyReaction(DEFAULT_TASTE, find, 'dislike');
+  assert.deepEqual(taste.tags, { retro: -0.5, indie: -0.5 }); assert.deepEqual(taste.sources, { library: -0.25 });
+});
+test('less of this topic takes 2 and hides the tag at -3', () => {
+  const once = applyReaction(DEFAULT_TASTE, find, 'lessTopic', { tag: 'retro' }).taste;
+  assert.equal(once.tags.retro, -2); assert.deepEqual(once.hiddenTags, []);
+  const { taste, change } = applyReaction(once, find, 'lessTopic', { tag: 'retro' });
+  assert.equal(taste.tags.retro, -3); assert.deepEqual(taste.hiddenTags, ['retro']); assert.deepEqual(change.hidden, ['retro']);
+});
+test('never this site blocks the domain', () => {
+  const { taste, change } = applyReaction(DEFAULT_TASTE, find, 'neverSite');
+  assert.deepEqual(taste.blockedDomains, ['example.com']); assert.deepEqual(change.blocked, ['example.com']);
+});
+test('an interest adds 2 and does not count as a reaction', () => {
+  const { taste } = applyReaction(DEFAULT_TASTE, null, 'interest', { tag: 'space' });
+  assert.equal(taste.tags.space, 2); assert.deepEqual(taste.interests, ['space']); assert.equal(taste.reactions, 0);
+});
+test('broken can block the domain and is not a reaction', () => {
+  const { taste } = applyReaction(DEFAULT_TASTE, find, 'broken', { blockDomain: true });
+  assert.deepEqual(taste.blockedDomains, ['example.com']); assert.equal(taste.reactions, 0);
+});
+test('describeChange words each change', () => {
+  const c = (o) => ({ tagDeltas: {}, sourceDelta: 0, hidden: [], blocked: [], ...o });
+  assert.equal(describeChange(c({ tagDeltas: { retro: 1, indie: 1 } })), 'More retro and indie from now on.');
+  assert.equal(describeChange(c({ tagDeltas: { art: 1, music: 1, toy: 1 } })), 'More art, music and toy from now on.');
+  assert.equal(describeChange(c({ tagDeltas: { retro: -0.5 } })), 'Less retro from now on.');
+  assert.equal(describeChange(c({ hidden: ['art-game'] })), 'Art game is hidden now.');
+  assert.equal(describeChange(c({ blocked: ['example.com'] })), "You won't see example.com again.");
+  assert.equal(describeChange(c({ sourceDelta: 0.5 })), 'More like this from now on.');
+  assert.equal(describeChange(c({})), 'Noted.');
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/tags-data.test.js tests/unit/taste.test.js`
+Expected: FAIL (`ENOENT` or a wrong tag count for `tags.json`, `ERR_MODULE_NOT_FOUND` for `taste.js`).
+
+- [ ] **Step 3: Write `tags.json` from the table and implement `taste.js`**
+
+`like`, `dislike`, `save`, `lessTopic` and `neverSite` add 1 to `reactions`; `interest` and `broken` do not. `describeChange` checks `blocked`, then `hidden`, then tag deltas (positive ones before negative), then `sourceDelta`; a tag id is written with hyphens as spaces, and a hidden tag starts with a capital letter. Zero deltas are left out of the wording.
+
+- [ ] **Step 4: Run them and see them pass**
+
+Run: `node --test tests/unit/tags-data.test.js tests/unit/taste.test.js`
+Expected: PASS, 10 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/data/tags.json src/core/taste.js tests/unit/tags-data.test.js tests/unit/taste.test.js
+git commit -m "Add the tag vocabulary and taste reactions"
+```
+
 <!-- PLAN CONTINUES -->
