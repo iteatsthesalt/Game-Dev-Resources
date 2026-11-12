@@ -108,11 +108,11 @@ Native holds every event until the page sends `app.ready`, and holds them again 
 ### Task 1: Android build target
 
 **Files:**
-- Modify: `tools/build.js` (the `android` branch of `build()`), `tests/unit/build.test.js` (Plan 01's placeholder test)
+- Modify: `tools/build.js` (the `android` branch of `build()`), `tests/unit/build.test.js` (Plan 06's placeholder test)
 - Test: `tests/unit/build-android.test.js`
 
 **Interfaces:**
-- Consumes: `build({target, outRoot, id, now})` and `OUTPUTS.android` (Plan 01 Task 9); `shells/pwa/index.html`, whose `data-shell="pwa"` makes `ui/boot.js` run `bootFromShell()`, the PWA boot with its service worker (Plan 01 Task 12); `openStore`, `idbBackend`, `memoryBackend`, `createPwaPlatform({secretsStore})`; Plan 06's `labOutputs('android')` and `licenses.json`.
+- Consumes: `build({target, outRoot, id, now})` and `OUTPUTS.android` (Plan 01 Task 9); `shells/pwa/index.html`, whose `data-shell="pwa"` makes `ui/boot.js` run `bootFromShell()`, the PWA boot with its service worker (Plan 01 Tasks 13 and 15); `openStore`, `idbBackend`, `memoryBackend`, `createPwaPlatform({secretsStore})`; Plan 06's `labOutputs('android')` and `licenses.json`.
 - Produces: `…/assets/www/` (no service worker, no manifest, nothing from the Lab) with `index.html` and the entry `android-boot.js`, which imports `createAndroidPlatform` from `./platform/android.js` (Task 6).
 
 - [ ] **Step 1: Write the failing test**
@@ -149,7 +149,7 @@ Expected: FAIL with `ENOENT` for `www/index.html`.
 - `www/`: copy `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` under the same names, as Plan 07's `buildExtension` does. Nothing from `src/lab`, `src/versions.json` or `vendor/`.
 - `www/index.html`: `shells/pwa/index.html` with three changes: `data-shell="pwa"` becomes `data-shell="android"` (so `bootFromShell()` does nothing), the `<link rel="manifest" href="manifest.webmanifest">` line is removed, and `<script type="module" src="ui/boot.js"></script>` becomes `<script type="module" src="android-boot.js"></script>`.
 - `www/android-boot.js` (fixed text): import `boot`, `createPwaPlatform`, `openStore`/`idbBackend`/`memoryBackend` and `createAndroidPlatform`; `const secretsStore = await openStore(idbBackend()).catch(() => openStore(memoryBackend()))` (the store `bootFromShell` opens); then `boot(createAndroidPlatform({ bridge: globalThis.BywaysNative, base: createPwaPlatform({ secretsStore }) }))`. It never registers a service worker.
-- `tests/unit/build.test.js`: delete Plan 01's placeholder `android target writes only build.json until Plan 08`. If Plan 07 has not run yet, the placeholder is still `extension and android targets write only build.json until Plans 07 and 08`: rename it `extension targets write only build.json until Plan 07` and loop over `OUTPUTS.extension` only.
+- `tests/unit/build.test.js`: delete the placeholder `android targets write only build.json, licenses.json and the Lab until Plan 08` (Plan 06 Task 5 wrote it in place of Plan 01's, and Plan 07 left it for this plan), now that `www/` holds the app.
 
 - [ ] **Step 4: Run it to see it pass**
 
@@ -612,14 +612,15 @@ export function createBridgeClient(port, { hello = true } = {})
   //    on(ch, event, fn) → () => void, hello: Promise<{versionName, versionCode, sdk, micConsent}>|null}
 export function createAndroidPlatform({ bridge, base, win = globalThis })
   // → Platform, including requestOrigins(origins) → Promise<boolean> and
-  //    identity: {redirectUrl: string, launchWebAuthFlow({url, interactive}) → Promise<string>}, plus
+  //    identity: {getRedirectURL() → Promise<string>, launchWebAuthFlow({url, interactive}) → Promise<string>}
+  //    (the contract's shape: there is no redirectUrl property), plus
   //    app: {version() → Promise<{versionName, versionCode, sdk, micConsent}>,
   //    checkUpdate() → Promise<{available:boolean, latest:string|null, url:string|null}>, openExternal(url) → Promise<void>}
   //    and attach(app) → Promise<void> (Task 14)
 export function extractSharedLink(text) // → {kind:'share', hash:string} | {kind:'url', url:string} | null
 ```
 
-`requestOrigins` takes plain origins and is the only thing that asks for a local network host: Plan 05's settings call it from the button that adds a local-network model, and `transport.fetch` never prompts. The transport follows the contract's shell rules: it honours `init.redirect === 'error'`, and its constructed `Response` carries the final URL in the header `x-byways-final-url`. `identity.redirectUrl` is `https://appassets.androidplatform.net/assets/www/index.html`; `launchWebAuthFlow` resolves with the first URL on `https://appassets.androidplatform.net/` that the login view reaches, and rejects with code `cancelled` when the person closes the view.
+`requestOrigins` takes plain origins and is the only thing that asks for a local network host: Plan 05's settings call it from the button that adds a local-network model, and `transport.fetch` never prompts. The transport follows the contract's shell rules: it honours `init.redirect === 'error'`, and its constructed `Response` carries the final URL in the header `x-byways-final-url`. `identity.getRedirectURL()` resolves `https://appassets.androidplatform.net/assets/www/index.html`, the in-app callback URL the login view catches (Plan 05's `connectWithIdentity` awaits it first and passes it to `startPkce` as `redirectUri`); `launchWebAuthFlow` resolves with the first URL on `https://appassets.androidplatform.net/` that the login view reaches, and rejects with code `cancelled` when the person closes the view.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -744,7 +745,8 @@ test('share, open, files and screen go over the bridge', async () => {
 test('identity opens the login view and returns the callback URL', async () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
   const cb = 'https://appassets.androidplatform.net/assets/www/index.html?code=c1';
-  assert.equal(p.identity.redirectUrl, 'https://appassets.androidplatform.net/assets/www/index.html');
+  assert.equal(await p.identity.getRedirectURL(), 'https://appassets.androidplatform.net/assets/www/index.html');
+  assert.equal('redirectUrl' in p.identity, false);
   const a = p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth?code_challenge=x', interactive: true });
   assert.deepEqual([port.last().op, port.last().args], ['auth', { url: 'https://openrouter.ai/auth?code_challenge=x' }]);
   port.reply(port.last().id, cb); assert.equal(await a, cb);
@@ -780,7 +782,7 @@ Expected: FAIL with `Cannot find module '…/src/platform/android.js'`.
 - `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`, `redirect` is `'error'` when `init.redirect === 'error'` and `'follow'` otherwise, and `fetch.request` goes out at once, `http:` included. Statuses 204, 205 and 304 build `new Response(null, …)`. Every constructed `Response` gets the header `x-byways-final-url` with the reply's `url` (the contract's rule; the constructor cannot set `Response.url`). A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. `not-approved` gives `Object.assign(new TypeError(\`Local network host not approved: ${host}\`), { code })`; any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
 - `requestOrigins(origins)`: `https:` origins need nothing. Each `http:` origin, one at a time, sends `fetch.approve {host}` with `new URL(origin).hostname` minus IPv6 brackets. It resolves `true` only when every one is approved.
 - `openFind(find, how)`: every `how` (none, `'tab'`, `'current'`, `'inapp'`) sends `app.openSite {url, title}`, because Android shows finds in the site view (§4). A non-http(s) url rejects with `not an http(s) link`, as the PWA's does. The way out to the browser is `app.openExternal` and the site view's **Open in browser**.
-- `share`, `files.save` (one message with the base64 of `blob.arrayBuffer()` and mime `blob.type || 'application/octet-stream'`; a backup over 12 MB rejects with `too-large`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`, and `identity.redirectUrl` is `win.location.origin + win.location.pathname`. `files.pick`, `secrets` and `persistStorage` come from `base`.
+- `share`, `files.save` (one message with the base64 of `blob.arrayBuffer()` and mime `blob.type || 'application/octet-stream'`; a backup over 12 MB rejects with `too-large`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`, and `identity.getRedirectURL()` resolves `win.location.origin + win.location.pathname`. `files.pick`, `secrets` and `persistStorage` come from `base`.
 - `extractSharedLink`: take every `https?://` run up to whitespace, `<`, `>` or a quote. Trim trailing `.,;:!?'"]}` and a trailing `)` when the run has no `(`. A run whose `origin + pathname` is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/` and whose hash starts with `#s=` wins, as `{kind:'share', hash}`. Otherwise the first run is `{kind:'url', url}`.
 
 - [ ] **Step 4: Run them to see them pass**
@@ -845,7 +847,7 @@ Expected: the three new tests FAIL with `TypeError: Cannot read properties of un
 
 - [ ] **Step 3: Implement `voice`, `tts` and `media`**
 
-`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1`, `volume ?? 1` and `lang ?? null` (the contract's `Tts.speak(text, {voiceURI, rate, volume, lang})`) and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set. `voice.probe` passes native's `VoiceStatus` through unchanged, including the contract's cloud-only form (Task 8).
+`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1`, `volume ?? 1` and `lang ?? null` (the contract's `Tts.speak(text, {voiceURI, rate, volume, lang})`) and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set. `voice.probe` passes native's `VoiceStatus` through unchanged, including the contract's cloud-only form (Task 8), and keeps the last status it returned in the module-private `lastVoiceStatus` (`null` before the first probe), which `attach` (Task 14) reads for hold-to-talk.
 
 - [ ] **Step 4: Run them to see them pass**
 
