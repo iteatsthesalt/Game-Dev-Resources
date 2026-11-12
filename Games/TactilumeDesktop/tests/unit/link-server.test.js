@@ -64,7 +64,13 @@ function client(port, { origin, headers, autoPong = true, path: urlPath = '/link
       resolve(false);
     });
   });
-  c.closed = new Promise((resolve) => ws.on('close', (code, reason) => { c.close = { code, reason: String(reason) }; resolve(c.close); }));
+  const closed = new Promise((resolve) => ws.on('close', (code, reason) => { c.close = { code, reason: String(reason) }; resolve(c.close); }));
+  // A close the server should make: a server that forgot to would otherwise hang the suite.
+  c.closing = (timeout = 3000) => Promise.race([
+    closed,
+    sleep(timeout).then(() => { throw new Error(`the server did not close the connection within ${timeout} ms`); }),
+  ]);
+  c.closed = closed;
   ws.on('message', (data) => c.messages.push(JSON.parse(String(data))));
   c.send = (msg) => ws.send(typeof msg === 'string' ? msg : JSON.stringify(msg));
   c.next = (t, timeout) => waitFor(() => c.messages.find((m) => m.t === t), `a "${t}" message`, timeout);

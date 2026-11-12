@@ -148,7 +148,11 @@ export default [
       });
       phone.on('page', (p) => {
         p.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
-        p.on('console', (m) => { if (m.type() === 'error') errors.push(`console error: ${m.text()}`); });
+        p.on('console', (m) => {
+          // Chromium logs every connection attempt that finds no server; this scenario stops
+          // the server on purpose, so those are expected
+          if (m.type() === 'error' && !/WebSocket connection to .* failed/.test(m.text())) errors.push(`console error: ${m.text()}`);
+        });
       });
       await phone.route('**/*', (route) => {
         const url = route.request().url();
@@ -230,9 +234,11 @@ export default [
         const repeats = touchFrames().length - resting0;
         checks.push(h.check('while the fingers rest, their frame is repeated a few times a second', repeats >= 2 && repeats <= 8, repeats));
 
+        // The page's own empty frame: it carries the phone's clock and comes at once. (The
+        // server would let go of the fingers by itself 1.5 s later, without a clock.)
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
-        const lifted = await poll(() => touchFrames().at(-1), (e) => e && e.touches.length === 0, { timeout: 3000 });
-        checks.push(h.check('lifting the fingers sends an empty frame', lifted?.touches.length === 0, lifted));
+        const lifted = await poll(() => touchFrames().at(-1), (e) => e && e.touches.length === 0, { timeout: 1000, every: 50 });
+        checks.push(h.check('lifting the fingers sends an empty frame', lifted?.touches.length === 0 && Number.isFinite(lifted.ms), lifted));
 
         await p.tap('button[aria-label="Next behaviour"]');
         const acted = await poll(() => events.find((e) => e.type === 'act'), Boolean, { timeout: 3000 });

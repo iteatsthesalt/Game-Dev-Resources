@@ -290,6 +290,61 @@ export default [
   },
 
   {
+    // Headless Chromium cannot present, so each page here configures the canvas, draws its
+    // first frame for the canvas, then goes offscreen; what is checked is that first choice.
+    name: 'engine HDR: the canvas goes extended-range only when HDR is wanted and the screen can show it',
+    timeout: 150000,
+    async run(page, h) {
+      const checks = [];
+      const cases = [
+        { hdr: 'auto', screen: true, extended: true },
+        { hdr: 'auto', screen: false, extended: false },
+        { hdr: 'on', screen: false, extended: true },
+        { hdr: 'off', screen: true, extended: false },
+      ];
+      for (const c of cases) {
+        const p = await h.context.newPage();
+        await p.addInitScript(({ hdr, screen }) => {
+          localStorage.setItem('tactilume.desktop.v1', JSON.stringify({ hdr }));
+          // the screen's dynamic range, as the engine asks for it
+          const real = window.matchMedia.bind(window);
+          window.matchMedia = (q) => (/dynamic-range/.test(q) ? { matches: screen, media: q, addEventListener() {}, removeEventListener() {} } : real(q));
+          // what the canvas is configured with, and which composite each frame uses
+          window.__configs = [];
+          const configure = GPUCanvasContext.prototype.configure;
+          GPUCanvasContext.prototype.configure = function (conf) {
+            configure.call(this, conf);
+            window.__configs.push({ format: conf.format, mode: conf.toneMapping?.mode || 'standard', reported: this.getConfiguration?.()?.toneMapping?.mode });
+          };
+          window.__composites = [];
+          const setPipeline = GPURenderPassEncoder.prototype.setPipeline;
+          GPURenderPassEncoder.prototype.setPipeline = function (pipeline) {
+            if (/composite/.test(pipeline.label)) window.__composites.push(pipeline.label);
+            return setPipeline.call(this, pipeline);
+          };
+        }, c);
+        await p.goto(h.url({ present: null }));
+        const ready = await h.until(p, () => window.TACTILUME_DESKTOP?.ready === true && window.TACTILUME_DESKTOP.engine.stats.frames >= 3, undefined, 30000);
+        const seen = await p.evaluate(() => ({ configs: window.__configs, composites: [...new Set(window.__composites)], first: window.__composites[0], caps: window.TACTILUME_DESKTOP?.engine?.caps, errors: window.TACTILUME_DESKTOP?.engine?.errors }));
+        const first = seen.configs[0] || {};
+        const label = `hdr ${c.hdr} on an ${c.screen ? 'HDR' : 'SDR'} screen`;
+        const info = { ...seen, caps: undefined, presenting: seen.caps?.presenting };
+        checks.push(h.check(`${label}: it starts`, ready, info));
+        if (c.extended) {
+          checks.push(h.check(`${label}: the canvas is rgba16float with extended tone mapping`, first.format === 'rgba16float' && first.mode === 'extended' && first.reported === 'extended', info));
+          checks.push(h.check(`${label}: the first frame is composed for HDR`, seen.first === 'composite (HDR)', info));
+        } else {
+          checks.push(h.check(`${label}: the canvas is in standard range`, first.format && first.format !== 'rgba16float' && first.mode === 'standard', info));
+          checks.push(h.check(`${label}: every frame is composed for SDR`, seen.composites.length === 1 && seen.composites[0] === 'composite', info));
+        }
+        checks.push(h.check(`${label}: no WebGPU errors, and it carries on offscreen`, seen.errors?.count === 0 && seen.caps?.presenting === false && seen.caps?.hdr === false, info));
+        await p.close();
+      }
+      return checks;
+    },
+  },
+
+  {
     name: 'engine device loss: it recovers once on a new device, then reports',
     async run(page, h) {
       await h.open(page);

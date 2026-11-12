@@ -112,6 +112,23 @@ describe('calibrate', () => {
     assert.equal(engine.calls.reset, 1);
   });
 
+  test('on a GPU too slow for the first count, it measures fewer until a count fits', async () => {
+    const cost = (n) => 5 + (n / M) * 100; // 262,144 → 30 ms; 65,536 → 11.25 ms
+    const engine = fakeEngine({ cost });
+    const { particles, results } = await calibrate(engine, { refreshHz: 60, budget: 0.7, now: engine.clock });
+    assert.deepEqual(results.map((r) => r.n), [1 << 18, 1 << 16]);
+    // between 65,536 (11.25 ms, fits) and 262,144 (30 ms)
+    assert.ok(particles > 1 << 16 && particles < 1 << 17, `picked ${particles}`);
+    assert.ok(cost(particles) <= (1000 / 60) * 0.7, 'and it fits the budget');
+  });
+
+  test('on a GPU too slow for anything, the fewest it measured', async () => {
+    const engine = fakeEngine({ cost: () => 100 });
+    const { particles, results } = await calibrate(engine, { refreshHz: 60, now: engine.clock });
+    assert.deepEqual(results.map((r) => r.n), [1 << 18, 1 << 16, 1 << 14]);
+    assert.equal(particles, 1 << 14);
+  });
+
   test('stops when the GPU cannot hold a count', async () => {
     const engine = fakeEngine({ cost: () => 1, limit: 3 * M });
     const { particles, results } = await calibrate(engine, { refreshHz: 60, now: engine.clock });

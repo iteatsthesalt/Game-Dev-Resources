@@ -1,9 +1,11 @@
-// The first-run benchmark: it plays the engine at rising particle counts, with every effect
-// on, and picks the count that fits `budget` of a frame at the display's refresh rate. So
-// whatever computer the app runs on becomes its own default. See docs/design.md, "Quality".
+// The first-run benchmark: it plays the engine at rising particle counts (falling ones on a
+// GPU too slow for the first), with every effect on, and picks the count that fits `budget`
+// of a frame at the display's refresh rate. So whatever computer the app runs on becomes its
+// own default. See docs/design.md, "Quality".
 import { DEFAULT_PRESET, presetScene } from '../../../../Tactilume/src/js/core/presets.js';
 
 const FIRST = 1 << 18;          // 262,144 particles: the first count measured
+const FLOOR = 1 << 14;          // 16,384: the fewest it measures on a GPU too slow for FIRST
 const WARM_UP = 2;              // frames drawn before measuring, after each change of count
 const SAMPLES = 3;              // measurements per count; the median is kept
 const FRAMES_PER_SAMPLE = 3;
@@ -78,11 +80,12 @@ export async function calibrate(engine, { refreshHz = 60, budget = 0.7, timeLimi
     await engine.finish();
     return now() - t;
   };
-  for (const n of ladder(engine.caps.maxParticles)) {
-    if (now() - start > timeLimitMs) break;
+  // → the median frame time at `n` particles, or null when out of time or GPU memory
+  const measure = async (n) => {
+    if (now() - start > timeLimitMs) return null;
     await engine.setQuality({ particles: n });
     // the GPU could not hold that many: the engine lowered its limit
-    if (engine.stats.particles < n) break;
+    if (engine.stats.particles < n) return null;
     for (let i = 0; i < WARM_UP; i++) await timed();
     const samples = [];
     for (let s = 0; s < SAMPLES; s++) {
@@ -92,8 +95,23 @@ export async function calibrate(engine, { refreshHz = 60, budget = 0.7, timeLimi
     }
     const ms = median(samples);
     results.push({ n, ms });
-    // well past the budget: larger counts would only take longer
-    if (ms > limit * 2) break;
+    return ms;
+  };
+
+  const counts = ladder(engine.caps.maxParticles);
+  const first = await measure(counts[0]);
+  if (first !== null && first > limit) {
+    // a slow GPU: fewer particles, a quarter at a time, until a count fits
+    for (let n = Math.floor(counts[0] / 4); n >= FLOOR; n = Math.floor(n / 4)) {
+      const ms = await measure(n);
+      if (ms === null || ms <= limit) break;
+    }
+  } else if (first !== null) {
+    for (const n of counts.slice(1)) {
+      const ms = await measure(n);
+      // well past the budget: larger counts would only take longer
+      if (ms === null || ms > limit * 2) break;
+    }
   }
   const particles = pickParticles(results, refreshHz, budget) || before;
   await engine.setQuality({ particles });
