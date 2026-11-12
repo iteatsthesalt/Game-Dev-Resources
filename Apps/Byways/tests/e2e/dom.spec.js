@@ -58,3 +58,21 @@ test('showToast offers Undo for 5 seconds, announces politely and keeps a sticky
   await page.clock.runFor(5000); await expect(page.locator('#toasts')).not.toContainText('Liked');
   await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
 });
+test('a toast runs Undo once on a double click and survives a failing action', async ({ page }) => {
+  await page.clock.install(); await page.goto('./');
+  await page.evaluate(async () => { const { showToast } = await import(new URL('ui/toast.js', document.baseURI).href);
+    window.__undos = 0;
+    showToast('Deleted', { undo: () => new Promise((resolve) => { window.__undos++; setTimeout(resolve, 200); }) }); });
+  await page.getByRole('button', { name: 'Undo' }).dblclick();
+  await page.clock.runFor(300); await expect(page.locator('#toasts')).toBeEmpty();
+  expect(await page.evaluate(() => window.__undos)).toBe(1);
+  await page.evaluate(async () => { const { showToast } = await import(new URL('ui/toast.js', document.baseURI).href);
+    window.__tries = 0;
+    showToast('Deleted', { ms: 0, undo: async () => { window.__tries++; if (window.__tries === 1) throw new Error('db down'); } }); });
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.locator('#live-assertive')).not.toBeEmpty();
+  await expect(page.getByRole('button', { name: 'Undo' })).toBeEnabled();
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.locator('#toasts')).toBeEmpty();
+  expect(await page.evaluate(() => window.__tries)).toBe(2);
+});
