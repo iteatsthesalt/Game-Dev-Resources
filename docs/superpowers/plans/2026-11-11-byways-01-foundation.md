@@ -1280,7 +1280,7 @@ git commit -m "Add the test server and the Playwright harness with network mocks
 
 **Interfaces:**
 - Consumes: `test`, `expect` (Task 10).
-- Produces: `h(tag, props?, ...children) → HTMLElement`, `clear(el)`; `announce(text, {assertive = false} = {})`, `focusMain()`; `applyAccessSettings(settings, root = document.documentElement)`; `showToast(message, {undo, ms = 5000, action} = {}) → {close()}`, where `action = {label, run}`, and `ms: 0` means the toast stays until it is closed.
+- Produces: `h(tag, props?, ...children) → HTMLElement`, `clear(el)`; `announce(text, {assertive = false} = {})`, `focusMain()`; `applyAccessSettings(settings, root = document.documentElement)`; `showToast(message, {undo, ms = 5000, action} = {}) → {close()}`, where `action = {label, run}`. A toast with `ms: 0` is sticky: it stays until its button runs or `close()` is called, and later toasts do not replace it.
 
 In e2e specs, page modules are loaded with `await import(new URL('ui/dom.js', document.baseURI).href)` inside `page.evaluate`. This gives the same module instance the app uses.
 
@@ -1311,14 +1311,22 @@ test('h sets text, attributes and handlers without parsing HTML', async ({ page 
     return [el.className, el.textContent, el.children.length, el.getAttribute('aria-label'), el.dataset.id, clicks, div.textContent, div.childNodes.length];
   })).toEqual(['big', '<b>hi</b>', 0, 'Say hi', '7', 1, 'abcd', 4]);
 });
+test('h writes aria-* and data-* booleans as text and toggles other boolean attributes', async ({ page }) => {
+  expect(await page.evaluate(async () => {
+    const { h } = await import(new URL('ui/dom.js', document.baseURI).href);
+    const b = h('button', { 'aria-pressed': false, 'aria-expanded': true, 'data-on': false, disabled: true, hidden: false });
+    return [b.getAttribute('aria-pressed'), b.getAttribute('aria-expanded'), b.getAttribute('data-on'), b.disabled, b.hasAttribute('hidden')];
+  })).toEqual(['false', 'true', 'false', true, false]);
+});
 test('h drops unsafe link schemes', async ({ page }) => {
   expect(await page.evaluate(async () => {
     const { h } = await import(new URL('ui/dom.js', document.baseURI).href);
-    const bad = ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<b>x</b>', 'vbscript:x']
+    const bad = ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<b>x</b>', 'vbscript:x', 'blob:https://evil.example/x']
       .map(u => h('a', { href: u }).hasAttribute('href'));
     return [...bad, h('a', { href: 'https://x.org/' }).getAttribute('href'), h('a', { href: '#/feed' }).hasAttribute('href'),
+      h('a', { href: `blob:${location.origin}/x` }).hasAttribute('href'),
       h('img', { src: 'data:image/png;base64,AA' }).hasAttribute('src'), h('iframe', { src: 'data:text/html,x' }).hasAttribute('src')];
-  })).toEqual([false, false, false, false, false, false, 'https://x.org/', true, true, false]);
+  })).toEqual([false, false, false, false, false, false, false, 'https://x.org/', true, true, true, false]);
 });
 test('h refuses a style prop', async ({ page }) => {
   expect(await page.evaluate(async () => {
@@ -1332,7 +1340,7 @@ test('announce writes the polite or the assertive region', async ({ page }) => {
   await expect(page.locator('#live-polite')).toHaveText('Saved');
   await expect(page.locator('#live-assertive')).toHaveText('Microphone blocked');
 });
-test('showToast offers Undo for 5 seconds and announces politely', async ({ page }) => {
+test('showToast offers Undo for 5 seconds, announces politely and keeps a sticky toast', async ({ page }) => {
   await page.clock.install(); await page.goto('./');
   await page.evaluate(async () => { const { showToast } = await import(new URL('ui/toast.js', document.baseURI).href);
     showToast('Saved', { undo: async () => { window.__undone = true; } }); });

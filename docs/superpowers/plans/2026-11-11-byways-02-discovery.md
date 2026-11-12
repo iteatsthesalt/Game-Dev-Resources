@@ -565,6 +565,11 @@ test('fatePull says when no Fate source is on', async () => {
   const r = await fatePull({ sources: [src('a', [], { fate: false })], weights: {}, ctx: {}, rand: () => 0.5, seenHas: never });
   assert.deepEqual(r, { miss: true, reason: 'No Fate sources are on. Turn some on in Settings → Sources.' });
 });
+test('fatePull skips finds that accept rejects', async () => {
+  const a = src('a', [[find('blocked'), find('fine')]]);
+  const r = await fatePull({ sources: [a], weights: {}, ctx: {}, rand: () => 0.5, seenHas: never, accept: (f) => !f.url.includes('blocked.') });
+  assert.equal(r.find.title, 'fine');
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -579,7 +584,7 @@ Each attempt draws `rand() * totalWeight` and walks the sources in order to pick
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/fate.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -598,8 +603,8 @@ git commit -m "Add the Fate pull with weights and retries"
 - Consumes: `tokenize(text)`, `normalizeUrl`, `makeFind`, the adapter shape (Task 5).
 - Produces:
   - `similarLocal(find, candidates, k) → Find[]`: score = Jaccard overlap of tags + cosine similarity of TF-IDF vectors over `tokenize(title + ' ' + description)`, with `idf = ln((1 + N) / (1 + df)) + 1` over the candidates plus `find`. It leaves out candidates with the same normalised URL and candidates scoring 0, sorts by score (stable), and returns the top `k`.
-  - `createRabbitHole({sources, ctx, seenHas, pool}) → {start(find), next() → Promise<Find|null>, trail() → Find[], climbOut()}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async.
-  - `next()` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`. The first candidate that is not in the trail (by normalised URL) and not seen is pushed onto the trail and returned. A `more` call that throws counts as `[]`. An empty trail gives `null`.
+  - `createRabbitHole({sources, ctx, seenHas, pool, accept = () => true}) → {start(find), next() → Promise<Find|null>, trail() → Find[], climbOut(), useAi(fn|null)}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async; `accept(find) → boolean` is the engine's always-on filter, as in Fate. `useAi(fn)` sets or clears the AI hook, `fn(find) → Promise<Find[]>` (overview: Plan 02 defines it, Plan 05 sets it).
+  - `next()` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`; then, only when a hook is set, `fn(last)`. The first candidate that is not in the trail (by normalised URL), not seen and accepted is pushed onto the trail and returned. A `more` or `fn` call that throws counts as `[]`. An empty trail gives `null`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -632,6 +637,19 @@ test('climbOut empties the trail', async () => {
   hole.start(F('Start')); hole.climbOut();
   assert.deepEqual(hole.trail(), []); assert.equal(await hole.next(), null);
 });
+test('next leaves out candidates that accept rejects', async () => {
+  const hole = createRabbitHole({ sources: [ad('library', [[F('Blocked'), F('Hidden', ['secret']), F('Fine')]])], ctx: {}, seenHas: never,
+    accept: (f) => !f.url.includes('blocked.') && !f.tags.includes('secret') });
+  hole.start(F('Start')); assert.equal((await hole.next()).title, 'Fine');
+});
+test('the AI hook comes after the sources and the pool, and only while it is set', async () => {
+  const hole = createRabbitHole({ sources: [ad('library', [])], ctx: {}, seenHas: never, pool: () => [] });
+  hole.start(F('Start')); assert.equal(await hole.next(), null);
+  const asked = []; hole.useAi(async (f) => { asked.push(f.title); return [F('Start'), F('AI pick')]; });
+  assert.equal((await hole.next()).title, 'AI pick'); assert.deepEqual(asked, ['Start']);
+  hole.useAi(async () => { throw new Error('down'); }); assert.equal(await hole.next(), null);
+  hole.useAi(null); assert.equal(await hole.next(), null); assert.equal(asked.length, 1);
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -644,7 +662,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/rabbit.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -721,7 +739,7 @@ git commit -m "Add collections with Saved as the default"
 
 **Interfaces:**
 - Consumes: `makeFind`, `truncate`, `hash64` (test only).
-- Produces: `MAX_LINK_CHARS = 2000`; `SHARE_BASE = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/'`; `encodeShare(payload) → Promise<string>` (`base64url(deflate-raw(JSON))`, no `=` padding, no validation); `decodeShare(str) → Promise<payload>`, which throws `'This link is broken or not from Byways.'` unless the payload is `{v: 1, t: 'c'|'f'|'d', n: string, i: Array<[string, string, string]>}` with at most 500 items; `buildShareUrl(base, payload) → Promise<{url, tooLong}>` with `url = base + '#s=' + encoded` and `tooLong = url.length > MAX_LINK_CHARS`; `shareItem(find) → [find.source, find.url, truncate(find.title, 80)]`; `itemToFind([source, url, title]) → Find|null` (kind `'site'`, safety `'mostly'`, why `['Shared with you']`).
+- Produces: `MAX_LINK_CHARS = 2000`; `SHARE_BASE = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/'`; `encodeShare(payload) → Promise<string>` (`base64url(deflate-raw(JSON))`, no `=` padding, no validation); `decodeShare(str) → Promise<payload>`, which throws `'This link is broken or not from Byways.'` unless the payload is `{v: 1, t: 'c'|'f'|'d', n: string, i: Array<[string, string, string]>}` with at most 500 items; `buildShareUrl(base, payload) → Promise<{url, tooLong}>` with `url = base + '#s=' + encoded` and `tooLong = url.length > MAX_LINK_CHARS`; `shareItem(find) → [find.source, find.url, truncate(find.title, 80)]`; `itemToFind([source, url, title]) → Find|null` (kind `'site'`, safety `'mostly'`, why `['Shared with you']`); `payloadFromLink(text) → string|null` for **Import from link** (§14.3: the extension and Android paste links): it trims `text`, parses it with `new URL` and returns what follows `#s=` when the origin and path equal `SHARE_BASE` (or `SHARE_BASE + 'index.html'`) and that rest is not empty; anything else gives `null`.
 
 - [ ] **Step 1: Write the failing test**
 

@@ -902,6 +902,29 @@ class SpeechErrorsTest {
     for (c in -1..20) assertTrue(SpeechErrors.toCode(c) in names)
   }
 }
+// VoiceProbeTest.kt
+class VoiceProbeTest {
+  private val tap = "Always-on voice needs Android 13 and on-device speech. Use Tap to talk."
+  private fun s(sdk: Int = 34, mic: Boolean = true, onDevice: Boolean = true, any: Boolean = true,
+                pkg: String? = "com.google.android.tts", cloud: Boolean = false, installed: Boolean? = true) =
+    VoiceProbe.status(sdk, mic, onDevice, any, pkg, cloud, installed)
+  private fun st(kind: String, vendor: String?, download: Boolean, continuous: Boolean, reason: String?) =
+    mapOf("kind" to kind, "vendor" to vendor, "needsDownload" to download, "continuous" to continuous, "reason" to reason)
+  @Test fun onDeviceOn13IsContinuous() {
+    assertEquals(st("native", "android", false, true, null), s())
+    assertEquals(st("native", "android", true, true, null), s(installed = false))
+  }
+  @Test fun onDeviceBefore13IsTapToTalk() = assertEquals(st("native", "android", false, false, tap), s(sdk = 31, installed = null))
+  @Test fun cloudOnlyWaitsForTheOptIn() {
+    assertEquals(st("none", "google", false, false, "cloud-only"), s(onDevice = false))
+    assertEquals(st("native", "google", false, false, tap), s(onDevice = false, cloud = true))
+    assertEquals(st("none", "android", false, false, "cloud-only"), s(sdk = 26, onDevice = false, pkg = "com.example.asr"))
+  }
+  @Test fun noMicOrNoRecogniserSaysWhy() {
+    assertEquals(st("none", null, false, false, "Microphone permission is off. Turn it on in Android settings."), s(mic = false))
+    assertEquals(st("none", null, false, false, "This phone has no speech recogniser."), s(onDevice = false, any = false))
+  }
+}
 ```
 
 Add to `tests/unit/android-shell.test.js`:
@@ -909,31 +932,35 @@ Add to `tests/unit/android-shell.test.js`:
 ```js
 test('speech uses the spec extras and stops in onPause', () => {
   const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
-  for (const s of ['EXTRA_PREFER_OFFLINE', 'EXTRA_SEGMENTED_SESSION', 'EXTRA_AUDIO_SOURCE', 'LANGUAGE_MODEL_WEB_SEARCH',
-    'EXTRA_BIASING_STRINGS', 'createOnDeviceSpeechRecognizer', 'Looper.getMainLooper()']) assert.ok(k('SpeechBridge.kt').includes(s), s);
-  assert.match(k('MainActivity.kt'), /override fun onPause\(\)[\s\S]*stopNow\(\)/);
-  assert.ok(k('MainActivity.kt').includes('Manifest.permission.RECORD_AUDIO'));
+  for (const s of ['EXTRA_PREFER_OFFLINE', 'EXTRA_SEGMENTED_SESSION', 'EXTRA_AUDIO_SOURCE', 'LANGUAGE_MODEL_WEB_SEARCH', 'EXTRA_BIASING_STRINGS',
+    'createOnDeviceSpeechRecognizer', 'Looper.getMainLooper()', 'Lifecycle.State.RESUMED', 'VoiceProbe.status(']) assert.ok(k('SpeechBridge.kt').includes(s), s);
+  const m = k('MainActivity.kt');
+  assert.match(m, /override fun onPause\(\)[\s\S]*"paused"[\s\S]*stopNow\(\)/);
+  assert.match(m, /private val micPermission = registerForActivityResult\(ActivityResultContracts\.RequestPermission\(\)\)/);
+  assert.ok(m.includes('micPermission.launch(Manifest.permission.RECORD_AUDIO)'));
 });
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `node --test tests/unit/android-shell.test.js` and `gradle -p shells/android testDebugUnitTest --tests '*SpeechErrorsTest'` (or the CI job).
+Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*SpeechErrorsTest' --tests '*VoiceProbeTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
 Expected: Node fails with `ENOENT` on `SpeechBridge.kt`; Gradle fails with `Unresolved reference 'SpeechErrors'`.
 
-- [ ] **Step 3: Implement `SpeechErrors.toCode`** as the table above, with every other value giving `aborted`.
+- [ ] **Step 3: Implement `SpeechErrors.toCode` and `VoiceProbe.status`**
+
+`toCode` is the table above, with every other value giving `aborted`. `status` returns all five `VoiceStatus` keys; `needsDownload` and `continuous` are `false` unless a row says otherwise. Rows, first match wins:
+1. `!hasMic` → `none`, vendor `null`, reason `Microphone permission is off. Turn it on in Android settings.`
+2. `!onDevice && !anyRecogniser` → `none`, vendor `null`, reason `This phone has no speech recogniser.`
+3. `onDevice` → `native`, vendor `android`, `needsDownload = langInstalled == false`, `continuous = sdk >= 33`, reason `null` on 33+ and otherwise `Always-on voice needs Android 13 and on-device speech. Use Tap to talk.`
+4. Cloud only: vendor `google` when `servicePackage` starts with `com.google`, else `android`. Without `allowCloud`, the contract's `{kind:'none', vendor, reason:'cloud-only'}`; with it, `native` with the Tap to talk reason.
 
 - [ ] **Step 4: Implement `SpeechBridge`**
 
-Every recogniser call is posted to `Handler(Looper.getMainLooper())`.
+Every recogniser call is posted to `Handler(Looper.getMainLooper())`. API levels, from the SDK reference: `isOnDeviceRecognitionAvailable` and `createOnDeviceSpeechRecognizer` are API 31 (mark their helper `@RequiresApi(31)`; this supersedes the hands-free note's "API 33" for the recogniser); `checkRecognitionSupport`, `triggerModelDownload`, `EXTRA_SEGMENTED_SESSION`, `EXTRA_AUDIO_SOURCE` and `EXTRA_BIASING_STRINGS` are API 33. Guard each call with `Build.VERSION.SDK_INT`.
 
-- `probe {allowCloud}`:
-  - Without `RECORD_AUDIO`: `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'Microphone permission is off. Turn it on in Android settings.'}`.
-  - `onDevice` = API ≥ 31 and `SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)`. Neither that nor `isRecognitionAvailable(ctx)`: kind `none`, reason `This phone has no speech recogniser.`
-  - `onDevice`: `{kind:'native', vendor:'android', needsDownload, continuous: API ≥ 33, reason:null}`. On API 33+, `needsDownload` is true when `checkRecognitionSupport` (3 s limit) does not list the language as installed.
-  - Cloud only: `vendor` is `'google'` when the first `RecognitionService` package starts with `com.google`, else `'android'`. With `allowCloud`: kind `native`, `continuous:false`. Without it: kind `none`, reason `This phone only has cloud voice. Turn on cloud voice in Settings → Voice.`
+- `probe {allowCloud}` replies `VoiceProbe.status(SDK_INT, hasMic, onDevice, anyRecogniser, servicePackage, allowCloud, langInstalled)`: `hasMic` from `checkSelfPermission(RECORD_AUDIO)`; `onDevice` = API ≥ 31 and `isOnDeviceRecognitionAvailable(ctx)`; `anyRecogniser` = `isRecognitionAvailable(ctx)`; `servicePackage` = the first `RecognitionService` from `queryIntentServices`; `langInstalled` from `checkRecognitionSupport` (API 33+ with `onDevice`, 3 s limit), else `null`.
 - `install {}`: API ≥ 33 calls `triggerModelDownload(intent)` and replies true; otherwise false.
-- `start {lang, phrases, allowCloud}`: no permission → error `not-allowed`; cloud only without `allowCloud` → error `service-not-allowed`. Create `createOnDeviceSpeechRecognizer` when `onDevice`, else `createSpeechRecognizer`. The intent sets `EXTRA_LANGUAGE_MODEL = LANGUAGE_MODEL_WEB_SEARCH`, `EXTRA_LANGUAGE = lang`, `EXTRA_PARTIAL_RESULTS = true`, `EXTRA_MAX_RESULTS = 1`, and `EXTRA_PREFER_OFFLINE = true` when `onDevice`. On API 33+ it adds `EXTRA_BIASING_STRINGS = ArrayList(phrases)`. When also `onDevice`, it adds `EXTRA_SEGMENTED_SESSION = RecognizerIntent.EXTRA_AUDIO_SOURCE`, `EXTRA_AUDIO_SOURCE` (the read end of `ParcelFileDescriptor.createPipe()`), `EXTRA_AUDIO_SOURCE_CHANNEL_COUNT = 1`, `EXTRA_AUDIO_SOURCE_ENCODING = AudioFormat.ENCODING_PCM_16BIT` and `EXTRA_AUDIO_SOURCE_SAMPLING_RATE = 16000`. A thread copies an `AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, CHANNEL_IN_MONO, ENCODING_PCM_16BIT, …)` into the write end until stop. Confirm the `EXTRA_SEGMENTED_SESSION` value type against the API 33 `RecognizerIntent` docs.
+- `start {lang, phrases, allowCloud}`: no permission → error `not-allowed`; cloud only without `allowCloud` → error `service-not-allowed`. While `activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)` is false, the start is held and `resumed()` runs it; `stop` and `stopNow()` drop a held start with the error `aborted`. Create `createOnDeviceSpeechRecognizer` when `onDevice`, else `createSpeechRecognizer`. The intent sets `EXTRA_LANGUAGE_MODEL = LANGUAGE_MODEL_WEB_SEARCH`, `EXTRA_LANGUAGE = lang`, `EXTRA_PARTIAL_RESULTS = true`, `EXTRA_MAX_RESULTS = 1`, and `EXTRA_PREFER_OFFLINE = true` when `onDevice`. On API 33+ it adds `EXTRA_BIASING_STRINGS = ArrayList(phrases)`. When also `onDevice`, it adds `EXTRA_SEGMENTED_SESSION = RecognizerIntent.EXTRA_AUDIO_SOURCE` (the extra takes the name of the extra that drives the segments), `EXTRA_AUDIO_SOURCE` (the read end of `ParcelFileDescriptor.createPipe()`), `EXTRA_AUDIO_SOURCE_CHANNEL_COUNT = 1`, `EXTRA_AUDIO_SOURCE_ENCODING = AudioFormat.ENCODING_PCM_16BIT` and `EXTRA_AUDIO_SOURCE_SAMPLING_RATE = 16000`. A thread copies an `AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, CHANNEL_IN_MONO, ENCODING_PCM_16BIT, …)` into the write end until stop.
 - Listener: `onReadyForSpeech` replies to `start` once and emits `state {listening:true}`. `onPartialResults` emits `result {text, final:false}`. `onResults` and `onSegmentResults` emit `result {text, final:true}` with the first `RESULTS_RECOGNITION` entry. `onResults`, `onEndOfSegmentedSession` and `onError` emit `state {listening:false}`. `onError(code)` emits `error {code: SpeechErrors.toCode(code)}` (and rejects a pending `start`), except `ERROR_CLIENT` right after our own stop.
 - `stop {}` and `stopNow()`: `cancel()`, close the pipe and `AudioRecord`, `destroy()` the recogniser, emit `state {listening:false}`.
 
