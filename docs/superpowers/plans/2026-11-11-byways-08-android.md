@@ -1697,14 +1697,14 @@ Expected: six of the nine new tests FAIL, waiting for **Check for updates**, the
 
 - [ ] **Step 3: Implement the three changes**
 
-- `about.js`: when `app.platform.app` exists, show `Version <versionName>` and a **Check for updates** button. On click it calls `checkUpdate()`: `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`; not available → `You have the latest version (<versionName>).`; a rejection → `Could not check for updates. Try again later.` Each status line also goes through `announce`.
+- `about.js`: when `app.platform.app` exists, add a **Check for updates** button under Plan 01's `Version <APP_VERSION>` line (`versionName` is the same number, from `package.json`, so there is no second version line). On click it calls `checkUpdate()`: `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`; not available → `You have the latest version (<versionName>).`; a rejection → `Could not check for updates. Try again later.` Each status line also goes through `announce`.
 - `access.js`: when `app.platform.caps.inAppSiteView` is true, the `Lean-back` fieldset ends with a checkbox labelled `Go straight to the site`, with the hint `In lean-back, show each find's real site instead of its card.`, bound to `goStraightToSite` through `app.saveSettings({goStraightToSite})`.
 - `voice.js`: when `app.platform.name === 'android'`, a `#voice-reason` line under `#voice-engine` shows `status.reason` when it is set and is not `'cloud-only'` (that case already shows the vendor opt-in). Otherwise the line is not rendered.
 
 - [ ] **Step 4: Run them to see them pass**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`, then `npm test`
-Expected: PASS (20 e2e tests), and all unit tests still pass.
+Expected: PASS (23 e2e tests), and all unit tests still pass.
 
 - [ ] **Step 5: Commit**
 
@@ -1724,7 +1724,7 @@ Plan 09 copies this list into `CHECKLIST.md`. Fill it in by hand on a real phone
 - [ ] **Android voice, 24–32:** a tap on **Talk** listens for one command, and Settings says why voice is not always on. On Android 12, voice uses the on-device recogniser.
 - [ ] **No recogniser or no Google speech:** Settings says why, and keyboard, touch and headset buttons still work.
 - [ ] **Read-aloud:** native voices are listed, network voices are marked "online", and Stop stops mid-sentence.
-- [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off, on Android 7 and on 8 or later. If they do not reach Byways while only speech plays, set `MediaBridge.PLAY_SILENCE = true` and test again.
+- [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off, on Android 7 and on 8 or later. In push mode, holding a wired headset's button for half a second talks and a short press pauses; a Bluetooth headset's long press is Android's assistant, so only its short press reaches Byways. If they do not reach Byways while only speech plays, set `MediaBridge.PLAY_SILENCE = true` and test again.
 - [ ] **Keep the screen on** during lean-back, and off again after Stop.
 - [ ] **Fullscreen for Archive embeds:** Play, then the embed's full-screen button fills the screen, and Back leaves full screen first.
 - [ ] **Site view:** **Back to Byways**, **Next** and **Open in browser** work, and **Pause**/**Play** and **Stop** show while lean-back runs. An `intent:` link opens outside. **Go straight to the site** follows lean-back.
