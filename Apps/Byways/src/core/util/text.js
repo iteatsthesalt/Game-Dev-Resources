@@ -22,18 +22,35 @@ function decodeEntities(s) {
 
 const collapse = (s) => s.replace(/\s+/g, ' ').trim();
 
+// One tag, quote-aware so a `>` or `<style>` inside an attribute value does not end it. Raw-text elements (group 2)
+// also capture their body (group 3), which is left alone, so markup written inside them is never touched.
+const MARKUP =
+  /(<(script|style|textarea|title|xmp|iframe|noembed|noframes)\b(?:"[^"]*"|'[^']*'|[^>"'])*>)([\s\S]*?(?:<\/\2\s*>|$))|(<[a-z][^\s/>]*(?:"[^"]*"|'[^']*'|[^>"'])*>)/gi;
+const STYLE_ATTR = /("[^"]*"|'[^']*')|([\s/])style(?=\s*=)/gi;
+
+/**
+ * Chromium checks every parsed `style` attribute against the page's style-src CSP, even in an inert document, and
+ * logs a violation for each. Rename the attribute (tags only, never text) so parsing is silent; the text is unchanged.
+ */
+function renameStyleAttributes(html) {
+  const rename = (tag) => tag.replace(STYLE_ATTR, (m, quoted, pre) => quoted ?? `${pre}data-style`);
+  return html.replace(MARKUP, (m, rawOpen, name, rawBody, tag) => (rawOpen ? rename(rawOpen) + rawBody : rename(tag)));
+}
+
 function plainTextWithDom(html) {
-  // A parsed <style> block is checked against the page's style-src CSP and logs a violation, so drop it before parsing.
-  const withoutStyles = html.replace(/<style\b[^>]*>[\s\S]*?(?:<\/style\s*>|$)/gi, '');
-  const doc = new globalThis.DOMParser().parseFromString(withoutStyles, 'text/html');
-  for (const el of doc.querySelectorAll('script, style, template')) el.remove();
-  const space = () => doc.createTextNode(' ');
-  for (const br of doc.querySelectorAll('br')) br.before(space());
-  for (const el of doc.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6')) {
+  // Parse into a <template>'s inert content: <style> blocks log no CSP violation there, and nothing is dropped from
+  // the input beforehand. Style attributes do log one, hence renameStyleAttributes.
+  const template = globalThis.document.createElement('template');
+  template.setHTMLUnsafe(renameStyleAttributes(html)); // the fragment stays inert and detached; it is only read
+  const root = template.content;
+  for (const el of root.querySelectorAll('script, style, template, title')) el.remove();
+  const space = () => root.ownerDocument.createTextNode(' ');
+  for (const br of root.querySelectorAll('br')) br.before(space());
+  for (const el of root.querySelectorAll('p, div, li, tr, h1, h2, h3, h4, h5, h6')) {
     el.before(space());
     el.after(space());
   }
-  return collapse(doc.body.textContent);
+  return collapse(root.textContent);
 }
 
 function plainTextWithRegex(html) {
@@ -45,11 +62,13 @@ function plainTextWithRegex(html) {
   return collapse(decodeEntities(stripped));
 }
 
-/** HTML to collapsed plain text. Uses DOMParser when present, a regex fallback otherwise. */
+/** HTML to collapsed plain text. Uses an inert <template> when the browser can fill one from a string, a regex fallback otherwise. */
 export function toPlainText(html) {
   if (html == null) return '';
   const s = String(html);
-  return globalThis.DOMParser ? plainTextWithDom(s) : plainTextWithRegex(s);
+  return globalThis.document && globalThis.HTMLTemplateElement?.prototype.setHTMLUnsafe
+    ? plainTextWithDom(s)
+    : plainTextWithRegex(s);
 }
 
 /** Text up to and including the first `.`, `!` or `?` that is followed by whitespace or the end. */

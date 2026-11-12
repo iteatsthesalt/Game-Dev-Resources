@@ -28,8 +28,8 @@ test('axe passes in the light, dark and high-contrast themes', async ({ page }) 
 test('toPlainText gives the same text with DOMParser', async ({ page }) => {
   expect(await page.evaluate(async () => {
     const { toPlainText } = await import(new URL('core/util/text.js', document.baseURI).href);
-    return ['<p>Fish &amp; <b>chips</b></p>', 'a<br>b<p>c</p>', '<p>One.</p><p>Two.</p>', 'un<b>believ</b>able', '<script>alert(1)</script><style>p{}</style>ok'].map(toPlainText);
-  })).toEqual(['Fish & chips', 'a b c', 'One. Two.', 'unbelievable', 'ok']);
+    return ['<p>Fish &amp; <b>chips</b></p>', 'a<br>b<p>c</p>', '<p>One.</p><p>Two.</p>', 'un<b>believ</b>able', '<script>alert(1)</script><style>p{}</style>ok', '<p style="color:red">styled attr</p>', '<p title="<style>">kept?</p> after', '<textarea><b style="q">t</b></textarea>'].map(toPlainText);
+  })).toEqual(['Fish & chips', 'a b c', 'One. Two.', 'unbelievable', 'ok', 'styled attr', 'kept? after', '<b style="q">t</b>']);
 });
 test.describe('with ignoreProblems', () => {
   test.use({ ignoreProblems: [/boom/] });
