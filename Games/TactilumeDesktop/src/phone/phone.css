@@ -173,7 +173,9 @@ body:not([data-state="playing"]) #fullscreen { display: none; }
 /* A phone on its side: the buttons move to a column on the right, so the pad keeps its height. */
 @media (orientation: landscape) and (max-height: 560px) {
   body {
-    grid-template-columns: minmax(0, 1fr) minmax(180px, 32%);
+    /* 200 px at least: at 568x320 the 180 px column left the name 76 px, which "Fountain" overflows
+       in wide fonts such as DejaVu Sans */
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 36%);
     grid-template-rows: auto minmax(0, 1fr) auto;
     grid-template-areas: "bar bar" "stage controls" "note note";
   }

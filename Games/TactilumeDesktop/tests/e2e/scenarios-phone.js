@@ -363,33 +363,47 @@ export default [
           const q = await phone.newPage();
           await q.goto(`${origin}/#k=${info.token}`);
           checks.push(h.check(`${width}x${height}: the phone joins`, await h.until(q, () => window.TACTILUME_PHONE?.joined === true, undefined, 10000)));
-          const cut = await q.evaluate(() => [...document.querySelectorAll('.controls button')]
-            .filter((b) => b.getClientRects().length && b.scrollWidth > b.clientWidth)
-            .map((b) => `${b.textContent.trim()} (${b.scrollWidth} > ${b.clientWidth})`));
-          checks.push(h.check(`${width}x${height}: every button label fits whole`, cut.length === 0, cut));
-
-          // The behaviour's name between its arrows, for every behaviour: whole, inside its box.
-          // (On a phone on its side the box was narrower than "Behaviour", and the words were
-          // cut off on both sides with no sign of it.)
           const player = await q.evaluate(() => window.TACTILUME_PHONE.player);
-          const names = [];
-          for (const key of ['auto', 'well', 'whirl', 'burst', 'halo', 'current', 'weave', 'chime', 'storm', 'lattice', 'nova', 'murmur', 'fountain']) {
-            server.send(player, state({ behaviour: key }));
-            await h.until(q, (k) => document.getElementById('behaviour-name').textContent.toLowerCase() === k, key, 3000);
-            names.push(await q.evaluate(() => {
-              const box = document.querySelector('.behaviour .value');
-              const b = box.getBoundingClientRect();
-              const steps = [...document.querySelectorAll('.behaviour .step')].map((s) => s.getBoundingClientRect().width);
-              const words = [...box.querySelectorAll('span')].map((s) => {
-                const r = s.getBoundingClientRect();
-                return { text: s.textContent, whole: s.scrollWidth <= s.clientWidth + 0.5, inside: r.left >= b.left - 0.5 && r.right <= b.right + 0.5, w: r.width };
-              });
-              return { box: b.width, steps, words };
-            }));
+          // in the page's own font, then in DejaVu Sans, the wide font of many Linux systems and of
+          // GitHub's runners: labels must fit whatever the font
+          for (const font of ['', "'DejaVu Sans'"]) {
+            // the page's CSP refuses a <style> tag, so the font is set on each element instead
+            const setFont = (family) => q.evaluate((family) => {
+              for (const el of [document.body, ...document.body.querySelectorAll('*')]) {
+                if (family) el.style.setProperty('font-family', `${family}, sans-serif`, 'important');
+                else el.style.removeProperty('font-family');
+              }
+            }, family);
+            if (font) await setFont(font);
+            const tag = font ? ` in ${font}` : '';
+            const cut = await q.evaluate(() => [...document.querySelectorAll('.controls button')]
+              .filter((b) => b.getClientRects().length && b.scrollWidth > b.clientWidth)
+              .map((b) => `${b.textContent.trim()} (${b.scrollWidth} > ${b.clientWidth})`));
+            checks.push(h.check(`${width}x${height}${tag}: every button label fits whole`, cut.length === 0, cut));
+  
+            // The behaviour's name between its arrows, for every behaviour: whole, inside its box.
+            // (On a phone on its side the box was narrower than "Behaviour", and the words were
+            // cut off on both sides with no sign of it.)
+            const names = [];
+            for (const key of ['auto', 'well', 'whirl', 'burst', 'halo', 'current', 'weave', 'chime', 'storm', 'lattice', 'nova', 'murmur', 'fountain']) {
+              server.send(player, state({ behaviour: key }));
+              await h.until(q, (k) => document.getElementById('behaviour-name').textContent.toLowerCase() === k, key, 3000);
+              names.push(await q.evaluate(() => {
+                const box = document.querySelector('.behaviour .value');
+                const b = box.getBoundingClientRect();
+                const steps = [...document.querySelectorAll('.behaviour .step')].map((s) => s.getBoundingClientRect().width);
+                const words = [...box.querySelectorAll('span')].map((s) => {
+                  const r = s.getBoundingClientRect();
+                  return { text: s.textContent, whole: s.scrollWidth <= s.clientWidth + 0.5, inside: r.left >= b.left - 0.5 && r.right <= b.right + 0.5, w: r.width };
+                });
+                return { box: b.width, steps, words };
+              }));
+            }
+            const clipped = names.flatMap((n) => n.words.filter((w) => !w.whole || !w.inside).map((w) => `${w.text} (${Math.round(w.w)} in ${Math.round(n.box)})`));
+            checks.push(h.check(`${width}x${height}${tag}: the behaviour and its label show whole between the arrows`, clipped.length === 0, clipped));
+            checks.push(h.check(`${width}x${height}${tag}: the arrows are still easy to press`, names.every((n) => n.steps.every((w) => w >= 44)), names[0]?.steps));
+            if (font) await setFont('');
           }
-          const clipped = names.flatMap((n) => n.words.filter((w) => !w.whole || !w.inside).map((w) => `${w.text} (${Math.round(w.w)} in ${Math.round(n.box)})`));
-          checks.push(h.check(`${width}x${height}: the behaviour and its label show whole between the arrows`, clipped.length === 0, clipped));
-          checks.push(h.check(`${width}x${height}: the arrows are still easy to press`, names.every((n) => n.steps.every((w) => w >= 44)), names[0]?.steps));
           await phone.close();
         }
       } finally {
