@@ -57,6 +57,7 @@ Apps/Byways/
   src/
     core/
       types.js             JSDoc typedefs only (Find, Taste, Settings, Platform, …)
+      version.js           APP_VERSION (hand-edited at a version bump; checked by Plan 09)
       util/hash.js         fnv1a32, mulberry32, hash64, sha256Hex, gumbel
       util/url.js          normalizeUrl, domainOf, isHttpUrl, siteOrigin
       util/text.js         toPlainText, firstSentence, truncate, tokenize
@@ -343,6 +344,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   |---|---|
   | `store`, `settings` (a live object, re-read with `app.getSettings()`), `saveSettings(patch)`, `http`, `clock`, `rand`, `platform`, `data` | 01 |
   | `engine`, `seen`, `history`, `collections` | 02 |
+  | `secrets`: the SecretStore every key goes through. `ctx.secrets` is this object | 02 sets it to `platform.secrets`; 05 replaces it with the keyring, which has the same get/set/delete/list, so the passphrase lock covers the `src:*` keys too |
   | `search(text) → Promise<{finds: Find[], note?: string}>`: keyword search through `engine.search`, which injects the results into the queue | 02 |
   | `search`, upgraded to `aiSearch` when an AI provider is set up. The `note` carries the cost line | 05 |
   | `handsFree` | 03 |
@@ -517,6 +519,21 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `inject(finds, origin)`;
   - `taste() → Taste`, `setTaste(t)` and `on(event, fn)`, with events `find`, `empty`, `error` and `taste`.
   - `find` fires every time the engine hands a find to the UI: from `next`, `back`, `rabbit.next`, and the first find after `inject`.
+
+**More Plan 02 additions** (other plans may use these):
+
+- `history.ready` and `collections.getCurrent()` / `setCurrent(id)`.
+- `runProbes(adapters, http, store, clock, platformName = 'pwa')`.
+- `enabledSources(settings, probe, platformName, all)`.
+- `createEngine` takes optional `seen`, `history` and `collections`, and `settings` as an object or a getter. It adds `engine.pool()` and `EMPTY_REASONS`, and also `engine.rabbit.useAi(fn|null)` (above).
+- `createRabbitHole({sources, ctx, seenHas, pool})`.
+- `renderCard(find, {onAction, compact, whyLine})` and `makeActionHandler(app, {advance, whyLine})`.
+- `shareItem` / `itemToFind` and `SHARE_BASE`.
+- `backupFileName(clock, includeKeys)`.
+- `generatedImage(find)`.
+- `INTEREST_TAGS` (25 ids).
+- Unit helpers in `tests/unit/helpers/fixture-http.js`: `adapterCtx` and `engineFor`.
+- The e2e helper `stageLibrary(page, entries)` in `helpers/net.js`. Its `skipFirstRun` is the one in `helpers/app.js`.
 
 **`ui/components/card.js`**
 
@@ -840,6 +857,8 @@ No environment variable sets the version. The release APK asset is named `byways
 - **Extension CSP:** `"script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"`.
 - **Keys** are sent only to their own provider's host. They are never put in exports (unless the user chooses), share links or logs.
 - **Identification header:** `Byways/<version> (+https://github.com/iteatsthesalt/Game-Dev-Resources)` in `Api-User-Agent` (Wikimedia) and `AIC-User-Agent` (Art Institute). It never carries user details.
+  - `<version>` is `APP_VERSION` from `src/core/version.js` (Plan 01). That file is edited by hand at a version bump, and Plan 09's `checkVersions` makes sure it matches `package.json`, both extension manifests and `gradle.properties`.
+  - `sources/index.js` exports `IDENT`, built from `APP_VERSION`.
 
 ### Hands-free and accessibility
 

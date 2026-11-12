@@ -1491,7 +1491,7 @@ git commit -m "Add the starter library adapter and check the registry"
   - `taste() → Taste`, `setTaste(t)` (saves to the `taste` store under `'taste'` and emits `taste`), `on(event, fn) → unsubscribe` for `find`, `empty`, `error` (`{source, error}`, never shown) and `taste`; `pool() → Find[]`.
   - Pool: unseen candidates from `random(ctx)` of enabled sources, kept between 20 and 50. A refill makes at most 3 source calls at once and stops after a round that adds nothing. `ctx = {http, rand, clock, cache: createCache(store, clock), settings, secrets: platform.secrets, data, platformName: platform.name}`. Probe-tier sources that are enabled are probed with `runProbes(…, platform.name)` in the background; until a result says `'ok'`, the web app leaves them out.
   - Empty reasons (exact, exported as `EMPTY_REASONS`): `exhausted: 'You have seen everything we have right now. Turn on more sources in Settings, or try Fate.'`, `unreachable: "Can't reach any source right now. Check your connection and try again."` (when the last refill had every source call fail and the pool is empty), `aiEmpty: 'No search results waiting. Type a search to start.'`, and Fate's own reasons from Task 6.
-- Test helper `engineFor({entries, settings, transport, extraRoutes, only = ['library']}) → Promise<{engine, calls, store, ctx, platform}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, turns off every `SOURCES` id not in `only`, and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps.privilegedFetch false`, `persistStorage` that counts calls in `platform.persisted`).
+- Test helper `engineFor({entries, settings, transport, extraRoutes, only = ['library']}) → Promise<{engine, calls, store, ctx, platform}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, merges `settings` over `DEFAULT_SETTINGS`, turns off every `SOURCES` id not in `only` (entries in `settings.sources` win), and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps.privilegedFetch false`, `persistStorage` that counts calls in `platform.persisted`).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1688,21 +1688,23 @@ git commit -m "Add reactions with undo, Rabbit Hole and link checks to the engin
   - `generatedImage(find) → HTMLElement`: `div.gen-image` with `aria-hidden="true"`, `data-hue` = `parseInt(hash64(domainOf(find.url)).slice(0, 8), 16) % 360` (also set as CSS `--hue` through `el.style.setProperty`), a `span.initial` with the domain's first letter in upper case, and a `span.badge` with `getSource(find.source)?.name ?? find.source`.
   - `renderCard(find, {onAction, compact = false, whyLine}) → HTMLElement`: `article.card` (`.compact` when compact) with an `h2` title, an `<img alt="">` for `imageUrl` (on error: `find.meta.lqip` once, then `generatedImage`) or `generatedImage(find)`, `p.description` (cut to 160 characters when compact), `p.domain` = the domain, plus `' · by <author>'` when known, `p.why` = `whyLine ?? find.why.join(' · ')`, `p.found-by` = `'Found by <foundBy joined with ", ">'` when set, `span.team-pick` = `'Team pick'` when set, and `p.licence` = licence and attribution joined with `' · '`. All text goes in through `text`/`textContent`. Task 23 adds the actions.
   - `views/stumble.js`: `registerView('stumble', {title: 'Stumble', render})` and the exports `showResult(result)`, `getCurrentFind() → Find|null`, `setMode(mode)` (Task 24 fills in `setMode`). The view has `h1 'Stumble'`, a card slot, `p.empty` for empty reasons, and **Back** and **Next** buttons. The why line is `[MODE_LABEL[mode], result.why, ...find.why].join(' · ')` with `MODE_LABEL = {tuned: 'Tuned', fate: 'Fate', ai: 'AI Search'}`. Showing a find announces `'Now showing: <title>'` politely; an empty result shows and announces its reason. On first render it shows `engine.current()` if there is one, else calls `engine.next`. **Back** with no earlier find announces `'This is the first find.'`
-  - `stageLibrary(page, entries)` in `net.js`: call it after `mockNet` and before `goto`. It answers `**/data/library.json` with `{v: 1, entries}` and every non-localhost request with status 503 and body `{}`.
+  - `stageLibrary(page, entries)` in `net.js`: call it before `goto` (the `page` fixture of Plan 01's `test` from `helpers/net.js` has already called `mockNet`). It answers `**/data/library.json` on the page with `{v: 1, entries}`, and every non-localhost request in `page.context()` (so popups too) with status 503 and body `{}`, so the library is the only source that answers.
   - `skipFirstRun(page, heading = 'Stumble')` in `fakes.js`: waits for a **Skip** button or the `heading` level-1 heading, clicks **Skip** while one shows, then waits for the heading.
 - `library/small.json` entries (all `added '2026-11-01'`): `lib-0001` `https://example.com/` 'Tiny Synth' 'Make sounds with a tiny synth.' `['music','art']` toy; `lib-0002` `https://example.net/` 'Pixel Garden' 'Grow a pixel garden.' `['art','toy']` game; `lib-0003` `https://example.org/` 'Moth Atlas' 'Pictures of moths from one back garden.' `['nature','science']` site.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
-import { test, expect } from '@playwright/test';
 import { readFileSync } from 'node:fs';
-import { mockNet, stageLibrary } from './helpers/net.js';
-import { skipFirstRun } from './helpers/fakes.js';
+import { test, expect, stageLibrary } from './helpers/net.js';
+import { skipFirstRun, installFakeSpeech } from './helpers/fakes.js';
+import { expectNoSeriousA11y } from './helpers/axe.js';
 import { hash64 } from '../../src/core/util/hash.js';
 const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
-const open = async (page, entries) => { await mockNet(page); await stageLibrary(page, entries); await page.goto('./#/stumble'); await skipFirstRun(page); };
+const open = async (page, entries) => { await stageLibrary(page, entries); await page.goto('./#/stumble'); await skipFirstRun(page); };
 const title = (page) => page.locator('article.card h2');
+
+test('axe finds no serious issues on Stumble', async ({ page }) => { await open(page, small); await expectNoSeriousA11y(page); });
 
 test('shows a library find with a generated image and a why line', async ({ page }) => {
   await open(page, [small[0]]); const card = page.locator('article.card');
@@ -1739,7 +1741,7 @@ Expected: FAIL: `stageLibrary` is not exported, then the `Stumble` heading never
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run e2e -- tests/e2e/stumble.spec.js`
-Expected: PASS, 3 tests, and `unmocked(page)` empty after each.
+Expected: PASS, 4 tests; the `test` fixture's checks (no unmocked request, no CSP violation, no page error) pass after each.
 
 - [ ] **Step 5: Commit**
 
@@ -1919,8 +1921,11 @@ git commit -m "Add modes, search, the Rabbit Hole trail and Wiby leap to Stumble
 // same imports and helpers as stumble.spec.js
 const many = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://site-${i}.example.com/`,
   title: `Site ${i}`, blurb: `Blurb ${i}.`, tags: ['toy'], kind: 'site', added: `2026-10-${String((i % 28) + 1).padStart(2, '0')}` }));
+test('axe finds no serious issues on the Feed', async ({ page }) => {
+  await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed'); await expectNoSeriousA11y(page);
+});
 test('the feed comes in batches of 30 with an end', async ({ page }) => {
-  await mockNet(page); await stageLibrary(page, many(31)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
+  await stageLibrary(page, many(31)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
   await expect(page.locator('ul.feed article.card')).toHaveCount(30);
   await expect(page.locator('p.end')).toHaveText("That's 30. Stumble on or call it a day");
   await page.getByRole('button', { name: 'Stumble on' }).click();
@@ -1928,7 +1933,7 @@ test('the feed comes in batches of 30 with an end', async ({ page }) => {
   await expect(page.locator('p.end').last()).toHaveText('You have seen everything we have right now. Turn on more sources in Settings, or try Fate.');
 });
 test('Newest first sorts the batch by date', async ({ page }) => {
-  await mockNet(page); await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
+  await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
   await page.getByRole('radio', { name: 'Newest first' }).check();
   await expect(page.locator('ul.feed article.card h2')).toHaveText(['Site 2', 'Site 1', 'Site 0']);
 });
@@ -1944,7 +1949,7 @@ Expected: FAIL: the `Feed` heading never shows.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run e2e -- tests/e2e/feed.spec.js`
-Expected: PASS, 2 tests.
+Expected: PASS, 3 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1997,8 +2002,12 @@ test('a shared collection link previews and imports', async ({ page, context }) 
   await expect(page.locator('p.kind')).toHaveText('A collection: Saved');
   await page.getByRole('button', { name: 'Import' }).click(); await expect(page.getByText('Imported 1 find into Saved.')).toBeVisible();
 });
+test('axe finds no serious issues on Saved and Import', async ({ page }) => {
+  await open(page, [small[0]]); await page.goto('./#/saved'); await expectNoSeriousA11y(page);
+  await page.goto('./#s=notreal'); await expectNoSeriousA11y(page);
+});
 test('a broken share link shows a message', async ({ page }) => {
-  await mockNet(page); await page.goto('./#s=notreal');
+  await page.goto('./#s=notreal');
   await expect(page.getByText('This link is broken or not from Byways.')).toBeVisible();
 });
 test('bookmarks export and import', async ({ page }) => {
@@ -2021,7 +2030,7 @@ Expected: FAIL: no button named `Saved (1)`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run e2e -- tests/e2e/saved-share.spec.js`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2048,8 +2057,11 @@ git commit -m "Add Saved with collections, sharing and bookmarks, and the share-
 
 ```js
 // same imports, `small` and `open` helper as stumble.spec.js
+test('axe finds no serious issues on Your taste', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/taste'); await expectNoSeriousA11y(page);
+});
 test('first run offers 25 interests and saves the picks', async ({ page }) => {
-  await mockNet(page); await stageLibrary(page, small); await page.goto('./#/stumble');
+  await stageLibrary(page, small); await page.goto('./#/stumble');
   const heading = page.getByRole('heading', { name: 'What are you into?' });
   while (!(await heading.isVisible())) await page.getByRole('button', { name: 'Skip' }).click();
   await expect(page.getByRole('checkbox')).toHaveCount(25);
@@ -2082,7 +2094,7 @@ Expected: FAIL: the heading `What are you into?` never shows.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run e2e -- tests/e2e/settings-taste.spec.js`
-Expected: PASS, 3 tests.
+Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -2111,6 +2123,10 @@ git commit -m "Add Your taste settings and the first-run interests step"
 
 ```js
 // same imports, `small` and `open` helper as stumble.spec.js
+test('axe finds no serious issues on Sources and Data', async ({ page }) => {
+  await open(page, small);
+  for (const s of ['sources', 'data']) { await page.goto(`./#/settings/${s}`); await expectNoSeriousA11y(page); }
+});
 test('a source that is off gets no requests', async ({ page }) => {
   await open(page, small); await page.goto('./#/settings/sources');
   await page.getByRole('checkbox', { name: 'Use Wikipedia' }).uncheck();
@@ -2163,7 +2179,7 @@ Expected: FAIL: no checkbox named `Use Wikipedia`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run e2e -- tests/e2e/settings-sources-data.spec.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
