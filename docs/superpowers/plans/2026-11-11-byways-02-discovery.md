@@ -1902,7 +1902,7 @@ test('card shows markup as plain text', async ({ page }) => {
   await expect(title(page)).toHaveText('<b>Bold</b>');
   await expect(page.locator('article.card b, article.card img[src="x"]')).toHaveCount(0);
 });
-test('card shows the creator, the licence and the AI badges', async ({ page }) => {
+test('card shows the creator, the licence, the AI badges and a display domain', async ({ page }) => {
   await open(page, small);
   await mount(page, { source: 'commons', kind: 'image', title: 'Old map', url: 'https://example.com/map', safety: 'mixed', author: 'Ann',
     licence: 'CC BY 4.0', attribution: 'Wikimedia Commons', foundBy: ['Scout · model-a', 'Digger · model-b'], teamPick: true });
