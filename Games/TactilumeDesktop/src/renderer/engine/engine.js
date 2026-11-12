@@ -102,6 +102,8 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     if (rebuilding || disposed) return rebuilding;
     if (presenting && PRESENT_BROKEN.test(String(why && why.message))) canPresent = false;
     const old = gpu.device;
+    // let go of the canvas, which is still configured with the old device
+    try { res?.context?.unconfigure(); } catch { /* already gone with the device */ }
     res = null;
     rebuilding = (async () => {
       old.destroy();
