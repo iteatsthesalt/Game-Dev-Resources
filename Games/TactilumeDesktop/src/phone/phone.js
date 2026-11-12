@@ -244,11 +244,8 @@ function lost() {
     show('lost', 'This phone is offline. Join the same Wi-Fi as the computer.', 'retry');
     return; // the 'online' event reconnects
   }
-  const delay = retryDelay(attempt++);
-  if (body.dataset.state !== 'lost' || !lastStatus.startsWith('Eight') && !lastStatus.startsWith('The computer is not')) {
-    show('lost', 'Cannot reach the computer. Trying again…', 'retry');
-  }
-  retryTimer = setTimeout(connect, delay);
+  show('lost', refusal || 'Cannot reach the computer. Trying again…', 'retry');
+  retryTimer = setTimeout(connect, retryDelay(attempt++));
 }
 
 // A connection that went quiet without closing (the Wi-Fi dropped it) is let go here, and a

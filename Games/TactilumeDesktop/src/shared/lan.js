@@ -83,8 +83,8 @@ const VIRTUAL = /^(docker|br-|veth|virbr|vboxnet|vmnet|lxcbr|lxdbr|cni|flannel|c
 // ifaces as os.networkInterfaces() returns them → [{ address, family, name }], best first.
 // Only addresses a phone could reach are kept: private, not internal, and not IPv6
 // link-local, which a browser cannot open without a zone id. Among those, IPv4 on a real
-// adapter comes first, in the order the system lists them; then carrier-grade NAT (usually
-// a VPN), IPv6, link-local IPv4, and virtual adapters.
+// adapter comes first, in the order the system lists them; then IPv6, link-local IPv4 (an
+// adapter that found no router), carrier-grade NAT (usually a VPN), and virtual adapters.
 export function pickLanAddresses(ifaces) {
   const found = [];
   for (const [name, list] of Object.entries(ifaces || {})) {
@@ -95,8 +95,8 @@ export function pickLanAddresses(ifaces) {
       if (family === 'IPv6' && /^fe[89ab]/i.test(a.address)) continue;
       const rank = (VIRTUAL.test(name) ? 8 : 0)
         + (/^100\.(6[4-9]|[7-9]\d|1[01]\d|12[0-7])\./.test(a.address) ? 4 : 0)
-        + (family === 'IPv6' ? 2 : 0)
-        + (a.address.startsWith('169.254.') ? 1 : 0);
+        + (a.address.startsWith('169.254.') ? 2 : 0)
+        + (family === 'IPv6' ? 1 : 0);
       found.push({ address: a.address, family, name, rank, order: found.length });
     }
   }

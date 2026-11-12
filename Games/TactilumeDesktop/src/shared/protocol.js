@@ -76,10 +76,12 @@ const graphemes = typeof Intl !== 'undefined' && typeof Intl.Segmenter === 'func
   : null;
 
 // The printable part of `v`, with spaces collapsed, cut to `max` characters as a person
-// counts them (graphemes), and to 64 code points in all. Not a string → ''.
+// counts them (graphemes), and to 64 code points in all. Not a string → ''. Tabs and line
+// breaks count as spaces; the invisible characters are removed after that, and the spaces
+// collapsed again, so "a ​ b" reads "a b".
 export function cleanText(v, max = LIMITS.maxName) {
   if (typeof v !== 'string') return '';
-  const text = v.replace(UNPRINTABLE, '').replace(MARK_RUN, '$1').replace(SPACES, ' ').trim();
+  const text = v.replace(SPACES, ' ').replace(UNPRINTABLE, '').replace(MARK_RUN, '$1').replace(/ {2,}/g, ' ').trim();
   const parts = graphemes ? Array.from(graphemes.segment(text), (s) => s.segment) : Array.from(text);
   let out = '';
   let points = 0;
