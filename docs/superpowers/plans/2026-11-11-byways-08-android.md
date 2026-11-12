@@ -1393,32 +1393,36 @@ git commit -m "Serve the Lab on its own origin with a save-only bridge"
 ### Task 14: Wire the Android platform into the app
 
 **Files:**
-- Modify: `src/platform/android.js`, `src/ui/boot.js`, `src/ui/views/settings/about.js`, the Plan 03 settings section that renders the dwell-time control (find it in `src/ui/views/settings/`)
+- Modify: `src/platform/android.js`, `src/ui/boot.js`, `src/ui/components/card.js`, `src/ui/handsfree-ui.js`
 - Modify: `tests/e2e/helpers/fakes.js`
 - Create: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: `boot(platform) → Promise<App>` and the `App` fields `engine`, `getSettings()`, `saveSettings(patch)`, `handsFree`, `platform` (overview); `navigate(route)` (`ui/router.js`); `showResult(result)` (`ui/views/stumble.js`); `makeFind(partial)` (`core/model/find.js`); `domainOf(u)` (`core/util/url.js`); `showToast(message)` (`ui/toast.js`); `createHandsFree(…).start()` and `.state`; `mockNet(page)` and `tests/fixtures/routes.js` (Plan 01); `extractSharedLink`, `platform.app` (Task 6).
+- Consumes: `boot(platform) → Promise<App>` and the `App` fields `engine`, `getSettings()`, `saveSettings(patch)`, `handsFree`, `platform` (overview); `engine.next({mode})`, and `engine.on('find', fn)`, which fires for every find the engine hands to the UI (overview); `navigate(route)` (`ui/router.js`); `showResult(result)` (`ui/views/stumble.js`); `makeFind(partial)` (`core/model/find.js`); `domainOf(u)` (`core/util/url.js`); `showToast(message)` (`ui/toast.js`); `startHandsFree(app) → Promise<void>` (`ui/handsfree-ui.js`, Plan 03 Task 9) and the controller's `state`, `suspend()`, `wake()`, `pause()` and `command(id)`; `makeActionHandler` and the **⋯** menu (`ui/components/card.js`, Plan 02 Task 23); the help card, recap and search dialogs (`ui/handsfree-ui.js`, Plan 03 Task 9); `test` and `expect` (`helpers/net.js`) and `skipFirstRun` (`helpers/app.js`) (Plan 01); `connectOpenRouter` and its fixtures (Plan 05); `createBridgeClient`, `extractSharedLink`, `platform.app` (Task 6).
 - Produces:
   - `platform.attach(app) → Promise<void>`. `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
-  - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. Any open panel, card menu or help card that closes itself calls `event.preventDefault()`.
-  - `installFakeAndroidBridge(page, {hello?, update?}) → Promise<{native: () => Promise<object[]>, emit(ch, event, data), unmatched: string[]}>` in `tests/e2e/helpers/fakes.js`.
+  - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. The card's **⋯** menu and the hands-free dialogs close themselves on it and call `event.preventDefault()`.
+  - `installFakeAndroidBridge(page, {hello?, update?, probe?, auth?, pending?}) → Promise<{native: () => Promise<object[]>, emit(ch, event, data)}>` in `tests/e2e/helpers/fakes.js`.
+  - In `tests/e2e/android.spec.js`, the helpers `openAndroid(page, opts)`, `sent(ch, op)` and `backResult(token)`, which Task 15 reuses.
 
 - [ ] **Step 1: Add the fake bridge helper**
 
-`installFakeAndroidBridge` exposes a binding `__nativeFetch(req)` that answers from `tests/fixtures/routes.js`, reading the fixture with the same path rule `mockNet` uses. It returns `{status, statusText, headers, body, url}`, or `{error: 'network'}` after pushing the URL to `unmatched`. Through `addInitScript` it defines `window.BywaysNative = {onmessage: null, postMessage(s)}`, which records every message in `window.__native` and replies:
+Through `addInitScript`, `installFakeAndroidBridge` defines `window.BywaysNative = {onmessage: null, postMessage(s)}`, which records every message in `window.__native` and replies:
 
 | Message | Reply |
 |---|---|
-| `app.hello` | `hello`, default `{versionName:'0.1.0', versionCode:1, sdk:34, micConsent:false}` |
+| `app.hello` | `hello`, default `{versionName:'0.1.0', versionCode:100, sdk:34, micConsent:false}` |
+| `app.ready` | `true`, then it emits each `pending` event `{ch, event, data}`, as native does with the events it held |
 | `app.checkUpdate` | `update`, default `{available:false, latest:'0.1.0', url:null}`; `update:'error'` replies `{ok:false, error:{code:'network'}}` |
-| `fetch.request` | `await window.__nativeFetch(args)`, as a result or a `network` error |
+| `app.auth` | `auth` (a callback URL); without it, the error `cancelled` |
+| `fetch.request` | the page's own `fetch(args.url, {method, headers, body, credentials: 'omit'})`, which `mockNet` answers from `tests/fixtures/routes.js`, as `{status, statusText, headers, body, url}`. A rejected fetch replies the error `network`, and `mockNet` has already listed the URL as unmocked |
 | `fetch.approve` | `true` |
-| `voice.probe` | `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'test'}` |
+| `voice.probe` | `probe`, default `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'test'}` |
 | `tts.voices` | `[]` |
+| `files.save` | `'saved'` |
 | anything else | `true` |
 
-`emit(ch, event, data)` runs `BywaysNative.onmessage({data: JSON.stringify({ch, event, data})})` in the page.
+`emit(ch, event, data)` runs `BywaysNative.onmessage({data: JSON.stringify({ch, event, data})})` in the page, and `native()` returns `window.__native`.
 
 - [ ] **Step 2: Write the failing e2e spec**
 

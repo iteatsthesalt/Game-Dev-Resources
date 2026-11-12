@@ -425,7 +425,14 @@ const rWonder = rand(), rWeb = rand(), rGame = rand();
 // picks follow DAILY_SLOTS order; a slot that cannot be filled is left out
 ```
 
-Mapper values: Wikipedia `licence: 'CC BY-SA 4.0'`, `attribution: 'Wikipedia'`, `why: ["Wikipedia: today's featured article"]`. APOD `kind: 'image'`, page URL `https://apod.nasa.gov/apod/ap<yymmdd>.html`, `imageUrl` from `url` for images and `thumbnail_url` for videos, `attribution` `© <copyright trimmed>` or `NASA`, `why: ['NASA Astronomy Picture of the Day']`. Library: `id: 'lib:' + entry.id`, kind `game`/`article` kept, anything else `site`, `description` from `blurb`, `why: ['Byways starter library']`. Starter: `kind: 'game'`, source `vault`, the three Archive URLs from the identifier, `tags: ['retro']`, `why: [platform, String(year)]`, `attribution: 'Internet Archive'`. Every mapper sets `safety: 'curated'`. `loadDaily` accepts a file only when `v === 1`, `date` equals `date`, and `picks` is a non-empty array.
+The mappers copy the field rules of Plan 02's adapters, so a find looks the same in Daily Fate as in Stumble:
+
+- `wikiFeaturedToFind(tfa)`: Plan 02's Wikipedia summary rules (id `wiki:en:<titles.canonical>`, `extract`, `content_urls.desktop.page`, `thumbnail.source`, `tags: ['education']`, `licence: 'CC BY-SA 4.0'`, `attribution: 'Wikipedia'`), with title `titles.normalized` and `why: ["Wikipedia: today's featured article"]`.
+- `apodToFind(apod)`: Plan 02's APOD rules: id `apod:<date>`, page `https://apod.nasa.gov/apod/ap<yymmdd>.html`, `kind` `'image'` or `'video'` from `media_type`, `imageUrl` from `url` (images) or `thumbnail_url` (videos; a video with neither gives `null`), `description` from `explanation`, `author` the trimmed `copyright`, `licence` `'© <author>'` or `'Public domain (NASA)'`, `tags: ['space', 'science']`, `meta.published = date`, `why: ['NASA APOD']`.
+- `libraryEntryToFind(entry)`: Plan 02's library rules: id `lib:<entry.id>`, `description` from `blurb`, `tags` from the entry, kind `game` and `article` kept and anything else `site`, `meta: {libraryKind: entry.kind, published: entry.added}`, `why: ['Starter library']`.
+- `starterToFind(entry)`: `kind: 'game'`, source `vault`, the three Archive URLs from the identifier, `tags: ['retro']`, `why: ['Internet Archive', platform, String(year)]`, `attribution: 'Internet Archive'`, `meta: {identifier, platform, year}`.
+
+Every mapper sets `safety: 'curated'`. `loadDaily` accepts a file only when `v === 1`, `date` equals `date`, and `picks` is a non-empty array.
 
 - [ ] **Step 4: Run the tests to see them pass**
 

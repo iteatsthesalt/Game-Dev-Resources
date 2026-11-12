@@ -716,6 +716,19 @@ test('more like this page on a non-web tab stores a not-web marker', async () =>
   }
 });
 
+test('more like this page on Firefox asks for browsing activity in the same turn, and sends nothing without it', async () => {
+  const { bg, ext } = bgWith([], { sidebar: true });
+  const page = { ...tab, url: 'https://small.example/blog/', title: 'Small blog' };
+  const done = bg.morePage(page);
+  assert.deepEqual(ext.calls.slice(0, 2), [['sidebarAction.open'], ['permissions.request', { data_collection: ['browsingActivity'] }]]);
+  await done;
+  assert.equal(ext.session.pendingRabbit.source, 'marginalia');
+  ext.answer = false;
+  await bg.morePage(page);
+  assert.deepEqual(ext.session.pendingRabbit, { error: 'no-consent' });
+  assert.deepEqual(ext.messages.at(-1), { type: 'rabbit' });
+});
+
 test('checkAccess flags revoked hosts and clears when granted', async () => {            // Review Focus 5
   const { bg, ext } = bgWith([], { granted: false });
   assert.equal(await bg.checkAccess(), false);
@@ -730,6 +743,13 @@ test('checkAccess flags revoked hosts and clears when granted', async () => {   
   assert.deepEqual(ext.messages.at(-1), { type: 'accessChanged', needsAccess: false });
 });
 
+test('a Stumble after lost access keeps the global warning badge', async () => {        // Review Focus 5
+  const { bg, ext } = bgWith([{ find: f(1), branch: 'taste', why: [] }], { granted: false });
+  await bg.checkAccess();
+  await bg.stumble(tab);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge'), [['badge', { text: '!' }], ['badge', { tabId: 5, text: null }]]);
+});
+
 test('onInstalled recreates the context menu, then checks access', async () => {
   const { bg, ext } = bgWith([]);
   await bg.onInstalled({ reason: 'install' });
@@ -739,9 +759,11 @@ test('onInstalled recreates the context menu, then checks access', async () => {
 
 test('commands', async () => {
   const { bg, ext } = bgWith([]);
-  await bg.onCommand('toggle-listening', tab);
+  await bg.onCommand('toggle-listening', { ...tab, url: 'https://small.example/' });
+  await bg.onCommand('toggle-listening', { ...tab, url: 'chrome-extension://test/app.html#/stumble' });
   await bg.onCommand('open-panel', tab);
-  assert.deepEqual(ext.messages, [{ type: 'toggleListening' }]);
+  assert.deepEqual(ext.messages, [{ type: 'toggleListening', tabId: 5, windowId: 2, inBywaysTab: false },
+    { type: 'toggleListening', tabId: 5, windowId: 2, inBywaysTab: true }]);
   assert.deepEqual(ext.calls, [['sidePanel.open', { windowId: 2 }]]);
 });
 
