@@ -748,7 +748,7 @@ import { gotoApp } from './helpers/app.js';
 import { installFakeSpeech } from './helpers/fakes.js';
 const PAGES = ['#/stumble', '#/feed', '#/daily', '#/vault', '#/saved', '#/settings',
   ...['taste', 'sources', 'ai', 'voice', 'access', 'data', 'privacy', 'about', 'licenses'].map((id) => '#/settings/' + id)];
-const SNAPSHOTS = {'daily.json': 'daily/daily-2026-11-11.json', 'itch.json': 'itch/itch.json', 'vault-index.json': 'ia/vault-index.json'};
+const SNAPSHOTS = {'itch.json': 'itch/itch.json', 'vault-index.json': 'ia/vault-index.json'};   // daily.json keeps the build's placeholder
 test.beforeEach(async ({page}) => {
   await installFakeSpeech(page);
   for (const [file, fixture] of Object.entries(SNAPSHOTS))
