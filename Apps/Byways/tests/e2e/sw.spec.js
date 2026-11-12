@@ -19,6 +19,24 @@ test('precaches the shell under byways-<build id>, same-origin only', async ({ p
     return [await caches.keys(), !!(await c.match('./index.html')), !!(await c.match('./ui/boot.js')), same];
   }, `byways-${id}`)).toEqual([[`byways-${id}`], true, true, true]);
 });
+// The host's max-age must not let the HTTP cache answer: cache 'reload' sends Cache-Control: no-cache,
+// and the data files' 'no-cache' revalidation sends max-age=0.
+test('the worker fetches past the HTTP cache', async ({ page, context }) => {
+  // [path, Cache-Control] of each finished request the worker made; sw.js itself is the browser's script
+  // fetch, which updateViaCache governs, so it is left out.
+  const fromWorker = [];
+  context.on('requestfinished', async r => {
+    const path = new URL(r.url()).pathname;
+    if (r.serviceWorker() && !path.endsWith('/sw.js')) fromWorker.push([path, (await r.allHeaders())['cache-control']]);
+  });
+  const shell = ['/Game-Dev-Resources/byways/index.html', '/Game-Dev-Resources/byways/ui/boot.js'];
+  await gotoApp(page); await page.evaluate(() => navigator.serviceWorker.ready);
+  await expect.poll(() => fromWorker.map(([path]) => path)).toEqual(expect.arrayContaining(shell));
+  expect(fromWorker.filter(([, cc]) => cc !== 'no-cache')).toEqual([]);
+  await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller); fromWorker.length = 0;
+  await page.evaluate(() => fetch('data/tags.json').then(r => r.json()));
+  await expect.poll(() => fromWorker.filter(([path]) => path.endsWith('/data/tags.json')).map(([, cc]) => cc)).toContain('max-age=0');
+});
 test('reloads offline from the cache', async ({ page, context }) => {
   await controlled(page); await context.setOffline(true); await page.reload();
   await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
@@ -44,6 +62,19 @@ test('a new build shows the update toast and Reload switches to it', async ({ pa
     writeFileSync(swFile, original.replace(/const BUILD_ID = "[^"]*";/, 'const BUILD_ID = "next";'));
     await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()));
     await expect(page.locator('#toasts')).toContainText('Update available, reload');
+    await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Reload' }).click()]);
+    expect(await page.evaluate(() => caches.keys())).toEqual(['byways-next']);
+  } finally { writeFileSync(swFile, original); }
+});
+test('Reload still reloads when another tab has already activated the new build', async ({ page }) => {
+  await controlled(page); const original = readFileSync(swFile, 'utf8');
+  try {
+    writeFileSync(swFile, original.replace(/const BUILD_ID = "[^"]*";/, 'const BUILD_ID = "next";'));
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()));
+    await expect(page.locator('#toasts')).toContainText('Update available, reload');
+    // What another tab's Reload does: the waiting worker activates and reg.waiting becomes null here.
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.waiting.postMessage({ type: 'skip-waiting' })));
+    await page.waitForFunction(async () => !(await navigator.serviceWorker.getRegistration()).waiting);
     await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Reload' }).click()]);
     expect(await page.evaluate(() => caches.keys())).toEqual(['byways-next']);
   } finally { writeFileSync(swFile, original); }

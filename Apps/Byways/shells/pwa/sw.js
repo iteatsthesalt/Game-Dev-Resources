@@ -4,8 +4,10 @@ const PRECACHE = ["__PRECACHE__"];
 
 const DATA_FILE = /\/data\/[^/]+\.json$/;
 
+// cache: 'reload' goes past the HTTP cache, so a deploy inside the host's max-age cannot fill this
+// build's cache with the previous build's files.
 self.addEventListener('install', event => {
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PRECACHE)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(PRECACHE.map(url => new Request(url, { cache: 'reload' })))));
 });
 
 self.addEventListener('activate', event => {
@@ -25,7 +27,9 @@ self.addEventListener('message', event => {
 function staleWhileRevalidate(event) {
   const { request } = event;
   let stored = Promise.resolve();
-  const network = fetch(request).then(response => {
+  // no-cache revalidates with the server rather than taking the HTTP cache's copy. Built from the URL,
+  // because a navigate-mode Request cannot be re-created with an init.
+  const network = fetch(request.url, { cache: 'no-cache' }).then(response => {
     if (response.ok) {
       const copy = response.clone();
       stored = caches.open(CACHE).then(cache => cache.put(request, copy));
