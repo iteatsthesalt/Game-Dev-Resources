@@ -24,7 +24,19 @@ test('decodeShare rejects v2 and garbage', async () => {
 test('decodeShare refuses oversized input and payloads that inflate past the cap', async () => {
   const msg = { message: 'This link is broken or not from Byways.' };
   await assert.rejects(decodeShare(await encodeShare({ ...payload, n: 'a'.repeat(1_100_000) })), msg);
-  await assert.rejects(decodeShare('A'.repeat(65_537)), msg);
+});
+test('decodeShare rejects an input over the length cap that would otherwise decode', async () => {
+  const msg = { message: 'This link is broken or not from Byways.' };
+  const seed = n => ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'].map(k => hash64(k + n)).join('');
+  const i = Array.from({ length: 500 }, (_, n) => ['library', `https://example.com/${seed(n)}`, seed(n + 1000)]);
+  const encoded = await encodeShare({ ...payload, i });
+  assert.ok(encoded.length > 65_536, `encoded length ${encoded.length}`);
+  await assert.rejects(decodeShare(encoded), msg);
+});
+test('decodeShare returns only the four known keys', async () => {
+  const decoded = await decodeShare(await encodeShare({ ...payload, extra: 'x', admin: true }));
+  assert.deepEqual(decoded, payload);
+  assert.deepEqual(Object.keys(decoded), ['v', 't', 'n', 'i']);
 });
 test('itemToFind rebuilds a find and drops bad urls', () => {
   assert.equal(itemToFind(['library', 'https://example.com/', 'Tiny Synth']).title, 'Tiny Synth');

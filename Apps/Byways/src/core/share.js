@@ -56,7 +56,8 @@ export async function encodeShare(payload) {
 
 /**
  * Read a share payload from outside input. Input and inflated size are capped, and every failure rejects with the
- * same message, so a hostile link can neither exhaust memory nor leak a parser error.
+ * same message, so a hostile link can neither exhaust memory nor leak a parser error. Only the four known keys are
+ * returned, so a crafted link cannot carry extra fields to callers.
  */
 export async function decodeShare(str) {
   try {
@@ -65,7 +66,7 @@ export async function decodeShare(str) {
     const json = new TextDecoder('utf-8', { fatal: true }).decode(await collect(stream, MAX_INFLATED_BYTES));
     const payload = JSON.parse(json);
     if (!isPayload(payload)) throw new Error(BROKEN);
-    return payload;
+    return { v: 1, t: payload.t, n: payload.n, i: payload.i.map(([source, url, title]) => [source, url, title]) };
   } catch {
     throw new Error(BROKEN);
   }
