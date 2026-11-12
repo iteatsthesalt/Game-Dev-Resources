@@ -19,7 +19,7 @@ These are the contracts every module is written against: how files are shaped, w
 
 - Namespaces are the only top-level names. `00-core.js` declares the simulation ones, `50-platform.js` the presentation ones. No other file declares anything at top level.
   - Simulation: `Core Defs Stats Dmg Items Tree Char Progress Legacy SaveData Sim Player Buffs AI Enemies Skills Boss Director Offers Bot World`
-  - Presentation: `Store Settings Input Sound Music Mesh Rigs Glyphs Ground Gfx Scene Vfx UI Game`
+  - Presentation: `Plat Store Settings Input Sound Music Mesh Rigs Glyphs Ground Gfx Scene Vfx UI Game`
 - Nothing runs when a file loads except definitions and registrations. `99-boot.js` starts the game.
 - No file reassigns a function another file defined. Modules extend each other through registries (`Defs.add`, `AI.register`, `Skills.archetype`, `Rigs.register`, `Director.event`, `Settings.row`, `UI.screen`) and through the per-step event queue.
 - `Core.seal()` freezes every namespace at boot, so a late reassignment throws in tests.
@@ -156,6 +156,7 @@ b.begin(cam {x, y, zoom}, env {ambient, sun:{dir, color}, fog, ground})
 b.parts(shape, buffer, count)       solid instances: 3x4 matrix, colour, flash, emissive
 b.decals(buffer, count)             flat on the ground: telegraphs, scorch, pickup glow
 b.billboards(buffer, count)         facing the camera: particles, bolts (alpha or additive)
+b.discs(buffer, count)              compatibility view only: x, y, radius, colour per entity (b.caps.puppets is false)
 b.lights(buffer, count)             x, y, z, radius, colour
 b.end(post {bloom, flash, vignette, dither})
 Gfx.worldToScreen(x, y, z)   Gfx.screenToWorld(sx, sy)
