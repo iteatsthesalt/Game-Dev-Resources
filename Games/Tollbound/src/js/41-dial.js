@@ -38,7 +38,7 @@
     fx: { part: 'arms', color: '#E4DFD1' },
   });
   Defs.add('attack', {
-    id: 'dial.leap', kind: 'press', type: 'drag', mult: 0.5, cooldown: 2.5, range: 1.5, windup: 0.35, shape: 'line',
+    id: 'dial.leap', kind: 'press', type: 'drag', mult: 0.35, cooldown: 2.5, range: 1.5, windup: 0.35, shape: 'line',
     radius: 0.4, angle: 0, count: 1, spread: 0, speed: 0, evadable: false, ailment: 'clung', summon: null,
     fx: { part: 'body', color: '#5D6A39' },
   });
@@ -72,21 +72,21 @@
 
   Defs.add('enemy', {
     id: WALKER, name: 'Wake-walker', puppet: PUPPET.walker, radius: 0.38, life: 11, damage: 1.1, speed: 2.4, xp: 1, cost: 1,
-    loot: null, ai: 'wake', aiParams: {}, attacks: ['dial.clutch'], guard: {}, size: 'small', press: 0.3, tags: ['wake-walker'],
+    loot: null, ai: 'wake', aiParams: {}, attacks: ['dial.clutch'], guard: {}, size: 'small', press: 0.2, tags: ['wake-walker'],
   });
   Defs.add('enemy', {
     id: HANGER, name: 'Hanger-on', puppet: PUPPET.hanger, radius: 0.3, life: 7, damage: 0.9, speed: 2.8, xp: 1, cost: 1,
-    loot: null, ai: 'wake', aiParams: { hop: 0.42 }, attacks: ['dial.leap'], guard: {}, size: 'small', press: 0.3,
+    loot: null, ai: 'wake', aiParams: { hop: 0.42 }, attacks: ['dial.leap'], guard: {}, size: 'small', press: 0.2,
     tags: ['hanger-on'],
   });
   Defs.add('enemy', {
     id: HEAVY, name: 'Lumper', puppet: PUPPET.heavy, radius: 0.75, life: 60, damage: 2.3, speed: 1.6, xp: 6, cost: 5,
     loot: null, ai: 'wake', aiParams: {}, attacks: ['dial.shoulder', 'dial.load'], guard: { blow: 60 }, size: 'large',
-    press: 0.8, tags: ['heavy'],
+    press: 0.6, tags: ['heavy'],
   });
 
   Defs.add('boss', {
-    id: KEEPER, name: 'the Half-muffled Keeper', puppet: PUPPET.keeper, radius: 1.3, life: 1100, damage: 6, speed: 1.9,
+    id: KEEPER, name: 'the Half-muffled Keeper', puppet: PUPPET.keeper, radius: 1.3, life: 300, damage: 4, speed: 1.9,
     xp: 120, cost: 0, loot: null, ai: 'keeper',
     aiParams: { keep: 2.5, echo: 0.3, after: 2, before: 1.2, lay: 0.7, reverse: [1.2, 2, 2.8], order: ['after', 'before', 'reverse'], first: 4 },
     attacks: ['dial.keeper.stroke', 'dial.keeper.sweep', 'dial.keeper.round'], guard: {}, size: 'large', press: 1,
