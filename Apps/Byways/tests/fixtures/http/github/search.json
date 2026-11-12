@@ -1,0 +1,30 @@
+{
+  "total_count": 2,
+  "incomplete_results": false,
+  "items": [
+    {
+      "id": 1001,
+      "name": "tiny-jam",
+      "full_name": "ann/tiny-jam",
+      "owner": { "login": "ann" },
+      "html_url": "https://github.com/ann/tiny-jam",
+      "homepage": "https://ann.github.io/tiny-jam/",
+      "description": "A tiny game made in 48 hours.",
+      "stargazers_count": 42,
+      "topics": ["game-jam", "html5-game"],
+      "updated_at": "2026-09-30T08:15:00Z"
+    },
+    {
+      "id": 1002,
+      "name": "engine",
+      "full_name": "bob/engine",
+      "owner": { "login": "bob" },
+      "html_url": "https://github.com/bob/engine",
+      "homepage": "",
+      "description": "A small 2D engine.",
+      "stargazers_count": 7,
+      "topics": ["pico-8"],
+      "updated_at": "2026-08-12T17:40:00Z"
+    }
+  ]
+}

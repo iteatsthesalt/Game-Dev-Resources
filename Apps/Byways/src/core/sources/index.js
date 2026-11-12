@@ -17,9 +17,12 @@ import commons from './commons.js';
 import inat from './inat.js';
 import openlibrary from './openlibrary.js';
 import apod from './apod.js';
+import marginalia from './marginalia.js';
+import github from './github.js';
+import hn from './hn.js';
 
 // Each adapter task adds one import above this line and one entry below it.
-const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod];
+const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn];
 
 /** id -> adapter, in the order of ADAPTERS. */
 export const SOURCES = Object.fromEntries(ADAPTERS.map(adapter => [adapter.id, adapter]));

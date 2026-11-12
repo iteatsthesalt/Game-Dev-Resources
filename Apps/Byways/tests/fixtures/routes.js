@@ -12,4 +12,9 @@ export default [
   { match: /openlibrary\.org\/search\.json/, file: 'openlibrary/search.json' },
   { match: /openlibrary\.org\/subjects\//, file: 'openlibrary/subject.json' },
   { match: /api\.nasa\.gov\/planetary\/apod/, file: 'apod/count.json' },
+  { match: /api2\.marginalia-search\.com\/api\/v2\/site\/.*\/similar/, file: 'marginalia/similar.json' },
+  { match: /api2\.marginalia-search\.com\/api\/v2\/search/, file: 'marginalia/search.json' },
+  { match: /api\.github\.com\/search\/repositories/, file: 'github/search.json' },
+  { match: /hn\.algolia\.com\/api\/v1\/search_by_date/, file: 'hn/search.json' },
+  { match: /hn\.algolia\.com\/api\/v1\/search/, file: 'hn/search.json' },
 ];

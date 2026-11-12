@@ -1,0 +1,6 @@
+{
+  "domain": "example.com",
+  "similar": [
+    { "domain": "neighbour.example.org" }
+  ]
+}
