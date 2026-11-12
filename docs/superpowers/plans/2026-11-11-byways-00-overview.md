@@ -145,6 +145,7 @@ Source adapter ids, one per file in `src/core/sources/`:
 - **Probe tier:** `met`, `cleveland`, `nasaimages`, `loc`, `wiby`, `kagirandom`, `smithsonian`, `hn`.
 - **Archive (Plan 04):** `ia` for Archive non-game sources, and `vault` for Archive games.
 - **Snapshot (Plan 04):** `webring`, for webring and Neocities sites built by the data job.
+- **Pseudo-source (no adapter):** `shared`, for links shared into the Android app (Plan 08).
 
 ## Shared types (`src/core/types.js`)
 
@@ -380,6 +381,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - Views never render their own h1. Settings section pages use an h2.
   - A view that must change its heading text sets `container.closest('.view').querySelector('h1').textContent`. Daily Fate does this to show "Daily Fate (backup pick)".
   - Import keeps the heading "Import" and says "Shared with you" in the body.
+- **Open dialogs and Android Back.** Before anything else, if a `dialog[open]` exists, the router closes the topmost one and treats Back as handled. So dialogs from any plan need no Back handling of their own.
 - **Android Back in the router.** `startRouter` listens for `byways:back` and reads `event.defaultPrevented` on a microtask, after every listener has run. It calls `history.back()` only when nothing prevented the event and the hash is not home (`''`, `'#'`, `'#/'`, `'#/stumble'`). At home, Back leaves the app. Plan 08's `attach` only dispatches the event. It reports `handled = prevented || not home`, and never calls `history.back()` itself.
 - **Toasts.** `showToast(message, {undo, ms = 5000, action: {label, run}} = {}) → {close()}`. With `ms: 0` a toast is sticky, and later toasts do not replace it (for example the update toast).
 - **`NetError`.** It can be built as `new NetError(kind, message = kind, {status, retryAfterMs, source} = {})` or as `new NetError({kind, message, status, retryAfterMs, source})`.
@@ -655,6 +657,24 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 - `IaClient.wayback(url, timestamp) → Promise<{url, timestamp}|null>`;
 - `luceneEscape(text)`.
 
+**More Plan 04 names** (from its review):
+
+- **Snapshot reader.** `sources/index.js` exports `readSnapshot(ctx, file) → Promise<object|null>`. It does `ctx.http.getJson(ctx.dataUrl(file), {source: 'pages'})`, caches the result under `snap:<file>` for 1 h, and returns `null` on any error. The vault, itch and webring adapters all use it.
+- **The `pages` Http source.** Plan 01's boot registers it as `app.http.register('pages', {perMinute: 30, concurrent: 2})`. `dataUrlFor` is Plan 01's; Plan 04 does not define a second one.
+- **Card changes made by Plan 04:**
+  - `renderCard(find, {onAction, compact, whyLine, headingLevel = 2})`. Cards inside h2 sections (Vault shelves, Daily picks) use `headingLevel: 3`.
+  - A find with `embedUrl` shows a **Details on archive.org** link, a **Keyboard needed** badge on a coarse pointer, and a `div.player` slot.
+  - **Play** calls `onAction('play', find, {slot})`.
+  - `card.js` exports `mountPlayer(slot, find, app) → Promise<{unmount()}|null>`. `makeActionHandler`'s `play` calls it, so Archive finds play through the embed in Stumble, Feed and Saved too.
+- **Archive pacing.** No plan calls `http.register` for `ia` or `vault`, because the IA queue owns Archive pacing and backoff. Plan 02's `adapterCtx` skips those two ids.
+- **Urgent lane.** `IaClient` methods take `{urgent: true}`, which puts a call at the front of the queue, still at 1 per second. User actions such as Play, More gems and opening a shelf use it. First-run collection validation does not.
+- **`gemWhy`.** Its first chip is the pool chip, `'Internet Archive: <collection label>'` (or `'Internet Archive'`).
+- **Placeholder data files.** The PWA build writes `{"v":1}` placeholders for `daily.json`, `itch.json`, `vault-index.json`, `webrings.json` and `neocities.json` into `dist/pwa/data/` when they are missing, so local and e2e runs never 404. The data job overwrites them.
+- **Test files.**
+  - `tests/fixtures/routes.js` has a catch-all for `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/` that returns `pages/empty.json` (`{"v":1}`), plus a route for `img.itch.zone` images.
+  - `tests/unit/helpers/fake-fetch.js` gives `fakeFetch`, `instantClock` and `readFixture`.
+  - Timed e2e tests (the watchdog, the rollover) use Playwright's `page.clock.install()` with `pauseAt` and `runFor`, so that time does not drift.
+
 **`sources/webring.js`** (Plan 04). A snapshot-tier adapter that reads `webrings.json` and `neocities.json` from `dataUrl`. It returns domain cards, with `fate: true` and safety `mostly`. If neither file exists, it returns nothing and does not throw.
 
 **`daily.js`**
@@ -770,7 +790,14 @@ These plans define their own runner, background and bridge protocols inside the 
   - `mockNet` and `unmocked` also accept a `BrowserContext`.
 - **Plan 08 (Android):**
   - `platform/android.js`: `createAndroidPlatform({bridge, base, win}) → Platform`, including `app` and `attach`.
-  - `labSaveFile(name, blob, win)`, which the Lab's storage panel uses on Android.
+  - `labSaveFile(name, blob, win)` and `SAVE_CHUNK_BYTES` (6 MiB). They live in `src/lab/storage-panel.js`, not in `platform/android.js`, so the Lab origin loads no app code. `BywaysLabNative` takes `files.save` and chunked `files.append`.
+  - The native side holds events until the web side sends `app.ready`, so a link shared in on a cold start is not lost.
+  - **openFind on Android.** Every `how` value (`'tab'`, `'current'`, `'inapp'`, none) opens the in-app site view. Only the site view's **Open in browser** and `platform.app.openExternal` leave the app. The card's Open announcement follows `caps.inAppSiteView`: "Opened in the site view." on Android, "Opened in a new tab." elsewhere.
+  - **Links shared in.** They become finds with the pseudo-source `shared`, which has no adapter.
+    - The taste profile ignores its source weight.
+    - Rabbit Hole uses Marginalia's `more()` for it.
+    - `generatedImage` shows "Shared".
+    - Plan 02 handles this id in `taste.js`, `rabbit.js` and `generated-image.js`.
   - The build writes the entry `assets/www/android-boot.js`.
   - The test helper `installFakeAndroidBridge(page, opts)` lives in `fakes.js`.
 
@@ -880,7 +907,8 @@ No environment variable sets the version. The release APK asset is named `byways
 // The data job ALWAYS writes every generated file (daily, itch, vault-index, linkcheck, webrings, neocities).
 // If a source fails it keeps the last good file from the live site; if there is none, it writes a valid
 // empty shape, so the app never requests a missing file (a 404 would show as a console error).
-// dist/pwa/data/webrings.json and neocities.json: { "v":1, "generatedAt":"ISO", "sites":[ { "url", "title", "ring" } ] }
+// dist/pwa/data/webrings.json: { "v":1, "generatedAt":"ISO", "ring":"xxiivv", "sites":[ { "url", "title" } ] }
+// dist/pwa/data/neocities.json: { "v":1, "generatedAt":"ISO", "sites":[ { "url", "title"? } ] }
 // dist/pwa/data/linkcheck.json
 { "v":1, "checkedAt":"ISO", "results":{ "<library entry id>":{ "ok":true, "status":200, "failStreak":0 } } }
 
@@ -946,6 +974,7 @@ No environment variable sets the version. The release APK asset is named `byways
   - **`tests/e2e/helpers/axe.js`:** `expectNoSeriousA11y(page, {exclude = []} = {}) → Promise<void>`.
   - **`tests/e2e/helpers/fakes.js`:** `installFakeSpeech(page)`. Plan 08 later adds `installFakeAndroidBridge(page, opts)`.
   - **`tests/unit/helpers/fake-dom.js`:** `fakeDocument() → {document, created}`. **`tests/unit/helpers/async.js`:** `flush()` and `deferred()`.
+  - **CORS preflights in `mockNet`.** It answers preflights with `access-control-allow-headers` echoing the request's `access-control-request-headers`. `*` does not cover `Authorization`, so tests that send a key would otherwise fail.
   - **Strict console rule.** The e2e fixture fails a test on ANY console error, including 404 "Failed to load resource" messages. Specs must stage or route every same-origin file their views fetch, for example the generated `data/*.json` files, which `dist/pwa` lacks in e2e. For known harmless noise, use `test.use({ignoreProblems: [...]})`. `pageProblems` returns strings of the form `'console: <text>'` and `'pageerror: <message>'`.
   - **Service workers** are blocked in e2e unless a spec sets `test.use({serviceWorkers: 'allow'})`. While blocked, `navigator.serviceWorker.ready` never settles and `page.route` does not see worker requests.
   - **`installFakeSpeech` window hooks:**

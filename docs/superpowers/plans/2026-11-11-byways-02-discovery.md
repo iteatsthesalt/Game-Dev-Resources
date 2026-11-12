@@ -23,7 +23,7 @@
 - **Share:** `#s=<payload>`, payload `base64url(deflate-raw(JSON))`, "A link is at most 2,000 characters".
 - **Card labels:** **Like**, **Not for me**, **Save**, **Share**, **Open**, **More like this**, **Read it**, and a **⋯** menu with **Less of this topic**, **Never this site**, **Broken or spam**, **Why am I seeing this?**. "Like, Not for me, Save and Never this site show a 5-second **Undo**."
 - **Images:** "Byways never fetches a site's own preview image (`og:image`), and never uses third-party screenshot or favicon services." "Byways shows images only from items marked open or public domain."
-- **Family filter:** "on by default and keeps `mixed` sources out of Fate and lean-back"; §8.3 applies it to every pick.
+- **Family filter:** "on by default and keeps `mixed` sources out of Fate and lean-back"; §8.3 applies it to every pick. Results of a search the user asked for (origins `'search'` and `'ai'`) keep their `mixed` finds outside lean-back (overview, "Family filter at inject").
 - **Headers:** `Api-User-Agent` (Wikimedia) and `AIC-User-Agent` (Art Institute) set to `Byways/<version> (+https://github.com/iteatsthesalt/Game-Dev-Resources)`, never with user details.
 - **Rates (§7.3):** iNaturalist and Open Library 1 request per second; Art Institute 60 per minute; GitHub search 10 per minute; Wikimedia about 10 per minute; Library of Congress 10 per minute ("an HTML/CAPTCHA reply counts as a failure"); APOD by key tier with a local daily counter.
 - **Caching (§7.3):** "24 h for searches, 7 days for item details, and a week for the Kagi lists"; GitHub results at least 1 hour.
@@ -611,8 +611,8 @@ git commit -m "Add the Fate pull with weights and retries"
 - Consumes: `tokenize(text)`, `normalizeUrl`, `makeFind`, the adapter shape (Task 5).
 - Produces:
   - `similarLocal(find, candidates, k) → Find[]`: score = Jaccard overlap of tags + cosine similarity of TF-IDF vectors over `tokenize(title + ' ' + description)`, with `idf = ln((1 + N) / (1 + df)) + 1` over the candidates plus `find`. It leaves out candidates with the same normalised URL and candidates scoring 0, sorts by score (stable), and returns the top `k`.
-  - `createRabbitHole({sources, ctx, seenHas, pool, accept = () => true}) → {start(find), next() → Promise<Find|null>, trail() → Find[], climbOut(), useAi(fn|null)}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async; `accept(find) → boolean` is the engine's always-on filter, as in Fate. `useAi(fn)` sets or clears the AI hook, `fn(find) → Promise<Find[]>` (overview: Plan 02 defines it, Plan 05 sets it).
-  - `next()` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`; then, only when a hook is set, `fn(last)`. The first candidate that is not in the trail (by normalised URL), not seen and accepted is pushed onto the trail and returned. A `more` or `fn` call that throws counts as `[]`. An empty trail gives `null`.
+  - `createRabbitHole({sources, ctx, seenHas, pool, accept = () => true}) → {start(find), next({ai}?) → Promise<Find|null>, trail() → Find[], climbOut(), useAi(fn|null)}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async; `accept(find) → boolean` is the engine's always-on filter, as in Fate. `useAi(fn)` sets or clears the AI hook, `fn(find) → Promise<Find[]>` (overview: Plan 02 defines it, Plan 05 sets it).
+  - `next({ai = true} = {})` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`; then, only when a hook is set and `ai` is true, `fn(last)` (lean-back passes `ai: false` through the engine unless **Let AI refill lean-back** is on). The first candidate that is not in the trail (by normalised URL), not seen and accepted is pushed onto the trail and returned. A `more` or `fn` call that throws counts as `[]`. An empty trail gives `null`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -654,6 +654,7 @@ test('the AI hook comes after the sources and the pool, and only while it is set
   const hole = createRabbitHole({ sources: [ad('library', [])], ctx: {}, seenHas: never, pool: () => [] });
   hole.start(F('Start')); assert.equal(await hole.next(), null);
   const asked = []; hole.useAi(async (f) => { asked.push(f.title); return [F('Start'), F('AI pick')]; });
+  assert.equal(await hole.next({ ai: false }), null); assert.deepEqual(asked, []);
   assert.equal((await hole.next()).title, 'AI pick'); assert.deepEqual(asked, ['Start']);
   hole.useAi(async () => { throw new Error('down'); }); assert.equal(await hole.next(), null);
   hole.useAi(null); assert.equal(await hole.next(), null); assert.equal(asked.length, 1);
@@ -813,7 +814,7 @@ git commit -m "Add the share-link codec with the 2,000 character limit"
 **Interfaces:**
 - Consumes: `loadSettings(store)`, `DEFAULT_TASTE`, `createSeen` (Task 2), `createCollections` (Task 8), `makeFind`, `utcDate`, `toPlainText`.
 - Produces:
-  - `exportBackup(store, {includeKeys = false, app, clock, secrets}) → Promise<object>`: `{format: 'byways-backup', v: 1, exportedAt: ISO, app, settings, taste, collections, history, seen}`, plus `keys: {id: value}` only when `includeKeys`. `taste` is the `taste` store key `'taste'` (or `DEFAULT_TASTE`), `history` is the `'trail'` items, and `seen` is `[[hash, t], …]`.
+  - `exportBackup(store, {includeKeys = false, app, clock, secrets}) → Promise<object>`: `{format: 'byways-backup', v: 1, exportedAt: ISO, app, settings, taste, collections, history, seen}`, plus `keys: {id: value}` only when `includeKeys`. `taste` is the `taste` store key `'taste'` (or `DEFAULT_TASTE`), `history` is the `'trail'` items (`{find, t}`), and `seen` is `[[hash, t], …]`.
   - `backupFileName(clock, includeKeys) → 'byways-backup-YYYY-MM-DD.json'` or `'byways-backup-YYYY-MM-DD-with-keys.json'`.
   - `importBackup(store, data, {secrets}) → Promise<{collections, seen, history, keys}>` (counts written). It throws `'This is not a Byways backup file.'` before writing anything unless `format === 'byways-backup'`, `v === 1` and `collections`, `history` and `seen` are arrays. Merge rules: seen hashes are unioned; a collection with a new id is added; one with the same id, name and item ids is skipped; any other clash is added as `<id>-copy` (then `-copy-2`, …) named `<name> (imported)`. Every imported item goes through `makeFind` and is dropped if it returns `null`. History is written only when the local trail is empty (last 50). Taste is written only when there is no local taste or it has `reactions === 0`. Settings in the file are never applied, because they belong to the version that wrote them. Keys are written only when `data.keys` exists. The caller re-reads history and taste afterwards (Task 29).
   - `toBookmarksHtml(collection) → string` (Netscape format: `<!DOCTYPE NETSCAPE-Bookmark-file-1>`, a `<DL><p>` with one `<DT><H3>` for the collection name and one `<DT><A HREF="…">` per item, with `& < > "` escaped), `fromBookmarksHtml(html) → Array<{url, title}>` (every `<A … HREF="…">…</A>`, http(s) only, titles through `toPlainText`).
@@ -1414,7 +1415,7 @@ test('the Kagi lists refresh weekly and survive a failed refresh', async () => {
   await loadKagiList(ctx, 'smallweb'); await loadKagiList(ctx, 'smallweb'); assert.equal(calls.length, 1);
   assert.equal(calls[0].url, KAGI_LISTS.smallweb);
   extra.push({ match: /smallweb\.txt/, error: true }); ctx.clock.advance(7 * 864e5 + 1);
-  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await flush(); assert.equal(calls.length, 2);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await tick(); assert.equal(calls.length, 2);
   assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3);
 });
 test('kagi random gives domain-only cards, and none before a list is loaded', async () => {
@@ -1437,7 +1438,7 @@ test('wiby searches JSON and leaps by navigation only', async () => {
 });
 ```
 
-(`read(name)` reads `tests/fixtures/http/<name>` with `fs.readFileSync(…, 'utf8')`; `flush = () => new Promise((r) => setTimeout(r, 0))`.)
+(`read(name)` reads `tests/fixtures/http/<name>` with `fs.readFileSync(…, 'utf8')`; `tick = () => new Promise((r) => setTimeout(r, 0))`.)
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -1547,11 +1548,11 @@ git commit -m "Add the starter library adapter and check the registry"
   - **Start.** It calls `http.register(a.id, a.rate)` once for every adapter in `sources` (Plan 04's adapters included), loads the `broken:*` keys of `health` into the dead set, and starts `runProbes(<enabled probe-tier adapters>, http, store, clock, platform.name)` in the background; until a result says `'ok'`, the web app leaves those sources out.
   - **ctx.** One object serves every call: `{http, rand, clock, cache: createCache(store, clock), settings, secrets, data, platformName: platform.name, caps: platform.caps, dataUrl}`, where `settings` is a getter for the current settings object and `secrets` is a `SecretStore` whose four methods call the same method on the current store. `dataUrl` is only for generated snapshot files (Plan 04); the library and the tags reach adapters through `data`, which is `app.data`.
   - **Pool.** Unseen candidates from `random(ctx)` of the enabled sources (`enabledSources(settings, probe, platform.name, sources)`), at most 50, never a find already in the pool, the queue or the prepared finds (Task 21). A *network source* is every adapter except `library` and `tier: 'snapshot'` ones. A refill starts when the pool holds fewer than 20 candidates and none is running. It runs rounds of one `random` call per enabled source, with at most 3 network calls in flight (the others start at once), adding each call's finds as soon as it resolves. It runs another round while the pool is under 20, and stops after a round that adds nothing.
-  - `next({mode}) → Promise<{find, branch, why}|{empty: true, reason}>`. Calls are serialised, so two at once never return the same find. It serves, in order: the history forward entry if Back was used (`branch 'history'`, why `'seen before'`); the injected queue (`branch` = its origin, why `'search result'` or `'AI find'`); then by mode: `tuned` uses `pickNext` over the pool; `fate` uses `fatePull` over the enabled `fate: true` sources (minus `safety 'mixed'` ones when `familyFilter` is on) with `settings.sources[id]?.fateWeight ?? 1` and `accept` = `eligible` with no domain cooldown (`branch 'fate'`, why `'pure random'`); `ai` serves the injected queue only. It waits only until the pool holds an eligible candidate or the refill ends; the rest of a refill runs in the background. Each find it hands out is added to `seen` and `history` and emitted as `find` with the payload `{find, branch, why}`.
+  - `next({mode, ai = true, leanBack = false}) → Promise<{find, branch, why}|{empty: true, reason}>`. Calls are serialised, so two at once never return the same find. With `leanBack: true` and the Family filter on, `mixed` finds are skipped, injected ones included (they stay queued for a later call); `ai` reaches the Rabbit Hole (Task 21). Just before handing out a find it checks `await seen.has(find.url)` once more and picks again when another engine on the same store has shown it meanwhile (overview, "Several engines on one store"). It serves, in order: the history forward entry if Back was used (`branch 'history'`, why `'seen before'`); the injected queue (`branch` = its origin, why `'search result'` or `'AI find'`); then by mode: `tuned` uses `pickNext` over the pool; `fate` uses `fatePull` over the enabled `fate: true` sources (minus `safety 'mixed'` ones when `familyFilter` is on) with `settings.sources[id]?.fateWeight ?? 1` and `accept` = `eligible` with no domain cooldown (`branch 'fate'`, why `'pure random'`); `ai` serves the injected queue only. It waits only until the pool holds an eligible candidate or the refill ends; the rest of a refill runs in the background. Each find it hands out is added to `seen` and `history` and emitted as `find` with the payload `{find, branch, why}`.
   - `back() → Find|null` (it emits `find` with `{find, branch: 'history', why: 'seen before'}`) and `current() → Find|null`, both from history.
   - `feed(n = 30) → Promise<Find[]>`: up to `n` eligible candidates in random order, refilling until it has `n` or a round adds nothing; each is added to `seen` (not to history).
   - `search(query) → Promise<Find[]>`: `search(query, ctx)` on every enabled source with `Promise.allSettled`; the results are interleaved source by source (the first of each source in `sources` order, then the second of each, and so on), de-duplicated by normalised URL and cut to 30, then injected with origin `'search'`. It resolves to the finds that were queued.
-  - `inject(finds, origin) → Promise<number>`: `origin` is `'search'` or `'ai'`; serialised with `next`. It keeps the given order, drops finds that are seen (`await seen.has(url)`), in the dead set, on a blocked domain, hidden-tagged, failing the Family filter or duplicated (in the batch or the queue), removes tags that are not ids in `data.tags`, and resolves to the number it queued.
+  - `inject(finds, origin) → Promise<number>`: `origin` is `'search'` or `'ai'`; serialised with `next`. It keeps the given order, drops finds that are seen (`await seen.has(url)`), in the dead set, on a blocked domain, hidden-tagged or duplicated (in the batch or the queue), removes tags that are not ids in `data.tags`, and resolves to the number it queued. It does not apply the Family filter, because the user asked for these results (overview); lean-back still skips their `mixed` finds.
   - `taste() → Taste`, `setTaste(t)` (saves to the `taste` store under `'taste'` and emits `taste`), `on(event, fn) → unsubscribe` for `find`, `empty`, `error` (`{source, error}`, never shown) and `taste`; `pool() → Find[]`; `reload() → Promise<void>`, which reads the taste and the dead set from the store again and empties the pool, the queue and the prepared finds (Task 29 calls it after a backup import).
   - Empty reasons (exact, exported as `EMPTY_REASONS`): `exhausted: 'You have seen everything we have right now. Turn on more sources in Settings, or try Fate.'`; `unreachable: "Can't reach any source right now. Check your connection and try again."`, given when a refill ends with no eligible candidate and every network-source call in its last round failed with a `NetError` of kind `network`, `timeout` or `circuit` (an HTTP error or a bad reply means the source was reached); `aiEmpty: 'No search results waiting. Type a search to start.'`; and Fate's own reasons from Task 6.
 - Test helper `engineFor({entries = [], settings, transport, extraRoutes, only = ['library'], adapters, secrets}) → Promise<{engine, calls, store, ctx, platform, registered}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, merges `settings` over `DEFAULT_SETTINGS`, turns off every `SOURCES` id not in `only` (entries in `settings.sources` win), and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps` from `ctx.caps`, `persistStorage` that counts calls in `platform.persisted`). `adapters`, when given, become `createEngine`'s `sources` and `only` is ignored. `secrets` (a getter) is passed through. The engine gets `ctx.http` wrapped so that `register` calls are recorded in `registered` (id → rate).
@@ -1563,7 +1564,7 @@ const lib = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({ id: `lib-$
 const F = (t, tags = ['toy'], source = 'library') => makeFind({ source, kind: 'site', title: t, tags, safety: 'curated', url: `https://${t}.example.org/` });
 const fake = (id, extra = {}) => ({ id, name: id, kinds: ['site'], tier: 'open', key: 'none', safety: 'curated', rate: { perMinute: 600, concurrent: 4 }, fate: true,
   random: async () => [], search: async () => [], more: async () => [], ...extra });
-const flush = () => new Promise((r) => setTimeout(r, 0));
+const tick = () => new Promise((r) => setTimeout(r, 0));
 test('next never repeats and says when the pool is used up', async () => {
   const { engine, calls } = await engineFor({ entries: lib(5) });
   const titles = []; for (let i = 0; i < 5; i++) titles.push((await engine.next({ mode: 'tuned' })).find.title);
@@ -1592,7 +1593,7 @@ test('a slow source never holds up a find and is skipped after 8 s', async () =>
   const a = await engineFor({ entries: lib(2), only: ['library', 'wikipedia'], extraRoutes: hang });
   assert.equal((await a.engine.next({ mode: 'tuned' })).find.source, 'library');
   const b = await engineFor({ entries: [], only: ['wikipedia'], extraRoutes: hang });
-  const p = b.engine.next({ mode: 'tuned' }); await flush(); b.ctx.clock.advance(8000);
+  const p = b.engine.next({ mode: 'tuned' }); await tick(); b.ctx.clock.advance(8000);
   assert.deepEqual(await p, { empty: true, reason: EMPTY_REASONS.unreachable });
 });
 test('a source that answers with an error is not "unreachable"', async () => {
@@ -1614,10 +1615,10 @@ test('createEngine registers every adapter rate and hands adapters the contract 
 test('a refill keeps 3 network calls in flight, at most 50 candidates, and no unprobed source on pwa', async () => {
   let inFlight = 0, most = 0, probeTierCalls = 0;
   const many = (id) => Array.from({ length: 20 }, (_, i) => F(`${id}-${i}`));
-  const net = (id) => fake(id, { random: async () => { inFlight++; most = Math.max(most, inFlight); await flush(); inFlight--; return many(id); } });
+  const net = (id) => fake(id, { random: async () => { inFlight++; most = Math.max(most, inFlight); await tick(); inFlight--; return many(id); } });
   const unprobed = fake('pr', { tier: 'probe', probeUrl: 'https://nowhere.invalid/', random: async () => { probeTierCalls++; return []; } });
   const { engine } = await engineFor({ adapters: ['n1', 'n2', 'n3', 'n4', 'n5'].map(net).concat(unprobed) });
-  await engine.next({ mode: 'tuned' }); for (let i = 0; i < 5; i++) await flush();
+  await engine.next({ mode: 'tuned' }); for (let i = 0; i < 5; i++) await tick();
   assert.ok(most <= 3, `most ${most}`); assert.ok(engine.pool().length <= 50); assert.equal(probeTierCalls, 0);
 });
 test('fate pulls at random, respects a zero weight and leaves out blocked sites', async () => {
@@ -1637,6 +1638,21 @@ test('inject drops seen, blocked, duplicate and unknown-tag finds', async () => 
   const c = await engine.next({ mode: 'tuned' }); assert.equal(c.find.title, 'c'); assert.equal(c.branch, 'search'); assert.equal(c.why, 'search result');
   const d = await engine.next({ mode: 'tuned' }); assert.equal(d.find.title, 'd'); assert.deepEqual(d.find.tags, ['toy']);
   assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
+});
+test('search results keep mixed finds, and lean-back skips them', async () => {
+  const { engine } = await engineFor({ entries: [] });
+  const mixed = makeFind({ source: 'commons', kind: 'image', title: 'Old map', url: 'https://map.example.org/', safety: 'mixed' });
+  assert.equal(await engine.inject([mixed, F('calm')], 'search'), 2);
+  assert.equal((await engine.next({ mode: 'tuned', leanBack: true })).find.title, 'calm');
+  assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'Old map');
+});
+test('two engines on one store never hand out the same find', async () => {
+  const one = await engineFor({ entries: lib(2) });
+  const two = await createEngine({ store: one.store, http: one.ctx.http, clock: one.ctx.clock, rand: mulberry32(7), data: one.ctx.data,
+    platform: one.platform, settings: DEFAULT_SETTINGS, sources: [SOURCES.library] });
+  const x = (await two.next({ mode: 'tuned' })).find; const y = (await one.engine.next({ mode: 'tuned' })).find;
+  assert.notEqual(x.id, y.id);
+  assert.deepEqual(await two.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.exhausted });
 });
 test('AI mode serves only the injected queue', async () => {
   const { engine } = await engineFor({ entries: lib(2) });
@@ -1688,7 +1704,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/engine.js`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/engine.test.js`
-Expected: PASS, 16 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1710,14 +1726,14 @@ git commit -m "Add the engine with the pool, modes, queue, search and feed"
     - `like`, `dislike`, `lessTopic`, `neverSite`: `describeChange(change, labelOf)`. `neverSite` also drops that domain from the pool, the queue and the prepared finds.
     - `save`: adds to `extra.collectionId ?? await collections.getCurrent()`; message `'Saved to <collection name>.'`; the first save of the session calls `platform.persistStorage()`.
     - `broken`: writes `health['broken:<hash64(normalizeUrl(url))>'] = {t, url}` and hides the find for good (the engine loads these keys into its dead set at start); message `'Thanks. This find is hidden now.'`, or `'Thanks. ' + describeChange(change, labelOf)` when `extra.blockDomain`.
-  - `rabbit`: the engine's wrapper around `createRabbitHole({sources: () => <enabled adapters>, ctx, seenHas, pool: () => engine.pool(), accept})`, where `accept` is Fate's (Task 20). It has the hole's `start(find)`, `trail()`, `climbOut()` and `useAi(fn|null)`, and its `next() → Promise<Find|null>` also adds the find to `seen` and `history` and emits `find` with `{find, branch: 'rabbit', why: 'rabbit hole'}`, so a direct call (Plan 07) behaves like Stumble. `useAi(fn)` hands the hole a wrapped `fn` whose finds are link-checked first when **Check links** is on. While the trail is not empty, `next()` serves the hole right after the history forward entry: `{find, branch: 'rabbit', why: 'rabbit hole'}`, or `{empty: true, reason: EMPTY_REASONS.rabbitDry}` with `rabbitDry: 'This Rabbit Hole has run dry. Climb out to stumble on.'`.
+  - `rabbit`: the engine's wrapper around `createRabbitHole({sources: () => <enabled adapters>, ctx, seenHas, pool: () => engine.pool(), accept})`, where `accept` is Fate's (Task 20). It has the hole's `start(find)`, `trail()`, `climbOut()` and `useAi(fn|null)`, and its `next() → Promise<Find|null>` also adds the find to `seen` and `history` and emits `find` with `{find, branch: 'rabbit', why: 'rabbit hole'}`, so a direct call (Plan 07) behaves like Stumble. `useAi(fn)` hands the hole a wrapped `fn` whose finds are link-checked first when **Check links** is on. While the trail is not empty, `engine.next({ai})` serves the hole right after the history forward entry, passing `ai` on, so `ai: false` skips the AI hook: `{find, branch: 'rabbit', why: 'rabbit hole'}`, or `{empty: true, reason: EMPTY_REASONS.rabbitDry}` with `rabbitDry: 'This Rabbit Hole has run dry. Climb out to stumble on.'`.
   - **Link checks.** When `settings.checkLinks` is on, a find from `kagi` or `kagirandom`, one injected with origin `'ai'`, or one from the Rabbit Hole AI hook is checked with `checkLive(url, {transport: platform.transport, privileged: platform.caps.privilegedFetch})` before `next` or `feed` hands it out. Each URL is checked at most once per session. A dead find goes into the session dead set and the next candidate is tried. With `checkLinks` off, `platform.transport` is never called.
   - **Prefetch** (§7.3, "at most 3 finds ahead"). Each time `next` serves a Tuned pick, the engine prepares up to 3 more Tuned picks in the background (`pickNext` with the last prepared pick as `current`, their domains counted in the cooldown) and link-checks those that need it. After each `inject` it link-checks the first 3 queued finds the same way. A Tuned `next` serves the oldest prepared pick that is still eligible and drops the ineligible ones, so it answers at once when picks are ready. Fate, AI mode and the Rabbit Hole are not prepared ahead.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
-// `fake` and `flush` are the helpers from engine.test.js
+// `fake` and `tick` are the helpers from engine.test.js
 const lib = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://s${i}.example.com/`, title: `Site ${i}`, blurb: 'A toy.', tags: ['toy'], kind: 'site', added: '2026-11-01' }));
 const F = (t) => makeFind({ source: 'kagi', kind: 'site', title: t, tags: ['web'], safety: 'curated', url: `https://${t}.example.org/` });
 test('like explains itself and undo puts the taste back', async () => {
@@ -1774,6 +1790,7 @@ test('a dry Rabbit Hole asks the AI hook, which is link-checked', async () => {
   engine.rabbit.start(find);
   assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
   engine.rabbit.useAi(async () => [F('ai-pick')]);
+  assert.deepEqual(await engine.next({ mode: 'tuned', ai: false }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
   assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'ai-pick'); assert.deepEqual(asked, ['https://ai-pick.example.org/']);
   engine.rabbit.useAi(null);
   assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
@@ -1795,7 +1812,7 @@ test('the engine prepares at most 3 finds ahead and serves them without waiting'
   const asked = []; const transport = { fetch: async (u) => { asked.push(u); return { status: 0 }; } };
   const kagiLike = fake('kagi', { random: async () => Array.from({ length: 10 }, (_, i) => F(`k${i}`)) });
   const { engine } = await engineFor({ adapters: [kagiLike], transport });
-  await engine.next({ mode: 'tuned' }); await flush();
+  await engine.next({ mode: 'tuned' }); await tick();
   assert.equal(asked.length, 4);
   const ahead = asked.slice(1); const b = (await engine.next({ mode: 'tuned' })).find;
   assert.ok(ahead.includes(new URL(b.url).origin + '/'));
@@ -1812,7 +1829,7 @@ Expected: FAIL with `TypeError: engine.react is not a function`.
 - [ ] **Step 4: Run both engine tests and see them pass**
 
 Run: `node --test tests/unit/engine.test.js tests/unit/engine-react.test.js`
-Expected: PASS, 27 tests.
+Expected: PASS, 29 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1831,9 +1848,9 @@ git commit -m "Add reactions with undo, Rabbit Hole, link checks and prefetch to
 **Interfaces:**
 - Consumes: Plan 01's `App` fields (`dataUrl` among them), `registerView`, `h`, `clear`, `announce`, `mockNet`, `gotoApp`; `createSeen`, `createHistory`, `createCollections`, `createEngine`, `EMPTY_REASONS` (Tasks 2, 8, 20); `getSource`, `domainOf`, `hash64`.
 - Produces:
-  - `boot.js` adds, after Plan 01's fields and before the router starts: `app.secrets = platform.secrets` (Plan 05 later puts its keyring here), `app.seen = createSeen(store)`, `app.history = createHistory(store, {max: 50})` (awaiting `ready`), `app.collections = createCollections(store, clock)`, `app.engine = await createEngine({store, http, clock, rand, data, platform, settings: () => app.getSettings(), seen, history, collections, secrets: () => app.secrets, dataUrl: app.dataUrl})`, and `app.search = async (text) => { const finds = await app.engine.search(text); return finds.length ? {finds} : {finds, note: 'No new finds for "<text>".'}; }`.
+  - `boot.js` adds, after Plan 01's fields and before `runFirstRun` (the interests step of Task 27 uses `app.engine`): `app.secrets = platform.secrets` (Plan 05 later puts its keyring here), `app.seen = createSeen(store)`, `app.history = createHistory(store, {max: 50})` (awaiting `ready`), `app.collections = createCollections(store, clock)`, `app.engine = await createEngine({store, http, clock, rand, data, platform, settings: () => app.getSettings(), seen, history, collections, secrets: () => app.secrets, dataUrl: app.dataUrl})`, and `app.search = async (text) => { const finds = await app.engine.search(text); return finds.length ? {finds} : {finds, note: 'No new finds for "<text>".'}; }`.
   - `generatedImage(find) → HTMLElement`: `div.gen-image` with `aria-hidden="true"`, `data-hue` = `parseInt(hash64(domainOf(find.url)).slice(0, 8), 16) % 360` (also set as CSS `--hue` through `el.style.setProperty`), a `span.initial` with the domain's first letter in upper case, and a `span.badge` with `getSource(find.source)?.name ?? find.source`.
-  - `renderCard(find, {onAction, compact = false, whyLine = (f) => f.why.join(' · ')}) → HTMLElement`: `article.card` (`.compact` when compact) with an `h2` title, an `<img alt="">` for `imageUrl` (on error it is replaced by `generatedImage(find)`) or `generatedImage(find)`, `p.description` (cut to 160 characters when compact), `p.domain` = the domain, plus `' · by <author>'` when known, `p.why` = `whyLine(find)`, `p.found-by` = `'Found by <foundBy joined with ", ">'` when `foundBy` is not empty, `span.team-pick` = `'Team pick'` when `teamPick` is set (Plan 05 only fills those two fields), and `p.licence` = licence and attribution joined with `' · '`. All text goes in through `text`/`textContent`. Task 23 adds the actions.
+  - `renderCard(find, {onAction, compact = false, whyLine = (f) => f.why.join(' · ')}) → HTMLElement`: `article.card` (`.compact` when compact) with an `h2` title, an `<img alt="">` for `imageUrl` (on error it is replaced by `generatedImage(find)`) or `generatedImage(find)`, `p.description` (cut to 160 characters when compact), `p.domain` = `find.meta?.displayDomain ?? domainOf(find.url)` (overview; Plan 05 sets it for redirect links), plus `' · by <author>'` when known, `p.why` = `whyLine(find)`, `p.found-by` = `'Found by <foundBy joined with ", ">'` when `foundBy` is not empty, `span.team-pick` = `'Team pick'` when `teamPick` is set (Plan 05 only fills those two fields), and `p.licence` = licence and attribution joined with `' · '`. All text goes in through `text`/`textContent`. Task 23 adds the actions.
   - `views/stumble.js`: `registerView('stumble', {title: 'Stumble', render})` and the exports `showResult(result)`, `getCurrentFind() → Find|null`, `setMode(mode)` (Task 24 fills in `setMode`). The view has a card slot, `p.empty` for empty reasons, and **Back** and **Next** buttons. Its `whyLine` is `(f) => [MODE_LABEL[mode], result.why, ...f.why].join(' · ')` with `MODE_LABEL = {tuned: 'Tuned', fate: 'Fate', ai: 'AI Search'}`. Showing a find announces `'Now showing: <title>'` politely; an empty result shows and announces its reason. On render it calls `engine.next` when a Rabbit Hole has just been started (its trail holds one find, as after **More like this** in the Feed); otherwise it shows `engine.current()` if there is one, else calls `engine.next`. **Back** with no earlier find announces `'This is the first find.'`
   - `stageLibrary(page, entries)` in `net.js`: call it before `gotoApp` (the `page` fixture of Plan 01's `test` has already called `mockNet`). It calls `mockNet(page, {overrides: [{match: /^https?:\/\/(?!localhost:4321\/)/, status: 200, body: '', headers: {'content-type': 'text/plain'}}]})`, because page routes run before context routes and the newest page route wins; mockNet adds the CORS headers. It answers `**/data/library.json` with `{v: 1, entries}`, and the same non-localhost pattern on `page.context()` with an empty `text/html` page, for popups. Every other source then fails fast without a console error (an empty body is a JSON parse error, a probe fails, a list is empty), so the library is the only source with finds.
   - Two catch-all entries at the end of `tests/fixtures/routes.js` (later routes go above them), so that specs which do not stage the library, such as Plan 01's `shell.spec.js` and `smoke.spec.js`, see no unmocked request: fixture images, `{match: /^https:\/\/[^/]+\/\S*\.(jpe?g|png)$/i, body: '<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>', headers: {'content-type': 'image/svg+xml'}}`, and link checks of fixture sites, `{match: /^https?:\/\/(([a-z0-9-]+\.)*example(\.[a-z]+)?|www\.youtube\.com)\/$/, body: ''}`.
@@ -1894,6 +1911,8 @@ test('card shows the creator, the licence and the AI badges', async ({ page }) =
   await expect(card.locator('.licence')).toHaveText('CC BY 4.0 · Wikimedia Commons');
   await expect(card.locator('.found-by')).toHaveText('Found by Scout · model-a, Digger · model-b');
   await expect(card.locator('.team-pick')).toHaveText('Team pick');
+  await mount(page, { source: 'ai', kind: 'site', title: 'Via redirect', url: 'https://redirect.example.net/r/1', safety: 'mostly', meta: { displayDomain: 'moths.example.org' } });
+  await expect(page.locator('article.card').last().locator('.domain')).toHaveText('moths.example.org');
 });
 ```
 
@@ -1932,7 +1951,7 @@ git commit -m "Wire the engine into boot and add the card and Stumble view"
     - `broken`: the card shows `'Also block <domain>?'` with **Block site** and **Just this find**; either one reacts with `{blockDomain}`, shows the toast without undo and calls `advance`.
     - `share`: `platform.share({title, url})`; on `'copied'` the toast is `'Link copied.'`.
     - `open` and `play`: `platform.openFind(find, 'tab')`, then announce `'Opened in a new tab.'` (Plan 04 replaces `play`).
-    - `read`: `app.handsFree.command('read')` when Plan 03 has set it up, else `platform.tts.speak('<title>. From <domain>. <firstSentence(description)>')`.
+    - `read`: `app.handsFree.command('read', find)` (overview: a card's **Read it** passes its own find) when Plan 03 has set it up, else `platform.tts.speak('<title>. From <domain>. <firstSentence(description)>')`.
     - `more` (§6.3, "Start or continue a Rabbit Hole"): when `find` is the last find of `engine.rabbit.trail()`, it only calls `advance`; otherwise `engine.rabbit.start(find)`, then `advance`.
     - `why`: toggles `div.why-detail` under the card holding `whyLine(find)`.
 
