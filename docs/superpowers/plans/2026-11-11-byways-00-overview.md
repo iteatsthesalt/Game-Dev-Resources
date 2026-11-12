@@ -260,7 +260,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`util/text.js`**
 
-- `toPlainText(html) → string`: uses `DOMParser` when it exists, otherwise strips tags and decodes `&amp; &lt; &gt; &quot; &#39; &nbsp;` and numeric entities. It collapses whitespace.
+- `toPlainText(html) → string`: in a browser it parses the HTML into a detached `<template>` with `setHTMLUnsafe` after stripping `<style>` blocks and `style` attributes (an inert parse; `DOMParser` and un-stripped styles make the page's CSP log violations), otherwise it strips tags and decodes `&amp; &lt; &gt; &quot; &#39; &nbsp;` and numeric entities. It collapses whitespace. The extracted text is only ever rendered with `textContent`.
 - `firstSentence(text) → string`.
 - `truncate(text, max) → string`: adds `…` when it cuts.
 - `tokenize(text) → string[]`: lowercase words of at least 3 letters, with a fixed English stop-word list.

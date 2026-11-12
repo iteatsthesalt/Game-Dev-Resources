@@ -546,7 +546,7 @@ test('privacy explains the shared origin, voice vendors and keys', () => {
 });
 test('privacy holds the rules from the spec', () => {
   const t = read('PRIVACY.md');
-  for (const s of ['textContent', 'DOMParser', 'http(s)', '<img>', 'archive.org', 'Play', 'vendored', 'CDN'])
+  for (const s of ['textContent', 'HTML parser', 'http(s)', '<img>', 'archive.org', 'Play', 'vendored', 'CDN'])
     assert.ok(t.includes(s), s);
 });
 ```
@@ -588,7 +588,7 @@ Sections, in order:
 1. **The promise**, from §1: "There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on."
 2. **What goes over the network, and when**: a table `| When | To |` with the seven `NETWORK` rows, worded exactly as in the test, then the sentence `Nothing goes to a Byways server, because there is none. There are no analytics.` Add one line saying there are no ads, no sponsored finds and no ranking by engagement.
 3. **What stays on this device**: the one IndexedDB database `byways` and its stores (§14.1). The extension keeps keys in `chrome.storage.local`. The three versions keep separate storage.
-4. **Rules**: the five §15.2 bullets in plain words: text through `textContent`, with HTML fields reduced to text by `DOMParser`; `http(s)` links, and images only through `<img>` (in backticks, so Markdown shows it); only `archive.org` embeds, only after **Play**; pinned, vendored third-party code with integrity checks; no CDN code at runtime.
+4. **Rules**: the five §15.2 bullets in plain words: text through `textContent`, with HTML fields reduced to text by the browser's HTML parser in an inert template; `http(s)` links, and images only through `<img>` (in backticks, so Markdown shows it); only `archive.org` embeds, only after **Play**; pinned, vendored third-party code with integrity checks; no CDN code at runtime.
 5. **Keys**: `A key is sent only to its own provider's host.` Keys never go into exports (unless you choose), share links or logs. The optional passphrase lock uses AES-GCM with a PBKDF2-SHA-256 key (600,000 iterations).
 6. **Voice**: voice stays on the device where it can (desktop Chrome and Edge 139+, Firefox 160+, and the Android recogniser when it is on-device). Cloud voice goes to Google, Apple or Microsoft only after a consent screen that names the company. The microphone grant is per origin.
 7. **The shared origin**: the exact sentence from the test. It also says the Lab shares that origin in the web app, and that the passphrase lock protects keys from it.
