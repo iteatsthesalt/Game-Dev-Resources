@@ -125,7 +125,7 @@
       "name": "Ferryman",
       "idea": "Takes fares. One quiet dead at a time waits at a landing stair holding up a coin. Walk through it and it climbs on the Ferryman's back: 15% slower while loaded. Carry it to the opposite stair, marked by a lamp, and it steps off for good, paying experience equal to 10 kills and one coin. Below half life the fare slips off. The thumb plays there-and-back crossings through the horde. Starting skill, Sweep: every 1.5 s the oar swings a 3 m half-circle behind the direction of travel.",
       "source": "Ferrymen carried passengers between named stairs for a fixed fare, and the coins on a corpse's eyes were called the fare for the last crossing.",
-      "nearest": "Delivery and escort objectives. Here it is one class's whole way of levelling, and the passenger is one of the dead, paid off instead of killed.",
+      "nearest": "Delivery and escort objectives, and couriers who walk loads across hostile ground as in Death Stranding. Here it is one class's way of levelling inside a horde fight, and the passenger is one of the dead, paid off instead of killed.",
       "cost": "medium"
     },
     {
@@ -206,7 +206,7 @@
       "name": "Dredgerman (from Ferryman)",
       "idea": "The Ferryman may now carry a body instead of a fare. Walking over the body of an elite loads it: 25% slower. Either stair will take it. The near stair, on this bank, pays a finding fee of 5 coin. The far stair, across the district, pays three times as much, 15 coin, and adds one property to the best item that body drops. While a body is carried, the dead move 10% faster, drawn to it. Every elite laid sets the same question: near bank or far.",
       "source": "Thames dredgermen were paid a reward for each drowned body they brought in, and one bank of the river paid about three times what the other did.",
-      "nearest": "Carry-the-objective modes. The thing carried here is a product of ordinary play, and the same delivery has a cheap near price and a dear far one.",
+      "nearest": "Carry-the-objective modes, and carrying a corpse to be disposed of in Death Stranding. The body here is a product of ordinary play, and the same delivery has a cheap near price and a dear far one.",
       "cost": "small"
     },
     {
@@ -312,7 +312,7 @@
       "id": "customs-35",
       "area": "skill",
       "name": "Founder's Pit",
-      "idea": "Every 20 s a casting pit 2 m across is dug where the player stands and stays open 12 s. Each dead thing that falls within 5 m of it pours into the mould, shown as a rising level. When the 12 s are up the bell is struck once. With 8 or more poured it rings: harm to everything within 2 m plus 0.3 m per body, equal to a quarter of the summed full life of the bodies poured. With fewer it cracks and does nothing.",
+      "idea": "Every 20 s a casting pit 2 m across is dug where the player stands and stays open 12 s. Each dead thing that falls within 5 m of it pours into the mould, so the player must hold that ground. When the 12 s are up the bell is struck once. With 8 or more poured it rings: harm to everything within 2 m plus 0.3 m per body, equal to a quarter of the summed full life of the bodies poured. With fewer it cracks and does nothing.",
       "source": "Great bells were cast in a pit dug beside the tower they were meant for, and a short pour made a cracked bell fit only to be broken up.",
       "nearest": "Totems charged by nearby kills. This one is all or nothing at a known count, and its size is the bodies themselves.",
       "cost": "small"
@@ -339,7 +339,7 @@
       "id": "customs-38",
       "area": "modifier",
       "name": "Dexter and Sinister",
-      "idea": "The skill is split down the line the player is walking. Whatever it strikes on the player's right hand (dexter) takes 70% more harm; whatever it strikes on the left (sinister) takes 70% less. The split turns with the thumb, lagging 0.3 s, and holds its last line when the player stands still. Cost: half the skill's field is nearly dead, so the player must keep steering to put the crowd on the right, and a skill that only fires straight ahead gains nothing.",
+      "idea": "The skill is split down the line the player is walking. Whatever it strikes on the player's right hand (dexter) takes 70% more harm; whatever it strikes on the left (sinister) takes 70% less. The split turns with the thumb, lagging 0.3 s, and holds its last line when the player stands still. Cost: half the skill's field is nearly dead, so the player must keep steering to put the crowd on the right, and a skill that only acts straight ahead gains nothing.",
       "source": "On a hatchment the dexter half stood for the husband and the sinister for the wife, and the black half showed which of them was dead.",
       "nearest": "Backstab and flank bonuses tied to the enemy's facing. This is tied to the player's own heading and to left and right, which I have not seen used.",
       "cost": "small"
@@ -366,7 +366,7 @@
       "id": "customs-41",
       "area": "modifier",
       "name": "Lych-wait",
-      "idea": "The skill no longer fires the moment it is ready. It waits, as the bier waits under the lychgate for the priest, until at least 5 dead stand inside the place it would strike, or until 4 s have passed. For every full second it waited, its harm rises 20%. Cost: against a thin or scattered crowd the skill fires late and seldom. The player makes it work by drawing the dead into a knot and holding them there until it lets go.",
+      "idea": "The skill no longer casts the moment it is ready. It waits, as the bier waits under the lychgate for the priest, until at least 5 dead stand inside the place it would strike, or until 4 s have passed. For every full second it waited, its harm rises 20%. Cost: against a thin or scattered crowd the skill casts late and seldom. The player makes it work by drawing the dead into a knot and holding them there until it lets go.",
       "source": "At the lychgate the bearers set the bier down under the roof and waited for the priest to come out and meet it before going further.",
       "nearest": "Charge-up supports. Here the skill decides for itself when the shot is worth taking, by a rule the player can see and feed.",
       "cost": "small"
@@ -429,7 +429,7 @@
       "id": "customs-48",
       "area": "reserved",
       "name": "Deodand",
-      "idea": "Holds 3 inches of the pool. Once every 10 s, the next thing that harms the character is declared deodand. If it was moving when it struck, it changes sides for 6 s; if it was standing, it cannot strike for 6 s; a ground patch goes dark for 6 s. The holder is paid its appraised value: coin equal to 5% of that thing's full life. Since the first harm in each 10 s is the one seized, the player can pick it, and walk into a charger on purpose.",
+      "idea": "Holds 3 inches. Once every 10 s, the next thing that harms the character is declared deodand. If it was moving when it struck, it changes sides for 6 s; if it was standing, it cannot strike for 6 s; a ground patch goes dark for 6 s. The holder is paid its appraised value: coin equal to 5% of that thing's full life. Since the first harm in each 10 s is the one seized, the player can pick it, and walk into a charger on purpose.",
       "source": "The coroner's jury named the object that had caused a death, appraised it, and declared it forfeit as a deodand.",
       "nearest": "Thorns and reflect effects. This seizes the attacker instead of hurting it, pays by what the attacker was worth, and rewards choosing which blow to take.",
       "cost": "small"
@@ -546,7 +546,7 @@
       "id": "customs-61",
       "area": "enemy",
       "name": "The Link-boy",
-      "idea": "A dead child with a torch, a real light. It does not chase: it runs 4 m ahead of the player in whatever direction the player is heading, and never strikes. Dead standing in its torchlight can see their way and move 40% faster. So it is always lighting the ground the player is about to run onto. Read it by the small figure and the bright pool ahead. A sharp turn leaves it behind for 2 s; one blow lays it, but only skills that reach forward can catch it.",
+      "idea": "A dead child with a torch, a real light. It does not chase: it runs 4 m ahead of the player in whatever direction the player is heading, and never strikes. Dead standing in its torchlight can see their way and move 40% faster. It is always lighting the ground the player is about to run onto. Read it by the small figure and the bright pool ahead. A sharp turn leaves it behind for 2 s; one blow lays it, but only skills that reach forward can catch it.",
       "source": "Link-boys carried torches ahead of people walking at night for a farthing, and some led their customers to waiting robbers.",
       "nearest": "Support enemies that carry a buff zone. This one takes its position from the player's own heading, so it punishes running in a straight line.",
       "cost": "small"
@@ -655,7 +655,7 @@
       "area": "district",
       "name": "The Tron",
       "idea": "A market square of 30 stalls round a weigh-beam. Nothing may be sold before the bell: for 15 s after every toll the stalls open, and walking into one buys what it shows for carried coin, with no pause. The same toll raises the danger, so every bell is a dash to a stall. A stall the dead are pushed into overturns and is shut for the vigil. Shapes: box stalls with tapered striped awnings, a post-and-beam scale, a stepped cross. Colours: awning red, cream, cobble grey, brass, wet wood.",
-      "source": "Markets opened on the market bell, and selling before it rang was the offence of forestalling.",
+      "source": "Markets opened on the market bell, and dealing before it rang was punished as forestalling.",
       "nearest": "Mid-run shops. These are physical, open only in the dangerous seconds after each bell, and can be destroyed by the fight.",
       "cost": "medium"
     },
@@ -726,7 +726,7 @@
       "id": "customs-81",
       "area": "gear",
       "name": "Appraisal",
-      "idea": "An item enters the world blank, with four empty lines. The first four different kinds of elite it helps to lay each write one line: a property drawn at random from that kind's own short list (a Mute's is about silence, a Bier Party's about roads) with a rolled size. The player shapes an item by choosing what it is used on first. To change it, forfeit a line to the Crown: the line is struck out, a little coin is paid, and the space waits for the next new kind.",
+      "idea": "An item is found blank, with four empty lines. The first four different kinds of elite it helps to lay each write one line: a property drawn at random from that kind's own short list (a Mute's is about silence, a Bier Party's about roads) with a rolled size. The player shapes an item by choosing what it is used on first. To change it, forfeit a line to the Crown: the line is struck out, a little coin is paid, and the space waits for the next new kind.",
       "source": "A coroner's jury appraised the thing that had caused a death, and it was the death that gave the object its standing in law.",
       "nearest": "Weapons that earn traits from tracked kills. Here the kills decide which pool each random property is drawn from, in the order they happen.",
       "cost": "small"
