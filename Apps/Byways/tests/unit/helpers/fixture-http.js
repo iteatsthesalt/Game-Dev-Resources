@@ -62,7 +62,8 @@ export function memorySecrets(seed = {}) {
  * tests/fixtures/routes.js, recording every request in `calls`. `extraRoutes` is read on every request, so a test
  * may push to it later. A route may also set `error: true` (the fetch throws a TypeError) or `hang: true` (the
  * fetch never settles until its signal aborts).
- * @returns {Promise<{ctx: object, calls: object[], store: object}>}
+ * `transport` is returned too, so tests of the kit itself can call it directly.
+ * @returns {Promise<{ctx: object, calls: object[], store: object, transport: object}>}
  */
 export async function adapterCtx({ settings, secrets, data, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = [] } = {}) {
   const clock = fakeClock(now);
@@ -99,5 +100,5 @@ export async function adapterCtx({ settings, secrets, data, seed = 42, now = Dat
     caps: { ...PWA_CAPS },
     dataUrl: file => 'data/' + file,
   };
-  return { ctx, calls, store };
+  return { ctx, calls, store, transport };
 }

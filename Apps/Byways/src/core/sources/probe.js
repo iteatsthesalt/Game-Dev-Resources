@@ -19,18 +19,22 @@ export async function probeSource(adapter, http) {
 }
 
 /**
- * Probe every adapter in parallel and keep the results in health['probe:<platformName>'].
- * A stored result under 24 h old that covers every adapter id is reused.
+ * Probe adapters in parallel and keep the results in health['probe:<platformName>'].
+ * A stored record under 24 h old is reused: only the adapters it lacks are probed, and their results are merged
+ * into it (keeping its `at`). An older record is replaced by probing every adapter. Gives results for `adapters` only.
  * @returns {Promise<Object<string,'ok'|'fail'>>}
  */
 export async function runProbes(adapters, http, store, clock, platformName = 'pwa') {
   const key = `probe:${platformName}`;
   const stored = await store.get('health', key);
-  if (stored && clock.now() - stored.at < DAY_MS && adapters.every(a => stored.results[a.id] !== undefined)) {
-    return Object.fromEntries(adapters.map(a => [a.id, stored.results[a.id]]));
+  const fresh = Boolean(stored) && clock.now() - stored.at < DAY_MS;
+  const known = fresh ? stored.results : {};
+  const missing = adapters.filter(a => known[a.id] === undefined);
+  let all = known;
+  if (missing.length) {
+    const states = await Promise.all(missing.map(adapter => probeSource(adapter, http)));
+    all = { ...known, ...Object.fromEntries(missing.map((adapter, i) => [adapter.id, states[i]])) };
+    await store.put('health', key, { at: fresh ? stored.at : clock.now(), results: all });
   }
-  const states = await Promise.all(adapters.map(adapter => probeSource(adapter, http)));
-  const results = Object.fromEntries(adapters.map((adapter, i) => [adapter.id, states[i]]));
-  await store.put('health', key, { at: clock.now(), results });
-  return results;
+  return Object.fromEntries(adapters.map(a => [a.id, all[a.id]]));
 }
