@@ -942,15 +942,10 @@ git commit -m "Add the link check for web and privileged fetch"
 - Produces: the `wikipedia` and `commons` adapters. Every request from both sends `Api-User-Agent: IDENT` (§7.3).
   - Wikipedia `random`: `GET https://en.wikipedia.org/api/rest_v1/page/random/summary`; `[]` when `type === 'disambiguation'`. Find: id `wiki:en:<titles.canonical>`, `description = extract`, `url = content_urls.desktop.page`, `imageUrl = thumbnail.source`, `licence 'CC BY-SA 4.0'`, `attribution 'Wikipedia'`, why `['Wikipedia: random article']`.
   - Wikipedia `search(q)` and `more(find)`: `GET https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=<q>&gsrlimit=10&prop=pageimages|extracts|info&inprop=url&piprop=thumbnail&pithumbsize=640&exintro=1&explaintext=1&exlimit=10&format=json&origin=*`; `more` sends `gsrsearch=morelike:<find.title>`. Pages are sorted by `index`; `url = fullurl`. Why `['Wikipedia search']` or `['Wikipedia: more like <title>']`.
-  - Commons `random`: today's picture of the day from `GET https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` (UTC date of `ctx.clock.now()`), field `image`: title from `image.title` without `File:` and the extension, `imageUrl = image.thumbnail.source`, `url = image.file_page`, `author = image.artist.text`, `licence = image.license.type`, `description = image.description.text`, safety `curated`, why `['Wikimedia Commons: picture of the day']`.
-  - Commons `search(q)`: `GET https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<q>&gsrlimit=10&prop=imageinfo&iiprop=url|mime|size|extmetadata&iiurlwidth=1024&format=json&origin=*`. Keep only `image/jpeg|png|gif|webp` with `width ≥ 400` and a `LicenseShortName`. `title = ObjectName` (else the file name), `description = toPlainText(ImageDescription)`, `author = toPlainText(Artist)`, `attribution = '<author> · <licence> · Wikimedia Commons'`, `imageUrl = thumburl`, `url = descriptionurl`, why `['Wikimedia Commons search']`. `more` returns `[]`.
+  - Commons `random`: today's picture of the day from `GET https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` (UTC date of `ctx.clock.now()`), field `image`: title from `image.title` without `File:` and the extension, `imageUrl = image.thumbnail.source`, `url = image.file_page`, `author = image.artist.text`, `licence = image.license.type`, `description = image.description.text`, safety `curated` (the adapter itself is `mixed`, so the Family filter drops search images but not the curated picture of the day), why `['Wikimedia Commons: picture of the day']`.
+  - Commons `search(q)`: `GET https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<q>&gsrlimit=10&prop=imageinfo&iiprop=url|mime|size|extmetadata&iiurlwidth=1024&format=json&origin=*`. Keep only `image/jpeg|png|gif|webp` with `width ≥ 400` and a `LicenseShortName`. `title = ObjectName` (else the file name), `description = toPlainText(ImageDescription)`, `author = toPlainText(Artist)`, `attribution = '<author> · <licence> · Wikimedia Commons'`, `imageUrl = thumburl`, `url = descriptionurl`, safety `mixed`, why `['Wikimedia Commons search']`. `more` returns `[]`.
 
-Fixtures (hand-written in the documented shapes; values the tests assert):
-- `wikipedia/random-summary.json`: `type 'standard'`, `title 'Ada Lovelace'`, `titles.canonical 'Ada_Lovelace'`, `extract 'Ada Lovelace was an English mathematician. She wrote the first program.'`, `thumbnail.source 'https://upload.wikimedia.org/ada.jpg'`, `content_urls.desktop.page 'https://en.wikipedia.org/wiki/Ada_Lovelace'`. `wikipedia/random-disambiguation.json`: the same with `type 'disambiguation'`, `title 'Mercury'`.
-- `wikipedia/search.json`: `query.pages` with `"2": {index: 2, title 'Moth trap', fullurl …/Moth_trap}` and `"1": {index: 1, title 'Moth', fullurl …/Moth, thumbnail}`. `wikipedia/morelike.json`: one page, `title 'Charles Babbage'`.
-- `wikipedia/featured.json`: `image` with `title 'File:Aurora.jpg'`, `file_page 'https://commons.wikimedia.org/wiki/File:Aurora.jpg'`, `artist.text 'Jane Doe'`, `license.type 'CC BY-SA 4.0'`, `description.text 'An aurora over a lake.'`, `thumbnail.source`.
-- `commons/search.json`: three pages: `File:Old map.png` (`image/png`, width 2000, `ImageDescription '<p>An <b>old</b> map.</p>'`, `Artist '<a href="javascript:alert(1)">Ann</a>'`, `LicenseShortName 'CC BY 4.0'`, `ObjectName 'Old map'`), `File:Clip.webm` (`video/webm`) and `File:Tiny.jpg` (`image/jpeg`, width 100).
-- Routes, in this order: `morelike` search → `wikipedia/morelike.json`; other `en.wikipedia.org/w/api.php` → `wikipedia/search.json`; `page/random/summary` → `wikipedia/random-summary.json`; `feed/featured/` → `wikipedia/featured.json`; `commons.wikimedia.org/w/api.php` → `commons/search.json`.
+Fixtures, beyond the values the tests assert: `wikipedia/random-disambiguation.json` (`type 'disambiguation'`); `wikipedia/search.json` with its two pages keyed out of `index` order (`"2"` Moth trap, `"1"` Moth); `commons/search.json` with two pages to drop (`File:Clip.webm` as `video/webm`, `File:Tiny.jpg` 100 wide) and the kept `File:Old map.png`, whose `ImageDescription` is `'<p>An <b>old</b> map.</p>'` and `Artist` is `'<a href="javascript:alert(1)">Ann</a>'`. Routes, in this order: `morelike` search → `wikipedia/morelike.json`; other `en.wikipedia.org/w/api.php` → `wikipedia/search.json`; `page/random/summary` → `wikipedia/random-summary.json`; `feed/featured/` → `wikipedia/featured.json`; `commons.wikimedia.org/w/api.php` → `commons/search.json`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -970,6 +965,7 @@ test('wikipedia search uses origin=* and keeps result order', async () => {
   const { ctx, calls } = await adapterCtx(); const out = await wikipedia.search('moth', ctx);
   assert.deepEqual(out.map(f => f.title), ['Moth', 'Moth trap']);
   const u = new URL(calls[0].url); assert.equal(u.searchParams.get('origin'), '*'); assert.equal(u.searchParams.get('gsrsearch'), 'moth');
+  assert.equal(calls[0].headers['api-user-agent'], IDENT);
 });
 test('wikipedia more uses morelike', async () => {
   const { ctx, calls } = await adapterCtx(); const [ada] = await wikipedia.random(ctx);
@@ -979,7 +975,7 @@ test('wikipedia more uses morelike', async () => {
 });
 test('commons random is the picture of the day', async () => {
   const { ctx, calls } = await adapterCtx(); const [f] = await commons.random(ctx);
-  assert.ok(calls[0].url.endsWith('/api/rest_v1/feed/featured/2026/11/11'));
+  assert.ok(calls[0].url.endsWith('/api/rest_v1/feed/featured/2026/11/11')); assert.equal(calls[0].headers['api-user-agent'], IDENT);
   assert.equal(f.title, 'Aurora'); assert.equal(f.safety, 'curated'); assert.equal(f.author, 'Jane Doe');
   assert.equal(f.url, 'https://commons.wikimedia.org/wiki/File:Aurora.jpg'); assert.deepEqual(f.why, ['Wikimedia Commons: picture of the day']);
 });

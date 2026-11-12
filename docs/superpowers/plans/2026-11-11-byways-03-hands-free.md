@@ -1265,26 +1265,24 @@ git add src/ui/keymap.js tests/unit/keymap.test.js
 git commit -m "Add the single-key map with a text-field guard"
 ```
 
-### Task 9: Hands-free bar, help card and wiring
+### Task 9: Hands-free bar and wiring
 
 **Files:**
 - Create: `src/ui/handsfree-ui.js`
 - Modify: `src/ui/boot.js`, `src/platform/pwa.js`, `src/ui/views/stumble.js`, `src/ui/styles/app.css`
-- Modify: `tests/e2e/helpers/fakes.js`
+- Modify: `tests/e2e/helpers/fakes.js`, `tests/unit/pwa.test.js` (Plan 01's file: append one test), `tests/e2e/card-actions.spec.js` (Plan 02's file: its **Read it** assertion)
 - Test: `tests/e2e/handsfree.spec.js`
 
 **Interfaces:**
-- Consumes: `createHandsFree`, `effectiveListenMode` (Tasks 4–5); `createListener` (Task 2); `createReader`, `cardScript` (Task 3); `COMMANDS`, `commandPhrases` (Task 1); `installKeymap` (Task 8); `createWebVoice` (Task 6); `createWebMedia` (Task 7); `showResult` from `ui/views/stumble.js`; `announce` (`ui/a11y.js`); `h`, `clear` (`ui/dom.js`); `navigate` (`ui/router.js`); `app.search`, `app.collections.has`, `app.platform`, `app.getSettings`, `app.clock`.
+- Consumes: `createHandsFree`, `effectiveListenMode` (Tasks 4–5); `createListener` (Task 2); `createReader` (Task 3); `COMMANDS`, `commandPhrases` (Task 1); `installKeymap` (Task 8); `createWebVoice` (Task 6); `createWebMedia` (Task 7); `showResult` (`ui/views/stumble.js`); `announce` (`ui/a11y.js`); `h`, `clear` (`ui/dom.js`); `navigate`, `parseHash` (`ui/router.js`); `app.engine`, `app.search`, `app.platform`, `app.getSettings`, `app.clock`. Tests: `test`, `expect`, `stageLibrary` (`helpers/net.js`), `gotoApp` (`helpers/app.js`) and Plan 02's `tests/fixtures/http/library/small.json`.
 - Produces:
-  - `installHandsFreeUi(app) → void`. It sets `app.handsFree` at once (with `listener: null`) and replaces it with a freshly wired controller and listener on every **Start** press, so voice settings apply from the next Start.
-  - `startHandsFree(app) → Promise<void>`: the Start press routine, also called by the first-run step (Task 10).
-  - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js` and passed as `createWebMedia(navigator, {silentAudio: SILENT_AUDIO_FALLBACK})`. `pwa.js` also switches `voice` to `createWebVoice(window, {lang: 'en-US'})`.
-  - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`, keeping Plan 01's behaviour and adding:
-    - the static `SpeechRecognition.available()` resolving `available` (no static when `available` is `null`), and `install()` resolving `true`;
-    - a recogniser that fires `start` on `start()` and `end` on `stop()`/`abort()`; `window.__say(text, final = true)`; `window.__voiceError(code)` (fires `error`, then `end`);
-    - `window.__spoken` (texts), `window.__speechCancels`, and `window.__endSpeech()`. With `holdSpeech` an utterance ends only on `__endSpeech()` or `cancel()`; otherwise it ends after a microtask. `cancel()` fires `onerror` with `interrupted`;
-    - `getVoices()` returning `Local English` (`local-en`, local) and `Online English` (`net-en`, not local), both `en-US`;
-    - `window.__wake = {requests, releases}`, `window.__media` (the handlers given to `navigator.mediaSession.setActionHandler`, by action name), and `window.__announcements`: `[regionId, text]` for every text written to `#live-polite` or `#live-assertive`.
+  - `installHandsFreeUi(app) → void`. Boot calls it once, before first run. It creates the one controller for the app's life (`createHandsFree` with the `ui`, `prepare` and `dispatch` below, and `leanBack: app.platform.caps.leanBack !== false`) and sets `app.handsFree` to it. That object never changes identity, so a reference taken at boot (Plan 06's `connectLab`) stays valid, and `app.handsFree.start()` runs the whole Start routine with or without a click (Plans 07 and 08 call it directly).
+  - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js`. `pwa.js` uses Plan 01's `win` parameter, never the globals: `voice: createWebVoice(win, {lang: 'en-US'})` and `media: createWebMedia(win.navigator, {silentAudio: SILENT_AUDIO_FALLBACK, createAudio: () => new win.Audio(), createObjectURL: (b) => win.URL.createObjectURL(b)})`.
+  - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`: Plan 01's fake, unchanged except for these additions:
+    - static `SpeechRecognition.available()` resolves the stored availability (no static methods when `available` is `null`); static `install()` resolves `true`, sets the stored availability to `'available'` and counts `window.__installs`;
+    - the recogniser gains `processLocally`, `quality` and `phrases`; `window.__recStarts` counts `start()` calls, and `window.__recFailNext = true` makes the next `start()` throw a `NotAllowedError`. Plan 01's `__say(text, {final})`, `__sayError(code)` and `__recognizers` (a list) stay as they are;
+    - `window.__speechCancels` counts `cancel()`. With `holdSpeech`, an utterance ends only on `window.__endSpeech()` or `cancel()` (otherwise after Plan 01's 10 ms). An utterance with empty text ends at once and is not recorded. `window.__utterances` gets `{text, voiceURI, rate, volume}` for each recorded utterance. `getVoices()` adds `{voiceURI: 'net-en', name: 'Online English', lang: 'en-US', localService: false}` after Plan 01's `fake-en-US`;
+    - `window.__wakeLock` gains `releases`; `window.__media` holds the handlers given to `navigator.mediaSession.setActionHandler`, by action name; `window.__announcements` gets `[regionId, text]` for every non-empty text written to `#live-polite` or `#live-assertive`; a fake `AudioContext` counts oscillator `start()` calls in `window.__tones`.
 
 Bar contents. `#handsfree` is a `<section aria-label="Hands-free">` outside the routed view, so it is on every screen. Every button is at least 56 px tall.
 
