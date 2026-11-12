@@ -631,9 +631,9 @@ The desktop accepts protocol versions N and N−1. Over TCP, add a length prefix
 
 **F. Validation plan before committing**
 1. Echo-RTT percentiles: WebSocket, DataChannel, app UDP and app TLS; iPhone (iOS 27.x), the user's Moto G Stylus (2026) and one other Android phone; three routers, power save on and off, 1 versus 8 phones.
-2. WebRTC between a plain-HTTP page and `node-datachannel` without STUN.
+2. WebRTC between a plain-HTTP page and `node-datachannel` without STUN. The peer-reflexive path already works between two Chromium 153 peers in this container (section 1). [Measured] Repeat it with iOS Safari 27 and Chrome Android 157 on Wi-Fi.
 3. Self-signed click-through secure-context behaviour.
-4. On the Moto G Stylus with targetSdk 37: the picker flow, `FLAG_USER_APPROVED_ONLY` reconnect, UDP reachability after a picker grant, and behaviour with `RESTRICT_LOCAL_NETWORK` force-enabled.
+4. On the Moto G Stylus with targetSdk 37: the picker flow, `FLAG_USER_APPROVED_ONLY` reconnect, UDP reachability after a picker grant, and behaviour with no grant or with `ACCESS_LOCAL_NETWORK` revoked. That is blocked by default at targetSdk 37; `RESTRICT_LOCAL_NETWORK` is only the deprecated Android 16 opt-in. [Verified correction: https://developer.android.com/privacy-and-security/local-network-permission]
 5. WebMessageListener ArrayBuffer round-trip latency.
 6. Haptic primitive support and feel.
 7. Touch-point limits and coalesced sample rates per device.
