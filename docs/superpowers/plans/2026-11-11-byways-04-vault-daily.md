@@ -85,14 +85,9 @@ Set up each test with `clock = fakeClock(0)`, `cache = createCache(await openSto
 test('search builds the advancedsearch URL with fl[], sort[], rows, page and output=json', async () => {
   // route /advancedsearch/ → {response: {numFound: 2, docs: [{identifier: 'a'}, {identifier: 'b'}]}}
   const r = await ia.search({ q: 'collection:(x)', fl: ['identifier', 'title'], sort: ['downloads asc'], rows: 100, page: 3 });
-  const u = new URL(net.calls[0].url);
+  const u = new URL(net.calls[0].url), all = (k) => u.searchParams.getAll(k);
   assert.equal(u.origin + u.pathname, 'https://archive.org/advancedsearch.php');
-  assert.equal(u.searchParams.get('q'), 'collection:(x)');
-  assert.deepEqual(u.searchParams.getAll('fl[]'), ['identifier', 'title']);
-  assert.deepEqual(u.searchParams.getAll('sort[]'), ['downloads asc']);
-  assert.equal(u.searchParams.get('rows'), '100');
-  assert.equal(u.searchParams.get('page'), '3');
-  assert.equal(u.searchParams.get('output'), 'json');
+  assert.deepEqual(['q', 'fl[]', 'sort[]', 'rows', 'page', 'output'].map(all), [['collection:(x)'], ['identifier', 'title'], ['downloads asc'], ['100'], ['3'], ['json']]);
   assert.deepEqual(r, { numFound: 2, docs: [{ identifier: 'a' }, { identifier: 'b' }] });
 });
 test('requests carry no custom headers and no credentials', async () => {
@@ -151,9 +146,7 @@ test('wayback returns the closest snapshot as https, and null when archived_snap
   //   url: 'http://web.archive.org/web/20091027000000/http://www.geocities.com/Area51/1234/'}}}; url=…/gone/ → {archived_snapshots: {}}
   const hit = await ia.wayback('http://www.geocities.com/Area51/1234/', '2009');
   const u = new URL(net.calls[0].url);
-  assert.equal(u.origin + u.pathname, 'https://archive.org/wayback/available');
-  assert.equal(u.searchParams.get('url'), 'http://www.geocities.com/Area51/1234/');
-  assert.equal(u.searchParams.get('timestamp'), '2009');
+  assert.deepEqual([u.origin + u.pathname, u.searchParams.get('url'), u.searchParams.get('timestamp')], ['https://archive.org/wayback/available', 'http://www.geocities.com/Area51/1234/', '2009']);
   assert.deepEqual(hit, { url: 'https://web.archive.org/web/20091027000000/http://www.geocities.com/Area51/1234/', timestamp: '20091027000000' });
   clock.advance(1000); assert.equal(await ia.wayback('http://www.geocities.com/gone/', '2009'), null);
 });
@@ -235,12 +228,12 @@ test('gemQuery uses the §10.2 query', () => {
 });
 test('gemScore matches the formula', () => {
   const s = (d, c = []) => gemScore({ collection: ['softwarelibrary_flash', ...c], ...d }, { currentYear: 2026, curated: CURATED_COLLECTIONS });
-  const cur = ['softwarelibrary_flash_showcase'];
-  assert.ok(Math.abs(s({ downloads: 312, year: 1994, avg_rating: 4.5, num_reviews: 3 }) - 0.401348) < 1e-6);
-  assert.ok(Math.abs(s({ downloads: 3000, year: 2026 }) - 0) < 1e-6);
-  assert.ok(Math.abs(s({ downloads: 20, year: 1960, avg_rating: 4, num_reviews: 2 }, cur) - 0.812916) < 1e-6);
-  assert.ok(Math.abs(s({ downloads: 100, year: 1990, avg_rating: 5, num_reviews: 1 }, cur) - 0.592406) < 1e-6);
-  assert.ok(Math.abs(s({ downloads: 1, year: 1990 }) - 0.68) < 1e-6);
+  const cur = ['softwarelibrary_flash_showcase'], near = (a, b) => assert.ok(Math.abs(a - b) < 1e-6, `${a} vs ${b}`);
+  near(s({ downloads: 312, year: 1994, avg_rating: 4.5, num_reviews: 3 }), 0.401348);
+  near(s({ downloads: 3000, year: 2026 }), 0);
+  near(s({ downloads: 20, year: 1960, avg_rating: 4, num_reviews: 2 }, cur), 0.812916);
+  near(s({ downloads: 100, year: 1990, avg_rating: 5, num_reviews: 1 }, cur), 0.592406);
+  near(s({ downloads: 1, year: 1990 }), 0.68);
 });
 test('gemWhy gives the chips, the pool first', () => {
   assert.deepEqual(gemWhy({ downloads: 312, collection: ['softwarelibrary_msdos_shareware'], year: '1994', avg_rating: 4.5, num_reviews: 3 }), ['Internet Archive: MS-DOS Shareware', '312 downloads', '1994', '★4.5 (3)']);
@@ -414,16 +407,7 @@ Expected: FAIL with "Cannot find module '…/src/core/daily.js'".
 
 - [ ] **Step 3: Implement `src/core/daily.js`**
 
-`backupDaily` draws all three numbers before any `await`, so the order is fixed in every shell:
-
-```js
-const rand = mulberry32(dailySeed(date));
-const rWonder = rand(), rWeb = rand(), rGame = rand();
-// wonder: rWonder < 0.5 → fetchWikiFeatured(date), else fetchApod(date); if that throws or gives null, try the other one
-// web:  entries with added <= date, sorted by id (plain < compare), index floor(rWeb * n), mapped with libraryEntryToFind
-// game: the same over vaultStarter.entries, mapped with starterToFind
-// picks follow DAILY_SLOTS order; a slot that cannot be filled is left out
-```
+`backupDaily` draws `rWonder`, `rWeb` and `rGame` from `mulberry32(dailySeed(date))`, in that order and before any `await`, so the order is the same in every shell. Wonder: `rWonder < 0.5` → `fetchWikiFeatured(date)`, else `fetchApod(date)`; if that throws or gives `null`, it tries the other. Web: library entries with `added ≤ date`, sorted by `id` (plain `<`), at `floor(rWeb · n)`. Game: the same over `vaultStarter.entries` with `rGame`. Picks follow `DAILY_SLOTS`, and a slot that cannot be filled is left out.
 
 The mappers copy the field rules of Plan 02's adapters, so a find looks the same in Daily Fate as in Stumble:
 
@@ -1018,7 +1002,7 @@ test.describe('when the Archive does not answer', () => {
 test('Play works the same on a saved Archive find', async ({ page }) => {
   await gotoApp(page, '#/vault');
   await whizz().getByRole('button', { name: 'Save' }).click();
-  await page.goto('#/saved');
+  await page.goto('#/saved'); await page.getByRole('button', { name: 'Saved (1)' }).click();
   await page.getByRole('main').getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('iframe')).toHaveAttribute('src', 'https://archive.org/embed/msdos_Whizz_1994');
 });

@@ -60,7 +60,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | `src/platform/android.js` (create) | `createBridgeClient`, `createAndroidPlatform` (with `requestOrigins`, `identity`, `app`, `attach`), `extractSharedLink` |
 | `src/ui/boot.js` (modify) | call `platform.attach?.(app)` once the app is built |
 | `src/ui/components/card.js` (modify) | **Open** announces the site view on Android; the **⋯** menu closes on `byways:back` |
-| `src/ui/handsfree-ui.js` (modify) | its dialogs close on `byways:back`; **Tap to talk** on Android |
+| `src/ui/handsfree-ui.js` (modify) | its dialogs close on `byways:back` |
 | `src/ui/views/settings/about.js` (modify) | **Check for updates** and **Download update** when `platform.app` exists |
 | `src/ui/views/settings/access.js` (modify) | the **Go straight to the site** checkbox in its `Lean-back` fieldset when `platform.caps.inAppSiteView` is true |
 | `src/ui/views/settings/voice.js` (modify) | the Android line that says why voice is limited |
@@ -583,7 +583,7 @@ Expected: the Node test fails with `ENOENT` on `Bridge.kt`; Gradle fails with `U
 - `Reply` sends once (later calls do nothing) and always posts to `proxy.postMessage` on the main thread (`webView.post`).
 - `emit` holds events in a queue until the page sends `app.ready`, which `Bridge` answers itself (`true`) before flushing the queue in order. `pageStarted()`, called from the main WebView's `onPageStarted`, clears `ready` and the kept `proxy`, so events never go to a page that is gone.
 - `app` handler: `hello` → `{versionName, versionCode, sdk: Build.VERSION.SDK_INT, micConsent}` (the two versions from `packageManager.getPackageInfo(packageName, 0)` with `PackageInfoCompat.getLongVersionCode`; `micConsent` is the `micConsent` boolean in SharedPreferences `byways`, default false); `openExternal {url}` → `ACTION_VIEW` with `CATEGORY_BROWSABLE` for `http(s)` only, else error `scheme`.
-- `fetch` handler (a `FetchChannel` class in `Bridge.kt`): `request` runs `NativeFetch.execute` with a new `FetchCall` on `Executors.newCachedThreadPool()`, so a slow AI team member never starves other requests; `abort {fetchId}` calls `cancel()` on that request's `FetchCall`; `approve {host}` (only `requestOrigins` sends it; hosts arrive without IPv6 brackets) replies true when the host is already in the `approvedHosts` string set, false when `!FetchPolicy.isLocalHost(host)`, else shows an `AlertDialog` titled `Allow a local network device?` with the message `Byways wants to reach http://<host> on your network, for a local AI model. Allow it?` and the buttons **Allow** (store and reply true) and **Cancel** (reply false). `FetchError` replies with its code.
+- `fetch` handler (a `FetchChannel` class in `Bridge.kt`): `request` builds a `FetchRequest` from its args (`redirect` included) and runs `NativeFetch.execute` with a new `FetchCall` on `Executors.newCachedThreadPool()`, so a slow AI team member never starves other requests; `abort {fetchId}` calls `cancel()` on that request's `FetchCall`; `approve {host}` (only `requestOrigins` sends it; hosts arrive without IPv6 brackets) replies true when the host is already in the `approvedHosts` string set, false when `!FetchPolicy.isLocalHost(host)`, else shows an `AlertDialog` titled `Allow a local network device?` with the message `Byways wants to reach http://<host> on your network, for a local AI model. Allow it?` and the buttons **Allow** (store and reply true) and **Cancel** (reply false). `FetchError` replies with its code.
 - `screen` handler: `keepOn {on}` adds or clears `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
 - In `MainActivity.onCreate`, build the `Bridge` before `loadUrl`. If `install()` is false, load nothing and show a `TextView` saying `This phone's WebView is too old for Byways. Update Android System WebView, then open Byways again.`
 
@@ -1401,7 +1401,7 @@ git commit -m "Serve the Lab on its own origin with a save-only bridge"
 - Create: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: `boot(platform)`, the `App` fields, `engine.next({mode})` and `engine.on('find', fn)`, which fires for every find the engine hands to the UI (overview); `navigate(route)`, `showResult(result)`, `makeFind(partial)`, `domainOf(u)`, `showToast(message)`; `startHandsFree(app) → Promise<void>` and the controller's `state`, `suspend()`, `wake()`, `pause()` and `command(id)`, plus the help card, recap and search dialogs (`ui/handsfree-ui.js`, Plan 03 Task 9); `makeActionHandler` and the **⋯** menu (`ui/components/card.js`, Plan 02 Task 23); the e2e helpers `test`, `expect`, `gotoApp` and `skipFirstRun` (Plan 01); `connectOpenRouter` and its fixtures (Plan 05); `createBridgeClient`, `extractSharedLink`, `platform.app` (Task 6).
+- Consumes: `boot(platform)`, the `App` fields, `engine.next({mode})` and `engine.on('find', fn)`, which fires for every find the engine hands to the UI (overview); `navigate(route)`, `showResult(result)`, `makeFind(partial)`, `domainOf(u)`, `showToast(message)`; the router's own `byways:back` handling, which calls `history.back()` when nothing prevented the event away from home (overview); the one `app.handsFree` controller, whose `start()` runs the full Start routine (overview), with `state`, `suspend()`, `wake()`, `pause()` and `command(id)`, plus the help card, recap and search dialogs (`ui/handsfree-ui.js`, Plan 03 Task 9); `makeActionHandler` and the **⋯** menu (`ui/components/card.js`, Plan 02 Task 23); the e2e helpers `test`, `expect`, `gotoApp` and `skipFirstRun` (Plan 01); `connectOpenRouter` and its fixtures (Plan 05); `createBridgeClient`, `extractSharedLink`, `platform.app` (Task 6).
 - Produces:
   - `platform.attach(app) → Promise<void>`. `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
   - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. The card's **⋯** menu and the hands-free dialogs close themselves on it and call `event.preventDefault()`.
@@ -1445,11 +1445,14 @@ const button = (page, name) => page.getByRole('button', { name, exact: true });
 const sent = async (ch, op) => (await fake.native()).filter(m => m.ch === ch && m.op === op);
 const backResult = async (token) => (await sent('back', 'result')).find(m => m.args.token === token)?.args.handled;
 
-test('boots on the Android origin with native fetch and no service worker', async ({ page }) => {
-  await openAndroid(page);
-  expect(await page.evaluate(() => navigator.serviceWorker.getRegistrations().then(r => r.length))).toBe(0);
-  await expect.poll(async () => (await sent('app', 'ready')).length).toBe(1);
-  await expect.poll(async () => (await sent('fetch', 'request')).length).toBeGreaterThan(0);
+test.describe('with service workers allowed', () => {
+  test.use({ serviceWorkers: 'allow' });   // the fixture blocks them, which would hide a registration
+  test('boots on the Android origin with native fetch and no service worker', async ({ page }) => {
+    await openAndroid(page);
+    expect(await page.evaluate(() => navigator.serviceWorker.getRegistrations().then(r => r.length))).toBe(0);
+    await expect.poll(async () => (await sent('app', 'ready')).length).toBe(1);
+    await expect.poll(async () => (await sent('fetch', 'request')).length).toBeGreaterThan(0);
+  });
 });
 test('Open shows the find in the site view', async ({ page }) => {
   await openAndroid(page); await button(page, 'Open').click();
@@ -1536,12 +1539,12 @@ Expected: FAIL in every test except `Connect OpenRouter finishes through the log
 
 1. **Subscribes.**
    - **Share-in** (`app` `shared {text}`), through `extractSharedLink`: `null` → `showToast('That share had no link in it.')`; `share` → `win.location.hash = hash` (the router opens Import); `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: ['Shared to Byways']})` with `find = makeFind({url, title: domainOf(url), source: 'marginalia', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`. The contract has no source id for a shared link; `marginalia` makes **More like this** use Marginalia similar sites.
-   - **Back** (`back` `request {token}`): dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`; if it was cancelled, `handled = true`. Otherwise, when the hash is not `''`, `'#'` or `'#/stumble'`, call `win.history.back()` and `handled = true`; else `handled = false`. Send `back.result {token, handled}`.
+   - **Back** (`back` `request {token}`): dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`. After `dispatchEvent` returns, `handled = event.defaultPrevented || <the hash is not home>`, where home is `''`, `'#'`, `'#/'` or `'#/stumble'`. Send `back.result {token, handled}`. `attach` never calls `history.back()`: the router does (contract).
    - **Site view:** every `app.openSite` the platform sends sets `siteOpen = true`. `siteClosed` sets it false and calls `app.handsFree.pause()` when the state is `'active'`, so the view does not come back by itself. `siteNext` runs `showResult(await app.engine.next({mode: app.getSettings().mode}))`. `app.engine.on('find', find => …)` calls `openFind(find)` when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`. `sitePause` and `siteStop` call `app.handsFree.command('pause')` and `command('stop')`. While `siteOpen`, it sends `app.siteControls {state: app.handsFree?.state ?? 'idle'}` when the view opens and whenever that state changes (checked every 500 ms).
    - **Lifecycle:** `app` `paused` calls `app.handsFree.suspend()` when the state is `'active'` or `'paused'`; `resumed` calls `wake()` when it is `'suspended'`.
 2. Sends `app.ready`, so native delivers the events it held, such as the share that launched Byways.
-3. Sends `back.state {canHandle}` now, and again whenever `canHandle` changes: on `hashchange`, and through a `MutationObserver` on `document.body` (`subtree`, `childList`, and the attributes `open` and `aria-expanded`). `canHandle` is true when the hash is not `''`, `'#'` or `'#/stumble'`, or when a `dialog[open]` or a `[aria-haspopup="menu"][aria-expanded="true"]` exists.
-4. **Starts hands-free with no touch** (§6.1) when `hello.micConsent && hello.sdk >= 33 && getSettings().firstRunDone && ['auto', 'always'].includes(getSettings().voice.mode) && app.handsFree.state === 'idle'`: it calls `startHandsFree(app)`, which probes, wires the listener, keeps the screen on, starts the media session and starts lean-back, as the **Start** button does.
+3. Sends `back.state {canHandle}` now, and again whenever `canHandle` changes: on `hashchange`, and through a `MutationObserver` on `document.body` (`subtree`, `childList`, and the attributes `open` and `aria-expanded`). `canHandle` is true when the hash is not home, or when a `dialog[open]` or a `[aria-haspopup="menu"][aria-expanded="true"]` exists.
+4. **Starts hands-free with no touch** (§6.1) when `hello.micConsent && hello.sdk >= 33 && getSettings().firstRunDone && ['auto', 'always'].includes(getSettings().voice.mode) && app.handsFree.state === 'idle'`: it calls `app.handsFree.start()`, which probes, makes a new listener, keeps the screen on, starts the media session and starts lean-back, as the **Start** button does.
 
 - [ ] **Step 5: Wire boot, the card and the dialogs**
 
@@ -1561,14 +1564,14 @@ git add src/platform/android.js src/ui/boot.js src/ui/components/card.js src/ui/
 git commit -m "Wire share-in, Back, the site view and hands-free into the Android app"
 ```
 
-### Task 15: Android settings: updates, the site view setting, voice reasons and Tap to talk
+### Task 15: Android settings: updates, the site view setting and voice reasons
 
 **Files:**
-- Modify: `src/ui/views/settings/about.js`, `src/ui/views/settings/access.js`, `src/ui/views/settings/voice.js`, `src/ui/handsfree-ui.js`
+- Modify: `src/ui/views/settings/about.js`, `src/ui/views/settings/access.js`, `src/ui/views/settings/voice.js`
 - Test: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` and the e2e helper `gotoApp` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `button`, `sent` and the fake (Task 14).
+- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); the bar's **Talk** button in push mode (overview, Plan 03), which covers the spec's tap to talk on Android 24–32; `announce` and the e2e helper `gotoApp` (Plan 01); `platform.app` and `platform.caps.inAppSiteView` (Task 6); `openAndroid`, `button`, `sent` and the fake (Task 14).
 - Produces: the UI for `goStraightToSite` (already in `DEFAULT_SETTINGS`), which Task 14's `attach` reads.
 
 - [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`)
@@ -1602,7 +1605,7 @@ test('the PWA has no Go straight to the site', async ({ page }) => {
   await expect(page.getByLabel('Go straight to the site')).toHaveCount(0);
 });
 test('Settings says why voice is not always on', async ({ page }) => {
-  const why = 'Always-on voice needs Android 13 and on-device speech. Use Tap to talk.';
+  const why = 'Always-on voice needs Android 13 and on-device speech. Use the Talk button.';
   await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: why } });
   await page.evaluate(() => { location.hash = '#/settings/voice'; });
   await expect(page.locator('#voice-reason')).toHaveText(why);
@@ -1613,12 +1616,11 @@ test('cloud-only voice waits for the vendor opt-in', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Use Google cloud voice' })).toBeVisible();
   await expect(page.locator('#voice-reason')).toHaveCount(0);
 });
-test('Tap to talk listens on a tap', async ({ page }) => {
+test('Talk reaches native voice on Android 12 and below', async ({ page }) => {
   await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: 'x' } });
-  await button(page, 'Start').click();
-  await expect(button(page, 'Tap to talk')).toBeVisible();
+  await button(page, 'Start').click(); await expect(button(page, 'Talk')).toBeVisible();
   expect((await sent('voice', 'start')).length).toBe(0);
-  await button(page, 'Tap to talk').click();
+  await button(page, 'Talk').click();
   await expect.poll(async () => (await sent('voice', 'start')).length).toBe(1);
 });
 ```
@@ -1626,14 +1628,13 @@ test('Tap to talk listens on a tap', async ({ page }) => {
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: five of the seven new tests FAIL, waiting for **Check for updates**, the checkbox, `#voice-reason` and **Tap to talk**. `the PWA has no Go straight to the site` and `cloud-only voice waits for the vendor opt-in` pass already: they pin behaviour that must not change.
+Expected: four of the seven new tests FAIL, waiting for **Check for updates**, the checkbox and `#voice-reason`. `the PWA has no Go straight to the site`, `cloud-only voice waits for the vendor opt-in` and `Talk reaches native voice on Android 12 and below` pass already: they pin behaviour that must not change.
 
-- [ ] **Step 3: Implement the four changes**
+- [ ] **Step 3: Implement the three changes**
 
 - `about.js`: when `app.platform.app` exists, show `Version <versionName>` and a **Check for updates** button. On click it calls `checkUpdate()`: `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`; not available → `You have the latest version (<versionName>).`; a rejection → `Could not check for updates. Try again later.` Each status line also goes through `announce`.
 - `access.js`: when `app.platform.caps.inAppSiteView` is true, the `Lean-back` fieldset ends with a checkbox labelled `Go straight to the site`, with the hint `In lean-back, show each find's real site instead of its card.`, bound to `goStraightToSite` through `app.saveSettings({goStraightToSite})`.
 - `voice.js`: when `app.platform.name === 'android'`, a `#voice-reason` line under `#voice-engine` shows `status.reason` when it is set and is not `'cloud-only'` (that case already shows the vendor opt-in). Otherwise the line is not rendered.
-- `handsfree-ui.js`: when `app.platform.name === 'android'`, hands-free is not idle and `effectiveListenMode(settings.voice.mode, status)` for the last Start probe is `'push'`, `#handsfree` shows a 56 px **Tap to talk** button (§6.2: tap to talk on Android 24–32). A tap calls `app.handsFree.talk(true)`, and the next voice `state {listening:false}` calls `talk(false)`.
 
 - [ ] **Step 4: Run them to see them pass**
 
@@ -1643,8 +1644,8 @@ Expected: PASS (20 e2e tests), and all unit tests still pass.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/settings/about.js src/ui/views/settings/access.js src/ui/views/settings/voice.js src/ui/handsfree-ui.js tests/e2e/android.spec.js
-git commit -m "Add the Android update check, site setting, voice reasons and Tap to talk"
+git add src/ui/views/settings/about.js src/ui/views/settings/access.js src/ui/views/settings/voice.js tests/e2e/android.spec.js
+git commit -m "Add the Android update check, site setting and voice reasons"
 ```
 
 ---
@@ -1655,7 +1656,7 @@ Plan 09 copies this list into `CHECKLIST.md`. Fill it in by hand on a real phone
 
 - [ ] **First CI build:** AGP 9.3.2, `androidx.webkit` 1.18.0 and Gradle 9.7.1 resolve. If `webkit` did not, note the 1.17.x fallback that was used; AGP and Gradle have no fallback.
 - [ ] **Android voice, 13+:** after consent, launch starts listening with no touch. "next one", "go back" and "save it" work with the on-device recogniser, in a segmented session with no beeps. **Download offline voice** appears when the language is missing.
-- [ ] **Android voice, 24–32:** **Tap to talk** works, and Settings says why it is not always on. On Android 12, voice uses the on-device recogniser.
+- [ ] **Android voice, 24–32:** a tap on **Talk** listens for one command, and Settings says why voice is not always on. On Android 12, voice uses the on-device recogniser.
 - [ ] **No recogniser or no Google speech:** Settings says why, and keyboard, touch and headset buttons still work.
 - [ ] **Read-aloud:** native voices are listed, network voices are marked "online", and Stop stops mid-sentence.
 - [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off, on Android 7 and on 8 or later. If they do not reach Byways while only speech plays, set `MediaBridge.PLAY_SILENCE = true` and test again.

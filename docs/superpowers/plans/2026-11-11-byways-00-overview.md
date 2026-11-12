@@ -47,7 +47,7 @@ These are all the files the plans create. A plan task may add a file only inside
 
 ```
 .github/workflows/
-  byways.yml               tests on every change (Plans 01, 08)
+  byways.yml               tests on every change (Plans 01, 07, 08)
   pages.yml                Pages deploy + daily data (Plans 01, 04)
   byways-probe.yml         live probe (Plan 04)
   byways-release.yml       releases (Plan 09)
@@ -62,6 +62,7 @@ Apps/Byways/
       util/url.js          normalizeUrl, domainOf, isHttpUrl, siteOrigin
       util/text.js         toPlainText, firstSentence, truncate, tokenize
       util/clock.js        realClock, fakeClock (tests), utcDate, nextUtcMidnight
+      data.js              loadAppData (Plans 01, 04; used by ui/boot.js and the extension background)
       store/db.js          openStore, idbBackend, memoryBackend, STORE_NAMES
       store/cache.js       createCache
       settings.js          DEFAULT_SETTINGS, loadSettings, saveSettings
@@ -188,7 +189,12 @@ The `Platform`, `VoiceEngine`, `Tts` and `SecretStore` shapes below are the only
  *  @property {{setHandlers(h:{next?:Function, previous?:Function, playPause?:Function}):void, setActive(on:boolean):void}} media
  *  @property {{on():Promise<void>, off():Promise<void>}} wakeLock
  *  @property {SecretStore} secrets
- *  @property {{privilegedFetch:boolean, localNetworkHttp:boolean, inAppSiteView:boolean, labHref:string, framesArchive:boolean}} caps
+ *  @property {{privilegedFetch:boolean, localNetworkHttp:boolean, inAppSiteView:boolean, labHref:string, framesArchive:boolean, leanBack?:boolean}} caps
+ *    caps.leanBack: absent means true. The extension sets it to false on the 'panel' surface.
+ *    It lives in caps, NOT as a top-level platform.leanBack.
+ *  @property {(kinds:Array<'searchTerms'|'browsingActivity'>) => Promise<boolean>} [requestDataCollection]
+ *    optional. On Firefox it calls permissions.request({data_collection: kinds}) as its first statement and returns
+ *    false on any throw. Absent or true elsewhere. Asked when AI, or "More like this page", is first used.
  *  @property {() => Promise<boolean>} persistStorage
  *  @property {(origins:string[]) => Promise<boolean>} requestOrigins
  *    Called from a button when the user adds a custom endpoint or a model on the local network.
@@ -362,6 +368,10 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   The hands-free controller and the AI plan use only these three.
 
 - `data` has the keys `tags`, `library`, `vaultStarter` and `geocities`, and each later plan adds its own.
+- **One data loader:** `src/core/data.js` exports `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities, loadSnapshot, embedBroken}>`. It is DOM-free.
+  - Plan 01 creates it with the four `src/data` files, and `ui/boot.js` calls it.
+  - Plan 04 adds `loadSnapshot(name)` (through `dataUrl`) and `embedBroken`.
+  - Plan 07's background (`bg.js`) calls the same function instead of repeating it.
 - `dataUrl(file) → string` (Plan 01) gives the address of a generated data file such as `daily.json`, `itch.json` or `vault-index.json`. In the PWA it is relative (`data/<file>`). In the extension and Android it is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>`, because those builds do not include the generated files.
 
 **UI conventions (Plan 01):**
@@ -536,6 +546,9 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `inject(finds, origin)`;
   - `taste() → Taste`, `setTaste(t)` and `on(event, fn)`, with events `find`, `empty`, `error` and `taste`.
   - `find` fires every time the engine hands a find to the UI: from `next`, `back`, `rabbit.next`, and the first find after `inject`.
+  - **Several engines on one store.** The extension runs up to three engines (background, side panel, Byways tab) on one store, so:
+    - `engine.next` checks `await seen.has(find.url)` again for the picked find just before returning it, and pulls again when it is already seen;
+    - `history.push` re-reads the stored list before writing, merges by find id, sorts by time and keeps the last 50, so writers do not overwrite each other.
 
 **More Plan 02 additions** (other plans may use these):
 
@@ -594,6 +607,8 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `createWebVoice(win, {lang = 'en-US'} = {})`;
   - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {})`;
   - `installKeymap({getSettings, dispatch, onTalk, target = document}) → uninstall()`.
+- **Listening on and off.** The controller also has `get listening → boolean` and `setListening(on) → Promise<boolean>`, which turns the mic on or off within the current session. `setListening(false)` is the same as `command('stopListening')`. Plan 07's Alt+Shift+V uses them.
+- **Read it on a specific card.** `command('read', find)` reads that find. Card **Read it** buttons (Stumble, Feed, the panel's mini feed) pass their own find. With no find, it reads the current Stumble find.
 - **Talk button.** The bar has a **Talk** button in push mode, which works whatever the single-key setting is:
   - a press shorter than 300 ms is a tap, which listens for one command;
   - holding works like V;
@@ -705,7 +720,10 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 - `transport.fetch` honours `init.redirect === 'error'`. Plan 05 sends it on every request that carries a key, so a key never follows a redirect to another host.
 - With `privileged: true`, the transport reports the final URL after redirects. A browser `Response` has it in `Response.url`. A constructed `Response` (Android `nativeFetch`) carries it in the header `x-byways-final-url`.
 - `requestOrigins(origins)` takes plain origins (`scheme://host[:port]`), and each shell maps them to its own permission form.
-- `platform.identity` (when present) also has `redirectUrl: string`, the callback URL its flow catches. In the extension this is `identity.getRedirectURL()`.
+- `platform.identity` (when present) also has `getRedirectURL() → Promise<string>`, the callback URL its flow catches.
+  - In the extension, it first asks for the optional `identity` permission, which must be the first call in the click, and then returns `identity.getRedirectURL()`.
+  - Plan 05 passes the result as `callback_url`.
+  - There is no `redirectUrl` property.
 - Plan 07's `host_permissions` include `https://vertexaisearch.cloud.google.com/*`, for resolving Gemini redirect links.
 - `renderCard` (Plan 02) shows `find.meta.displayDomain` in place of `domainOf(url)` when it is set.
 
@@ -921,7 +939,7 @@ No environment variable sets the version. The release APK asset is named `byways
   - **`tests/e2e/helpers/net.js`:**
     - `test` and `expect`: a Playwright `test` whose `page` fixture calls `mockNet` and, after each test, asserts that `unmocked(page)` and `pageProblems(page)` are both empty;
     - the fixture option `ignoreProblems: RegExp[]` (default `[]`), set with `test.use({ignoreProblems: [...]})`, for known harmless console errors such as EmulatorJS's missing `emulator.min.js`;
-    - `pageProblems(page, {ignore = []} = {}) → string[]`: page errors and console errors that no pattern matches.
+    - `pageProblems(target, {ignore = []} = {}) → string[]`: page errors and console errors that no pattern matches. `target` may be a Page or a BrowserContext; for a context it uses the `console` and `weberror` events.
   - **`tests/e2e/helpers/app.js`:**
     - `gotoApp(page, hash = '#/stumble') → Promise<void>`: opens the app at the base path and skips first run;
     - `skipFirstRun(page) → Promise<void>`: clicks **Skip** while it is visible.
