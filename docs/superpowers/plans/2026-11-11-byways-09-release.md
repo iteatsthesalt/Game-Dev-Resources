@@ -441,45 +441,12 @@ Expected: FAIL with `ENOENT` for `byways-release.yml`.
 
 The job-level `env` turns the secrets into flags, because `if:` cannot read `secrets` directly. Each step's own `env` passes the secret values in. Write every `env:` in block style, with `env:` on its own line and one `NAME: value` per indented line. A `${{ }}` expression inside a `{ … }` flow mapping does not parse, and GitHub then rejects the whole file.
 
-```yaml
-name: byways-release
-on:
-  push:
-    tags: ['byways-v*']
-permissions:
-  contents: write
-concurrency:
-  group: byways-release-${{ github.ref_name }}
-jobs:
-  release:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: Apps/Byways
-    env:
-      HAS_KEYSTORE: ${{ secrets.KEYSTORE_BASE64 != '' && secrets.KEYSTORE_PASSWORD != '' && secrets.KEY_ALIAS != '' && secrets.KEY_PASSWORD != '' }}
-      HAS_AMO: ${{ secrets.AMO_API_KEY != '' && secrets.AMO_API_SECRET != '' }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: Apps/Byways/package-lock.json }
-      - uses: actions/setup-java@v6
-        with: { distribution: temurin, java-version: 21 }
-      - uses: gradle/actions/setup-gradle@v6
-        with: { cache-provider: basic, gradle-version: 9.7.1 }
-      - name: Check the tag matches the version
-        run: |
-          V=$(node -p "require('./package.json').version")
-          test "byways-v$V" = "$GITHUB_REF_NAME"
-          echo "VERSION=$V" >> "$GITHUB_ENV"
-          mkdir -p dist/release/upload
-      - run: npm ci
-      - run: npm run vendor
-      - run: npm test
-      - run: npm run build
-```
+The head of the file, with every string the Step 1 tests pin written exactly as they pin it:
+- `name: byways-release`; `on.push.tags: ['byways-v*']`; `permissions.contents: write`; `concurrency.group: byways-release-${{ github.ref_name }}`.
+- One job, `release`, on `ubuntu-24.04`, with `defaults.run.working-directory: Apps/Byways` and a job-level `env:` of `HAS_KEYSTORE` (the four-secret expression from the test) and `HAS_AMO: ${{ secrets.AMO_API_KEY != '' && secrets.AMO_API_SECRET != '' }}`.
+- Setup steps: `actions/checkout@v7` with `persist-credentials: false`; `actions/setup-node@v4` with `node-version: 22`, `cache: npm` and `cache-dependency-path: Apps/Byways/package-lock.json`; `actions/setup-java@v6` with `distribution: temurin` and `java-version: 21`; `gradle/actions/setup-gradle@v6` with `cache-provider: basic` and `gradle-version: 9.7.1`.
+- A step **Check the tag matches the version**, whose `run` is `V=$(node -p "require('./package.json').version")`, then `test "byways-v$V" = "$GITHUB_REF_NAME"`, then `echo "VERSION=$V" >> "$GITHUB_ENV"`, then `mkdir -p dist/release/upload`.
+- Four `- run:` steps, one command each: `npm ci`, `npm run vendor`, `npm test`, `npm run build`.
 
 The remaining steps, in this order. Each step's `name:` is the text in the Step column, and each `run` is written exactly as the tests pin it. Every download that can fail comes before "Sign the Firefox add-on", so a failed run never uses up AMO's one signing of a version. Only the last two steps get the GitHub token.
 
@@ -646,12 +613,12 @@ git commit -m "Write the third-party notices and the privacy policy"
 
 **Files:**
 - Modify: `Apps/Byways/README.md` (replace Plan 01's stub with the full version)
-- Modify: `Apps/Byways/CHECKLIST.md` (Plan 07 created it with its `## Firefox extension (manual)` section; add the rest around it)
+- Modify: `Apps/Byways/CHECKLIST.md` (Plan 07 created it with its `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections; add the rest around them)
 - Modify: `README.md` at the repo root (add an `## Apps` section between `## Editors and tools` and `## Guides`)
 - Modify: `Apps/Byways/tests/unit/docs.test.js` (add tests)
 
 **Interfaces:**
-- Consumes: the Release file names (Task 3); the version rule (Task 2); the serve command and npm scripts (overview); `DEBUG_WARNING` wording (Task 3); Plan 07's `## Firefox extension (manual)` section in `CHECKLIST.md`; the 16 items under Plan 08's `## Real-device checklist (Android)`, which Plan 08 hands to this plan.
+- Consumes: the Release file names (Task 3); the version rule (Task 2); the serve command and npm scripts (overview); `DEBUG_WARNING` wording (Task 3); the two README lines earlier plans wrote into Plan 01's stub and this rewrite keeps word for word: the §17.5 Pages line (Plan 01) and `Optional: add a `NASA_API_KEY` repository secret (a free api.data.gov key), so the daily job does not share `DEMO_KEY`.` (Plan 04 Task 16); the weekly probe routine Plan 04 Task 15 hands to this README (its `probe-report.md`, applied by hand to the `tier` field of each `src/core/sources/<id>.js`, §17.4); the Lab limit the contract puts in the README (`EJS_disableLocalStorage` is on, so EmulatorJS's own settings reset each session; Plan 06 Task 3); Plan 07's `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections in `CHECKLIST.md` (Plan 07 Task 9), and its `requestDataCollection`, which calls Firefox's `permissions.request({data_collection})`; the 16 items under Plan 08's `## Real-device checklist (Android)`, which Plan 08 hands to this plan; the device checks Plans 05 and 06 hand over: the xAI, Groq, Mistral and DeepSeek fixtures that `tests/fixtures/http/ai/README.md` marks unverified (Plan 05 Task 8), and voice "stop" while the app is a background tab (Plan 06 Task 12).
 - Produces: documents only.
 
 - [ ] **Step 1: Write the failing tests (append to `docs.test.js`)**

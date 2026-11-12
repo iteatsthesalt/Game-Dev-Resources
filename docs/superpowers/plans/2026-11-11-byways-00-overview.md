@@ -195,8 +195,11 @@ The `Platform`, `VoiceEngine`, `Tts` and `SecretStore` shapes below are the only
  *    caps.leanBack: absent means true. The extension sets it to false on the 'panel' surface.
  *    It lives in caps, NOT as a top-level platform.leanBack.
  *  @property {(kinds:Array<'searchTerms'|'browsingActivity'>) => Promise<boolean>} [requestDataCollection]
- *    optional. On Firefox it calls permissions.request({data_collection: kinds}) as its first statement and returns
- *    false on any throw. Absent or true elsewhere. Asked when AI, or "More like this page", is first used.
+ *    optional. On Firefox it starts permissions.request({data_collection: kinds}) as its first statement and
+ *    permissions.contains({data_collection: kinds}) in the same synchronous step, and resolves true when either
+ *    resolves true; a throw from either, synchronous or not, counts as false for that one. So a use with no click
+ *    (a voice "search for …", a Rabbit Hole) is covered by a stored grant. Absent or true elsewhere. Asked when
+ *    AI Search, or "More like this page", is first used, inside the click.
  *  @property {() => Promise<boolean>} persistStorage
  *  @property {(origins:string[]) => Promise<boolean>} requestOrigins
  *    Called from a button when the user adds a custom endpoint or a model on the local network.
