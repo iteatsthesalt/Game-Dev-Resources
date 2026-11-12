@@ -1553,6 +1553,16 @@ test('hands-free starts with no touch on Android 13+', async ({ page }) => {
   expect((await sent('screen', 'keepOn')).at(-1).args).toEqual({ on: true });
   expect((await sent('media', 'setActive')).at(-1).args).toEqual({ on: true });
 });
+test('a headset hold talks in push mode', async ({ page }) => {
+  await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: 'x' } });
+  await button(page, 'Start').click(); await expect(button(page, 'Talk')).toBeVisible();
+  const hold = async () => (await sent('media', 'holdToTalk')).at(-1)?.args.on;
+  await expect.poll(hold).toBe(true); expect((await sent('voice', 'start')).length).toBe(0);
+  await fake.emit('media', 'talk', { on: true });
+  await expect.poll(async () => (await sent('voice', 'start')).length).toBe(1);
+  await fake.emit('media', 'talk', { on: false });
+  await button(page, 'Turn off hands-free').click(); await expect.poll(hold).toBe(false);
+});
 test('Connect OpenRouter finishes through the login view', async ({ page }) => {
   await openAndroid(page, { auth: 'https://appassets.androidplatform.net/assets/www/index.html?code=test-code' });
   await page.evaluate(() => { location.hash = '#/settings/ai'; });
@@ -1572,10 +1582,12 @@ Expected: FAIL in every test except `Connect OpenRouter finishes through the log
 `attach` loads its UI modules with dynamic `import()`, so the Node tests of Tasks 6–7 stay DOM-free. In this order, it:
 
 1. **Subscribes.**
-   - **Share-in** (`app` `shared {text}`), through `extractSharedLink`: `null` → `showToast('That share had no link in it.')`; `share` → `win.location.hash = hash` (the router opens Import); `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: ['Shared to Byways']})` with `find = makeFind({url, title: domainOf(url), source: 'marginalia', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`. The contract has no source id for a shared link; `marginalia` makes **More like this** use Marginalia similar sites.
+   - **Share-in** (`app` `shared {text}`), through `extractSharedLink`: `null` → `showToast('That share had no link in it.')`; `share` → `win.location.hash = hash` (the router opens Import); `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: 'shared with you'})` with `find = makeFind({url, title: domainOf(url), source: 'shared', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`. `shared` is the contract's pseudo-source, which Plan 02 already handles in `taste.js` (no source weight), `rabbit.js` (**More like this** uses Marginalia's `more()`) and `generated-image.js` (the `Shared` badge). `result.why` is a string, like Plan 02's `'seen before'` and `'rabbit hole'`, because Stumble's why line is `[MODE_LABEL[mode], result.why, ...find.why].join(' · ')` and `cardScript` reads it; the chip carries the visible `Shared to Byways`.
    - **Back** (`back` `request {token}`): dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`. After `dispatchEvent` returns, `handled = event.defaultPrevented || <the hash is not home>`, where home is `''`, `'#'`, `'#/'` or `'#/stumble'`. Send `back.result {token, handled}`. `attach` never calls `history.back()`: the router does (contract).
-   - **Site view:** every `app.openSite` the platform sends sets `siteOpen = true`. `siteClosed` sets it false and calls `app.handsFree.pause()` when the state is `'active'`, so the view does not come back by itself. `siteNext` runs `showResult(await app.engine.next({mode: app.getSettings().mode}))`. `app.engine.on('find', find => …)` calls `openFind(find)` when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`. `sitePause` and `siteStop` call `app.handsFree.command('pause')` and `command('stop')`. While `siteOpen`, it sends `app.siteControls {state: app.handsFree?.state ?? 'idle'}` when the view opens and whenever that state changes (checked every 500 ms).
+   - **Site view:** every `app.openSite` the platform sends sets `siteOpen = true`. `siteClosed` sets it false and calls `app.handsFree.pause()` when the state is `'active'`, so the view does not come back by itself. `siteNext` runs `showResult(await app.engine.next({mode: app.getSettings().mode}))`. `app.engine.on('find', ({find}) => …)` (the payload is `{find, branch, why}`, never the find itself) calls `openFind(find)` when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`. `sitePause` and `siteStop` call `app.handsFree.command('pause')` and `command('stop')`. While `siteOpen`, it sends `app.siteControls {state: app.handsFree?.state ?? 'idle'}` when the view opens and whenever that state changes (checked by the 500 ms poll below).
+   - **Headset:** `media` `talk {on}` calls `app.handsFree.talk(on)` (Plan 03 ignores it outside push mode, and turns a release within 300 ms into a tap). `holdOn` is `app.handsFree.state !== 'idle' && lastVoiceStatus !== null && effectiveListenMode(getSettings().voice.mode, lastVoiceStatus) === 'push'`. It sends `media.holdToTalk {on: holdOn}` whenever `holdOn` changes, starting from `false` (so nothing is sent while it stays false).
    - **Lifecycle:** `app` `paused` calls `app.handsFree.suspend()` when the state is `'active'` or `'paused'`; `resumed` calls `wake()` when it is `'suspended'`.
+   - **The 500 ms poll:** one `win.setInterval` reads `app.handsFree?.state` and `holdOn` and sends `app.siteControls` and `media.holdToTalk` on the changes above.
 2. Sends `app.ready`, so native delivers the events it held, such as the share that launched Byways.
 3. Sends `back.state {canHandle}` now, and again whenever `canHandle` changes: on `hashchange`, and through a `MutationObserver` on `document.body` (`subtree`, `childList`, and the attributes `open` and `aria-expanded`). `canHandle` is true when the hash is not home, or when a `dialog[open]` or a `[aria-haspopup="menu"][aria-expanded="true"]` exists.
 4. **Starts hands-free with no touch** (§6.1) when `hello.micConsent && hello.sdk >= 33 && getSettings().firstRunDone && ['auto', 'always'].includes(getSettings().voice.mode) && app.handsFree.state === 'idle'`: it calls `app.handsFree.start()`, which probes, makes a new listener, keeps the screen on, starts the media session and starts lean-back, as the **Start** button does.
