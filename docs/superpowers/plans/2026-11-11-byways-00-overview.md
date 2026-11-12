@@ -552,6 +552,34 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
     - `engine.next` checks `await seen.has(find.url)` again for the picked find just before returning it, and pulls again when it is already seen;
     - `history.push` re-reads the stored list before writing, merges by find id, sorts by time and keeps the last 50, so writers do not overwrite each other.
 
+**Plan 02 review additions** (these win over older lines below where they differ):
+
+- **`createEngine`** takes the optional `sources` (default `Object.values(SOURCES)`), `secrets` (a SecretStore, or a getter for the current one) and `dataUrl`. Boot passes `secrets: () => app.secrets` and `dataUrl: app.dataUrl`, so ctx follows Plan 05's keyring swap. It also adds `engine.reload()`.
+- **The `find` event payload** is `{find, branch, why}`. Listeners read `({find}) => …`.
+  - `back()` emits `branch: 'history'`, why "seen before".
+  - `engine.rabbit` is a wrapper whose `next()` adds the find to seen and history and emits `branch: 'rabbit'`.
+- **`inject(finds, origin) → Promise<number>`** returns the count queued, and runs in series with `next`. `engine.search(query)` resolves to the finds it queued, interleaved round-robin by source.
+- **Filters on Fate and Rabbit Hole.**
+  - `fatePull({…, accept = () => true})` and `createRabbitHole({sources, ctx, seenHas, pool, accept = () => true})` apply the §8.3 always-on filters through `accept`.
+  - `hole.next({ai = true} = {})` skips the `useAi` hook when `ai` is false.
+- **Taste notes.** `describeChange(change, labelOf)` uses the tags.json labels, for example "Old web", not "oldweb".
+- **History.**
+  - `createHistory(store, {max = 50, clock})` stores `{items: [{find, t}]}`. The cursor lives in memory, and `push` merges with the stored list.
+  - `history.reload()` re-reads the stored list.
+- **Share links by paste.** `share.js` adds `payloadFromLink(text) → string|null`. The Saved view has a **Paste a share link** field with an **Import from link** button on every platform. The import view reads `params.payload`.
+- **`enabledSources`.**
+  - A `navigate` tier source is never included.
+  - A `privileged` tier source stays in on every platform, and reads its snapshot on the PWA.
+  - `probeSource` counts a 4xx `NetError` as `'ok'`, since the host answered with CORS.
+- **Card details.**
+  - `renderCard`'s `whyLine` is a function `(find) → string`, the same type as in `makeActionHandler`.
+  - `makeActionHandler` calls `advance(action, find)` after `more`, `neverSite` and `broken`.
+  - A card image that fails to load is replaced by `generatedImage`.
+- **`app.search` with no results** sets the note to `No new finds for "<text>".`.
+- **Routes file.** `tests/fixtures/routes.js` ends with two catch-alls: fixture images (any https URL ending `.jpg` or `.png` gets a 1×1 SVG), and link-check roots of `*.example*` and `www.youtube.com`. Later plans insert their routes ABOVE these.
+- **Unit kit.** `memorySecrets(seed)`, `adapterCtx` route options `error: true` and `hang: true`, and `engineFor({entries, settings, transport, extraRoutes, only, adapters, secrets}) → {engine, calls, store, ctx, platform, registered}`.
+- **Privacy text.** Plan 02's `privacy.js` already holds Plan 06's Lab sentence. Plan 06 does not modify `privacy.js`.
+
 **More Plan 02 additions** (other plans may use these):
 
 - `history.ready` and `collections.getCurrent()` / `setCurrent(id)`.
