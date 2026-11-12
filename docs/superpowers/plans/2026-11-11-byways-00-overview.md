@@ -142,6 +142,7 @@ Source adapter ids, one per file in `src/core/sources/`:
 - **Open tier:** `wikipedia`, `commons`, `inat`, `openlibrary`, `marginalia`, `github`, `apod`, `aic`, `kagi`, `europeana`, `openverse`, `library` (the starter library), `oldweb` (GeoCities through Wayback), `itch`.
 - **Probe tier:** `met`, `cleveland`, `nasaimages`, `loc`, `wiby`, `kagirandom`, `smithsonian`, `hn`.
 - **Archive (Plan 04):** `ia` for Archive non-game sources, and `vault` for Archive games.
+- **Snapshot (Plan 04):** `webring`, for webring and Neocities sites built by the data job.
 
 ## Shared types (`src/core/types.js`)
 
@@ -480,8 +481,25 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   safety, rate: {perMinute, concurrent}, fate: boolean,         // usable in Fate
   probeUrl?: string,
   random(ctx) → Promise<Find[]>, search(query, ctx) → Promise<Find[]>, more(find, ctx) → Promise<Find[]> }
-// ctx = {http, rand, clock, cache, settings, secrets, data, platformName}
+// ctx = {http, rand, clock, cache, settings, secrets, data, platformName, caps, dataUrl}
+//   caps is platform.caps; dataUrl is app.dataUrl (for snapshot files such as itch.json)
 ```
+
+**SecretStore ids** (fixed, so that backup, settings and adapters agree):
+
+| Id | Holds |
+|---|---|
+| `src:europeana` | the Europeana key |
+| `src:openverse` | JSON `{clientId, clientSecret}` |
+| `src:datagov` | the api.data.gov key, used for APOD and Smithsonian. Without it, `DEMO_KEY` is used |
+| `src:marginalia` | the Marginalia key |
+| `src:github` | a read-only GitHub token |
+| `ai:<providerId>` | AI keys, for example `ai:anthropic` and `ai:ollamaweb` |
+| `__lock` | the keyring's lock record |
+
+**Router params.** `#/<route>/<segment>` gives `params.id = <segment>`, for example `#/daily/2026-11-11` → `{id:'2026-11-11'}`. `#s=<payload>` gives `{payload}`.
+
+**The Play button.** `renderCard` shows **Play** instead of **Open** when `find.embedUrl` is set, and shows every `find.why` chip as visible text.
 
 **`sources/probe.js`**
 
@@ -552,11 +570,20 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 **`ia/vault.js`**
 
 - `VAULT_COLLECTIONS = {verified:[…], likely:[…], shelves:[{id,label,collections}]}`.
-- `validateCollections(ia, cache) → Promise<string[]>`.
+- `validateCollections(ia, cache, ids = [...verified, ...likely]) → Promise<string[]>`.
 - `gemQuery(id, page) → params` and `gemScore(doc, {currentYear, curated:Set}) → number`, using the §10.2 formula.
 - `gemWhy(doc) → string[]`.
 - `vaultFate(ia, rand, collections) → Promise<Find|null>`.
-- `iaDocToFind(doc, {kind}) → Find`.
+- `iaDocToFind(doc, {kind, safety = 'curated', why}) → Find|null`. It returns `null` for an invalid identifier.
+- Also: `CURATED_COLLECTIONS`, `shelfGems(ia, shelf, opts)`, and a `keyboard` flag on each shelf.
+
+**`ia/client.js`** also gives:
+
+- `sharedIaClient(...)`, which keeps one client per `http` object;
+- `IaClient.wayback(url, timestamp) → Promise<{url, timestamp}|null>`;
+- `luceneEscape(text)`.
+
+**`sources/webring.js`** (Plan 04). A snapshot-tier adapter that reads `webrings.json` and `neocities.json` from `dataUrl`. It returns domain cards, with `fate: true` and safety `mostly`. If neither file exists, it returns nothing and does not throw.
 
 **`daily.js`**
 

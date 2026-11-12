@@ -1953,4 +1953,285 @@ git add src/ui/views/feed.js src/ui/views/index.js tests/e2e/feed.spec.js
 git commit -m "Add the Feed with batches of 30"
 ```
 
-<!-- PLAN CONTINUES -->
+### Task 26: Saved and Import
+
+**Files:**
+- Create: `src/ui/views/saved.js`, `src/ui/views/import.js`
+- Modify: `src/ui/views/index.js` (import both)
+- Test: `tests/e2e/saved-share.spec.js`
+
+**Interfaces:**
+- Consumes: `app.collections` (Task 8), `SHARE_BASE`, `buildShareUrl`, `decodeShare`, `shareItem`, `itemToFind` (Task 9), `toBookmarksHtml`, `fromBookmarksHtml` (Task 10), `renderCard`, `makeActionHandler`, `platform.share`, `platform.files`, `navigate`, `showToast`, `announce`, `makeFind`.
+- Produces:
+  - `registerView('saved', {title: 'Saved', render})`: `h1 'Saved'`; one button per collection labelled `'<name> (<count>)'`; a **New collection** text field with a **Create** button; for the chosen collection, an `h2` with its name, its finds as compact cards each with a **Remove** button, and the buttons **Rename** (then a name field and **Save name**), **Delete** (not for Saved; asks `'Delete this collection?'` with **Delete** and **Keep**), **Save new finds here** (`setCurrent`; the current one shows `'New finds are saved here.'`), **Share collection**, **Export bookmarks** and **Import bookmarks**.
+  - **Share collection**: `buildShareUrl(SHARE_BASE, {v: 1, t: 'c', n: name, i: items.map(x => shareItem(x.find))})`. When `tooLong`: `'This collection is too big for a link. Export a backup file in Settings → Data instead.'` Otherwise `platform.share({title: name, url})`, with the toast `'Link copied.'` on `'copied'`.
+  - **Export bookmarks**: `platform.files.save('<collection id>.html', new Blob([toBookmarksHtml(col)], {type: 'text/html'}))`. **Import bookmarks**: `platform.files.pick('.html,text/html')`, then each `{url, title}` becomes `makeFind({source: 'import', kind: 'site', url, title, safety: 'mostly', why: ['Imported bookmark']})` in the chosen collection; toast `'Imported <n> bookmark(s).'` (`bookmark` for 1, else `bookmarks`).
+  - `registerView('import', {title: 'Import', render})`: reads the payload from `location.hash` after `#s=`. A failed `decodeShare` shows `'This link is broken or not from Byways.'` (also announced assertively) and a **Go to Stumble** link. Otherwise: `h1 'Shared with you'`, `p.kind` = `'A collection: <n>'` (`t 'c'`), `'A find'` (`'f'`) or `'Daily Fate: <n>'` (`'d'`), a list of titles with domains, and an **Import** button. Import creates a collection named `n` for `'c'`, or uses Saved for `'f'` and `'d'`, adds every `itemToFind` result, toasts `'Imported <k> find(s) into <name>.'` and navigates to `saved`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('a saved find shows up in Saved', async ({ page }) => {
+  await open(page, [small[0]]); await page.getByRole('button', { name: 'Save' }).click();
+  await page.goto('./#/saved'); await page.getByRole('button', { name: 'Saved (1)' }).click();
+  await expect(page.locator('article.card h2')).toHaveText('Tiny Synth');
+});
+test('a new collection can become the current one', async ({ page }) => {
+  await open(page, [small[0]]); await page.goto('./#/saved');
+  await page.getByRole('textbox', { name: 'New collection' }).fill('Weird toys'); await page.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Weird toys (0)' }).click(); await page.getByRole('button', { name: 'Save new finds here' }).click();
+  await expect(page.getByText('New finds are saved here.')).toBeVisible();
+  await page.goto('./#/stumble'); await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved to Weird toys.')).toBeVisible();
+});
+test('a shared collection link previews and imports', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await open(page, [small[0]]); await page.getByRole('button', { name: 'Save' }).click();
+  await page.goto('./#/saved'); await page.getByRole('button', { name: 'Saved (1)' }).click();
+  await page.getByRole('button', { name: 'Share collection' }).click(); await expect(page.getByText('Link copied.')).toBeVisible();
+  const link = await page.evaluate(() => navigator.clipboard.readText());
+  expect(link.startsWith('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/#s=')).toBe(true);
+  await page.goto('./' + link.slice(link.indexOf('#')));
+  await expect(page.getByRole('heading', { name: 'Shared with you' })).toBeVisible();
+  await expect(page.locator('p.kind')).toHaveText('A collection: Saved');
+  await page.getByRole('button', { name: 'Import' }).click(); await expect(page.getByText('Imported 1 find into Saved.')).toBeVisible();
+});
+test('a broken share link shows a message', async ({ page }) => {
+  await mockNet(page); await page.goto('./#s=notreal');
+  await expect(page.getByText('This link is broken or not from Byways.')).toBeVisible();
+});
+test('bookmarks export and import', async ({ page }) => {
+  await open(page, [small[0]]); await page.goto('./#/saved'); await page.getByRole('button', { name: 'Saved (0)' }).click();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export bookmarks' }).click()]);
+  expect(download.suggestedFilename()).toBe('saved.html');
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import bookmarks' }).click()]);
+  await chooser.setFiles({ name: 'b.html', mimeType: 'text/html', buffer: Buffer.from('<DT><A HREF="https://example.org/">Moths</A>') });
+  await expect(page.getByText('Imported 1 bookmark.')).toBeVisible(); await expect(page.locator('article.card h2')).toHaveText('Moths');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/saved-share.spec.js`
+Expected: FAIL: no button named `Saved (1)`.
+
+- [ ] **Step 3: Implement `saved.js` and `import.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/saved-share.spec.js`
+Expected: PASS, 5 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/saved.js src/ui/views/import.js src/ui/views/index.js tests/e2e/saved-share.spec.js
+git commit -m "Add Saved with collections, sharing and bookmarks, and the share-link import"
+```
+
+### Task 27: Your taste settings and the interests step
+
+**Files:**
+- Create: `src/ui/views/settings/taste.js`
+- Modify: `src/ui/views/index.js` (import `./settings/taste.js`)
+- Test: `tests/e2e/settings-taste.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection`, `registerFirstRunStep` (Plan 01), `app.data.tags`, `engine.taste`, `engine.setTaste` (Task 20), `applyReaction` (Task 3).
+- Produces:
+  - `registerSettingsSection({id: 'taste', label: 'Your taste', order: 10, render})`: a range **Familiar ↔ Strange** (0–1, step 0.05) bound to `strangeness`; one `fieldset` per `tags.json` group (legend = group label) with a range per tag (−3 to 3, step 0.5, label = tag label) bound to `tags[id]`; **Hidden topics** listing each hidden tag's label with **Show again** (removes it from `hiddenTags` and sets its weight to −2), or `'No hidden topics.'`; **Blocked sites** listing each domain with **Unblock**, or `'No blocked sites.'`. Every change calls `engine.setTaste`.
+  - `INTEREST_TAGS = ['science','programming','diy','hardware','web','space','nature','art','design','photography','music','books','film','comics','history','oldweb','food','travel','education','health','retro','indie','puzzle','toy','adventure']` (25).
+  - `registerFirstRunStep({id: 'interests', order: 20, render(container, app, done)})`: heading `'What are you into?'`, text `'Pick a few topics. You can change them later in Settings → Your taste.'`, a checkbox per interest grouped by its `tags.json` group, and **Done**, which applies `applyReaction(taste, null, 'interest', {tag})` for each pick, calls `engine.setTaste` and then `done()`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('first run offers 25 interests and saves the picks', async ({ page }) => {
+  await mockNet(page); await stageLibrary(page, small); await page.goto('./#/stumble');
+  const heading = page.getByRole('heading', { name: 'What are you into?' });
+  while (!(await heading.isVisible())) await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page.getByRole('checkbox')).toHaveCount(25);
+  await page.getByRole('checkbox', { name: 'Space' }).check(); await page.getByRole('checkbox', { name: 'Retro' }).check();
+  await page.getByRole('button', { name: 'Done' }).click(); await skipFirstRun(page);
+  await page.goto('./#/settings/taste');
+  await expect(page.getByRole('slider', { name: 'Space' })).toHaveValue('2');
+  await expect(page.getByRole('slider', { name: 'Retro' })).toHaveValue('2');
+});
+test('Familiar ↔ Strange is saved', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/taste');
+  await page.getByRole('slider', { name: 'Familiar ↔ Strange' }).fill('1');
+  await page.reload(); await expect(page.getByRole('slider', { name: 'Familiar ↔ Strange' })).toHaveValue('1');
+});
+test('a blocked site can be unblocked', async ({ page }) => {
+  await open(page, [small[0]]); await page.getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Never this site' }).click();
+  await page.goto('./#/settings/taste'); await page.getByRole('button', { name: 'Unblock' }).click();
+  await expect(page.getByText('No blocked sites.')).toBeVisible();
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-taste.spec.js`
+Expected: FAIL: the heading `What are you into?` never shows.
+
+- [ ] **Step 3: Implement `settings/taste.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/settings-taste.spec.js`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/taste.js src/ui/views/index.js tests/e2e/settings-taste.spec.js
+git commit -m "Add Your taste settings and the first-run interests step"
+```
+
+### Task 28: Sources and Data settings
+
+**Files:**
+- Create: `src/ui/views/settings/sources.js`, `src/ui/views/settings/data.js`
+- Modify: `src/ui/views/index.js` (import both)
+- Test: `tests/e2e/settings-sources-data.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection`, `app.saveSettings`, `app.store`, `app.seen`, `app.clock`, `platform.secrets`, `platform.files`, `SOURCES`, `enabledSources` (Task 5), `exportBackup`, `importBackup`, `backupFileName` (Task 10), `showToast`, `announce`. Probe results are read from `health['probe:<platform.name>']`.
+- Produces:
+  - `registerSettingsSection({id: 'sources', label: 'Sources', order: 30, render})`:
+    - Checkboxes **Family filter** (`familyFilter`, hint `'Keeps mixed sources out of Fate and lean-back.'`) and **Check links before showing** (`checkLinks`, hint `'This contacts each site before it is shown.'`).
+    - One row per `SOURCES` adapter: a checkbox `'Use <name>'` (checked when `settings.sources[id]?.enabled ?? key !== 'required'`), for `fate: true` adapters a select `'Fate weight for <name>'` with options 0–3 (default 1), and a status line: `'Not reachable from the web app. It works in the extension and the Android app.'` for a probe-tier source whose stored probe result is not `'ok'` on `pwa`, or `'Needs a key.'` for a `required` key with no secret. Changes save to `settings.sources[id]`.
+    - A **Keys** group of password fields, each with **Save** and **Delete**: **Europeana key** (`src:europeana`), **Openverse client ID** and **Openverse client secret** (one **Save** stores the JSON in `src:openverse`), **api.data.gov key (APOD and Smithsonian)** (`src:apidatagov`), **Marginalia key** (`src:marginalia`) and **GitHub token (read-only)** (`src:github`). A saved field is cleared and shows `'Saved on this device.'`; a stored key is never put back in a field, which shows `'A key is saved.'` instead. Saving the Europeana, Openverse or api.data.gov key also sets `enabled: true` for `europeana`, `openverse` or `smithsonian`. **Delete** shows `'Deleted.'`
+  - `registerSettingsSection({id: 'data', label: 'Data', order: 80, render})`: `'You have seen <n> find(s).'`; an **Include keys** checkbox that shows `'Anyone who gets this file can use your keys.'`; **Export backup** (`platform.files.save(backupFileName(clock, includeKeys), <JSON Blob>)`); **Import backup** (`platform.files.pick('.json,application/json')`, then `importBackup`, then the toast `'Imported <c> collection(s) and <s> seen find(s).'`; any failure shows and assertively announces `'This is not a Byways backup file.'`); **Reset seen**, which asks `'Forget every find you have seen? You may see them again.'` with **Reset** and **Cancel**, then calls `seen.reset()` and toasts `'Seen list cleared.'`
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('a source that is off gets no requests', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/sources');
+  await page.getByRole('checkbox', { name: 'Use Wikipedia' }).uncheck();
+  const hits = []; page.on('request', (r) => { if (r.url().includes('wikipedia.org')) hits.push(r.url()); });
+  await page.goto('./#/stumble'); await page.getByRole('button', { name: 'Next' }).click();
+  expect(hits).toEqual([]);
+  await page.goto('./#/settings/sources'); await expect(page.getByRole('checkbox', { name: 'Use Wikipedia' })).not.toBeChecked();
+});
+test('the link check note, the probe note and a key that turns Europeana on', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/sources');
+  await expect(page.getByText('This contacts each site before it is shown.')).toBeVisible();
+  await expect(page.locator('[data-source="met"] .status')).toHaveText('Not reachable from the web app. It works in the extension and the Android app.');
+  await page.getByLabel('Europeana key').fill('EUKEY'); await page.locator('[data-key="src:europeana"]').getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('[data-key="src:europeana"]')).toContainText('Saved on this device.');
+  await expect(page.getByLabel('Europeana key')).toHaveValue('');
+  await expect(page.getByRole('checkbox', { name: 'Use Europeana' })).toBeChecked();
+});
+test('export, reset and import a backup', async ({ page }) => {
+  await open(page, [small[0]]); await page.goto('./#/settings/data');
+  await expect(page.getByText('You have seen 1 find.')).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()]);
+  expect(download.suggestedFilename()).toMatch(/^byways-backup-\d{4}-\d{2}-\d{2}\.json$/);
+  await page.getByRole('button', { name: 'Reset seen' }).click(); await page.getByRole('button', { name: 'Reset' }).click();
+  await expect(page.getByText('You have seen 0 finds.')).toBeVisible();
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import backup' }).click()]);
+  await chooser.setFiles(await download.path());
+  await expect(page.getByText('Imported 0 collections and 1 seen find.')).toBeVisible();
+});
+test('a wrong file and the keys warning', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/data');
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import backup' }).click()]);
+  await chooser.setFiles({ name: 'x.json', mimeType: 'application/json', buffer: Buffer.from('{"hello":1}') });
+  await expect(page.getByText('This is not a Byways backup file.')).toBeVisible();
+  await page.getByRole('checkbox', { name: 'Include keys' }).check();
+  await expect(page.getByText('Anyone who gets this file can use your keys.')).toBeVisible();
+  const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()]);
+  expect(download.suggestedFilename()).toMatch(/-with-keys\.json$/);
+});
+```
+
+(Each source row carries `data-source="<id>"` and each key group `data-key="<secret id>"`, so tests and Plan 05's key rows can find them.)
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-sources-data.spec.js`
+Expected: FAIL: no checkbox named `Use Wikipedia`.
+
+- [ ] **Step 3: Implement `settings/sources.js` and `settings/data.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/settings-sources-data.spec.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/sources.js src/ui/views/settings/data.js src/ui/views/index.js tests/e2e/settings-sources-data.spec.js
+git commit -m "Add the Sources and Data settings"
+```
+
+### Task 29: Curate the starter library
+
+**Files:**
+- Create (or replace Plan 01's stub): `src/data/library.json`
+- Test: `tests/unit/library-data.test.js`
+
+**Interfaces:**
+- Consumes: `src/data/tags.json` (Task 3), `normalizeUrl`, `domainOf`, `utcDate`.
+- Produces: `src/data/library.json` in the overview shape, used by the `library` adapter (Task 19) and by Plan 04's Daily Fate backup and link check.
+
+**How to curate.** Use WebSearch to find about 300 small sites, toys, indie web games, tools and old-web classics. Do not fetch the sites from this machine (most content hosts are blocked); the daily link check in CI (Plan 04) catches dead links. Every entry must meet the §5.7 rules: "personal sites, no ads or undisclosed affiliate links, no pop-ups, small creators, recently active, and no AI content farms". Game Jolt and Newgrounds games may appear here as entries, because they have no adapter. Write each `blurb` in your own words, one or two plain sentences. Use the plain page URL with no tracking parameters. Set `added` to the day you add the entry. Number ids from `lib-0001` with no gaps.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const lib = JSON.parse(readFileSync('src/data/library.json', 'utf8'));
+const tagIds = new Set(JSON.parse(readFileSync('src/data/tags.json', 'utf8')).groups.flatMap(g => g.tags.map(t => t.id)));
+test('library.json has the shape and at least 300 entries', () => {
+  assert.equal(lib.v, 1); assert.ok(lib.entries.length >= 300, `only ${lib.entries.length}`);
+  lib.entries.forEach((e, i) => {
+    assert.equal(e.id, `lib-${String(i + 1).padStart(4, '0')}`);
+    assert.ok(e.title.trim() && e.title.length <= 200, e.id); assert.ok(e.blurb.trim() && e.blurb.length <= 400, e.id);
+    assert.ok(['site', 'game', 'toy', 'tool', 'article'].includes(e.kind), e.id);
+    assert.match(e.added, /^\d{4}-\d{2}-\d{2}$/); assert.ok(e.added <= utcDate(Date.now()), e.id);
+  });
+});
+test('every url is https, untracked and unique once normalised', () => {
+  const seen = new Set();
+  for (const e of lib.entries) {
+    assert.ok(e.url.startsWith('https://'), e.id); assert.doesNotMatch(e.url, /[?&](utm_|fbclid|gclid|ref=)/, e.id);
+    const n = normalizeUrl(e.url); assert.ok(n && !seen.has(n), `${e.id} duplicates ${n}`); seen.add(n);
+  }
+});
+test('every tag is in tags.json', () => {
+  for (const e of lib.entries) { assert.ok(e.tags.length >= 1 && e.tags.length <= 5, e.id); for (const t of e.tags) assert.ok(tagIds.has(t), `${e.id}: ${t}`); }
+});
+test('at least 80 games or toys, and no domain more than 3 times', () => {
+  assert.ok(lib.entries.filter(e => e.kind === 'game' || e.kind === 'toy').length >= 80);
+  const per = {}; for (const e of lib.entries) per[domainOf(e.url)] = (per[domainOf(e.url)] ?? 0) + 1;
+  for (const [d, n] of Object.entries(per)) assert.ok(n <= 3, `${d} appears ${n} times`);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/library-data.test.js`
+Expected: FAIL with `only 0` (or `ENOENT`).
+
+- [ ] **Step 3: Curate the entries into `src/data/library.json`**
+
+Work in batches of about 50 and run the test after each batch to catch duplicates and bad tags early.
+
+- [ ] **Step 4: Run the test and the full unit suite**
+
+Run: `node --test tests/unit/library-data.test.js`, then `npm test`
+Expected: PASS, and `npm test` green, including Plan 01's `--check` data-shape check.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/data/library.json tests/unit/library-data.test.js
+git commit -m "Add the starter library of about 300 hand-picked finds"
+```
