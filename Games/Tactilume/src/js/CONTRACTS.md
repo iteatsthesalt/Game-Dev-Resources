@@ -59,10 +59,18 @@ A released touch keeps its flick velocity and glides while it fades.
 
 ## gfx/engine.js — `createEngine(canvas, opts)`
 
-Throws `Error('webgl2')` when WebGL2 is missing. `opts`: `{ maxParticles, onLost, onRestored }`.
+Throws `Error('webgl2')` when WebGL2 is missing. `opts`: `{ maxParticles, onLost, onRestored,
+onRestoreFailed }`. After a context loss the engine counts as lost until its rebuild has
+succeeded; `onRestoreFailed(err)` says the context came back but could not be rebuilt. main
+shows a "light stopped" notice with a fresh-start button when a lost context has not come back
+after 4 s in sight (a context lost in the background may come back on return), when the
+rebuild fails, and when the light itself fails for 600 frames in a row.
 
 - `engine.caps` → `{ maxParticles, tier, renderer, halfFloat }`
 - `engine.resize(cssWidth, cssHeight, dpr)`
+- `engine.changesSize(cssWidth, cssHeight, dpr)` → whether that resize would change the drawing
+  buffer's size. A video clip cannot change size halfway (an MP4 player loses the picture), so
+  main ends a recording before such a resize, and holds Quality changes until it has ended.
 - `engine.setQuality({ particles, renderScale })`
 - `engine.frame(f)` where `f = { dt, time, scene, settings, poles, behaviour: {a, b, mix},
   audio: {level, bass, mid, high, onset}, gravity: {x, y, z}, fingers }`
@@ -75,15 +83,22 @@ Throws `Error('webgl2')` when WebGL2 is missing. `opts`: `{ maxParticles, onLost
 - `engine.stats` → `{ particles, renderScale, width, height }`.
 - `engine.health` → `{ checks, heals, lastIssue, issues }`: a background check (every ~90
   frames, read through a fence so the GPU never waits) that repairs NaN particles or a broken
-  brightness state.
-- `engine.diagnose()` → the Device check's facts (GPU, limits, particles, brightness state).
-  Slow; on demand only. `engine.inspect(n)`, `engine.reset()` and `engine._poison()` are for
-  tests and debugging.
+  brightness state, and reports (and resets) a brightness state that lost bits (its 4th value
+  is always exactly 1.0) and particles that do not move (the first few compared between two
+  checks, in a scene with current in it, or all zero).
+- `engine.diagnose()` → the Device check's facts (GPU, limits, render targets, particles,
+  brightness state, `simulation`: `'moving' | 'still' | 'stopped' | 'unknown'`, scene light,
+  also read on the 8-bit path). Slow; on demand only. `engine.inspect(n)`, `engine.reset()` and
+  `engine._poison()` are for tests and debugging.
 - `engine.dispose()`.
 
 Shader rules (enforced by tests/unit/shaders.test.js), because phone GPUs are stricter than
 the software renderer the browser tests use: no `isnan()`/`isinf()` (compilers may drop them;
-use `badf()`/`bad3()`), and `pow()` only on a base listed there as never negative.
+use `badf()`/`bad3()`), `pow()` only on a base listed there as never negative, and
+`precision highp int;` in every fragment shader that uses `uint`, `uvec`, `usampler`,
+`floatBitsToUint` or `uintBitsToFloat`. A fragment shader's ints and uints default to mediump,
+which may keep only 16 bits (GLSL ES 3.00 4.5.3); the brightness state is the bits of 32-bit
+floats, and narrowed to 16 bits it reads back as about 1e-41.
 
 ---
 
@@ -108,7 +123,9 @@ browser's own gestures (scroll, zoom, text selection, callouts, context menu).
   camera included), and `relay(name, payload)`, which the keyboard uses so key presses
   pulse, chime and vibrate exactly like touches.
 - Held touches are re-cast from their screen position every frame, so the light stays under
-  a resting finger while the camera drifts. Pins stay fixed in world space.
+  a resting finger while the camera drifts. Pins stay fixed in world space while the camera
+  drifts; when the screen changes shape (a phone turned) their x is scaled with the aspect, so
+  each keeps its place across the screen, in sight and in reach.
 - Pins: lifting a touch that becomes a pin emits no `'up'` (the pin keeps holding); tapping
   a pin away emits `'up'` for the pin; `clearPins()` and switching pinning off fade pins
   without an `'up'`.
@@ -124,12 +141,15 @@ Desktop and switch access. Keys (ignored while focus is in a text field):
 `1`–`9`, `0` (ten): play that many fingers at the mouse/centre (held while the key is down),
 `H` hide/show the controls, `P` photo, `R` record, `S` symmetry +1 (wraps at 12),
 `M` mirror on/off, `[` and `]` previous/next preset, `N` surprise me, `A` autoplay on/off,
-`F` fullscreen, `Esc` close the panel or show it. Arrow keys move the keyboard pole.
+`F` fullscreen, `Esc` close the panel or show it. Arrow keys move the keyboard pole, which
+stays on screen, also when the screen changes shape under it.
 Exposes `keyboard.poles()` → `Pole[]` (kind `'touch'`, id prefix `'k'`), `keyboard.dispose()`.
 
 ### input/autopilot.js — `createAutopilot({ seed })`
 
-Plays by itself: 1–5 poles on slow, smooth, non-repeating paths that stay on screen.
+Plays by itself: 1–5 poles on slow, smooth, non-repeating paths that stay on screen. main
+calls `update` only while none of the person's touches, pins or keys is held, so after one
+its poles fade back in (the gap starts them afresh).
 
 - `autopilot.update(dt, time, aspect)` → `Pole[]` (kind `'auto'`, ids `'a0'…`). Poles appear
   and disappear one at a time (never more than one change per 4 s), so the behaviour
@@ -156,8 +176,11 @@ picks the microphone.
 - `audio.noteDown({x, y, power})`, `audio.noteUp({x, y, vx, vy, heldFor})`,
   `audio.behaviourChanged(key)`.
 - `audio.analysis()` → `{ level, bass, mid, high, onset }`, each 0..1 (all 0 when off).
-- `audio.startMic()` → `Promise<{ok, error?}>`, `audio.stopMic()`.
-- `audio.playFile(file)` → `Promise<{ok, error?}>`, `audio.stopFile()`, `audio.fileName`.
+- `audio.startMic()` → `Promise<{ok, error?}>`, `audio.stopMic()`. While the page is hidden
+  the microphone's tracks are disabled (nothing can use them then); they are not closed, so
+  coming back never asks for permission again.
+- `audio.playFile(file)` → `Promise<{ok, error?}>`, `audio.stopFile()`, `audio.fileName`. A
+  song replaces the microphone only once it plays; one that fails leaves the microphone on.
 - `audio.recordTrack()` → `MediaStreamTrack | null`: a copy of what the app plays (instrument
   and song, never the microphone). Stop it when the recording ends: a live copy keeps the
   sound system awake.
@@ -224,14 +247,17 @@ never as HTML.
 
 - `ui.update(dt, { fingers, behaviour, fps, particles, recording, autopilot })`
 - `ui.showBehaviour(behaviour)`: brief name card when the behaviour changes.
-- `ui.toast(text)`, `ui.announce(text)` (screen-reader live region, rate-limited).
+- `ui.toast(text, ms?)`, `ui.announce(text)` (screen-reader live region, rate-limited).
 - `ui.open(tab?)`, `ui.close()`, `ui.isOpen()`, `ui.back()` → bool, `ui.setHidden(bool)`.
 - `ui.hidden`, `ui.tab`, and `ui.run.photo() / record() / shareLink()`: the actions with their
   results shown as toasts (the keyboard goes through these).
 
 `actions` (from main): `loadPreset(key)`, `stepPreset(delta)`, `surprise()`, `photo()`,
 `toggleRecord()`, `shareLink()`, `clearPins()`, `resetScene()`, `toggleFullscreen()`,
-`toggleUI()`, `setReact(mode, file?)`, `enableTilt()`, `unlock()`, `toggleAutopilot()`.
+`toggleUI()`, `setReact(mode, file?)`, `enableTilt()`, `disableTilt()`, `unlock()`,
+`toggleAutopilot()`. `setReact` that fails leaves the source already playing, and the setting
+names it. `enableTilt` and `disableTilt`: the latest choice wins, also over an `enableTilt`
+still waiting for the sensors.
 
 ---
 

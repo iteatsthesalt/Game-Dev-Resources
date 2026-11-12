@@ -47,6 +47,7 @@ void main() {
 // (a Karis average per block), so one hot speck cannot make the whole bloom flicker.
 export const DOWN_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform vec2 uTexel;
@@ -82,6 +83,7 @@ void main() {
 // 3x3 tent upsample, added onto the next larger level (blending ONE, ONE).
 export const UP_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform vec2 uTexel;
@@ -103,8 +105,13 @@ void main() {
 // The state is stored as the exact bits of 32-bit floats in an RGBA32UI target: integer
 // targets are renderable in every WebGL2, so the guard works the same on devices that
 // cannot render half floats (in 8 bits its slow rise would round away to nothing).
+// The output must be highp: a fragment shader's uints default to mediump, which a phone
+// may keep in 16 bits, and the low 16 bits of a float are noise (the state would read
+// back as about 1e-41, and the screen as black). a is always exactly 1.0 or 0, so the
+// engine's health check can tell when bits were lost.
 export const ADAPT_FS = `#version 300 es
 precision highp float;
+precision highp int;
 uniform sampler2D uLum;     // the smallest bloom level: a blurred thumbnail of the frame
 uniform highp usampler2D uPrev;
 uniform float uDt;
@@ -113,7 +120,7 @@ uniform float uAuto;        // 0..1, how strongly to adapt
 uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
 uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
-out uvec4 o;
+out highp uvec4 o;
 ${BAD}
 void main() {
   float sum = 0.0;
@@ -143,6 +150,7 @@ void main() {
 // Bloom, exposure, AgX tone mapping, lens fringe, vignette, grain and dither.
 export const COMPOSITE_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;

@@ -89,10 +89,28 @@ export function createPointers(target, { screenToWorld, getSettings }) {
   const fading = [];          // { pole, gone } lifted touches and removed pins
   let serial = 0;
   let pinWasOn = !!getSettings().pin;
+  let pinAspect = 0;          // the screen's width / height that the pins' x was placed for
 
   function clientToWorld(clientX, clientY) {
     const r = target.getBoundingClientRect();
     return screenToWorld(clientX - r.left, clientY - r.top);
+  }
+
+  function aspectNow() {
+    const r = target.getBoundingClientRect();
+    return r.width > 0 && r.height > 0 ? r.width / r.height : 0;
+  }
+
+  // The world is x = -aspect..aspect across the screen, so when the screen changes shape
+  // (a phone turned) the pins' x is scaled with it: each keeps its place on the screen,
+  // where it can still be seen and tapped away.
+  function fitPins(aspect) {
+    if (!(aspect > 0)) return;
+    if (pinAspect > 0 && Math.abs(aspect - pinAspect) > 1e-4) {
+      const k = aspect / pinAspect;
+      for (const p of pins) p.x *= k;
+    }
+    pinAspect = aspect;
   }
 
   function fade(pole) {
@@ -120,6 +138,8 @@ export function createPointers(target, { screenToWorld, getSettings }) {
     pole.kind = 'pin';
     pole.vx = 0;
     pole.vy = 0;
+    // the pins already down are brought to this shape first, so all share one aspect
+    fitPins(aspectNow());
     pins.push(pole);
     // over the limit the oldest pin quietly gives way
     while (pins.length > MAX_PINS) fade(pins.shift());
@@ -283,6 +303,7 @@ export function createPointers(target, { screenToWorld, getSettings }) {
         }
         p.power += (rec.targetPower - p.power) * approach(dt, POWER_TAU);
       }
+      if (pins.length) fitPins(aspectNow());
       for (const p of pins) p.age += dt;
       // a lifted touch glides on along its flick, slowing, while it fades
       const k = Math.exp(-dt / COAST_TAU);

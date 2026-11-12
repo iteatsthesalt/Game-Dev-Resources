@@ -41,6 +41,13 @@ body {
 }
 #fatal h1 { margin: 0 0 8px; font-size: 22px; font-weight: 500; letter-spacing: 0.01em; }
 #fatal p { margin: 0 auto; max-width: 34em; color: #b9bdc8; }
+#fatal .fatal-btn {
+  justify-self: center; margin-top: 20px; min-height: 48px; padding: 0 26px; border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.1); color: #eceef3;
+  font: inherit; font-weight: 500; cursor: pointer; touch-action: manipulation;
+}
+#fatal .fatal-btn:hover { background: rgba(255, 255, 255, 0.16); }
+#fatal .fatal-btn:focus-visible { outline: 2px solid #eceef3; outline-offset: 3px; }
 .noscript { position: fixed; inset: 0; margin: 0; display: grid; place-content: center; color: #eceef3; font: 16px/1.5 system-ui, sans-serif; }
 
 /* ---- tokens ---------------------------------------------------------------------- */
@@ -1914,6 +1921,7 @@ void main() {
 }`;
   var DOWN_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform vec2 uTexel;
@@ -1947,6 +1955,7 @@ void main() {
 }`;
   var UP_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uSrc;
 uniform vec2 uTexel;
@@ -1962,6 +1971,7 @@ void main() {
 }`;
   var ADAPT_FS = `#version 300 es
 precision highp float;
+precision highp int;
 uniform sampler2D uLum;     // the smallest bloom level: a blurred thumbnail of the frame
 uniform highp usampler2D uPrev;
 uniform float uDt;
@@ -1970,7 +1980,7 @@ uniform float uAuto;        // 0..1, how strongly to adapt
 uniform float uGuard;       // 1: limit how fast the screen may brighten
 uniform float uRise;        // allowed rise in e-folds per second
 uniform float uGlowGain;    // how much bloom will add on top, so Glow is guarded too
-out uvec4 o;
+out highp uvec4 o;
 ${BAD}
 void main() {
   float sum = 0.0;
@@ -1998,6 +2008,7 @@ void main() {
 }`;
   var COMPOSITE_FS = `#version 300 es
 precision highp float;
+precision highp int;
 in vec2 vUv;
 uniform sampler2D uScene;
 uniform sampler2D uBloom;
@@ -2097,6 +2108,8 @@ void main() {
   var MAX_RELEASES = 4;
   var REF_COUNT = 262144;
   var PROBE_PARTICLES = 64;
+  var FIXED_BLOCK = 8;
+  var ONE_BITS = 1065353216;
   function stringHash(s) {
     let h2 = 2166136261;
     for (let i = 0; i < s.length; i++) {
@@ -2201,12 +2214,13 @@ void main() {
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
       const sampleBuf = gl.createBuffer();
       gl.bindBuffer(gl.COPY_WRITE_BUFFER, sampleBuf);
-      gl.bufferData(gl.COPY_WRITE_BUFFER, PROBE_PARTICLES * STRIDE, gl.STREAM_READ);
+      gl.bufferData(gl.COPY_WRITE_BUFFER, (PROBE_PARTICLES + FIXED_BLOCK) * STRIDE, gl.STREAM_READ);
       gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
-      R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null };
+      R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null, lastBlock: null, lastMoving: false };
     }
     const health = { checks: 0, heals: 0, lastIssue: "", issues: [] };
     const finite2 = (x) => Number.isFinite(x);
+    let simulation = "unknown";
     function resetAdaptation() {
       for (const t of R.adaptT) {
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
@@ -2223,6 +2237,7 @@ void main() {
       resetAdaptation();
       if (/particle/.test(issue)) {
         R.needsInit = true;
+        R.lastBlock = null;
         gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
         gl.clearColor(0, 0, 0, 1);
         gl.clear(gl.COLOR_BUFFER_BIT);
@@ -2240,10 +2255,22 @@ void main() {
       gl.bindBuffer(gl.COPY_READ_BUFFER, R.bufs[R.cur]);
       gl.bindBuffer(gl.COPY_WRITE_BUFFER, R.sampleBuf);
       gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, first * STRIDE, 0, Math.min(PROBE_PARTICLES, N) * STRIDE);
+      gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, PROBE_PARTICLES * STRIDE, Math.min(FIXED_BLOCK, N) * STRIDE);
       gl.bindBuffer(gl.COPY_READ_BUFFER, null);
       gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
-      R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N) };
+      const s = lastScene;
+      const moving = !!s && s.speed > 0.05 && s.flow > 0.05;
+      R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N), block: Math.min(FIXED_BLOCK, N), moving };
       gl.flush();
+    }
+    function judgeSimulation(block, moving) {
+      const prev = R.lastBlock, prevMoving = R.lastMoving;
+      R.lastBlock = block;
+      R.lastMoving = moving;
+      if (block.every((b) => b === 0)) return "stopped";
+      if (!prev || prev.length !== block.length) return "unknown";
+      for (let i = 0; i < block.length; i++) if (block[i] !== prev[i]) return "moving";
+      return moving && prevMoving ? "stopped" : "still";
     }
     function finishProbe() {
       const p = R.probe;
@@ -2256,8 +2283,10 @@ void main() {
       gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bits);
       gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
       const parts = new Float32Array(p.count * 8);
+      const block = new Uint32Array(p.block * 8);
       gl.bindBuffer(gl.COPY_READ_BUFFER, R.sampleBuf);
       gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, parts);
+      gl.getBufferSubData(gl.COPY_READ_BUFFER, PROBE_PARTICLES * STRIDE, block);
       gl.bindBuffer(gl.COPY_READ_BUFFER, null);
       const adapt = new Float32Array(bits.buffer);
       let badParticles = 0;
@@ -2267,8 +2296,13 @@ void main() {
           break;
         }
       }
+      simulation = judgeSimulation(block, p.moving);
+      const values = [...adapt].map((v) => +v.toPrecision(3)).join(", ");
       if (badParticles) heal(`${badParticles} of ${p.count} sampled particles were not numbers`);
-      else if (![...adapt].every(finite2) || adapt[3] > 0.5 && !(adapt[2] > 0)) heal(`the brightness state was broken (${[...adapt].map((v) => +v.toPrecision(3)).join(", ")})`);
+      else if (simulation === "stopped") heal("the particles are not moving: the GPU is not running the simulation");
+      else if (![...adapt].every(finite2)) heal(`the brightness state was broken (${values})`);
+      else if (bits[3] !== ONE_BITS && (bits[0] || bits[1] || bits[2])) heal(`the brightness state lost bits (${[...bits].map((b) => "0x" + b.toString(16)).join(" ")})`);
+      else if (bits[3] !== ONE_BITS || !(adapt[2] > 0)) heal(`the brightness state was broken (${values})`);
     }
     function checkHealth(N) {
       if (R.probe) finishProbe();
@@ -2341,8 +2375,8 @@ void main() {
     const poleVU = new Float32Array(MAX_POLES * 4);
     const pulseU = new Float32Array(MAX_PULSES * 4);
     const releaseU = new Float32Array(MAX_RELEASES * 4);
-    function drawingSize() {
-      return [Math.max(1, Math.round(cssW * dpr * renderScale)), Math.max(1, Math.round(cssH * dpr * renderScale))];
+    function drawingSize(w = cssW, h2 = cssH, ratio = dpr) {
+      return [Math.max(1, Math.round(w * ratio * renderScale)), Math.max(1, Math.round(h2 * ratio * renderScale))];
     }
     function applySize() {
       const [w, h2] = drawingSize();
@@ -2636,14 +2670,22 @@ void main() {
       opts.onLost?.();
     });
     canvas.addEventListener("webglcontextrestored", () => {
-      lost = false;
       try {
         build();
         applySize();
-        opts.onRestored?.();
       } catch (err) {
         console.warn("Tactilume could not rebuild after the graphics context was restored", err);
+        try {
+          destroy();
+        } catch {
+        }
+        R = null;
+        opts.onRestoreFailed?.(err);
+        return;
       }
+      lost = false;
+      engine.caps.halfFloat = hdr;
+      opts.onRestored?.();
     });
     const engine = {
       caps: { maxParticles: capacity, tier, renderer, halfFloat: hdr },
@@ -2655,6 +2697,13 @@ void main() {
         cssH = Math.max(1, h2);
         dpr = ratio || 1;
         if (R) applySize();
+      },
+      // Whether resize(w, h, ratio) would change the drawing buffer's size (a video clip
+      // cannot follow that, so main ends one first).
+      changesSize(w, h2, ratio) {
+        const [nw, nh] = drawingSize(Math.max(1, w), Math.max(1, h2), ratio || 1);
+        const [cw, ch] = drawingSize();
+        return nw !== cw || nh !== ch;
       },
       setQuality({ particles, renderScale: rs }) {
         if (particles) drawN = clamp(Math.round(particles), 1024, capacity);
@@ -2702,8 +2751,9 @@ void main() {
       // Everything that tells why a device might show no light. Reads back from the GPU
       // (slow): for the Device check in Settings, never per frame.
       diagnose() {
-        const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health };
+        const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health, simulation };
         if (!R || lost) return out;
+        out.targets = { scene: !!(R.scene && R.scene.ok), bloom: R.levels.length > 0 && R.levels.every((t) => t.ok), adapt: R.adaptT.every((t) => t.ok) };
         const p = (name) => {
           try {
             return gl.getParameter(name);
@@ -2772,23 +2822,27 @@ void main() {
         gl.bindBuffer(gl.ARRAY_BUFFER, null);
         out.particles = [];
         for (let i = 0; i < n; i++) out.particles.push(Array.from(buf.slice(i * 8, i * 8 + 8), (v) => +v.toFixed(4)));
-        const readMean = (t) => {
-          const px = new Float32Array(t.w * t.h * 4);
+        const readMean = (t, bytes) => {
+          const px = bytes ? new Uint8Array(t.w * t.h * 4) : new Float32Array(t.w * t.h * 4);
           gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
-          gl.readPixels(0, 0, t.w, t.h, gl.RGBA, gl.FLOAT, px);
+          gl.readPixels(0, 0, t.w, t.h, gl.RGBA, bytes ? gl.UNSIGNED_BYTE : gl.FLOAT, px);
           gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+          const k = bytes ? 1 / 255 : 1;
           let sum = 0, max = 0, lit = 0;
           for (let i = 0; i < px.length; i += 4) {
-            const l = px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722;
+            const l = (px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722) * k;
             sum += l;
             if (l > max) max = l;
             if (l > 1e-3) lit++;
           }
           return { mean: sum / (t.w * t.h), max, lit, w: t.w, h: t.h };
         };
-        if (hdr && gl.getExtension("EXT_color_buffer_float")) {
-          out.scene = readMean(R.scene);
-          out.bloom = readMean(R.levels[0]);
+        if (!hdr) {
+          out.scene = readMean(R.scene, true);
+          out.bloom = readMean(R.levels[0], true);
+        } else if (gl.getExtension("EXT_color_buffer_float")) {
+          out.scene = readMean(R.scene, false);
+          out.bloom = readMean(R.levels[0], false);
         }
         const bits = new Uint32Array(4);
         gl.bindFramebuffer(gl.FRAMEBUFFER, R.adaptT[R.adaptCur].fbo);
@@ -2879,9 +2933,22 @@ void main() {
     const fading = [];
     let serial2 = 0;
     let pinWasOn = !!getSettings().pin;
+    let pinAspect = 0;
     function clientToWorld(clientX, clientY) {
       const r = target.getBoundingClientRect();
       return screenToWorld(clientX - r.left, clientY - r.top);
+    }
+    function aspectNow() {
+      const r = target.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r.width / r.height : 0;
+    }
+    function fitPins(aspect) {
+      if (!(aspect > 0)) return;
+      if (pinAspect > 0 && Math.abs(aspect - pinAspect) > 1e-4) {
+        const k = aspect / pinAspect;
+        for (const p of pins) p.x *= k;
+      }
+      pinAspect = aspect;
     }
     function fade(pole) {
       pole.held = false;
@@ -2907,6 +2974,7 @@ void main() {
       pole.kind = "pin";
       pole.vx = 0;
       pole.vy = 0;
+      fitPins(aspectNow());
       pins.push(pole);
       while (pins.length > MAX_PINS) fade(pins.shift());
     }
@@ -3064,6 +3132,7 @@ void main() {
           }
           p.power += (rec.targetPower - p.power) * approach(dt, POWER_TAU);
         }
+        if (pins.length) fitPins(aspectNow());
         for (const p of pins) p.age += dt;
         const k = Math.exp(-dt / COAST_TAU);
         for (let i = fading.length - 1; i >= 0; i--) {
@@ -3211,6 +3280,11 @@ void main() {
       return w && Number.isFinite(w.x) && Number.isFinite(w.y) ? w : null;
     }
     const anchor = () => mouseWorld() || cursor;
+    function keepCursorOnScreen() {
+      const asp = aspect();
+      cursor.x = clamp(cursor.x, -asp * EDGE, asp * EDGE);
+      cursor.y = clamp(cursor.y, -EDGE, EDGE);
+    }
     function makePole(x, y) {
       const pole = { x, y, vx: 0, vy: 0, power: 1, age: 0, held: true, id: "k" + serial2++, kind: "touch", fade: 1 };
       announce("down", { x, y, power: 1, id: pole.id, kind: "touch" });
@@ -3246,11 +3320,11 @@ void main() {
         return;
       }
       const m = mouseWorld();
-      const asp = aspect();
       if (m) {
-        cursor.x = clamp(m.x, -asp * EDGE, asp * EDGE);
-        cursor.y = clamp(m.y, -EDGE, EDGE);
+        cursor.x = m.x;
+        cursor.y = m.y;
       }
+      keepCursorOnScreen();
       dot2 = makePole(cursor.x, cursor.y);
     }
     function moveTo(p, x, y, dt) {
@@ -3274,10 +3348,10 @@ void main() {
       }
       const len = Math.hypot(dx, dy);
       if (len > 0) {
-        const asp = aspect();
-        cursor.x = clamp(cursor.x + dx / len * ARROW_SPEED * dt, -asp * EDGE, asp * EDGE);
-        cursor.y = clamp(cursor.y + dy / len * ARROW_SPEED * dt, -EDGE, EDGE);
+        cursor.x += dx / len * ARROW_SPEED * dt;
+        cursor.y += dy / len * ARROW_SPEED * dt;
       }
+      if (dot2 || ring || len > 0) keepCursorOnScreen();
       if (dot2) {
         moveTo(dot2, cursor.x, cursor.y, dt);
         dot2.age += dt;
@@ -4876,7 +4950,15 @@ void main() {
       if (needsContext()) resume();
       if (song && song.waiting) startSong();
     }
+    function listenToMic(on) {
+      if (!mic) return;
+      try {
+        for (const t of mic.stream.getAudioTracks()) t.enabled = on;
+      } catch {
+      }
+    }
     function onVisibility() {
+      listenToMic(!document.hidden);
       if (!ctx) return;
       if (document.hidden) {
         if (song) {
@@ -4986,6 +5068,7 @@ void main() {
             ended("mic");
           }
         });
+        if (document.hidden) listenToMic(false);
         updateSession();
         resume();
         return { ok: true };
@@ -4999,7 +5082,6 @@ void main() {
         if (!ensureContext()) return { ok: false, error: noContextReason() };
         resume();
         stopFile();
-        stopMic();
         let url, el, source;
         try {
           url = URL.createObjectURL(file);
@@ -5027,6 +5109,7 @@ void main() {
           stopFile();
           return { ok: false, error: "That song could not be played. Try an MP3, M4A, OGG or WAV file." };
         }
+        stopMic();
         song.waiting = result === "blocked";
         el.addEventListener("error", () => {
           if (song && song.el === el) {
@@ -7011,12 +7094,14 @@ void main() {
     }
     function tiltSwitch(field) {
       const msg = h("p", { class: "tl-notice is-error", role: "status", hidden: true });
+      let turn = 0;
       const c = toggle(field, {
         value: store.settings.tilt,
         onChange: async (on) => {
+          const mine = ++turn;
           msg.hidden = true;
           if (!on) {
-            write("settings", "tilt", false, true);
+            actions.disableTilt();
             return;
           }
           let ok = false;
@@ -7025,7 +7110,7 @@ void main() {
           } catch {
             ok = false;
           }
-          if (!ok) {
+          if (!ok && mine === turn && c.input.checked) {
             c.set(false);
             msg.textContent = "Tilt is not available here. It needs motion sensors, and permission to use them.";
             msg.hidden = false;
@@ -7336,7 +7421,7 @@ void main() {
       check.body.append(h(
         "div",
         { class: "tl-field" },
-        h("p", { class: "tl-help" }, "If the light does not show or move, this shows what your device's graphics are doing. Copy it into a message to get help."),
+        h("p", { class: "tl-help" }, "If the light does not show or move, this shows what your device's graphics are doing. Copy it into a message to get help. If it finds screen light while your screen stays black, the light is drawn but the system is not showing it."),
         h("div", { class: "tl-actions-row" }, run2, copy),
         report
       ));
@@ -7710,8 +7795,9 @@ void main() {
         }
         hud.showBehaviour(b.name, explain ? b.blurb : null);
       },
-      toast(text) {
-        hud.toast(text);
+      // ms: how long it stays (longer messages get a little more on top)
+      toast(text, ms) {
+        hud.toast(text, ms);
       },
       announce(text) {
         hud.announce(text);
@@ -7774,7 +7860,10 @@ void main() {
   var TEST = params.has("test");
   var forcedParticles = params.has("particles") ? clamp(parseInt(params.get("particles"), 10) || 0, 1024, 1 << 22) : 0;
   var reducedMotionQuery = matchMedia("(prefers-reduced-motion: reduce)");
-  function showFatal(title, detail) {
+  var LOST_NOTICE_MS = 4e3;
+  var MAX_FRAME_ERRORS = 600;
+  var SILENCE = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
+  function showFatal(title, detail, action) {
     const el = document.getElementById("fatal");
     el.hidden = false;
     el.replaceChildren();
@@ -7783,6 +7872,20 @@ void main() {
     const p = document.createElement("p");
     p.textContent = detail;
     el.append(h2, p);
+    if (action) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "fatal-btn";
+      b.textContent = action.label;
+      b.addEventListener("click", action.onClick);
+      el.append(b);
+      b.focus({ preventScroll: true });
+    }
+  }
+  function hideFatal() {
+    const el = document.getElementById("fatal");
+    el.hidden = true;
+    el.replaceChildren();
   }
   function effectiveScene(scene, settings) {
     const calm = settings.calm;
@@ -7817,17 +7920,51 @@ void main() {
     if (!linked && !store.hadSavedScene) store.setScene(presetScene(DEFAULT_PRESET), { replace: true, source: "preset" });
     if (TEST) store.setSettings({ introSeen: true, autopilot: "off", haptics: false });
     if (store.settings.react !== "off") store.setSettings({ react: "off" }, { source: "boot" });
+    let lostTimer = 0;
+    let contextLost = false;
+    let stopNotice = false;
+    function watchLostContext() {
+      clearTimeout(lostTimer);
+      lostTimer = contextLost && !document.hidden && !stopNotice ? setTimeout(lightStopped, LOST_NOTICE_MS) : 0;
+    }
+    document.addEventListener("visibilitychange", watchLostContext);
+    function lightStopped() {
+      clearTimeout(lostTimer);
+      lostTimer = 0;
+      running = false;
+      try {
+        store.flush();
+      } catch (e) {
+        console.warn("Tactilume: could not save before stopping", e);
+      }
+      stopNotice = true;
+      showFatal("The light stopped", "The graphics on this device stopped drawing. Your scene and settings are kept.", {
+        label: "Start the light again",
+        onClick: () => location.reload()
+      });
+    }
     let engine;
     try {
       engine = createEngine(canvas, {
         maxParticles: forcedParticles || 0,
         onLost: () => {
           running = false;
+          contextLost = true;
+          watchLostContext();
         },
         onRestored: () => {
+          contextLost = false;
+          watchLostContext();
+          if (stopNotice) {
+            stopNotice = false;
+            hideFatal();
+          }
+          frameErrors = 0;
+          lightErrors = 0;
           running = true;
           schedule();
-        }
+        },
+        onRestoreFailed: () => lightStopped()
       });
     } catch (e) {
       console.warn(e);
@@ -7848,15 +7985,6 @@ void main() {
     const capOf = (s) => s.fpsCap === "30" ? 30 : s.fpsCap === "60" ? 60 : 0;
     governor.setCap(capOf(store.settings));
     engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
-    function resize() {
-      const vv = window.visualViewport;
-      const w = Math.round(vv ? vv.width : innerWidth);
-      const h2 = Math.round(vv ? vv.height : innerHeight);
-      engine.resize(w, h2, Math.min(window.devicePixelRatio || 1, tier === "ultra" ? 2 : tier === "low" ? 1.25 : 2));
-    }
-    resize();
-    addEventListener("resize", resize);
-    window.visualViewport?.addEventListener("resize", resize);
     const platform = createPlatform();
     let ui = null;
     const audio = createAudio({
@@ -7876,6 +8004,32 @@ void main() {
       });
     }
     const capture = createCapture({ engine, audio, platform });
+    function resize() {
+      const vv = window.visualViewport;
+      const w = Math.round(vv ? vv.width : innerWidth);
+      const h2 = Math.round(vv ? vv.height : innerHeight);
+      const ratio = Math.min(window.devicePixelRatio || 1, tier === "ultra" ? 2 : tier === "low" ? 1.25 : 2);
+      if (capture.recording && engine.changesSize(w, h2, ratio)) {
+        capture.stopRecording().catch((e) => console.warn("Tactilume: the clip could not be finished", e));
+        if (ui) ui.toast("The screen changed shape, so the recording stopped there.");
+      }
+      engine.resize(w, h2, ratio);
+    }
+    resize();
+    addEventListener("resize", resize);
+    window.visualViewport?.addEventListener("resize", resize);
+    let qualityHeld = false;
+    function applyQuality() {
+      if (capture.recording) {
+        qualityHeld = true;
+        return;
+      }
+      qualityHeld = false;
+      engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+    }
+    capture.on("state", (st) => {
+      if (qualityHeld && !(st && st.recording)) applyQuality();
+    });
     let uiHidden = false;
     let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
     let lastActivity = -Infinity;
@@ -7886,6 +8040,10 @@ void main() {
     let due = 0;
     let toldRepairs = false;
     let awake = null;
+    let tiltTicket = 0;
+    let personHolds = false;
+    let frameErrors = 0;
+    let lightErrors = 0;
     const actions = {
       loadPreset(key) {
         const i = PRESETS.findIndex((p) => p.key === key);
@@ -7942,14 +8100,18 @@ void main() {
       },
       async setReact(mode, file) {
         audio.unlock();
+        const live = () => {
+          const st = audio.state();
+          return st.mic ? "mic" : st.file ? "file" : "off";
+        };
         if (mode === "mic") {
           const r = await audio.startMic();
-          store.setSettings({ react: r.ok ? "mic" : "off" });
+          store.setSettings({ react: r.ok ? "mic" : live() });
           return r;
         }
         if (mode === "file" && file) {
           const r = await audio.playFile(file);
-          store.setSettings({ react: r.ok ? "file" : "off" });
+          store.setSettings({ react: r.ok ? "file" : live() });
           return r;
         }
         audio.stopMic();
@@ -7957,10 +8119,19 @@ void main() {
         store.setSettings({ react: "off" });
         return { ok: true };
       },
+      // Tilt asks the sensors and waits for a first reading. Switched off (or on again) in the
+      // meantime, the latest choice wins: a late answer to an older one changes nothing.
       async enableTilt() {
+        const ticket = ++tiltTicket;
         const ok = await tilt.enable();
+        if (ticket !== tiltTicket) return false;
         store.setSettings({ tilt: ok });
         return ok;
+      },
+      disableTilt() {
+        tiltTicket++;
+        tilt.disable();
+        store.setSettings({ tilt: false });
       },
       unlock() {
         audio.unlock();
@@ -7991,6 +8162,17 @@ void main() {
         } catch (e) {
           screenLight = `could not read (${e && e.message})`;
         }
+        const a = d.adapt || [];
+        const finiteState = a.length === 4 && a.every(Number.isFinite);
+        const stateVerdict = !a.length ? "not readable" : finiteState && a[3] === 1 && a[2] > 0 ? "OK" : finiteState && a[3] !== 1 && a.slice(0, 3).some((v) => v !== 0) ? "LOST PRECISION: the GPU kept only part of each value" : "BROKEN";
+        const simVerdict = {
+          moving: "moving",
+          still: "still (this scene has no current in it)",
+          stopped: "NOT MOVING: the GPU is not running the simulation",
+          unknown: "not checked yet"
+        }[d.simulation] || String(d.simulation);
+        const lightVerdict = !d.sceneLight ? "not readable here" : d.sceneLight.mean > 1e-4 ? "some" : "NONE";
+        const targets = d.targets ? Object.entries(d.targets).map(([k, ok]) => `${k} ${ok ? "complete" : "INCOMPLETE"}`).join(", ") : "none";
         const lines = [
           `Tactilume ${VERSION}${platform.native ? " (Android app)" : ""}`,
           `Device: ${navigator.userAgent}`,
@@ -8000,19 +8182,22 @@ void main() {
           `Limits: ${JSON.stringify(d.limits || {})}`,
           `Tier ${d.tier}, HDR ${d.hdr}, particles ${d.drawN} of ${d.capacity}, scale ${d.renderScale}`,
           `Canvas ${d.canvas.join("x")} for ${d.css.join("x")} at ${d.dpr}x, frames ${d.frames}, ${Math.round(fps)} fps`,
+          `Render targets: ${targets}`,
           `Screen light: ${screenLight}`,
-          `Scene light: ${d.sceneLight ? JSON.stringify(d.sceneLight) : "not readable here"}`,
-          `Brightness state: ${(d.adapt || []).map((v) => +Number(v).toPrecision(3)).join(", ")}`,
+          `Scene light: ${d.sceneLight ? `${JSON.stringify(d.sceneLight)} (${lightVerdict})` : lightVerdict}`,
+          `Brightness state: ${a.map((v) => +Number(v).toPrecision(3)).join(", ")} (${stateVerdict})`,
+          `Simulation: ${simVerdict}`,
           `Particles: ${JSON.stringify(d.particles || {})}`,
           `Health: ${d.health.checks} checks, ${d.health.heals} repairs${d.health.lastIssue ? `, last: ${d.health.lastIssue}` : ""}`,
           `GL error: ${d.glError}${d.lost ? ", context lost" : ""}`
         ];
         return lines.join("\n");
       },
-      // Works on what is on screen: if autoplay is showing, A stops it (until the next touch
-      // or A); otherwise A starts it now. Returns whether autoplay is now wanted.
+      // Works on what is on screen: if autoplay is showing, or was switched on and waits
+      // behind the person's own pins or keys, A stops it (until the next touch or A);
+      // otherwise A starts it now. Returns whether autoplay is now wanted.
       toggleAutopilot() {
-        if (autoShown) {
+        if (autoShown || autopilotForced) {
           autopilotForced = false;
           autopilotPaused = true;
           lastActivity = performance.now();
@@ -8043,7 +8228,7 @@ void main() {
         },
         toggleAutopilot: () => {
           const on = actions.toggleAutopilot();
-          ui.toast(store.settings.autopilot === "off" ? "Autoplay is switched off in Settings" : on ? "Autoplay on" : "Autoplay off");
+          ui.toast(store.settings.autopilot === "off" ? "Autoplay is switched off in Settings" : !on ? "Autoplay off" : personHolds ? "Autoplay on. It starts when nothing is pinned or held." : "Autoplay on");
           return on;
         }
       }
@@ -8078,7 +8263,7 @@ void main() {
     store.on("settings", (s, keys) => {
       if (keys.includes("quality") && !forcedParticles && !TEST) {
         governor.setMode(s.quality);
-        engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+        applyQuality();
       }
       if (keys.includes("fpsCap")) {
         governor.setCap(capOf(s));
@@ -8108,15 +8293,35 @@ void main() {
     function schedule() {
       if (!rafId && running && !document.hidden) rafId = requestAnimationFrame(tick);
     }
+    function frameFailed(e) {
+      frameErrors++;
+      if (frameErrors === 1 || frameErrors % 120 === 0) console.warn(`Tactilume: a frame failed (${frameErrors} in a row)`, e);
+      if (lightErrors >= MAX_FRAME_ERRORS) lightStopped();
+      else if (frameErrors === 3) ui.toast("The light hit a problem on this device. Settings > Device check shows the details.", 8e3);
+    }
     function tick(now) {
       rafId = 0;
       if (!running) return;
+      try {
+        let failed = null;
+        try {
+          const result = drawFrame(now);
+          if (result === "skipped") return;
+          failed = result;
+        } catch (e) {
+          failed = e || new Error("the frame could not run");
+          lightErrors++;
+        }
+        if (failed) frameFailed(failed);
+        else frameErrors = 0;
+      } finally {
+        schedule();
+      }
+    }
+    function drawFrame(now) {
       const capHz = capOf(store.settings);
       if (capHz) {
-        if (now < due - 2) {
-          schedule();
-          return;
-        }
+        if (now < due - 2) return "skipped";
         due = Math.max(due + 1e3 / capHz, now);
       }
       const interval = Math.max(0, now - last);
@@ -8126,11 +8331,60 @@ void main() {
       fps += (1e3 / Math.max(interval, 1) - fps) * approach(dt, 0.5);
       const settings = store.settings;
       const scene = effectiveScene(store.scene, settings);
+      let failed = null;
+      const fail = (e) => {
+        failed = failed || e || new Error("part of a frame failed");
+      };
+      let play = { poles: [], fingers: 0 };
+      let sound = SILENCE;
+      try {
+        play = whatPlays(now, dt, settings, scene);
+        sound = audio.analysis();
+        audio.update(dt, { poles: play.poles, fingers: play.fingers, behaviour: blend.b, scene, aspect: engine.aspect });
+      } catch (e) {
+        fail(e);
+      }
+      try {
+        engine.frame({
+          dt,
+          time,
+          scene,
+          settings,
+          poles: play.poles,
+          fingers: play.fingers,
+          behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
+          audio: sound,
+          gravity: settings.tilt ? tilt.vector() : { x: 0, y: -1, z: 0 }
+        });
+        lightErrors = 0;
+      } catch (e) {
+        fail(e);
+        lightErrors++;
+      }
+      try {
+        if (!capture.recording && governor.sample(interval, dt)) {
+          engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+        }
+        ui.update(dt, { fingers: play.fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
+        updateAwake(now);
+        if (!toldRepairs && engine.health.heals >= 3) {
+          toldRepairs = true;
+          ui.toast("The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.", 8e3);
+        }
+      } catch (e) {
+        fail(e);
+      }
+      frames++;
+      if (frames === 2) hook.ready = true;
+      return failed;
+    }
+    function whatPlays(now, dt, settings, scene) {
       pointers.update(dt);
       const idleFor = (now - lastActivity) / 1e3;
       const auto = !TEST && settings.autopilot !== "off" && !autopilotPaused && (settings.autopilot === "always" || autopilotForced || idleFor > settings.idleSeconds);
       const userPoles = pointers.poles().concat(keyboard.poles());
-      const autoPoles = auto && pointers.active() === 0 ? autopilot.update(dt, time, engine.aspect) : [];
+      personHolds = userPoles.some((p) => p.held);
+      const autoPoles = auto && !personHolds ? autopilot.update(dt, time, engine.aspect) : [];
       const raw = userPoles.length ? userPoles : autoPoles;
       autoShown = auto && !userPoles.length;
       const fingers = fingerCount(raw, settings.virtualFingers);
@@ -8148,31 +8402,7 @@ void main() {
       }
       blend.mix = Math.min(1, blend.mix + dt / 0.45);
       lastFingers = fingers;
-      const sound = audio.analysis();
-      audio.update(dt, { poles, fingers, behaviour: blend.b, scene, aspect: engine.aspect });
-      engine.frame({
-        dt,
-        time,
-        scene,
-        settings,
-        poles,
-        fingers,
-        behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
-        audio: sound,
-        gravity: settings.tilt ? tilt.vector() : { x: 0, y: -1, z: 0 }
-      });
-      if (!capture.recording && governor.sample(interval, dt)) {
-        engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
-      }
-      ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
-      updateAwake(now);
-      if (!toldRepairs && engine.health.heals >= 3) {
-        toldRepairs = true;
-        ui.toast("The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.", 8e3);
-      }
-      frames++;
-      if (frames === 2) hook.ready = true;
-      schedule();
+      return { poles, fingers };
     }
     function updateAwake(now) {
       const s = store.settings;

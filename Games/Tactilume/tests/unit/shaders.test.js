@@ -6,10 +6,20 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import * as POST from '../../src/js/gfx/shaders/post.glsl.js';
 
 const dir = path.join(path.dirname(fileURLToPath(import.meta.url)), '../../src/js/gfx/shaders');
+const stripComments = (code) => code.replace(/\/\/[^\n]*/g, '');
 const SOURCES = fs.readdirSync(dir).filter((f) => /\.(glsl|glsl\.js)$/.test(f))
-  .map((f) => ({ file: f, code: fs.readFileSync(path.join(dir, f), 'utf8').replace(/\/\/[^\n]*/g, '') }));
+  .map((f) => ({ file: f, code: stripComments(fs.readFileSync(path.join(dir, f), 'utf8')) }));
+
+// Every fragment shader exactly as the GPU compiles it: post.glsl.js exports finished
+// sources (its shared snippets pasted in, so they count too), the .frag.glsl files are whole.
+const FRAGMENT_SHADERS = [
+  ...Object.entries(POST).filter(([name]) => name.endsWith('_FS')).map(([name, code]) => ({ name: `post.glsl.js ${name}`, code: stripComments(code) })),
+  ...SOURCES.filter((s) => s.file.endsWith('.frag.glsl')).map((s) => ({ name: s.file, code: s.code })),
+];
+const USES_UNSIGNED = /\buint\b|\buvec[234]\b|\busampler|floatBitsToUint|uintBitsToFloat/;
 
 // The first argument of every call to `fn`, with nested brackets respected.
 function firstArgs(code, fn) {
@@ -55,6 +65,21 @@ describe('shader rules', () => {
         assert.ok(NON_NEGATIVE_BASES.has(base), `${file}: pow(${base}, ...) may get a negative base`);
       }
     }
+  });
+
+  // A fragment shader's ints and uints default to mediump, which only promises 16 bits
+  // (GLSL ES 3.00 4.5.3); phone compilers do narrow them. The brightness state is kept as
+  // the bits of 32-bit floats, so a narrowed output keeps 1e-41 of it: no light at all.
+  test('every fragment shader that uses unsigned ints or float bits declares precision highp int', () => {
+    assert.ok(FRAGMENT_SHADERS.length >= 6, FRAGMENT_SHADERS.map((s) => s.name).join(', '));
+    for (const { name, code } of FRAGMENT_SHADERS) {
+      if (!USES_UNSIGNED.test(code)) continue;
+      assert.match(code, /^\s*precision\s+highp\s+int\s*;/m, `${name} uses unsigned ints or float bits without precision highp int`);
+    }
+  });
+
+  test('the brightness state is written through a highp output', () => {
+    assert.match(stripComments(POST.ADAPT_FS), /\bout\s+highp\s+uvec4\s+o\s*;/);
   });
 
   test('the bit-level NaN test is what the shaders use', () => {

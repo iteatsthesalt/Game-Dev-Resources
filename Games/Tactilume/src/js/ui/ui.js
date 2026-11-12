@@ -273,7 +273,8 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       hud.showBehaviour(b.name, explain ? b.blurb : null);
     },
 
-    toast(text) { hud.toast(text); },
+    // ms: how long it stays (longer messages get a little more on top)
+    toast(text, ms) { hud.toast(text, ms); },
     announce(text) { hud.announce(text); },
 
     open(tab) {

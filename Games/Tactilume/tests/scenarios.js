@@ -176,6 +176,10 @@ export default [
         await h.lift(cdp);
         await settle();
       }
+      // all that play is healthy: the background check must have found nothing to repair
+      // (software rendering is slow, so it may have had time for only one or two checks)
+      const d = await page.evaluate(() => window.TACTILUME.engine.diagnose());
+      c.push(h.check('the health check found nothing to repair', d.health.heals === 0 && d.simulation !== 'stopped', { health: d.health, simulation: d.simulation }));
       return c;
     },
   },
@@ -360,6 +364,7 @@ export default [
       });
       c.push(h.check('the GPU context can be lost on purpose', lost));
       if (!lost) return c;
+      const lostAt = Date.now();
       await h.wait(800);
       const f1 = await h.frames(page);
       await h.wait(800);
@@ -373,6 +378,32 @@ export default [
       c.push(h.check('engine.stats is sane after restore', st.stats.particles > 0 && st.stats.width > 0 && st.stats.height > 0, st.stats));
       const l = h.light(await h.shot(page));
       c.push(h.check('light is drawn again after restore', l.mean > 3 && l.lit > 0.03, l));
+      // the "light stopped" notice is only for a context that does not come back
+      await h.wait(Math.max(0, 4600 - (Date.now() - lostAt)));
+      c.push(h.check('no notice when the context comes back', await page.evaluate(() => document.getElementById('fatal').hidden)));
+
+      // a phone may take the context of an app in the background and give it back on return:
+      // no notice for that either
+      const setHidden = (hidden) => page.evaluate((hidden) => {
+        if (hidden) {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        } else {
+          delete document.hidden;
+          delete document.visibilityState;
+        }
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+      await setHidden(true);
+      await page.evaluate(() => window.__loseContext.loseContext());
+      await h.wait(4600);
+      const quiet = await page.evaluate(() => document.getElementById('fatal').hidden);
+      await page.evaluate(() => window.__loseContext.restoreContext());
+      await h.wait(300);
+      const f3 = await h.frames(page);
+      await setHidden(false);
+      c.push(h.check('a context lost in the background brings no notice', quiet));
+      c.push(h.check('and the light resumes when the app is back', await h.until(page, (f) => window.TACTILUME.frames >= f + 5, f3, 20000) && await page.evaluate(() => document.getElementById('fatal').hidden), { f3, now: await h.frames(page) }));
       return c;
     },
   },
@@ -696,6 +727,8 @@ export default [
       const ins = await page.evaluate(() => window.TACTILUME.engine.inspect(1));
       const [adapted, shown, exposure] = ins.adapt;
       c.push(h.check('the guard state is real numbers, not rounded to zero', Number.isFinite(adapted) && Number.isFinite(shown) && shown > 0 && exposure > 0.5, ins.adapt));
+      // the Device check reads 8-bit light too (as bytes), so these devices can report it
+      c.push(h.check('the scene light can be read back on the 8-bit path', !!ins.scene && ins.scene.mean > 0.001 && ins.scene.lit > 0, ins.scene || 'not read'));
       const L = h.light(await h.shot(page));
       c.push(h.check('the 8-bit light is clearly visible', L.mean > 8 && L.lit > 0.15, L));
       c.push(h.check('and close to the half-float picture', L.mean > 0.4 * halfFloat.mean && L.lit > 0.5 * halfFloat.lit, { eightBit: L, halfFloat }));
@@ -710,6 +743,9 @@ export default [
       c.push(h.check('with no new light, the trails fade to black', dark.max <= 8 && dark.mean < 1, dark));
       const after = await page.evaluate(() => window.TACTILUME.engine.inspect(1));
       c.push(h.check('no GL errors', ins.error === 0 && after.error === 0, [ins.error, after.error]));
+      // more than 230 frames: at least two background checks, which compare the particles
+      const d = await page.evaluate(() => window.TACTILUME.engine.diagnose());
+      c.push(h.check('the health check finds nothing to repair, and sees the particles moving', d.health.checks >= 2 && d.health.heals === 0 && d.simulation === 'moving', { health: d.health, simulation: d.simulation }));
       return c;
     },
   },
@@ -811,6 +847,444 @@ export default [
       c.push(h.check('the brightness state is numbers again', d.adapt.every(Number.isFinite) && d.adapt[2] > 0, d.adapt));
       const text = await page.evaluate(() => window.TACTILUME.actions.diagnose());
       c.push(h.check('the Device check report has its key lines', /GPU: /.test(text) && /Screen light: mean \d/.test(text) && /Particles: /.test(text), text.slice(0, 300)));
+      return c;
+    },
+  },
+
+  // ---- what a phone GPU, a lost context or a failing frame must not do ------------------
+
+  {
+    // A fragment shader's uints default to mediump, which a phone may keep in 16 bits. The
+    // brightness state is the bits of 32-bit floats, so it would read back as about 1e-41:
+    // a dark screen, with Brightness and the flash guard off. The shaders now ask for
+    // highp (tests/unit/shaders.test.js); a device that narrows it anyway must be reported.
+    // Emulated here by keeping only the low 16 bits of what the shader writes.
+    name: 'a brightness state that loses bits is reported',
+    needsEngine: true,
+    open: false,
+    async run(page, context, h) {
+      const c = [];
+      await page.addInitScript(() => {
+        const P = WebGL2RenderingContext.prototype;
+        const source = P.shaderSource;
+        P.shaderSource = function (sh, s) {
+          const narrowed = s.replace('o = floatBitsToUint(next);', 'o = floatBitsToUint(next) & uvec4(0xffffu);');
+          if (narrowed !== s) window.__narrowed = true;
+          return source.call(this, sh, narrowed);
+        };
+      });
+      await h.open(page);
+      c.push(h.check('(the brightness state is kept in 16 bits here)', await page.evaluate(() => window.__narrowed === true)));
+      const flagged = await h.until(page, () => /lost bits/.test(window.TACTILUME.engine.health.lastIssue), undefined, 60000);
+      c.push(h.check('the health check reports the lost bits', flagged, await page.evaluate(() => window.TACTILUME.engine.health)));
+      const text = await page.evaluate(() => window.TACTILUME.actions.diagnose());
+      const lines = text.split('\n').filter((l) => /^(Brightness|Health)/.test(l));
+      c.push(h.check('the Device check names it', /last: the brightness state lost bits/.test(text) && !/Brightness state: .*\(OK\)/.test(text), lines.join(' | ')));
+      const L = h.light(await h.shot(page));
+      c.push(h.check('the light still shows', L.mean > 3 && L.lit > 0.03, L));
+      return c;
+    },
+  },
+
+  {
+    // A driver whose transform feedback captures nothing leaves every particle where it was
+    // made (here nowhere: all zeros), so the light is a dot or nothing. Say why.
+    name: 'a simulation that does not run is reported',
+    needsEngine: true,
+    open: false,
+    async run(page, context, h) {
+      await page.addInitScript(() => {
+        const P = WebGL2RenderingContext.prototype;
+        P.beginTransformFeedback = function () {};
+        P.endTransformFeedback = function () {};
+      });
+      await h.open(page);
+      const flagged = await h.until(page, () => /not moving/.test(window.TACTILUME.engine.health.lastIssue), undefined, 60000);
+      const text = await page.evaluate(() => window.TACTILUME.actions.diagnose());
+      return [
+        h.check('the health check reports that the particles do not move', flagged, await page.evaluate(() => window.TACTILUME.engine.health)),
+        h.check('the Device check says the simulation is not running', /Simulation: NOT MOVING/.test(text), text.split('\n').filter((l) => /^(Simulation|Particles|Health)/.test(l)).join(' | ')),
+      ];
+    },
+  },
+
+  {
+    // A context that never comes back (Chrome stops a page's 3D after GPU crashes) used to
+    // leave the controls over a black screen for good, without a word.
+    name: 'context lost for good',
+    needsEngine: true,
+    async run(page, context, h) {
+      const c = [];
+      const notice = () => page.evaluate(() => {
+        const el = document.getElementById('fatal');
+        return { shown: !el.hidden, text: el.textContent, button: !!el.querySelector('button'), focus: document.activeElement && document.activeElement.className };
+      });
+      await page.evaluate(() => {
+        window.TACTILUME.store.setScene({ hue: 0.42 }, { source: 'test' });
+        document.getElementById('stage').getContext('webgl2').getExtension('WEBGL_lose_context').loseContext();
+      });
+      const shown = await h.until(page, () => !document.getElementById('fatal').hidden, undefined, 6000);
+      const n = await notice();
+      c.push(h.check('within a few seconds a notice says the light stopped', shown && /stopped/i.test(n.text) && n.button, n));
+      c.push(h.check('its button has the focus', n.focus === 'fatal-btn', n));
+      await Promise.all([page.waitForEvent('load', { timeout: 20000 }), page.click('#fatal button')]);
+      await h.ready(page);
+      c.push(h.check('the button starts the light again', await h.waitFrames(page, 5), await h.state(page)));
+      c.push(h.check('with the scene kept', await page.evaluate(() => window.TACTILUME.store.scene.hue === 0.42)));
+      const l = h.light(await h.shot(page));
+      c.push(h.check('and light is drawn', l.mean > 3 && l.lit > 0.03, l));
+
+      // a context that comes back but cannot be rebuilt (no memory left, say) is still lost
+      await page.evaluate(() => {
+        const P = WebGL2RenderingContext.prototype;
+        const make = P.createTransformFeedback;
+        P.createTransformFeedback = function () {
+          if (window.__noMemory) throw new Error('out of memory (test)');
+          return make.call(this);
+        };
+        window.__lose = document.getElementById('stage').getContext('webgl2').getExtension('WEBGL_lose_context');
+        window.__lose.loseContext();
+      });
+      await h.wait(300);
+      await page.evaluate(() => { window.__noMemory = true; window.__lose.restoreContext(); });
+      const failed = await h.until(page, () => !document.getElementById('fatal').hidden, undefined, 3000);
+      const st = await page.evaluate(() => ({ lost: window.TACTILUME.engine.diagnose().lost, fatal: document.getElementById('fatal').textContent }));
+      c.push(h.check('a rebuild that fails says so at once', failed && /stopped/i.test(st.fatal), st));
+      c.push(h.check('and the engine still says the context is lost', st.lost === true, st));
+      return c;
+    },
+  },
+
+  {
+    // One exception inside a frame used to stop the loop for good: the controls kept
+    // working over a frozen light, and nobody was told.
+    name: 'a failing frame does not stop the light',
+    async run(page, context, h) {
+      const c = [];
+      await h.waitFrames(page, 3);
+      const f0 = await page.evaluate(() => {
+        const e = window.TACTILUME.engine, frame = e.frame;
+        let once = true;
+        e.frame = function (f) {
+          if (once) { once = false; throw new Error('a one-off device quirk (test)'); }
+          return frame.call(this, f);
+        };
+        return window.TACTILUME.frames;
+      });
+      c.push(h.check('after one failed frame the light keeps drawing', await h.until(page, (f) => window.TACTILUME.frames >= f + 10, f0, 30000), { f0, now: await h.frames(page) }));
+
+      // the sound failing on every frame: the light still draws, and the person is told
+      const r = await page.evaluate(async () => {
+        const t = window.TACTILUME, a = t.audio, e = t.engine;
+        const update = a.update, frame = e.frame;
+        let draws = 0;
+        e.frame = function (f) { draws++; return frame.call(this, f); };
+        a.update = () => { throw new Error('a broken sound driver (test)'); };
+        const start = t.frames;
+        // eight frames, however slow the machine (or 20 s, if the loop has stopped)
+        const t0 = performance.now();
+        while (t.frames < start + 8 && performance.now() - t0 < 20000) await new Promise((res) => setTimeout(res, 50));
+        a.update = update;
+        e.frame = frame;
+        return { frames: t.frames - start, draws, toasts: (document.querySelector('.tl-toasts') || {}).textContent || '' };
+      });
+      c.push(h.check('with the sound failing every frame, the light still draws every frame', r.frames >= 5 && r.draws >= r.frames, r));
+      c.push(h.check('and the person is told where to look', /hit a problem/.test(r.toasts), r));
+      return c;
+    },
+  },
+
+  {
+    // An MP4 clip (H.264 in its avc1 form) cannot change size halfway: from the change on,
+    // players show a smeared copy of the old picture. So the clip ends first.
+    name: 'turning the screen ends a recording first',
+    needsEngine: true,
+    viewport: { width: 900, height: 420 },
+    async run(page, context, h) {
+      const c = [];
+      const canvasSize = () => page.evaluate(() => { const s = document.getElementById('stage'); return [s.width, s.height]; });
+      await page.evaluate(() => {
+        // where the drawing is when the recorder is told to stop
+        const stop = MediaRecorder.prototype.stop;
+        window.__stops = [];
+        MediaRecorder.prototype.stop = function () {
+          const s = document.getElementById('stage');
+          window.__stops.push({ w: s.width, h: s.height, state: this.state });
+          return stop.call(this);
+        };
+      });
+      const started = await page.evaluate(() => window.TACTILUME.capture.startRecording({ maxSeconds: 20, withSound: false }));
+      c.push(h.check('recording starts', started && started.ok === true, started));
+      const before = await canvasSize();
+      await h.wait(1000);
+      // a resize that changes nothing keeps the clip going
+      await page.evaluate(() => dispatchEvent(new Event('resize')));
+      await h.waitFrames(page, 3);
+      c.push(h.check('a resize that keeps the size keeps recording', await page.evaluate(() => window.TACTILUME.capture.recording === true)));
+      const download = page.waitForEvent('download', { timeout: 20000 }).catch(() => null);
+      await page.setViewportSize({ width: 420, height: 900 });
+      const ended = await h.until(page, () => window.TACTILUME.capture.recording === false, undefined, 5000);
+      const st = await page.evaluate(() => ({ stops: window.__stops, toasts: (document.querySelector('.tl-toasts') || {}).textContent || '' }));
+      const after = await canvasSize();
+      c.push(h.check('turning the screen ends the recording', ended, st));
+      c.push(h.check('the recorder stopped before the drawing changed size', st.stops.length === 1 && st.stops[0].state === 'recording' && st.stops[0].w === before[0] && st.stops[0].h === before[1] && after[0] !== before[0], { before, after, stops: st.stops }));
+      c.push(h.check('and the person is told why', /changed shape/.test(st.toasts), st.toasts));
+      const file = await download;
+      c.push(h.check('the clip up to the turn is saved', file && /\.(webm|mp4)$/i.test(file.suggestedFilename()), file && file.suggestedFilename()));
+      return c;
+    },
+  },
+
+  {
+    // Quality changes the drawing's resolution, so during a clip the change waits for its
+    // end. (A normal start: ?test and a fixed particle count both keep Quality still.)
+    name: 'a Quality change waits for the recording to end',
+    needsEngine: true,
+    open: false,
+    viewport: { width: 640, height: 400 },
+    async run(page, context, h) {
+      const c = [];
+      await page.addInitScript(() => {
+        if (!localStorage.getItem('tactilume.v1')) localStorage.setItem('tactilume.v1', JSON.stringify({ v: 1, settings: { introSeen: true, autopilot: 'off', haptics: false, quality: 'battery' } }));
+      });
+      await h.open(page, { query: '' });
+      const size = () => page.evaluate(() => { const s = window.TACTILUME.engine.stats; return { w: s.width, h: s.height, scale: s.renderScale }; });
+      const started = await page.evaluate(() => window.TACTILUME.capture.startRecording({ maxSeconds: 20, withSound: false }));
+      c.push(h.check('recording starts', started && started.ok === true, started));
+      // read once recording, when the governor holds still too
+      const before = await size();
+      c.push(h.check('(Battery draws below full resolution)', before.scale < 1 && before.w < 640, before));
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ quality: 'max' }, { source: 'test' }));
+      await h.waitFrames(page, 4, 30000);
+      const during = await size();
+      c.push(h.check('during the recording the drawing keeps its size', during.w === before.w && during.h === before.h, { before, during }));
+      const [download] = await Promise.all([
+        page.waitForEvent('download', { timeout: 30000 }).catch(() => null),
+        page.evaluate(() => window.TACTILUME.capture.stopRecording()),
+      ]);
+      c.push(h.check('the clip is saved', !!download));
+      const grew = await h.until(page, () => window.TACTILUME.engine.stats.width === 640, undefined, 10000);
+      c.push(h.check('once it ends, Best draws at full resolution', grew, await size()));
+      return c;
+    },
+  },
+
+  {
+    // Pins are points in the world, whose x runs -aspect..aspect: turning the phone used to
+    // leave a pin far off the narrower screen, still pulling light, still counted, and out
+    // of reach. The keyboard's Space touch had the same trouble with a narrower window.
+    name: 'pins and the keyboard touch stay on screen when it turns',
+    touch: true,
+    viewport: { width: 900, height: 420 },
+    async run(page, context, h) {
+      const c = [];
+      const cdp = await context.newCDPSession(page);
+      const read = () => page.evaluate(() => {
+        const t = window.TACTILUME;
+        const pins = t.pointers.poles().filter((p) => p.kind === 'pin' && p.held);
+        return {
+          w: innerWidth, h: innerHeight, aspect: t.engine.aspect,
+          pins: pins.map((p) => { const s = t.engine.worldToScreen(p.x, p.y); return { x: p.x, y: p.y, px: s.px, py: s.py }; }),
+        };
+      });
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ pin: true }, { source: 'test' }));
+      await h.tap(cdp, 860, 210, 120);
+      await h.until(page, () => window.TACTILUME.pointers.pinCount() === 1, undefined, 3000);
+      const before = await read();
+      c.push(h.check('a tap near the right edge leaves a pin there', before.pins.length === 1 && Math.abs(before.pins[0].px - 860) < 20, before));
+      await page.setViewportSize({ width: 420, height: 900 });
+      await h.until(page, () => Math.abs(window.TACTILUME.engine.aspect - innerWidth / innerHeight) < 0.01, undefined, 5000);
+      await h.waitFrames(page, 4);
+      const after = await read();
+      const p = after.pins[0];
+      c.push(h.check('after a turn the pin is still on screen, as far across it', !!p && p.px > 0 && p.px < after.w && Math.abs(p.px / after.w - 860 / 900) < 0.05, after));
+      if (p) {
+        await h.tap(cdp, Math.round(p.px), Math.round(p.py), 120);
+        await h.waitFrames(page, 4);
+      }
+      const tapped = await read();
+      c.push(h.check('and a tap where it is now takes it away', tapped.pins.length === 0, tapped));
+
+      // the Space touch, put down at the right of a wide window, then the window narrows
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ pin: false }, { source: 'test' }));
+      await page.setViewportSize({ width: 1200, height: 500 });
+      await h.waitFrames(page, 3);
+      await page.mouse.move(1180, 250);
+      await page.keyboard.press('Space');
+      await h.until(page, () => window.TACTILUME.keyboard.poles().some((q) => q.held), undefined, 3000);
+      await page.setViewportSize({ width: 500, height: 900 });
+      await h.waitFrames(page, 4);
+      const key = await page.evaluate(() => {
+        const t = window.TACTILUME, q = t.keyboard.poles().find((x) => x.held);
+        return q ? { x: q.x, y: q.y, aspect: t.engine.aspect } : null;
+      });
+      c.push(h.check('the keyboard touch comes back on screen when the window narrows', !!key && Math.abs(key.x) <= key.aspect && Math.abs(key.y) <= 1, key));
+      return c;
+    },
+  },
+
+  {
+    // Moving with sound: a switch that fails must leave what was already playing alone,
+    // and an app that is hidden stops listening to the microphone.
+    name: 'sound sources: a failed switch keeps the old one, a hidden app stops listening',
+    async run(page, context, h) {
+      const c = [];
+      await page.mouse.click(450, 300); // a gesture, so sound may start
+      await page.evaluate(() => {
+        // the test decides what the microphone does: refuse, or a made-up live input
+        window.__gum = 'deny';
+        navigator.mediaDevices.getUserMedia = async () => {
+          if (window.__gum === 'deny') throw new DOMException('Permission denied (test)', 'NotAllowedError');
+          const ac = new AudioContext();
+          const osc = ac.createOscillator();
+          const dst = ac.createMediaStreamDestination();
+          osc.connect(dst);
+          osc.start();
+          window.__mic = dst.stream;
+          return dst.stream;
+        };
+      });
+      const state = () => page.evaluate(() => ({ ...window.TACTILUME.audio.state(), react: window.TACTILUME.store.settings.react }));
+      const song = await page.evaluate(async () => {
+        // a 2 s 440 Hz WAV, made here
+        const rate = 22050, n = rate * 2;
+        const buf = new ArrayBuffer(44 + n * 2), v = new DataView(buf);
+        const w = (o, s) => [...s].forEach((ch, i) => v.setUint8(o + i, ch.charCodeAt(0)));
+        w(0, 'RIFF'); v.setUint32(4, 36 + n * 2, true); w(8, 'WAVE'); w(12, 'fmt ');
+        v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+        v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+        w(36, 'data'); v.setUint32(40, n * 2, true);
+        for (let i = 0; i < n; i++) v.setInt16(44 + i * 2, Math.sin(i * 2 * Math.PI * 440 / rate) * 8000, true);
+        return window.TACTILUME.actions.setReact('file', new File([buf], 'tone.wav', { type: 'audio/wav' }));
+      });
+      const playing = await state();
+      c.push(h.check('(a song plays)', song.ok && playing.file && playing.react === 'file', { song, playing }));
+      const refused = await page.evaluate(() => window.TACTILUME.actions.setReact('mic'));
+      await h.wait(150);
+      const afterRefusal = await state();
+      c.push(h.check('a refused microphone leaves the song playing, and named', !refused.ok && afterRefusal.file && afterRefusal.react === 'file', { refused, afterRefusal }));
+
+      await page.evaluate(() => { window.__gum = 'allow'; });
+      const mic = await page.evaluate(() => window.TACTILUME.actions.setReact('mic'));
+      const listening = await state();
+      c.push(h.check('(the microphone takes over when it starts)', mic.ok && listening.mic && !listening.file && listening.react === 'mic', { mic, listening }));
+      const bad = await page.evaluate(() => window.TACTILUME.actions.setReact('file', new File([new Uint8Array(512)], 'broken.wav', { type: 'audio/wav' })));
+      await h.wait(150);
+      const afterBad = await state();
+      c.push(h.check('a song that cannot play leaves the microphone on, and named', !bad.ok && afterBad.mic && afterBad.react === 'mic', { bad, afterBad }));
+
+      const setHidden = (hidden) => page.evaluate((hidden) => {
+        if (hidden) {
+          Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+          Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => 'hidden' });
+        } else {
+          delete document.hidden;
+          delete document.visibilityState;
+        }
+        document.dispatchEvent(new Event('visibilitychange'));
+      }, hidden);
+      const tracks = () => page.evaluate(() => window.__mic.getAudioTracks().map((t) => ({ enabled: t.enabled, state: t.readyState })));
+      // a microphone that is live and listened to, then the app is hidden
+      if (!(await state()).mic) await page.evaluate(() => window.TACTILUME.actions.setReact('mic'));
+      const live = await tracks();
+      c.push(h.check('(the microphone is live before the app hides)', live.length > 0 && live.every((t) => t.enabled && t.state === 'live'), live));
+      await setHidden(true);
+      const hidden = await tracks();
+      c.push(h.check('a hidden app stops listening to the microphone', hidden.length > 0 && hidden.every((t) => !t.enabled || t.state === 'ended'), hidden));
+      await setHidden(false);
+      const shown = await tracks();
+      const back = await state();
+      c.push(h.check('and listens again when it shows', shown.every((t) => t.enabled && t.state === 'live') && back.mic && back.react === 'mic', { shown, back }));
+      return c;
+    },
+  },
+
+  {
+    // Tilt waits for the sensors' first reading. Switched off in that moment, it used to
+    // switch itself back on when the reading came. (Timed inside the page: Playwright's
+    // own clicks can take longer than the wait.)
+    name: 'tilt switched off while it starts stays off',
+    async run(page, context, h) {
+      await page.evaluate(() => window.TACTILUME.ui.open('sound'));
+      await h.wait(300);
+      const r = await page.evaluate(async () => {
+        const el = [...document.querySelectorAll('input[role=switch]')].find((i) => i.labels[0].textContent === 'Tilt');
+        const sleep = (ms) => new Promise((res) => setTimeout(res, ms));
+        const reading = () => window.dispatchEvent(new DeviceMotionEvent('devicemotion', { accelerationIncludingGravity: { x: 0, y: 9.8, z: 0.4 }, interval: 16 }));
+        const notice = () => { const n = el.closest('.tl-field').querySelector('.tl-notice'); return !!n && !n.hidden; };
+        const read = () => ({ checked: el.checked, store: window.TACTILUME.store.settings.tilt, notice: notice() });
+        el.click(); // on: waiting for a first reading
+        await sleep(60);
+        el.click(); // off again before it came
+        await sleep(60);
+        reading();
+        await sleep(400);
+        const off = read();
+        // on, off and on again: the last choice wins, and nothing says tilt is missing
+        el.click(); await sleep(40);
+        el.click(); await sleep(40);
+        el.click(); await sleep(40);
+        reading();
+        await sleep(400);
+        const on = read();
+        el.click();
+        return { off, on };
+      });
+      return [
+        h.check('switched off before the sensors answered, tilt stays off', !r.off.checked && r.off.store === false && !r.off.notice, r),
+        h.check('on, off and on again ends on, without a "not available" notice', r.on.checked && r.on.store === true && !r.on.notice, r),
+      ];
+    },
+  },
+
+  {
+    // Pins and the Space touch come before autoplay. A with one down used to say "Autoplay
+    // on" with nothing to see, and autoplay later popped in at full strength.
+    name: 'autoplay waits for pins, then fades in',
+    open: false,
+    touch: true,
+    query: '?particles=16000',
+    async run(page, context, h) {
+      const c = [];
+      await page.addInitScript(() => {
+        if (!localStorage.getItem('tactilume.v1')) localStorage.setItem('tactilume.v1', JSON.stringify({ v: 1, settings: { introSeen: true, haptics: false } }));
+      });
+      await h.open(page, { query: '?particles=16000' });
+      const toasts = () => page.evaluate(() => (document.querySelector('.tl-toasts') || {}).textContent || '');
+      await page.evaluate(() => {
+        // the strongest autoplay pole each time autoplay is asked, and whether it showed
+        const t = window.TACTILUME, ap = t.autopilot, update = ap.update;
+        window.__auto = [];
+        ap.update = (...a) => {
+          const poles = update(...a);
+          window.__auto.push({ shown: t.autoplay, power: Math.max(0, ...poles.map((p) => p.power)) });
+          return poles;
+        };
+        t.store.setSettings({ pin: true }, { source: 'test' });
+      });
+      const cdp = await context.newCDPSession(page);
+      await h.tap(cdp, 300, 300, 100);
+      await h.until(page, () => window.TACTILUME.pointers.pinCount() === 1, undefined, 3000);
+      await h.waitFrames(page, 3);
+      await page.keyboard.press('a');
+      await h.wait(300);
+      const first = { toasts: await toasts(), autoplay: await page.evaluate(() => window.TACTILUME.autoplay) };
+      c.push(h.check('A with a pin down says autoplay waits for it', !first.autoplay && /starts when nothing is pinned or held/.test(first.toasts), first));
+      await page.keyboard.press('a');
+      await h.wait(300);
+      c.push(h.check('A again turns that waiting autoplay off', /Autoplay off/.test(await toasts()), await toasts()));
+      await page.keyboard.press('a');
+      // longer than autoplay's own fade-in (1.5 s of the app's clock, which a slow machine's
+      // frames advance by at most 1/20 s each), so a clock that ran on behind the pin would
+      // bring it in at full strength
+      await h.wait(2500);
+      await h.waitFrames(page, 40, 60000);
+      // the pins go: autoplay comes in, fading up from nothing
+      await page.evaluate(() => { window.__auto.length = 0; window.TACTILUME.actions.clearPins(); });
+      const shows = await h.until(page, () => window.TACTILUME.autoplay === true, undefined, 5000);
+      await h.waitFrames(page, 2);
+      const seen = await page.evaluate(() => window.__auto.find((x) => x.shown));
+      c.push(h.check('when the pins go, autoplay shows and fades in (first seen below half strength)', shows && !!seen && seen.power < 0.5, { shows, seen }));
       return c;
     },
   },

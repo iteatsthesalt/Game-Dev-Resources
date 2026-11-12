@@ -594,15 +594,18 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
 
   function tiltSwitch(field) {
     const msg = h('p', { class: 'tl-notice is-error', role: 'status', hidden: true });
+    let turn = 0; // the latest flip of the switch; an earlier one that answers late says nothing
     const c = toggle(field, {
       value: store.settings.tilt,
       onChange: async (on) => {
+        const mine = ++turn;
         msg.hidden = true;
-        if (!on) { write('settings', 'tilt', false, true); return; }
+        // switching off stops a start that is still waiting for the sensors, too
+        if (!on) { actions.disableTilt(); return; }
         // called straight from the tap: some browsers only ask for motion access then
         let ok = false;
         try { ok = await actions.enableTilt(); } catch { ok = false; }
-        if (!ok) {
+        if (!ok && mine === turn && c.input.checked) {
           c.set(false);
           msg.textContent = 'Tilt is not available here. It needs motion sensors, and permission to use them.';
           msg.hidden = false;
@@ -863,7 +866,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
       },
     });
     check.body.append(h('div', { class: 'tl-field' },
-      h('p', { class: 'tl-help' }, 'If the light does not show or move, this shows what your device\'s graphics are doing. Copy it into a message to get help.'),
+      h('p', { class: 'tl-help' }, 'If the light does not show or move, this shows what your device\'s graphics are doing. Copy it into a message to get help. If it finds screen light while your screen stays black, the light is drawn but the system is not showing it.'),
       h('div', { class: 'tl-actions-row' }, run, copy), report));
     panel.append(check.el);
 

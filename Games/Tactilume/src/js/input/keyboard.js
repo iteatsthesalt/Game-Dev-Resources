@@ -119,6 +119,14 @@ export function createKeyboard({ store, actions, pointers }) {
 
   const anchor = () => mouseWorld() || cursor;
 
+  // The cursor stays on screen, also when the screen changes shape under it (a narrower
+  // window, a phone turned), so the Space touch it carries never ends up out of sight.
+  function keepCursorOnScreen() {
+    const asp = aspect();
+    cursor.x = clamp(cursor.x, -asp * EDGE, asp * EDGE);
+    cursor.y = clamp(cursor.y, -EDGE, EDGE);
+  }
+
   function makePole(x, y) {
     const pole = { x, y, vx: 0, vy: 0, power: 1, age: 0, held: true, id: 'k' + serial++, kind: 'touch', fade: 1 };
     announce('down', { x, y, power: 1, id: pole.id, kind: 'touch' });
@@ -159,11 +167,11 @@ export function createKeyboard({ store, actions, pointers }) {
       return;
     }
     const m = mouseWorld();
-    const asp = aspect();
     if (m) {
-      cursor.x = clamp(m.x, -asp * EDGE, asp * EDGE);
-      cursor.y = clamp(m.y, -EDGE, EDGE);
+      cursor.x = m.x;
+      cursor.y = m.y;
     }
+    keepCursorOnScreen();
     dot = makePole(cursor.x, cursor.y);
   }
 
@@ -189,10 +197,11 @@ export function createKeyboard({ store, actions, pointers }) {
     for (const key of arrowsDown) { dx += ARROWS[key][0]; dy += ARROWS[key][1]; }
     const len = Math.hypot(dx, dy);
     if (len > 0) {
-      const asp = aspect();
-      cursor.x = clamp(cursor.x + (dx / len) * ARROW_SPEED * dt, -asp * EDGE, asp * EDGE);
-      cursor.y = clamp(cursor.y + (dy / len) * ARROW_SPEED * dt, -EDGE, EDGE);
+      cursor.x += (dx / len) * ARROW_SPEED * dt;
+      cursor.y += (dy / len) * ARROW_SPEED * dt;
     }
+    // only while something is placed or moving: reading the canvas's size costs a little
+    if (dot || ring || len > 0) keepCursorOnScreen();
     if (dot) {
       moveTo(dot, cursor.x, cursor.y, dt);
       dot.age += dt;

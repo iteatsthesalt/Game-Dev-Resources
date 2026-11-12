@@ -25,14 +25,17 @@ Open `Tactilume.html` in a browser to play. Nothing else is needed, and it works
   public address, "Share scene code" copies a short code instead. Paste a link or a code into
   Scenes > Open a shared scene to play it.
 - **Capture.** Photos (PNG) and video clips with sound (MP4 or WebM, whichever the device can make).
+  A video cannot change shape halfway, so turning the screen while recording ends the clip there
+  and saves it.
 - **Comfort and access.** A flash guard (on by default) limits how fast the whole screen may
   brighten, glow included. Calm mode makes everything slower, softer and dimmer, and the system's
   reduced-motion setting is respected. Every control can be reached by keyboard and screen reader,
   and hidden controls always come back with one tap on their corner, Back, Esc or H.
 - **Adapts to the device.** The particle count and resolution adjust as it plays to keep the motion
   smooth, also under a frame-rate cap. Devices that cannot draw HDR light fall back to 8-bit light.
-  A WebGL context loss is survived. The screen is only kept on while someone is around (or while
-  recording, or with Autoplay set to Always), so a phone left alone can still sleep.
+  A WebGL context loss is survived, and if the graphics do not come back, the app says so and
+  offers a fresh start with the scene kept. The screen is only kept on while someone is around
+  (or while recording, or with Autoplay set to Always), so a phone left alone can still sleep.
 
 ### Keys
 

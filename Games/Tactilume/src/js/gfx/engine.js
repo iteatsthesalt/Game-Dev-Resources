@@ -21,6 +21,8 @@ const MAX_PULSES = 8;
 const MAX_RELEASES = 4;
 const REF_COUNT = 262144;
 const PROBE_PARTICLES = 64; // particles the health check samples each time
+const FIXED_BLOCK = 8;      // ...plus these first few every time, to see whether they move
+const ONE_BITS = 0x3f800000; // 1.0: what ADAPT_FS always writes into the state's 4th value
 
 function stringHash(s) {
   let h = 2166136261;
@@ -125,10 +127,10 @@ export function createEngine(canvas, opts = {}) {
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     const sampleBuf = gl.createBuffer();
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, sampleBuf);
-    gl.bufferData(gl.COPY_WRITE_BUFFER, PROBE_PARTICLES * STRIDE, gl.STREAM_READ);
+    gl.bufferData(gl.COPY_WRITE_BUFFER, (PROBE_PARTICLES + FIXED_BLOCK) * STRIDE, gl.STREAM_READ);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
 
-    R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null };
+    R = { sim, points, fade, down, up, adapt, composite, bufs, vaos, tf, empty, lutTex, lutRows: lut.height, fmt, adaptT, adaptCur: 0, cur: 0, scene: null, levels: [], w: 0, h: 0, needsInit: true, probeBuf, sampleBuf, probe: null, lastBlock: null, lastMoving: false };
   }
 
   // ---- health ---------------------------------------------------------------------
@@ -138,6 +140,9 @@ export function createEngine(canvas, opts = {}) {
   // GPU has finished (a fence, so nothing waits), and heals whatever has gone bad.
   const health = { checks: 0, heals: 0, lastIssue: '', issues: [] };
   const finite = (x) => Number.isFinite(x);
+  // what the last checks saw the particles do: 'moving', 'still' (a scene with no motion
+  // in it), 'stopped' (the GPU is not running the simulation) or 'unknown' (one check so far)
+  let simulation = 'unknown';
 
   function resetAdaptation() {
     for (const t of R.adaptT) { gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo); gl.clearBufferuiv(gl.COLOR, 0, new Uint32Array(4)); }
@@ -153,6 +158,7 @@ export function createEngine(canvas, opts = {}) {
     resetAdaptation();
     if (/particle/.test(issue)) {
       R.needsInit = true;
+      R.lastBlock = null; // they start again from the resting shape: nothing to compare
       gl.bindFramebuffer(gl.FRAMEBUFFER, R.scene.fbo);
       gl.clearColor(0, 0, 0, 1);
       gl.clear(gl.COLOR_BUFFER_BIT);
@@ -172,10 +178,28 @@ export function createEngine(canvas, opts = {}) {
     gl.bindBuffer(gl.COPY_READ_BUFFER, R.bufs[R.cur]);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, R.sampleBuf);
     gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, first * STRIDE, 0, Math.min(PROBE_PARTICLES, N) * STRIDE);
+    // the first few particles too, every time, so two checks can tell whether they moved
+    gl.copyBufferSubData(gl.COPY_READ_BUFFER, gl.COPY_WRITE_BUFFER, 0, PROBE_PARTICLES * STRIDE, Math.min(FIXED_BLOCK, N) * STRIDE);
     gl.bindBuffer(gl.COPY_READ_BUFFER, null);
     gl.bindBuffer(gl.COPY_WRITE_BUFFER, null);
-    R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N) };
+    // A scene with current in it and time running moves every particle on every frame.
+    const s = lastScene;
+    const moving = !!s && s.speed > 0.05 && s.flow > 0.05;
+    R.probe = { sync: gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0), count: Math.min(PROBE_PARTICLES, N), block: Math.min(FIXED_BLOCK, N), moving };
     gl.flush();
+  }
+
+  // The same first particles at two checks: all zero (never written), or not one bit
+  // changed although the scene keeps everything moving, means the GPU is not running the
+  // simulation (a transform feedback that captures nothing, say).
+  function judgeSimulation(block, moving) {
+    const prev = R.lastBlock, prevMoving = R.lastMoving;
+    R.lastBlock = block;
+    R.lastMoving = moving;
+    if (block.every((b) => b === 0)) return 'stopped';
+    if (!prev || prev.length !== block.length) return 'unknown';
+    for (let i = 0; i < block.length; i++) if (block[i] !== prev[i]) return 'moving';
+    return moving && prevMoving ? 'stopped' : 'still';
   }
 
   function finishProbe() {
@@ -189,16 +213,25 @@ export function createEngine(canvas, opts = {}) {
     gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, bits);
     gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
     const parts = new Float32Array(p.count * 8);
+    const block = new Uint32Array(p.block * 8);
     gl.bindBuffer(gl.COPY_READ_BUFFER, R.sampleBuf);
     gl.getBufferSubData(gl.COPY_READ_BUFFER, 0, parts);
+    gl.getBufferSubData(gl.COPY_READ_BUFFER, PROBE_PARTICLES * STRIDE, block);
     gl.bindBuffer(gl.COPY_READ_BUFFER, null);
     const adapt = new Float32Array(bits.buffer);
     let badParticles = 0;
     for (let i = 0; i < parts.length; i += 8) {
       for (let k = 0; k < 8; k++) if (!finite(parts[i + k])) { badParticles++; break; }
     }
+    simulation = judgeSimulation(block, p.moving);
+    const values = [...adapt].map((v) => +v.toPrecision(3)).join(', ');
     if (badParticles) heal(`${badParticles} of ${p.count} sampled particles were not numbers`);
-    else if (![...adapt].every(finite) || (adapt[3] > 0.5 && !(adapt[2] > 0))) heal(`the brightness state was broken (${[...adapt].map((v) => +v.toPrecision(3)).join(', ')})`);
+    else if (simulation === 'stopped') heal('the particles are not moving: the GPU is not running the simulation');
+    else if (![...adapt].every(finite)) heal(`the brightness state was broken (${values})`);
+    // ADAPT_FS writes exactly 1.0 there (or all zeros, when it had to start afresh): any
+    // other bits next to live values mean the GPU kept only part of each 32-bit value
+    else if (bits[3] !== ONE_BITS && (bits[0] || bits[1] || bits[2])) heal(`the brightness state lost bits (${[...bits].map((b) => '0x' + b.toString(16)).join(' ')})`);
+    else if (bits[3] !== ONE_BITS || !(adapt[2] > 0)) heal(`the brightness state was broken (${values})`);
   }
 
   function checkHealth(N) {
@@ -281,8 +314,8 @@ export function createEngine(canvas, opts = {}) {
   const pulseU = new Float32Array(MAX_PULSES * 4);
   const releaseU = new Float32Array(MAX_RELEASES * 4);
 
-  function drawingSize() {
-    return [Math.max(1, Math.round(cssW * dpr * renderScale)), Math.max(1, Math.round(cssH * dpr * renderScale))];
+  function drawingSize(w = cssW, h = cssH, ratio = dpr) {
+    return [Math.max(1, Math.round(w * ratio * renderScale)), Math.max(1, Math.round(h * ratio * renderScale))];
   }
 
   function applySize() {
@@ -602,14 +635,20 @@ export function createEngine(canvas, opts = {}) {
     opts.onLost?.();
   });
   canvas.addEventListener('webglcontextrestored', () => {
-    lost = false;
+    // still lost until everything is rebuilt: a failed rebuild must not look like a live context
     try {
       build();
       applySize();
-      opts.onRestored?.();
     } catch (err) {
       console.warn('Tactilume could not rebuild after the graphics context was restored', err);
+      try { destroy(); } catch { /* half built */ }
+      R = null;
+      opts.onRestoreFailed?.(err);
+      return;
     }
+    lost = false;
+    engine.caps.halfFloat = hdr;
+    opts.onRestored?.();
   });
 
   // ---- the interface -----------------------------------------------------------------
@@ -620,6 +659,14 @@ export function createEngine(canvas, opts = {}) {
     resize(w, h, ratio) {
       cssW = Math.max(1, w); cssH = Math.max(1, h); dpr = ratio || 1;
       if (R) applySize();
+    },
+
+    // Whether resize(w, h, ratio) would change the drawing buffer's size (a video clip
+    // cannot follow that, so main ends one first).
+    changesSize(w, h, ratio) {
+      const [nw, nh] = drawingSize(Math.max(1, w), Math.max(1, h), ratio || 1);
+      const [cw, ch] = drawingSize();
+      return nw !== cw || nh !== ch;
     },
 
     setQuality({ particles, renderScale: rs }) {
@@ -677,8 +724,10 @@ export function createEngine(canvas, opts = {}) {
     // Everything that tells why a device might show no light. Reads back from the GPU
     // (slow): for the Device check in Settings, never per frame.
     diagnose() {
-      const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health };
+      const out = { lost, tier, capacity, drawN, hdr, renderScale, css: [cssW, cssH], dpr, canvas: [canvas.width, canvas.height], frames: frameNo, health: engine.health, simulation };
       if (!R || lost) return out;
+      // whether every render target could be made complete (an incomplete one draws nothing)
+      out.targets = { scene: !!(R.scene && R.scene.ok), bloom: R.levels.length > 0 && R.levels.every((t) => t.ok), adapt: R.adaptT.every((t) => t.ok) };
       const p = (name) => { try { return gl.getParameter(name); } catch { return null; } };
       const dbg = gl.getExtension('WEBGL_debug_renderer_info');
       out.renderer = renderer;
@@ -742,22 +791,28 @@ export function createEngine(canvas, opts = {}) {
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
       out.particles = [];
       for (let i = 0; i < n; i++) out.particles.push(Array.from(buf.slice(i * 8, i * 8 + 8), (v) => +v.toFixed(4)));
-      const readMean = (t) => {
-        const px = new Float32Array(t.w * t.h * 4);
+      // half floats are read back as floats; 8-bit targets as bytes, which every WebGL2
+      // accepts for them (GLES 3.0 4.3.2), divided back to 0..1
+      const readMean = (t, bytes) => {
+        const px = bytes ? new Uint8Array(t.w * t.h * 4) : new Float32Array(t.w * t.h * 4);
         gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
-        gl.readPixels(0, 0, t.w, t.h, gl.RGBA, gl.FLOAT, px);
+        gl.readPixels(0, 0, t.w, t.h, gl.RGBA, bytes ? gl.UNSIGNED_BYTE : gl.FLOAT, px);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        const k = bytes ? 1 / 255 : 1;
         let sum = 0, max = 0, lit = 0;
         for (let i = 0; i < px.length; i += 4) {
-          const l = px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722;
+          const l = (px[i] * 0.2126 + px[i + 1] * 0.7152 + px[i + 2] * 0.0722) * k;
           sum += l; if (l > max) max = l; if (l > 1e-3) lit++;
         }
         return { mean: sum / (t.w * t.h), max, lit, w: t.w, h: t.h };
       };
       // reading half floats back as floats needs this extension; without it, skip the scene
-      if (hdr && gl.getExtension('EXT_color_buffer_float')) {
-        out.scene = readMean(R.scene);
-        out.bloom = readMean(R.levels[0]);
+      if (!hdr) {
+        out.scene = readMean(R.scene, true);
+        out.bloom = readMean(R.levels[0], true);
+      } else if (gl.getExtension('EXT_color_buffer_float')) {
+        out.scene = readMean(R.scene, false);
+        out.bloom = readMean(R.levels[0], false);
       }
       // the adaptation state is float bits in an integer target (see ADAPT_FS)
       const bits = new Uint32Array(4);

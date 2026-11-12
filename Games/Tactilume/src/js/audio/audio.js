@@ -274,7 +274,17 @@ export function createAudio({ getSettings, onSourceEnded = () => {} }) {
     if (song && song.waiting) startSong();
   }
 
+  // A hidden page cannot use the microphone (its context is suspended, nothing reads it),
+  // so it stops listening: a disabled track hands on silence and lets the browser turn
+  // its recording indicator off. It is not closed, because opening it again could ask for
+  // permission again, out of the blue, where the person allowed it only once.
+  function listenToMic(on) {
+    if (!mic) return;
+    try { for (const t of mic.stream.getAudioTracks()) t.enabled = on; } catch { /* already stopped */ }
+  }
+
   function onVisibility() {
+    listenToMic(!document.hidden);
     if (!ctx) return;
     if (document.hidden) {
       // a hidden page should be silent and cost nothing
@@ -367,6 +377,7 @@ export function createAudio({ getSettings, onSourceEnded = () => {} }) {
       mic = { stream, source };
       // unplugged, or permission taken back while listening
       for (const t of stream.getAudioTracks()) t.addEventListener('ended', () => { if (mic && mic.stream === stream) { stopMic(); ended('mic'); } });
+      if (document.hidden) listenToMic(false); // the page was hidden while permission was asked
       updateSession();
       resume();
       return { ok: true };
@@ -382,7 +393,7 @@ export function createAudio({ getSettings, onSourceEnded = () => {} }) {
       if (!ensureContext()) return { ok: false, error: noContextReason() };
       resume();
       stopFile();
-      stopMic();
+      // the microphone keeps going until the song really plays (see below)
       let url, el, source;
       try {
         url = URL.createObjectURL(file);
@@ -408,6 +419,8 @@ export function createAudio({ getSettings, onSourceEnded = () => {} }) {
         stopFile();
         return { ok: false, error: 'That song could not be played. Try an MP3, M4A, OGG or WAV file.' };
       }
+      // only a song that plays (or waits for a tap) takes over from the microphone
+      stopMic();
       // 'blocked': some browsers want a tap first; the next touch starts it
       song.waiting = result === 'blocked';
       el.addEventListener('error', () => { if (song && song.el === el) { stopFile(); ended('file'); } });

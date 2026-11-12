@@ -26,8 +26,13 @@ const params = new URLSearchParams(location.search);
 const TEST = params.has('test');
 const forcedParticles = params.has('particles') ? clamp(parseInt(params.get('particles'), 10) || 0, 1024, 1 << 22) : 0;
 const reducedMotionQuery = matchMedia('(prefers-reduced-motion: reduce)');
+const LOST_NOTICE_MS = 4000;  // a lost graphics context that has not come back by then is reported
+const MAX_FRAME_ERRORS = 600; // frames failing in a row (about 10 s) before the loop gives up
+const SILENCE = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
 
-function showFatal(title, detail) {
+// A full-screen message for when the light cannot be shown; `action` ({label, onClick})
+// adds one button.
+function showFatal(title, detail, action) {
   const el = document.getElementById('fatal');
   el.hidden = false;
   el.replaceChildren();
@@ -36,6 +41,21 @@ function showFatal(title, detail) {
   const p = document.createElement('p');
   p.textContent = detail;
   el.append(h, p);
+  if (action) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'fatal-btn';
+    b.textContent = action.label;
+    b.addEventListener('click', action.onClick);
+    el.append(b);
+    b.focus({ preventScroll: true });
+  }
+}
+
+function hideFatal() {
+  const el = document.getElementById('fatal');
+  el.hidden = true;
+  el.replaceChildren();
 }
 
 // Calm mode (or the system asking for less motion) softens the scene the engine sees;
@@ -79,12 +99,50 @@ function boot() {
   if (store.settings.react !== 'off') store.setSettings({ react: 'off' }, { source: 'boot' });
 
   // ---- graphics -------------------------------------------------------------
+  // A lost graphics context normally comes back within moments. One that does not (or
+  // whose rebuild fails), and a frame that keeps failing, stop the light: then say so and
+  // offer a fresh start. The scene and settings are saved first, so nothing is lost.
+  let lostTimer = 0;
+  let contextLost = false;
+  let stopNotice = false; // the "light stopped" message is on screen
+  // Only counted while the page is in sight: a phone may drop the context of an app in the
+  // background and give it back on return, which is no reason for a message.
+  function watchLostContext() {
+    clearTimeout(lostTimer);
+    lostTimer = contextLost && !document.hidden && !stopNotice ? setTimeout(lightStopped, LOST_NOTICE_MS) : 0;
+  }
+  document.addEventListener('visibilitychange', watchLostContext);
+  function lightStopped() {
+    clearTimeout(lostTimer);
+    lostTimer = 0;
+    running = false;
+    try { store.flush(); } catch (e) { console.warn('Tactilume: could not save before stopping', e); }
+    stopNotice = true;
+    showFatal('The light stopped', 'The graphics on this device stopped drawing. Your scene and settings are kept.', {
+      label: 'Start the light again',
+      onClick: () => location.reload(),
+    });
+  }
   let engine;
   try {
     engine = createEngine(canvas, {
       maxParticles: forcedParticles || 0,
-      onLost: () => { running = false; },
-      onRestored: () => { running = true; schedule(); },
+      onLost: () => {
+        running = false;
+        contextLost = true;
+        watchLostContext();
+      },
+      onRestored: () => {
+        contextLost = false;
+        watchLostContext();
+        // it came back after all
+        if (stopNotice) { stopNotice = false; hideFatal(); }
+        frameErrors = 0;
+        lightErrors = 0;
+        running = true;
+        schedule();
+      },
+      onRestoreFailed: () => lightStopped(),
     });
   } catch (e) {
     console.warn(e);
@@ -108,16 +166,6 @@ function boot() {
   governor.setCap(capOf(store.settings));
   engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
 
-  function resize() {
-    const vv = window.visualViewport;
-    const w = Math.round(vv ? vv.width : innerWidth);
-    const h = Math.round(vv ? vv.height : innerHeight);
-    engine.resize(w, h, Math.min(window.devicePixelRatio || 1, tier === 'ultra' ? 2 : tier === 'low' ? 1.25 : 2));
-  }
-  resize();
-  addEventListener('resize', resize);
-  window.visualViewport?.addEventListener('resize', resize);
-
   // ---- everything else -----------------------------------------------------
   const platform = createPlatform();
   let ui = null;
@@ -139,6 +187,35 @@ function boot() {
   }
   const capture = createCapture({ engine, audio, platform });
 
+  // A clip's video cannot change size halfway: an MP4 player loses the picture from there
+  // on. So before the drawing changes size (a phone turned, the on-screen keyboard), a
+  // recording ends and is saved. The recorder stops at once, before a frame of the new size.
+  function resize() {
+    const vv = window.visualViewport;
+    const w = Math.round(vv ? vv.width : innerWidth);
+    const h = Math.round(vv ? vv.height : innerHeight);
+    const ratio = Math.min(window.devicePixelRatio || 1, tier === 'ultra' ? 2 : tier === 'low' ? 1.25 : 2);
+    if (capture.recording && engine.changesSize(w, h, ratio)) {
+      // the result is shown by the UI's 'finished' listener, like every other clip's
+      capture.stopRecording().catch((e) => console.warn('Tactilume: the clip could not be finished', e));
+      if (ui) ui.toast('The screen changed shape, so the recording stopped there.');
+    }
+    engine.resize(w, h, ratio);
+  }
+  resize();
+  addEventListener('resize', resize);
+  window.visualViewport?.addEventListener('resize', resize);
+
+  // A Quality change resizes the drawing too, so during a recording it waits for the end
+  // (the governor holds still while recording anyway).
+  let qualityHeld = false;
+  function applyQuality() {
+    if (capture.recording) { qualityHeld = true; return; }
+    qualityHeld = false;
+    engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+  }
+  capture.on('state', (st) => { if (qualityHeld && !(st && st.recording)) applyQuality(); });
+
   let uiHidden = false;
   let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
   // nobody has touched yet: autoplay starts at once, so the app opens already alive
@@ -152,6 +229,10 @@ function boot() {
   let due = 0;                  // with a frame-rate cap: when the next frame may be drawn
   let toldRepairs = false;      // the engine's repeated self-repairs were mentioned
   let awake = null;             // whether the screen is being kept on right now
+  let tiltTicket = 0;           // the latest tilt choice (see enableTilt)
+  let personHolds = false;      // last frame, a touch, pin or key of the person's was down
+  let frameErrors = 0;          // frames in a row that hit an exception
+  let lightErrors = 0;          // frames in a row in which the light itself could not draw
 
   const actions = {
     loadPreset(key) {
@@ -200,14 +281,17 @@ function boot() {
     toggleUI() { uiHidden = !ui.hidden; ui.setHidden(uiHidden); },
     async setReact(mode, file) {
       audio.unlock();
+      // A switch that fails keeps what was already playing, and the setting names it:
+      // writing 'off' would stop that too.
+      const live = () => { const st = audio.state(); return st.mic ? 'mic' : st.file ? 'file' : 'off'; };
       if (mode === 'mic') {
         const r = await audio.startMic();
-        store.setSettings({ react: r.ok ? 'mic' : 'off' });
+        store.setSettings({ react: r.ok ? 'mic' : live() });
         return r;
       }
       if (mode === 'file' && file) {
         const r = await audio.playFile(file);
-        store.setSettings({ react: r.ok ? 'file' : 'off' });
+        store.setSettings({ react: r.ok ? 'file' : live() });
         return r;
       }
       audio.stopMic();
@@ -215,10 +299,19 @@ function boot() {
       store.setSettings({ react: 'off' });
       return { ok: true };
     },
+    // Tilt asks the sensors and waits for a first reading. Switched off (or on again) in the
+    // meantime, the latest choice wins: a late answer to an older one changes nothing.
     async enableTilt() {
+      const ticket = ++tiltTicket;
       const ok = await tilt.enable();
+      if (ticket !== tiltTicket) return false;
       store.setSettings({ tilt: ok });
       return ok;
+    },
+    disableTilt() {
+      tiltTicket++;
+      tilt.disable();
+      store.setSettings({ tilt: false });
     },
     unlock() { audio.unlock(); },
     // The Device check in Settings: what the GPU says, what the light is doing, and how bright
@@ -240,6 +333,19 @@ function boot() {
           screenLight = `mean ${(sum / (px.length / 4)).toFixed(1)} / 255, brightest ${Math.round(max)}`;
         }
       } catch (e) { screenLight = `could not read (${e && e.message})`; }
+      // a plain word after each reading, so a report can be read without knowing the numbers
+      const a = d.adapt || [];
+      const finiteState = a.length === 4 && a.every(Number.isFinite);
+      const stateVerdict = !a.length ? 'not readable'
+        : finiteState && a[3] === 1 && a[2] > 0 ? 'OK'
+          : finiteState && a[3] !== 1 && a.slice(0, 3).some((v) => v !== 0) ? 'LOST PRECISION: the GPU kept only part of each value'
+            : 'BROKEN';
+      const simVerdict = {
+        moving: 'moving', still: 'still (this scene has no current in it)',
+        stopped: 'NOT MOVING: the GPU is not running the simulation', unknown: 'not checked yet',
+      }[d.simulation] || String(d.simulation);
+      const lightVerdict = !d.sceneLight ? 'not readable here' : d.sceneLight.mean > 1e-4 ? 'some' : 'NONE';
+      const targets = d.targets ? Object.entries(d.targets).map(([k, ok]) => `${k} ${ok ? 'complete' : 'INCOMPLETE'}`).join(', ') : 'none';
       const lines = [
         `Tactilume ${VERSION}${platform.native ? ' (Android app)' : ''}`,
         `Device: ${navigator.userAgent}`,
@@ -249,19 +355,22 @@ function boot() {
         `Limits: ${JSON.stringify(d.limits || {})}`,
         `Tier ${d.tier}, HDR ${d.hdr}, particles ${d.drawN} of ${d.capacity}, scale ${d.renderScale}`,
         `Canvas ${d.canvas.join('x')} for ${d.css.join('x')} at ${d.dpr}x, frames ${d.frames}, ${Math.round(fps)} fps`,
+        `Render targets: ${targets}`,
         `Screen light: ${screenLight}`,
-        `Scene light: ${d.sceneLight ? JSON.stringify(d.sceneLight) : 'not readable here'}`,
-        `Brightness state: ${(d.adapt || []).map((v) => +Number(v).toPrecision(3)).join(', ')}`,
+        `Scene light: ${d.sceneLight ? `${JSON.stringify(d.sceneLight)} (${lightVerdict})` : lightVerdict}`,
+        `Brightness state: ${a.map((v) => +Number(v).toPrecision(3)).join(', ')} (${stateVerdict})`,
+        `Simulation: ${simVerdict}`,
         `Particles: ${JSON.stringify(d.particles || {})}`,
         `Health: ${d.health.checks} checks, ${d.health.heals} repairs${d.health.lastIssue ? `, last: ${d.health.lastIssue}` : ''}`,
         `GL error: ${d.glError}${d.lost ? ', context lost' : ''}`,
       ];
       return lines.join('\n');
     },
-    // Works on what is on screen: if autoplay is showing, A stops it (until the next touch
-    // or A); otherwise A starts it now. Returns whether autoplay is now wanted.
+    // Works on what is on screen: if autoplay is showing, or was switched on and waits
+    // behind the person's own pins or keys, A stops it (until the next touch or A);
+    // otherwise A starts it now. Returns whether autoplay is now wanted.
     toggleAutopilot() {
-      if (autoShown) {
+      if (autoShown || autopilotForced) {
         autopilotForced = false;
         autopilotPaused = true;
         lastActivity = performance.now();
@@ -295,7 +404,10 @@ function boot() {
       },
       toggleAutopilot: () => {
         const on = actions.toggleAutopilot();
-        ui.toast(store.settings.autopilot === 'off' ? 'Autoplay is switched off in Settings' : on ? 'Autoplay on' : 'Autoplay off');
+        // the person's own pins and keys come first, so then autoplay waits for them
+        ui.toast(store.settings.autopilot === 'off' ? 'Autoplay is switched off in Settings'
+          : !on ? 'Autoplay off'
+            : personHolds ? 'Autoplay on. It starts when nothing is pinned or held.' : 'Autoplay on');
         return on;
       },
     },
@@ -334,7 +446,7 @@ function boot() {
   store.on('settings', (s, keys) => {
     if (keys.includes('quality') && !forcedParticles && !TEST) {
       governor.setMode(s.quality);
-      engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+      applyQuality();
     }
     if (keys.includes('fpsCap')) { governor.setCap(capOf(s)); due = 0; }
     if (keys.includes('tilt') && !s.tilt) tilt.disable();
@@ -369,14 +481,48 @@ function boot() {
     if (!rafId && running && !document.hidden) rafId = requestAnimationFrame(tick);
   }
 
+  // One exception must never stop the loop for good (the controls would keep working over
+  // a frozen or black light, and nobody would be told). A frame that fails is counted;
+  // a few in a row are mentioned; when the light itself fails for many frames in a row
+  // (it is plainly broken) the loop stops, and says how to start again.
+  function frameFailed(e) {
+    frameErrors++;
+    // the first one, then now and then, so a fault in every frame does not flood the console
+    if (frameErrors === 1 || frameErrors % 120 === 0) console.warn(`Tactilume: a frame failed (${frameErrors} in a row)`, e);
+    if (lightErrors >= MAX_FRAME_ERRORS) lightStopped();
+    else if (frameErrors === 3) ui.toast('The light hit a problem on this device. Settings > Device check shows the details.', 8000);
+  }
+
   function tick(now) {
     rafId = 0;
     if (!running) return;
+    try {
+      let failed = null;
+      try {
+        const result = drawFrame(now);
+        if (result === 'skipped') return;
+        failed = result;
+      } catch (e) {
+        failed = e || new Error('the frame could not run');
+        lightErrors++; // it stopped before the light could draw
+      }
+      if (failed) frameFailed(failed);
+      else frameErrors = 0;
+    } finally {
+      schedule();
+    }
+  }
+
+  // One frame. Returns 'skipped' when a frame-rate cap leaves this one out, else the first
+  // error any part of it threw. The parts run each on their own, so the light still draws
+  // when touches or sound fail every frame (without them, then), and the rest still runs
+  // when the light fails.
+  function drawFrame(now) {
     // A cap is paced by deadline, not by a minimum gap: on a 90 Hz screen a 60 cap then
     // draws on one vsync, then two, and averages 60 (a minimum gap would give 45).
     const capHz = capOf(store.settings);
     if (capHz) {
-      if (now < due - 2) { schedule(); return; }
+      if (now < due - 2) return 'skipped';
       due = Math.max(due + 1000 / capHz, now);
     }
     const interval = Math.max(0, now - last);
@@ -387,13 +533,56 @@ function boot() {
 
     const settings = store.settings;
     const scene = effectiveScene(store.scene, settings);
+    let failed = null;
+    const fail = (e) => { failed = failed || e || new Error('part of a frame failed'); };
+
+    let play = { poles: [], fingers: 0 };
+    let sound = SILENCE;
+    try {
+      play = whatPlays(now, dt, settings, scene);
+      sound = audio.analysis();
+      audio.update(dt, { poles: play.poles, fingers: play.fingers, behaviour: blend.b, scene, aspect: engine.aspect });
+    } catch (e) { fail(e); }
+
+    try {
+      engine.frame({
+        dt, time, scene, settings, poles: play.poles, fingers: play.fingers,
+        behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
+        audio: sound,
+        gravity: settings.tilt ? tilt.vector() : { x: 0, y: -1, z: 0 },
+      });
+      lightErrors = 0;
+    } catch (e) { fail(e); lightErrors++; }
+
+    try {
+      if (!capture.recording && governor.sample(interval, dt)) {
+        engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
+      }
+      ui.update(dt, { fingers: play.fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
+      updateAwake(now);
+      // the engine repairs itself; if it keeps having to, say so once and where to look
+      if (!toldRepairs && engine.health.heals >= 3) {
+        toldRepairs = true;
+        ui.toast('The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.', 8000);
+      }
+    } catch (e) { fail(e); }
+    frames++;
+    if (frames === 2) hook.ready = true;
+    return failed;
+  }
+
+  // The touches, keys and autoplay of this frame, and the behaviour they choose.
+  function whatPlays(now, dt, settings, scene) {
     pointers.update(dt);
 
     const idleFor = (now - lastActivity) / 1000;
     const auto = !TEST && settings.autopilot !== 'off' && !autopilotPaused
       && (settings.autopilot === 'always' || autopilotForced || idleFor > settings.idleSeconds);
     const userPoles = pointers.poles().concat(keyboard.poles());
-    const autoPoles = auto && pointers.active() === 0 ? autopilot.update(dt, time, engine.aspect) : [];
+    // Autoplay steps aside while the person holds a touch, a pin or a key, and its clock
+    // stops with it, so afterwards it fades back in instead of popping in at full strength.
+    personHolds = userPoles.some((p) => p.held);
+    const autoPoles = auto && !personHolds ? autopilot.update(dt, time, engine.aspect) : [];
     const raw = userPoles.length ? userPoles : autoPoles;
     // decided this frame, so a person's first touch after autoplay counts as theirs
     autoShown = auto && !userPoles.length;
@@ -414,31 +603,7 @@ function boot() {
     }
     blend.mix = Math.min(1, blend.mix + dt / 0.45);
     lastFingers = fingers;
-
-    const sound = audio.analysis();
-    audio.update(dt, { poles, fingers, behaviour: blend.b, scene, aspect: engine.aspect });
-
-    engine.frame({
-      dt, time, scene, settings, poles, fingers,
-      behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
-      audio: sound,
-      gravity: settings.tilt ? tilt.vector() : { x: 0, y: -1, z: 0 },
-    });
-
-    if (!capture.recording && governor.sample(interval, dt)) {
-      engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
-    }
-
-    ui.update(dt, { fingers, behaviour: blend.b, fps, particles: engine.stats.particles, recording: capture.recording, autopilot: autoShown });
-    updateAwake(now);
-    // the engine repairs itself; if it keeps having to, say so once and where to look
-    if (!toldRepairs && engine.health.heals >= 3) {
-      toldRepairs = true;
-      ui.toast('The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.', 8000);
-    }
-    frames++;
-    if (frames === 2) hook.ready = true;
-    schedule();
+    return { poles, fingers };
   }
 
   // The screen stays on while someone is around (and a while after), while recording, and
