@@ -44,6 +44,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   'use strict';
 
   const PI = Math.PI, TAU = PI * 2;
+  const imul = Math.imul, floor = Math.floor, sqrt = Math.sqrt;   // as locals: no global lookup in hot code
 
   Core.HZ = 60;
   Core.DT = 1 / 60;
@@ -56,10 +57,11 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   Core.sign = function (v) { return v > 0 ? 1 : v < 0 ? -1 : 0; };
   Core.mod = function (a, n) { return ((a % n) + n) % n; };
   Core.approach = function (v, target, step) {
-    return v < target ? Math.min(v + step, target) : Math.max(v - step, target);
+    if (v < target) return v + step > target ? target : v + step;
+    return v - step < target ? target : v - step;
   };
   Core.dist2 = function (ax, ay, bx, by) { const dx = bx - ax, dy = by - ay; return dx * dx + dy * dy; };
-  Core.dist = function (ax, ay, bx, by) { const dx = bx - ax, dy = by - ay; return Math.sqrt(dx * dx + dy * dy); };
+  Core.dist = function (ax, ay, bx, by) { const dx = bx - ax, dy = by - ay; return sqrt(dx * dx + dy * dy); };
 
   function angleWrap(a) {
     a %= TAU;
@@ -77,16 +79,16 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   // Folds the 32 bits of k into h. For a fixed k every h gives a different result, and the other way round,
   // so two lists of whole numbers that differ in exactly one place always give different hashes.
   function fold(h, k) {
-    h = Math.imul(((h ^ k) + 0x9e3779b9) | 0, 0x85ebca6b);
+    h = imul(((h ^ imul(k, 0xcc9e2d51)) + 0x9e3779b9) | 0, 0x85ebca6b);
     h ^= h >>> 13;
-    h = Math.imul(h, 0xc2b2ae35);
+    h = imul(h, 0xc2b2ae35);
     return h ^ (h >>> 16);
   }
 
   Core.hashStr = function (text) {
     text = String(text);
     let h = 0x811c9dc5 | 0;
-    for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+    for (let i = 0; i < text.length; i++) h = imul(h ^ text.charCodeAt(i), 0x01000193);
     return fold(h, text.length) >>> 0;
   };
 
@@ -135,12 +137,12 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   };
   RNG.prototype.next = function () { return this.u32() / 4294967296; };
   RNG.prototype.range = function (a, b) { return a + (b - a) * this.next(); };
-  RNG.prototype.int = function (a, b) { return a + Math.floor(this.next() * (b - a + 1)); };
+  RNG.prototype.int = function (a, b) { return a + floor(this.next() * (b - a + 1)); };
   RNG.prototype.chance = function (p) { return this.next() < p; };
 
   RNG.prototype.pick = function (array, n) {
     const len = n === undefined ? array.length : n, r = this.next();
-    return len > 0 ? array[Math.floor(r * len)] : undefined;
+    return len > 0 ? array[floor(r * len)] : undefined;
   };
 
   RNG.prototype.weighted = function (items, key, n) {
@@ -161,7 +163,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 
   RNG.prototype.shuffle = function (array, n) {
     for (let i = (n === undefined ? array.length : n) - 1; i > 0; i--) {
-      const j = Math.floor(this.next() * (i + 1)), t = array[i];
+      const j = floor(this.next() * (i + 1)), t = array[i];
       array[i] = array[j];
       array[j] = t;
     }
@@ -173,7 +175,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   };
 
   RNG.prototype.fork = function (label) {
-    const k = typeof label === 'number' ? hashMix(0x1abe1, label) : Core.hashStr(String(label));
+    const k = typeof label === 'number' ? hashMix(0x1abe1, label) : Core.hashStr(label);
     const a = this.hash(k), b = this.hash(a ^ 0x243f6a88), c = this.hash(b ^ 0x85a308d3);
     return fill(new RNG(0), a, b, c);
   };

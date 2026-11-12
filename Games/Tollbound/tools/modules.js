@@ -7,6 +7,8 @@
 //   layerOf(file)     'sim' (00 to 29) | 'content' (30 to 49) | 'presentation' (50 to 99)
 //   read(file)        the text of a module
 //   namespaces(file)  the names a module declares before its enclosed function ([] if the file is absent)
+//   declaredIn(text)  the same, from a module's text
+//   number(file)      the two-digit number of a module, as a number
 //   DECLARERS         the only two modules that may declare names: ['00-core.js', '50-platform.js']
 //   DIR               the absolute path of src/js
 'use strict';
@@ -35,10 +37,10 @@ function layerOf(file) {
 
 // The declarations sit between the header comment and the enclosed function, as "const A = {}, B = {};".
 // tools/lint.js checks that nothing else is there, so reading the names needs no parser.
-function namespaces(file) {
-  if (!fs.existsSync(path.join(DIR, path.basename(file)))) return [];
-  const top = read(file).split(/^\(function/m)[0].replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+function declaredIn(text) {
+  const top = text.split(/^\(function/m)[0].replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
   return Array.from(top.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*\{\s*\}/g), (m) => m[1]);
 }
+const namespaces = (file) => (fs.existsSync(path.join(DIR, path.basename(file))) ? declaredIn(read(file)) : []);
 
-module.exports = { all, sim, presentation, layerOf, read, namespaces, number, NAME, DECLARERS, DIR };
+module.exports = { all, sim, presentation, layerOf, read, namespaces, declaredIn, number, NAME, DECLARERS, DIR };
