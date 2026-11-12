@@ -1,0 +1,45 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "pages": {
+      "11": {
+        "pageid": 11,
+        "title": "File:Clip.webm",
+        "index": 1,
+        "imageinfo": [{
+          "mime": "video/webm", "width": 1280, "height": 720,
+          "thumburl": "https://upload.wikimedia.org/clip.webm.jpg",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Clip.webm",
+          "extmetadata": { "LicenseShortName": { "value": "CC0" } }
+        }]
+      },
+      "12": {
+        "pageid": 12,
+        "title": "File:Tiny.jpg",
+        "index": 2,
+        "imageinfo": [{
+          "mime": "image/jpeg", "width": 100, "height": 100,
+          "thumburl": "https://upload.wikimedia.org/tiny.jpg",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Tiny.jpg",
+          "extmetadata": { "LicenseShortName": { "value": "CC0" } }
+        }]
+      },
+      "13": {
+        "pageid": 13,
+        "title": "File:Old map.png",
+        "index": 3,
+        "imageinfo": [{
+          "mime": "image/png", "width": 2000, "height": 1500,
+          "thumburl": "https://upload.wikimedia.org/old-map-1024.png",
+          "descriptionurl": "https://commons.wikimedia.org/wiki/File:Old_map.png",
+          "extmetadata": {
+            "ObjectName": { "value": "Old map" },
+            "ImageDescription": { "value": "<p>An <b>old</b> map.</p>" },
+            "Artist": { "value": "<a href=\"javascript:alert(1)\">Ann</a>" },
+            "LicenseShortName": { "value": "CC BY 4.0" }
+          }
+        }]
+      }
+    }
+  }
+}

@@ -3,4 +3,9 @@ export default [
   { match: /probe-ok\.example\//, file: 'probe/ok.json' },
   { match: /probe-403\.example\//, file: 'probe/ok.json', status: 403 },
   { match: /probe-html\.example\//, file: 'probe/captcha.html', headers: { 'content-type': 'text/html' } },
+  { match: /en\.wikipedia\.org\/w\/api\.php\?.*gsrsearch=morelike/, file: 'wikipedia/morelike.json' },
+  { match: /en\.wikipedia\.org\/w\/api\.php/, file: 'wikipedia/search.json' },
+  { match: /page\/random\/summary/, file: 'wikipedia/random-summary.json' },
+  { match: /feed\/featured\//, file: 'wikipedia/featured.json' },
+  { match: /commons\.wikimedia\.org\/w\/api\.php/, file: 'commons/search.json' },
 ];

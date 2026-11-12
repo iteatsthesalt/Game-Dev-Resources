@@ -1,0 +1,10 @@
+{
+  "image": {
+    "title": "File:Aurora.jpg",
+    "thumbnail": { "source": "https://upload.wikimedia.org/aurora-640.jpg", "width": 640, "height": 427 },
+    "file_page": "https://commons.wikimedia.org/wiki/File:Aurora.jpg",
+    "artist": { "html": "<a href=\"//commons.wikimedia.org/wiki/User:Jane\">Jane Doe</a>", "text": "Jane Doe" },
+    "license": { "type": "CC BY-SA 4.0", "code": "cc-by-sa-4.0" },
+    "description": { "html": "<p>Green aurora over a frozen lake.</p>", "text": "Green aurora over a frozen lake." }
+  }
+}

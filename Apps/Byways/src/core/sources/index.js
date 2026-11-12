@@ -12,8 +12,11 @@ export const IDENT = `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/G
  */
 export const SELF_PACED = new Set(['ia', 'vault']);
 
+import wikipedia from './wikipedia.js';
+import commons from './commons.js';
+
 // Each adapter task adds one import above this line and one entry below it.
-const ADAPTERS = [];
+const ADAPTERS = [wikipedia, commons];
 
 /** id -> adapter, in the order of ADAPTERS. */
 export const SOURCES = Object.fromEntries(ADAPTERS.map(adapter => [adapter.id, adapter]));
