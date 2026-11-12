@@ -388,24 +388,73 @@ The tests use these fakes, written at the top of the test file:
 - `fakeExt({hosts = ['https://archive.org/*'], firefox = false} = {})` returns `{calls, messages, local, session, answer: true, storage, tabs, runtime, permissions, identity}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`, and `tabs.create` resolves `{id: 99, ...props}`. Storage calls are not recorded in `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`. `runtime.getManifest()` returns `{host_permissions: hosts}`, plus, with `firefox: true`, `browser_specific_settings: {gecko: {data_collection_permissions: {required: ['none'], optional: ['searchTerms', 'browsingActivity']}}}`. `permissions.contains({origins})` resolves whether every pattern is in `hosts` (not recorded). `permissions.request(q)` pushes `['permissions.request', q]` synchronously, then resolves `ext.answer`, or rejects with it when it is an `Error`. `identity.getRedirectURL()` returns `'https://test.chromiumapp.org/'`; `identity.launchWebAuthFlow(o)` pushes `['identity.launchWebAuthFlow', o]` and resolves `'https://test.chromiumapp.org/?code=abc'`.
 - `fakeWin({mic = 'granted'})` returns `{calls, fetch, navigator, speechSynthesis}`. `fetch(url, init)` pushes `[url, init]` to `calls` and resolves `new Response('ok')`. `navigator.permissions.query({name})` resolves `{state: mic}`, or rejects when `mic === 'throws'`. `navigator.clipboard.writeText(t)` pushes `['copy', t]`. It has no `share` and no `document`.
 - `fakeVoice()` is a `VoiceEngine` whose `start` sets `started = true`, and whose `emit(event, data)` calls the `on` listeners.
+- `fakeHf(fields, calls)` is a `HandsFree` with the given `state` and `listening`, whose `command(id)` pushes `['command', id]` and whose `setListening(on)` pushes `['setListening', on]` to `calls`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
 const find = { id: 'url:1', source: 'library', kind: 'site', title: 'A small site', description: '', url: 'https://small.example/', tags: [], why: [], safety: 'curated' };
 
-test('the extension caps and name', () => {
+test('the extension caps, name and lean-back flag', () => {
   const p = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'tab' });
   assert.equal(p.name, 'extension');
   assert.deepEqual(p.caps, { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false,
     labHref: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/', framesArchive: true });
+  assert.equal(p.leanBack, true);
+  assert.equal(createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'panel' }).leanBack, false);
 });
 
-test('transport fetches without cookies and drops the privileged flag', async () => {
+test('transport omits cookies, drops the privileged flag and checks hosts it has no access to without CORS', async () => {   // Review Focus 1
   const win = fakeWin({});
-  const p = createExtensionPlatform({ ext: fakeExt(), win, surface: 'panel' });
-  await p.transport.fetch('https://api.example/x', { headers: { a: '1' }, privileged: true });
-  assert.deepEqual(win.calls, [['https://api.example/x', { headers: { a: '1' }, credentials: 'omit' }]]);
+  const p = createExtensionPlatform({ ext: fakeExt({ hosts: ['https://archive.org/*'] }), win, surface: 'panel' });
+  await p.transport.fetch('https://archive.org/x', { headers: { a: '1' }, privileged: true });
+  await p.transport.fetch('https://blog.example/post', { method: 'HEAD', privileged: true });
+  await p.transport.fetch('https://blog.example/feed.xml', { privileged: true });
+  await p.transport.fetch('https://blog.example/post', { method: 'HEAD' });
+  assert.deepEqual(win.calls, [
+    ['https://archive.org/x', { headers: { a: '1' }, credentials: 'omit' }],
+    ['https://blog.example/post', { method: 'HEAD', mode: 'no-cors', credentials: 'omit' }],
+    ['https://blog.example/feed.xml', { credentials: 'omit' }],
+    ['https://blog.example/post', { method: 'HEAD', credentials: 'omit' }]]);
+});
+
+test('requestOrigins asks for match patterns inside the click and returns the answer', async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'tab' });
+  const asked = p.requestOrigins(['http://192.168.1.5:11434', 'https://llm.example.org/v1', 'ftp://x.example/']);
+  assert.deepEqual(ext.calls, [['permissions.request', { origins: ['http://192.168.1.5/*', 'https://llm.example.org/*'] }]]);   // before any await
+  assert.equal(await asked, true);
+  ext.answer = false;
+  assert.equal(await p.requestOrigins(['http://192.168.1.5:11434']), false);
+  ext.answer = new Error('not an optional permission');
+  assert.equal(await p.requestOrigins(['http://10.0.0.2:1234']), false);
+  assert.equal(await p.requestOrigins(['not a url']), false);
+  assert.equal(ext.calls.length, 3);                                       // nothing is asked for an empty list
+});
+
+test('identity asks for its permission first, then runs the browser flow', async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'tab' });
+  const redirect = p.identity.getRedirectURL();
+  assert.deepEqual(ext.calls, [['permissions.request', { permissions: ['identity'] }]]);
+  assert.equal(await redirect, 'https://test.chromiumapp.org/');
+  assert.equal(await p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth?x=1', interactive: true }),
+    'https://test.chromiumapp.org/?code=abc');
+  assert.deepEqual(ext.calls.at(-1), ['identity.launchWebAuthFlow', { url: 'https://openrouter.ai/auth?x=1', interactive: true }]);
+  ext.answer = false;
+  await assert.rejects(p.identity.getRedirectURL(), /identity permission refused/);
+});
+
+test('requestDataCollection asks Firefox inside the click, and is a yes elsewhere', async () => {
+  const ff = fakeExt({ firefox: true });
+  const asked = requestDataCollection(ff, ['searchTerms']);
+  assert.deepEqual(ff.calls, [['permissions.request', { data_collection: ['searchTerms'] }]]);
+  assert.equal(await asked, true);
+  ff.answer = new TypeError('Unexpected property "data_collection"');
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);   // no consent, nothing is sent
+  const chrome = fakeExt();
+  assert.equal(await createExtensionPlatform({ ext: chrome, win: fakeWin({}), surface: 'tab' }).requestDataCollection(['searchTerms']), true);
+  assert.deepEqual(chrome.calls, []);
 });
 
 test('secrets live in storage.local under secret:', async () => {
@@ -435,11 +484,14 @@ test("openFind 'tab' and 'inapp' open a new tab", async () => {
   assert.deepEqual(ext.calls, [['tabs.create', { url: 'https://small.example/' }], ['tabs.create', { url: 'https://small.example/' }]]);
 });
 
-test('Open defaults to the current tab in the panel and a new tab in the Byways tab', async () => {
-  const a = fakeExt(); await createExtensionPlatform({ ext: a, win: fakeWin({}), surface: 'panel' }).openFind(find);
-  const b = fakeExt(); await createExtensionPlatform({ ext: b, win: fakeWin({}), surface: 'tab' }).openFind(find);
-  assert.equal(a.calls[0][0], 'tabs.update');
-  assert.equal(b.calls[0][0], 'tabs.create');
+test('openFind defaults to a new tab on every surface and refuses links that are not http(s)', async () => {
+  for (const surface of ['panel', 'tab']) {
+    const ext = fakeExt();
+    const p = createExtensionPlatform({ ext, win: fakeWin({}), surface });
+    await p.openFind(find);
+    await assert.rejects(p.openFind({ ...find, url: 'javascript:alert(1)' }, 'current'), /not an http\(s\) link/);
+    assert.deepEqual(ext.calls, [['tabs.create', { url: 'https://small.example/' }]], surface);
+  }
 });
 
 test('share copies the link when there is no share sheet', async () => {

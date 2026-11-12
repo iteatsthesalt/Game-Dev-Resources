@@ -1892,7 +1892,8 @@ Expected: FAIL. The unit test fails with `undefined !== '5.3.0'`, and each e2e t
 - [ ] **Step 3: Add the package and copy the files**
 
 Run: `npm install --save-dev --save-exact @fontsource/atkinson-hyperlegible@5.3.0`
-Then copy the three files:
+Then make the folder, which no earlier plan creates, and copy the three files:
+`mkdir -p src/assets/fonts`
 `cp node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-normal.woff2 src/assets/fonts/`
 `cp node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2 src/assets/fonts/`
 `cp node_modules/@fontsource/atkinson-hyperlegible/LICENSE src/assets/fonts/OFL.txt`

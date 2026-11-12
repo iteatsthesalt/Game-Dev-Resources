@@ -44,25 +44,28 @@
 
 | File | Responsibility |
 |---|---|
-| `src/core/ia/client.js` | The one Archive queue: pacing, 429 pause, caching, `search`, `count`, `metadata`, `wayback`, `sharedIaClient` |
+| `src/core/ia/client.js` | The one Archive queue: pacing, `Retry-After` hold, 429 pause, caching, `search`, `count`, `metadata`, `wayback`, `luceneEscape`, `sharedIaClient` |
 | `src/core/ia/vault.js` | Collections, shelves, labels, gem query and score, why chips, doc → Find, validation, shelf gems, Vault Fate |
 | `src/core/daily.js` | Daily seed, backup recipe, file loading, pick → Find mappers |
 | `src/core/sources/ia.js` | Archive non-game adapter (films, audio, magazines) |
 | `src/core/sources/vault.js` | Archive games adapter, with the snapshot fallback and embed-broken skip |
 | `src/core/sources/oldweb.js` | GeoCities seeds through Wayback |
-| `src/core/sources/itch.js` | itch.io feeds: live when privileged, else the snapshot; `parseItchRss` |
-| `src/core/sources/index.js` (modify) | Registers `ia`, `vault`, `oldweb`, `itch` |
-| `src/ui/views/vault.js` | Vault view, shelves, gem cards, player and watchdog |
+| `src/core/sources/itch.js` | itch.io feeds: live with privileged fetch, else the snapshot; `parseItchRss` |
+| `src/core/sources/webring.js` | Webring and Neocities cards from the snapshot extras |
+| `src/core/sources/index.js` (modify) | `readSnapshot`; registers `ia`, `vault`, `oldweb`, `itch`, `webring` |
+| `src/ui/components/card.js` (modify) | Card heading level, details link, **Keyboard needed** badge, `mountPlayer` and the `play` action |
+| `src/ui/views/vault.js` | Vault view and shelves |
 | `src/ui/views/daily.js` | Daily Fate view |
-| `src/ui/boot.js`, `src/ui/views/index.js` (modify) | `app.ia`, snapshot loader, embed-broken set, view imports |
-| `src/data/vault-starter.json`, `src/data/geocities-seeds.json` | Curated data |
+| `src/ui/boot.js`, `src/ui/views/index.js` (modify) | `app.dataUrl`, `app.ia`, the embed-broken set, view imports |
+| `src/data/vault-starter.json`, `src/data/geocities-seeds.json` (modify) | Curated data |
 | `tools/data-job.js` | Writes `daily.json`, `itch.json`, `vault-index.json`, `linkcheck.json` and the snapshot extras |
 | `tools/linkcheck.js` | Checks library links and keeps fail streaks |
-| `tools/build.js` (modify) | `--linkcheck <file>` drops entries with `failStreak ≥ 2` |
+| `tools/build.js` (modify) | `{"v":1}` placeholders for the generated files; `--linkcheck <file>` drops entries with `failStreak ≥ 2` |
 | `tools/probe-live.js` | The §17.4 live checks and Markdown report |
-| `.github/workflows/byways-probe.yml`, `.github/workflows/pages.yml` (modify) | Weekly probe; daily data step |
-| `tests/unit/helpers/fake-fetch.js` | `fakeFetch` and `instantClock` for unit tests |
-| `tests/fixtures/http/ia/*`, `tests/fixtures/http/daily/*`, `tests/fixtures/http/itch/*`, `tests/fixtures/routes.js` (modify) | Hand-written fixtures from the research shapes |
+| `.github/workflows/byways-probe.yml`, `.github/workflows/pages.yml`, `README.md` (modify) | Weekly probe; daily data step; the optional `NASA_API_KEY` secret |
+| `tests/unit/helpers/fake-fetch.js` | `fakeFetch`, `instantClock` and `readFixture` for unit tests |
+| `tests/unit/sources-index.test.js`, `tests/unit/workflows.test.js`, `tests/e2e/axe.spec.js` (modify) | Plan 02's registry table, Plan 01's workflow checks, Plan 03's axe views |
+| `tests/fixtures/http/{ia,daily,itch,pages,datajob}/*`, `tests/fixtures/routes.js` (modify) | Hand-written fixtures from the research shapes |
 
 ### Task 1: The Archive client and queue
 
