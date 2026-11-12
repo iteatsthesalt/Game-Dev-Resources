@@ -20,8 +20,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - `powerPreference` is only a hint. With "high-performance", user agents are "more likely to force device loss", so handle `device.lost`. [Verified: SPEC]
 
 **Adapter identity**
-- **Default `GPUAdapterInfo`** carries `vendor`, `architecture`, subgroup sizes and `isFallbackAdapter`. [Verified: CRMAIN/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc; CR156/gpu/config/gpu_switches.cc; CR156/content/child/runtime_features.cc]
-  `device`/`description` stay empty unless `--enable-webgpu-developer-features` (off by default) adds the PCI ID, driver name and heaps. Do not ship that flag: it adds fingerprinting surface, and Electron already supplies PCI IDs. Measured: "google" / "swiftshader" / true / empty description.
+- **Default `GPUAdapterInfo`** carries `vendor`, `architecture`, subgroup sizes and `isFallbackAdapter`; `device`/`description` stay empty unless `--enable-webgpu-developer-features` (off by default) adds the PCI ID, driver name and heaps. Do not ship that flag: it adds fingerprinting surface, and Electron already supplies PCI IDs. [Verified: CRMAIN/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc; CR156/gpu/config/gpu_switches.cc; CR156/content/child/runtime_features.cc] Measured: "google" / "swiftshader" / true / empty description.
 - `isFallbackAdapter` arrived in Chrome 136. [Verified: BCD/GPUAdapterInfo.json]
 - **Dawn architecture strings** by PCI-ID range: NVIDIA `turing`…`blackwell`; AMD `gcn-1`…`rdna-4`; Intel `gen-9`…`gen-12-hp`, `xe-lpg`, `xe-2-lpg`, `xe-2-hpg`, `xe-3-lpg`; Qualcomm `adreno-6xx/7xx/8xx`; software SwiftShader 0x1AE0, WARP 0x1414, Mesa 0x10005. Apple reports no device ID, only the Metal family `common-N`. [Verified: DAWN]
 - The unmasked WebGL renderer string (`WEBGL_debug_renderer_info`) is available. Measured.
@@ -29,7 +28,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - Electron can disable GPU access after repeated crashes. [Verified: https://github.com/electron/electron/pull/52072]
 
 **Default WebGPU availability**
-- **Linux (Chromium 156):** allowed only for Intel Gen12+ on Mesa ≥ 22.0 and NVIDIA ≥ 535.183.01 (since 148). AMD and older Intel are blocked. Steam Deck, Steam Machine and (unverified headline) about two-thirds of Linux Steam users therefore get WebGL2 unless WebGPU is force-enabled. BCD's "Intel Gen12+ only" is too narrow. [Verified correction: CR156/gpu/config/software_rendering_list.json]
+- **Linux (Chromium 156):** allowed only for Intel Gen12+ on Mesa ≥ 22.0 and NVIDIA proprietary drivers ≥ 535.183.01 (since 148). AMD and older Intel are blocked. Steam Deck, Steam Machine and (unverified headline) about two-thirds of Linux Steam users therefore get WebGL2 unless WebGPU is force-enabled. BCD's "Intel Gen12+ only" is too narrow. [Verified correction: CR156/gpu/config/software_rendering_list.json]
 - **Windows on Arm:** Qualcomm is on by default (`kWebGPUQualcommWindows`). Drivers 31.0.110–116 on Adreno 7xx device 0x36334330 (X1 generation) are blocklisted. [Verified: CR156/gpu/config/gpu_finch_features.cc; CR156/gpu/config/webgpu_blocklist_impl.cc]
 - **CPU adapters** are blocklisted without `--enable-unsafe-webgpu`. Machines without a usable GPU get no adapter and need WebGL2. [Untagged]
 
@@ -43,7 +42,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - `navigator.deviceMemory` on desktop reports 2/4/8/16/32 from Chrome 147; before that it was capped at 8. 24 GB reads as 16 and 64 GB+ as 32 (calc). Measured 16 on 16 GB. Prefer `process.getSystemMemoryInfo().total` (KB, exact). [Verified: BCD/Navigator.json; CRMAIN/third_party/blink/common/device_memory/approximated_device_memory.cc; EDOCS/process.md]
 - `Display` exposes `displayFrequency`, `colorDepth`, `depthPerComponent`, `colorSpace`, `scaleFactor`, `size` and `internal`. No web refresh-rate API exists, so read `displayFrequency`. [Verified: EDOCS/structures/display.md]
 - **`powerMonitor`:** `isOnBatteryPower()`; `on-ac`/`on-battery` on macOS and Windows only (Linux must poll); `thermal-state-change` on macOS; `speed-limit-change` on macOS and Windows (below 100 means throttling). [Verified: EDOCS/power-monitor.md]
-- **HDR:** a canvas with `rgba16float` + `toneMapping: {mode: "extended"}` is in Chrome 129+ [Verified: BCD/GPUCanvasContext.json]. Measured: accepted and echoed by `getConfiguration()`, which proves the API only, because WebGPU canvas presentation fails in this container and no frame was shown. `dynamic-range: high` reports capability, not active HDR [Untagged: MDN]. Electron does not document which `colorSpace`/`depthPerComponent` values mean HDR is on.
+- **HDR:** a canvas with `rgba16float` + `toneMapping: {mode: "extended"}` is in Chrome 129+ [Verified: BCD/GPUCanvasContext.json]. Measured: accepted and echoed by `getConfiguration()`; API only, since WebGPU canvas presentation fails in this container. `dynamic-range: high` reports capability, not active HDR [Untagged: MDN]. Electron does not document which `colorSpace`/`depthPerComponent` values mean HDR is on.
 
 ## 2. Tier model
 
@@ -55,24 +54,18 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
   - High: RTX 5070 (672 · 30.9 · 12); RTX 5060 Ti 16 GB (448 · 23.7); RX 9070 XT (640 · ~24 · 16); M4 Max (≤ 546); M5 Max (460/614). The RTX 5070 Laptop has 448 GB/s but only 8 GB.
   - Ultra: RTX 5070 Ti (896 · 43.9 · 16); RTX 5080 (960 · 56.3 · 16); RTX 5090 (1,792 · 104.9 · 32); M5 Ultra ~1.2 TB/s (secondary only).
 - **Macs (Inference):** base M chips are Minimum, Pro chips Recommended and Max chips High. This needs the chip variant and GPU-core count, which WebGPU hides.
-- **Installed base** is stable through 2027. No new desktop GPUs shipped in 2026. RTX 50 Super is expected at CES 2027 at the earliest, RTX 60 around 2028, RDNA 5 in 2H 2027 or later. [Untagged: Tom's Hardware, PCGH]
+- **Installed base** is stable through 2027: no new desktop GPUs in 2026; RTX 50 Super at CES 2027 at the earliest, RTX 60 ~2028, RDNA 5 2H 2027+. [Untagged: Tom's Hardware, PCGH]
 
 ## 3. Particle budget (calc; inputs are assumptions)
 
-- **Rule:** N × bytes per particle per frame × Hz ≤ usable bandwidth − resolution overhead.
-  - Usable = η·φ·peak = 0.8 × 0.5 × peak. Both factors are unsourced; calibrate them in the app.
-  - Bytes per particle: lean 80, typical 128, heavy 256.
+- **Rule:** N × bytes per particle per frame × Hz ≤ usable bandwidth − resolution overhead. Usable = η·φ·peak = 0.8 × 0.5 × peak (both unsourced; calibrate in the app). Lean/typical/heavy = 80/128/256 B.
 - **Overhead** (RGBA16F post, ~64 B/px/frame), in GB/s at 60/144/240 Hz: 1080p 8.0/19.1/31.9; 1440p 14.2/34.0/56.6; 4K 31.9/76.4/127.4.
 - **N_max at 128 B:** Iris Xe ~2.5M at 1080p60 (close to the mobile edition's 2M); RTX 4060 ~4.9M at 1080p144, ~12M at 1440p60; RTX 5070 ~12.7M at 1440p144, ~6.9M at 1440p240; RTX 5080 ~16.7M at 4K144; RTX 5090 ~35M at 4K144, ~89M at 4K60. [Verified: arithmetic recomputed; inputs assumed, peak bandwidths unverified]
 - **What fits at 128 B:** 1M at 240 Hz fits all but the weakest iGPUs. 10M at 144 Hz needs RTX 5070 class. 50M at 60 Hz needs an RTX 5080/5090, and 50M at 144 Hz only an RTX 5090 with the lean layout. 50M at 240 Hz fits no single GPU.
-- **Fill on immediate-mode GPUs:** about 16 B of DRAM per blended RGBA16F fragment. 1M glow sprites × 64 px × 60 Hz is about 61 GB/s, more than Iris Xe's whole usable budget.
-  - Apple TBDR blends in tile memory, so fill mostly vanishes on Macs. [Verified: METAL/tailor-your-apps-for-apple-gpus-and-tile-based-deferred-rendering]
-  - Caches are ignored, so the model is conservative for 1M-class scenes.
+- **Fill on immediate-mode GPUs:** about 16 B of DRAM per blended RGBA16F fragment; 1M glow sprites × 64 px × 60 Hz ≈ 61 GB/s, more than Iris Xe's whole usable budget. Apple TBDR blends in tile memory, so fill mostly vanishes on Macs. [Verified: METAL/tailor-your-apps-for-apple-gpus-and-tile-based-deferred-rendering] Ignoring caches makes the model conservative for 1M-class scenes.
 - **Footprint** (ping-pong 32/48 B): 1M takes 64/96 MB, 10M 0.64/0.96 GB, 50M 3.2/4.8 GB, so 50M needs at least 8 GB VRAM. On Macs, stay under `recommendedMaxWorkingSetSize`. [Verified: METAL/mtldevice/recommendedmaxworkingsetsize]
 - **FLOPs rarely bind:** 10M × 1,000 FLOPs × 144 Hz = 1.44 TFLOP/s, against about 15 TFLOPS on an RTX 4060.
-- **Measured software floor.** SwiftShader took 22 ms per frame at 20k particles and 131 ms at 300k (32 B compute step + 1-px additive point draw, offscreen). [Verified correction: measured in this container]
-  - That is about 0.9M and 2.3M particle-updates per second, with about 14 ms of fixed cost per frame (two-point fit).
-  - It is 65–165× below Iris Xe's ~150M per second and cannot hold 60 Hz even at 20k.
+- **Measured software floor:** SwiftShader took 22 ms per frame at 20k particles and 131 ms at 300k (32 B compute step + 1-px additive point draw, offscreen): about 0.9M and 2.3M particle-updates per second (a two-point fit gives ~14 ms fixed cost per frame), 65–165× below Iris Xe's ~150M per second. It cannot hold 60 Hz even at 20k. [Verified correction: measured in this container]
 - **Design (Inference):** make particle count, sprite size/glow radius and render scale separate knobs. Above 240 Hz, run a fixed 120/240 Hz simulation and interpolate rendering. Ultrawide 3440×1440 has 34% more pixels than 1440p.
 
 ## 4. Steam survey, October 2026 (all search summaries, not verified)
@@ -83,7 +76,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - **CPU, RAM, VRAM:** 8-core 28.68%, 6-core 27.29%. RAM 16 GB 41.42%, 32 GB 37.06%. VRAM 8 GB 26.92%, 16 GB 26.35%, 12 GB ~13% (June), so about two-thirds have at least 8 GB (calc). (Wccftech, Guru3D)
 - **GPUs:** RTX 3060 3.62% and RTX 5070 3.56% (the 5070 was #1 in September at 5.86%). The top six sit within 0.65 points, and the RTX 4060 Laptop led one earlier 2026 month. (TweakTown, Guru3D)
 - **Displays:** 1080p 50.23%, 1440p 21.82%, 4K 5.05%. Valve publishes no refresh-rate or HDR data. (Hardware Busters, Wccftech)
-- **Caveats (Inference):** the survey is opt-in. Language-mix swings (Simplified Chinese down 9.41 points) drove the September-to-October reversals, and Valve revises its numbers. Use 3–6-month PC-only averages.
+- **Caveats (Inference):** opt-in survey; language-mix swings (Simplified Chinese down 9.41 points) drove the September-to-October reversals; Valve revises numbers. Use 3–6-month PC-only averages.
 - **Median Steam PC (Inference):** Windows 11, 6–8 cores, 16–32 GB, an 8–16 GB RTX 3060/4060/5060 Ti-class GPU and 1080p. This anchors Recommended, not Minimum. A light-toy audience skews to iGPU laptops and Macs, so Minimum must work on integrated graphics.
 
 ## 5. Displays (secondary sources, untagged)
@@ -99,7 +92,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - **Minimum (1080p60, ~1–2M):** Windows 10 22H2 64-bit, Apple Silicon M1 or 64-bit Linux with Vulkan; 4 cores; 8 GB RAM (16 with an iGPU); a WebGPU-capable GPU (DX12/Vulkan/Metal) such as Iris Xe, Radeon 680M, M1 or GTX 1650; 2 GB video memory, shared OK.
 - **Recommended (1080p144 or 1440p60, ~5–10M):** Windows 11; 6C/12T; 16 GB; RTX 3060/4060, RX 7600/9060 XT, Arc B580, M4/M5 Pro or Ryzen AI Max; 8 GB VRAM.
 - **High (1440p 144–240 Hz, ~10–15M):** 8C/16T; 16–32 GB; RTX 5070, RX 9070 XT, RTX 5060 Ti 16 GB or M4/M5 Max; 12 GB.
-- **Ultra (4K 120–144 Hz or 1440p 360–480 Hz, 20–50M+):** 32 GB; RTX 5080/5090 (5070 Ti entry); 16 GB+; OLED or DisplayHDR 1000.
+- **Ultra (4K 120–144 Hz or 1440p 360–480 Hz, 20–50M+):** 8+ cores; 32 GB; RTX 5080/5090 (5070 Ti entry); 16 GB+; OLED or DisplayHDR 1000.
 - **Footnote and Linux line:** "Laptops with switchable graphics must run Tactilume on the discrete GPU." For Linux: "Intel Gen12+ (Mesa 22+) or NVIDIA (535.183.01+) for WebGPU; other GPUs run the WebGL2 renderer". [Verified correction: CR156/gpu/config/software_rendering_list.json]
 - **Steam Deck/SteamOS scope** differs from desktop_app_shell.md. This is a product decision.
 
@@ -110,7 +103,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - **Calibration:**
   1. Start from the spec prior; unknown and Apple GPUs start at Minimum.
   2. A ~1 s copy probe of 256 MB with `timestamp-query` (falling back to `onSubmittedWorkDone()`) calibrates η.
-  3. Ramp for 10–15 s after a 2–3 s warm-up, at native resolution and `displayFrequency`. Start at 0.5× the prior and multiply by 1.4 every 1–1.5 s. Stop at p90 > 75% of the refresh period or at the binding/VRAM cap, then bisect 2–3 times.
+  3. Ramp for 10–15 s after a 2–3 s warm-up, at native resolution and `displayFrequency`: from 0.5× the prior, ×1.4 every 1–1.5 s, until p90 > 75% of the refresh period or the binding/VRAM cap; then bisect 2–3 times.
   4. Soak for 15–20 s at 85%. Cut 15% and flag the machine as thermal-limited if the last 3 s are > 10% slower, the speed limit drops below 100, or the thermal state reaches serious.
   5. Pick the highest tier whose target fits. Store the result per GPU PCI IDs, driver, display, refresh and power source. Re-run on `gpu-info-update`, a display or power change, or `device.lost`.
 - **Defaults:** the default preset is "Auto (this machine)", public floors stay market-anchored, and Minimum is tested on an Iris Xe or 780M laptop.
@@ -123,5 +116,4 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - **Windows dGPU forcing** from inside the app is untested.
 - **Linux:** force-enabled WebGPU on AMD/Mesa and Linux PRIME offload were not researched.
 - **HDR:** active-HDR detection is undocumented, and real HDR presentation is untested because presentation fails in this container.
-- **Steam figures** need checking against Valve's tables.
-- **Unresolved specs:** the B390 bandwidth and the Arc B770 status.
+- **Still open:** Steam figures need checking against Valve's tables; the B390 bandwidth and Arc B770 status are unresolved.
