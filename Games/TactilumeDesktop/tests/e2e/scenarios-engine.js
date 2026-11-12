@@ -1,0 +1,296 @@
+// The WebGPU engine, in the built renderer: the light renders, poles move it, every
+// behaviour runs cleanly, symmetry and team colours work, the flash guard holds back a
+// sudden brightening, the particle buffer grows and dispatches in two dimensions, and a lost
+// device is recovered once. See CONTRACTS.md, "renderer/engine/".
+//
+// The software GPU draws about ten frames a second here, and the engine skips animation
+// frames while the GPU is behind, so these scenarios wait on frames the engine has drawn
+// (engine.stats.frames), not on the app's frame counter.
+
+const BEHAVIOURS = ['well', 'whirl', 'burst', 'halo', 'current', 'weave', 'chime', 'storm', 'lattice', 'nova', 'murmur', 'fountain'];
+
+// ---- helpers ------------------------------------------------------------------------------
+
+const drawn = (page) => page.evaluate(() => window.TACTILUME_DESKTOP.engine.stats.frames);
+
+// Waits until the engine has drawn `n` more frames. → true, or false on timeout.
+async function drawFrames(h, page, n, timeout = 30000) {
+  const start = await drawn(page);
+  return h.until(page, ({ start, n }) => window.TACTILUME_DESKTOP.engine.stats.frames >= start + n, { start, n }, timeout);
+}
+
+const setScene = (page, partial) => page.evaluate((p) => window.TACTILUME_DESKTOP.store.setScene(p, { source: 'test' }), partial);
+const setSettings = (page, partial) => page.evaluate((p) => window.TACTILUME_DESKTOP.store.setSettings(p, { source: 'test' }), partial);
+
+// A player of our own in the input hub, holding still poles at world positions [[x, y], …].
+// → the player ({ id, color, … }).
+function addPlayer(page, key, places) {
+  return page.evaluate(({ key, places }) => {
+    const { hub } = window.TACTILUME_DESKTOP;
+    const player = hub.addPlayer({ kind: 'phone', name: key, key });
+    hub.setPoles(player.id, places.map(([x, y], i) => ({ x, y, vx: 0, vy: 0, power: 1, age: 1, held: true, id: `${key}${i}`, kind: 'touch' })));
+    return player;
+  }, { key, places });
+}
+const removePlayer = (page, id) => page.evaluate((id) => window.TACTILUME_DESKTOP.hub.removePlayer(id), id);
+
+// A square region of the picture around a point on the touch plane, as capture() takes it.
+function around(page, x, y, half = 0.07) {
+  return page.evaluate(({ x, y, half }) => {
+    const e = window.TACTILUME_DESKTOP.engine;
+    const { px, py } = e.worldToScreen(x, y);
+    const w = innerWidth, hgt = innerHeight;
+    const r = half * hgt; // half the side, in px, from a share of the height
+    const clamp = (v) => Math.min(1, Math.max(0, v));
+    return { x0: clamp((px - r) / w), y0: clamp((py - r) / hgt), x1: clamp((px + r) / w), y1: clamp((py + r) / hgt) };
+  }, { x, y, half });
+}
+
+// Mean red, green and blue (0..255) of each region of the last frame.
+function colours(page, regions) {
+  return page.evaluate(async (regions) => {
+    const { width, height, data } = await window.TACTILUME_DESKTOP.engine.capture();
+    return regions.map((r) => {
+      let R = 0, G = 0, B = 0, n = 0;
+      for (let y = Math.floor(r.y0 * height); y < Math.ceil(r.y1 * height); y++) {
+        for (let x = Math.floor(r.x0 * width); x < Math.ceil(r.x1 * width); x++) {
+          const o = (y * width + x) * 4;
+          R += data[o]; G += data[o + 1]; B += data[o + 2]; n++;
+        }
+      }
+      return { r: R / n, g: G / n, b: B / n };
+    });
+  }, regions);
+}
+
+// Reads back the first `n` particles. → { all: n, bad (any NaN or infinity), unplaced (all
+// zero: never put in the resting shape), positions }
+function particles(page, n) {
+  return page.evaluate(async (n) => {
+    const got = await window.TACTILUME_DESKTOP.engine.inspect(n);
+    let bad = 0, unplaced = 0;
+    const positions = [];
+    for (const p of got.particles) {
+      if (!p.every(Number.isFinite)) bad++;
+      if (p.every((v) => v === 0)) unplaced++;
+      positions.push(p[0], p[1], p[2]);
+    }
+    return { all: got.particles.length, bad, unplaced, positions, adapt: got.adapt };
+  }, n);
+}
+
+const engineErrors = (page) => page.evaluate(() => window.TACTILUME_DESKTOP.engine.errors);
+const round = (x, k = 2) => (x === null || x === undefined ? x : +x.toFixed(k));
+
+// ---- scenarios ----------------------------------------------------------------------------
+
+export default [
+  {
+    name: 'engine light: the particles glow at rest, with no one playing',
+    async run(page, h) {
+      await h.open(page);
+      const checks = [h.check('the engine draws frames', await drawFrames(h, page, 8))];
+      const t = await page.evaluate(() => ({ stats: window.TACTILUME_DESKTOP.engine.stats, caps: window.TACTILUME_DESKTOP.engine.caps }));
+      checks.push(h.check('it draws the 20,000 particles asked for', t.stats.particles === 20000 && t.stats.drawn === 20000 && t.stats.capacity >= 20000, t.stats));
+      checks.push(h.check('the largest count is the adapter\'s buffer limit over 32 bytes', t.caps.maxParticles >= 1e6 && t.caps.maxParticles <= 2 ** 31 / 32, t.caps));
+      // nothing touches the light: what shows is the resting nebula of particles
+      const all = await h.capture(page);
+      checks.push(h.check('the resting light fills much of the picture', all.mean > 8 && all.lit > 0.25 && all.max > 60, all));
+      checks.push(h.check('the resting nebula sits in the middle', all.cx > 0.38 && all.cx < 0.62 && all.cy > 0.38 && all.cy < 0.62, all));
+      const edge = await h.capture(page, { region: { x0: 0, y0: 0, x1: 0.08, y1: 0.12 } });
+      const middle = await h.capture(page, { region: { x0: 0.42, y0: 0.4, x1: 0.58, y1: 0.6 } });
+      checks.push(h.check('it is brighter in the middle than in the corner', middle.mean > edge.mean * 2 + 5, { middle: middle.mean, edge: edge.mean }));
+      const p = await particles(page, 4096);
+      checks.push(h.check('every particle read back is a real number', p.bad === 0, p));
+      checks.push(h.check('every particle was placed in the resting shape', p.unplaced === 0, { unplaced: p.unplaced }));
+      checks.push(h.check('the eye adaptation state is set', p.adapt[3] === 1 && p.adapt[2] > 0.02, p.adapt));
+      const e = await engineErrors(page);
+      checks.push(h.check('no WebGPU errors', e.count === 0, e));
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine pole: a held pole draws the light toward it',
+    async run(page, h) {
+      await h.open(page);
+      // still camera, so a place on the plane stays at one place in the picture
+      await setScene(page, { lock: 'well', orbit: 0 });
+      await drawFrames(h, page, 6);
+      const aspect = await page.evaluate(() => window.TACTILUME_DESKTOP.engine.aspect);
+      const x = aspect * 0.6, y = 0.1;
+      const spot = await around(page, x, y, 0.09);
+      const before = await h.capture(page);
+      const spotBefore = await h.capture(page, { region: spot });
+      const player = await addPlayer(page, 'pull', [[x, y]]);
+      const checks = [h.check('the engine keeps drawing', await drawFrames(h, page, 40))];
+      const after = await h.capture(page);
+      const spotAfter = await h.capture(page, { region: spot });
+      checks.push(h.check('the light moves toward the pole', after.cx > before.cx + 0.05, { before: round(before.cx, 3), after: round(after.cx, 3), pole: round((x / aspect + 1) / 2, 3) }));
+      checks.push(h.check('the light gathers at the pole', spotAfter.mean > spotBefore.mean * 1.5 + 10, { before: round(spotBefore.mean), after: round(spotAfter.mean) }));
+      await removePlayer(page, player.id);
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine behaviours: all twelve run without WebGPU errors',
+    timeout: 150000,
+    async run(page, h) {
+      await h.open(page);
+      const checks = [];
+      // three poles from two players first (rivers, threads and team colours all run), then
+      // a single pole (the one-touch forms of current and weave)
+      const a = await addPlayer(page, 'left', [[-0.6, 0.2], [0.1, -0.4]]);
+      const b = await addPlayer(page, 'right', [[0.7, 0.3]]);
+      for (const [label, remove] of [['three poles', null], ['one pole', [a.id]]]) {
+        if (remove) for (const id of remove) await removePlayer(page, id);
+        for (const key of BEHAVIOURS) {
+          await setScene(page, { lock: key });
+          const ran = await drawFrames(h, page, 5);
+          const p = await particles(page, 2048);
+          const e = await engineErrors(page);
+          const pic = await h.capture(page);
+          const ok = ran && p.bad === 0 && e.count === 0 && pic.mean > 2;
+          checks.push(h.check(`${key} with ${label}: it runs, its particles stay real numbers, it shows light`, ok, { ran, bad: p.bad, errors: e, mean: round(pic.mean) }));
+        }
+      }
+      await removePlayer(page, b.id);
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine flash guard: a sudden whole-screen brightening is held back',
+    timeout: 150000,
+    async run(page, h) {
+      await h.open(page);
+      // From a dim scene to a bright one at once: exposure -2.5 to +2.5 makes every pixel
+      // 32 times brighter before tone mapping. Measured with the guard on (the default)
+      // and then off.
+      async function jump() {
+        await setScene(page, { exposure: -2.5 });
+        await drawFrames(h, page, 30);
+        const dim = (await h.capture(page)).mean;
+        await setScene(page, { exposure: 2.5 });
+        await drawFrames(h, page, 3);
+        const soon = (await h.capture(page)).mean;
+        await drawFrames(h, page, 45);
+        const later = (await h.capture(page)).mean;
+        return { dim: round(dim), soon: round(soon), later: round(later) };
+      }
+      const guarded = await jump();
+      await setSettings(page, { flashGuard: false });
+      const bare = await jump();
+      const info = { guarded, bare };
+      return [
+        h.check('without the guard the jump is a flash', bare.soon > bare.dim * 2 + 10, info),
+        h.check('with the guard the screen brightens by less than a third as much at first', guarded.soon - guarded.dim < (bare.soon - bare.dim) / 3, info),
+        h.check('with the guard the light still arrives, a little later', guarded.later > guarded.dim + (bare.soon - bare.dim) / 2, info),
+      ];
+    },
+  },
+
+  {
+    name: 'engine symmetry: one touch in a six-fold scene pulls light to six places',
+    async run(page, h) {
+      await h.open(page);
+      await setScene(page, { lock: 'well', orbit: 0, symmetry: 6, mirror: false });
+      await drawFrames(h, page, 4);
+      const player = await addPlayer(page, 'six', [[0, 0.62]]);
+      const checks = [h.check('the engine keeps drawing', await drawFrames(h, page, 40))];
+      const at = (deg) => [0.62 * Math.cos((deg * Math.PI) / 180), 0.62 * Math.sin((deg * Math.PI) / 180)];
+      const copies = [];
+      const between = [];
+      for (let k = 0; k < 6; k++) {
+        copies.push((await h.capture(page, { region: await around(page, ...at(90 + k * 60), 0.06) })).mean);
+        between.push((await h.capture(page, { region: await around(page, ...at(120 + k * 60), 0.06) })).mean);
+      }
+      const mean = (xs) => xs.reduce((s, x) => s + x, 0) / xs.length;
+      const info = { copies: copies.map((m) => round(m)), between: between.map((m) => round(m)) };
+      checks.push(h.check('light gathers at each of the six places', Math.min(...copies) > mean(between) * 1.3 + 5, info));
+      await removePlayer(page, player.id);
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine team colours: light near each player\'s touch takes that player\'s colour',
+    async run(page, h) {
+      await h.open(page);
+      // a grey palette, so any colour comes from the players
+      await setScene(page, { lock: 'well', orbit: 0, palette: 'silver', hue: 0 });
+      const left = await addPlayer(page, 'amber', [[-0.75, 0]]);
+      const right = await addPlayer(page, 'sky', [[0.75, 0]]);
+      const checks = [h.check('the engine keeps drawing', await drawFrames(h, page, 40))];
+      const regions = [await around(page, -0.75, 0, 0.08), await around(page, 0.75, 0, 0.08)];
+      const [l, r] = await colours(page, regions);
+      // how much redder than blue each player's colour is, and each place's light
+      const warmth = (c) => (Array.isArray(c) ? c[0] - c[2] : (c.r - c.b) / Math.max(1, c.r + c.g + c.b));
+      const info = { left: { player: left.color, light: l }, right: { player: right.color, light: r } };
+      checks.push(h.check('the two players have different colours', Math.sign(warmth(left.color)) !== Math.sign(warmth(right.color)), info));
+      checks.push(h.check('light near the first player leans to its colour', Math.sign(warmth(l)) === Math.sign(warmth(left.color)) && Math.abs(warmth(l)) > 0.08, info));
+      checks.push(h.check('light near the second player leans to its colour', Math.sign(warmth(r)) === Math.sign(warmth(right.color)) && Math.abs(warmth(r)) > 0.08, info));
+      // one player alone plays in the palette's colours
+      await removePlayer(page, right.id);
+      await drawFrames(h, page, 30);
+      const [alone] = await colours(page, [regions[0]]);
+      checks.push(h.check('with one player the palette\'s grey comes back', Math.abs(warmth(alone)) < Math.abs(warmth(l)) / 2, { alone, before: l }));
+      await removePlayer(page, left.id);
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine particle buffer: it grows, and a two-dimensional dispatch reaches every particle',
+    timeout: 150000,
+    async run(page, h) {
+      await h.open(page);
+      // rows of 5 workgroups (1,280 particles), so this small count dispatches in two dimensions
+      await page.evaluate(() => window.TACTILUME_DESKTOP.engine._setDispatchWidth(5));
+      const capacity = await page.evaluate(async () => {
+        const e = window.TACTILUME_DESKTOP.engine;
+        const before = e.stats.capacity;
+        await e.setQuality({ particles: 70000 });
+        return { before, after: e.stats.capacity, particles: e.stats.particles };
+      });
+      const checks = [
+        h.check('the buffer grows to hold 70,000 particles', capacity.after >= 70000 && capacity.after > capacity.before && capacity.particles === 70000, capacity),
+        h.check('the engine keeps drawing', await drawFrames(h, page, 3)),
+      ];
+      const first = await particles(page, 70000);
+      checks.push(h.check('the new particles were placed, in rows', first.unplaced === 0 && first.bad === 0, { unplaced: first.unplaced, bad: first.bad }));
+      await drawFrames(h, page, 3);
+      const second = await particles(page, 70000);
+      let still = 0;
+      for (let i = 0; i < 70000; i++) {
+        const o = i * 3;
+        if (first.positions[o] === second.positions[o] && first.positions[o + 1] === second.positions[o + 1] && first.positions[o + 2] === second.positions[o + 2]) still++;
+      }
+      checks.push(h.check('every particle moves: each row of workgroups is simulated', still === 0, { still }));
+      const stats = await page.evaluate(() => window.TACTILUME_DESKTOP.engine.stats);
+      checks.push(h.check('all of them are drawn', stats.drawn === 70000, stats));
+      const pic = await h.capture(page);
+      checks.push(h.check('the light still shows', pic.mean > 8, pic));
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine device loss: it recovers once on a new device, then reports',
+    async run(page, h) {
+      await h.open(page);
+      await drawFrames(h, page, 4);
+      const checks = [];
+      await page.evaluate(() => window.TACTILUME_DESKTOP.engine._simulateLoss());
+      checks.push(h.check('after a lost device it draws again', await drawFrames(h, page, 6)));
+      const pic = await h.capture(page);
+      checks.push(h.check('the light is back', pic.mean > 8 && pic.lit > 0.2, pic));
+      const fatal = () => document.getElementById('fatal')?.hidden === false;
+      checks.push(h.check('one loss is not reported', !(await page.evaluate(fatal))));
+      await page.evaluate(() => window.TACTILUME_DESKTOP.engine._simulateLoss());
+      checks.push(h.check('a second loss is reported to the app', await h.until(page, fatal, undefined, 10000)));
+      return checks;
+    },
+  },
+];

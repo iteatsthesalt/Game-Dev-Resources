@@ -119,12 +119,11 @@ body:not([data-state="playing"]) #pad { opacity: 0.55; }
 .row { display: flex; gap: 8px; }
 .row > * { flex: 1 1 0; min-width: 0; }
 .behaviour .step { flex: 0 0 64px; font-size: 22px; }
+/* What is playing: words between the arrows, with no border, so it does not look like a button. */
 .value {
   margin: 0;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   min-height: 56px;
-  border-radius: 12px;
-  border: 1px solid var(--line);
   font-size: 17px;
   font-weight: 600;
   text-align: center;
@@ -152,6 +151,8 @@ button:active { background: var(--panel-down); }
 button:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 button:disabled { opacity: 0.45; }
 button.small { min-height: 44px; padding: 4px 12px; font-size: 15px; }
+/* Full screen only matters while playing; otherwise the status needs the room. */
+body:not([data-state="playing"]) #fullscreen { display: none; }
 
 .note { grid-area: note; margin: 0; font-size: 14px; color: var(--muted); text-align: center; }
 

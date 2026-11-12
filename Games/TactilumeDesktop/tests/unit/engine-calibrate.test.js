@@ -98,14 +98,15 @@ function fakeEngine({ max = 1 << 24, cost = (n) => n / M, limit = Infinity } = {
 
 describe('calibrate', () => {
   test('measures rising counts and leaves the engine at the pick, at rest', async () => {
-    const engine = fakeEngine({ cost: (n) => 1 + (n / M) * 2.5 }); // 4M → 11 ms, 8M → 21 ms
+    const cost = (n) => (n / M) ** 2 * 0.7; // 4M → 11.2 ms, 8M → 44.8 ms
+    const engine = fakeEngine({ cost });
     const { particles, results } = await calibrate(engine, { refreshHz: 60, budget: 0.7, now: engine.clock });
     assert.deepEqual(results.map((r) => r.n), [1 << 18, 1 << 19, 1 << 20, 1 << 21, 1 << 22, 1 << 23]);
     // each count is timed exactly, frame by frame
-    for (const r of results) assert.ok(Math.abs(r.ms - (1 + (r.n / M) * 2.5)) < 1e-9);
-    // 8M took 21 ms, more than twice the 11.7 ms budget, so 16M was never tried
+    for (const r of results) assert.ok(Math.abs(r.ms - cost(r.n)) < 1e-9);
+    // 8M took 44.8 ms, more than twice the 11.7 ms budget, so 16M was never tried
     assert.ok(!engine.calls.counts.has(1 << 24));
-    // the budget is crossed between 4M (11 ms) and 8M (21 ms)
+    // the budget is crossed between 4M (11.2 ms) and 8M (44.8 ms)
     assert.ok(particles > 4 * M && particles < 5 * M, `picked ${particles}`);
     assert.equal(engine.calls.setQuality.at(-1), particles);
     assert.equal(engine.calls.reset, 1);

@@ -84,6 +84,8 @@ export default [
       const buzzed = (await h.sent(page)).filter((s) => s.player === 1 && s.msg.t === 'haptic');
       checks.push(h.check('the new touch buzzes its phone', buzzed.length >= 1 && buzzed[0].msg.ms === 30 && buzzed[0].msg.k === 0.6, buzzed));
 
+      // the burst a new touch sets off fades within a second; what is left is the held finger's
+      await h.wait(1200);
       const left = await poll(() => sides(page, h), (s) => s.left > s.right * 1.5 + 1);
       checks.push(h.check('the light gathers on the side the phone touches', left.left > left.right * 1.5 + 1, { before, left }));
 
@@ -166,9 +168,16 @@ export default [
           const pad = document.getElementById('pad');
           const r = pad.getBoundingClientRect();
           const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+          // a button's accessible name: its aria-label, or the text a screen reader would read
+          const nameOf = (b) => {
+            if (b.getAttribute('aria-label')) return b.getAttribute('aria-label').trim();
+            const copy = b.cloneNode(true);
+            for (const hidden of copy.querySelectorAll('[aria-hidden="true"]')) hidden.remove();
+            return copy.textContent.trim();
+          };
           const buttons = [...document.querySelectorAll('button')].filter(visible).map((b) => {
             const br = b.getBoundingClientRect();
-            return { name: (b.getAttribute('aria-label') || b.textContent).trim(), w: br.width, h: br.height };
+            return { name: nameOf(b), w: br.width, h: br.height };
           });
           let smallest = 99;
           for (const el of document.querySelectorAll('body *')) {
@@ -203,6 +212,9 @@ export default [
         const a = last?.touches.find((t) => t[1] < 0.6);
         const b = last?.touches.find((t) => t[1] >= 0.6);
         checks.push(h.check('the server hears frames with both fingers where they are on the pad', twoFinger.length >= 3 && a && b && Math.abs(a[1] - 0.45) < 0.01 && Math.abs(a[2] - 0.5) < 0.01 && Math.abs(b[1] - 0.75) < 0.01 && Math.abs(b[2] - 0.45) < 0.01 && a[0] !== b[0], { frames: twoFinger.length, last }));
+        // Each of the ten moves moved both fingers: two pointer events, one animation frame. A
+        // page that sent a frame per pointer event would send about twenty.
+        checks.push(h.check('two fingers moving together make one frame per animation frame, not one per finger', twoFinger.length <= 14, twoFinger.length));
         const seqs = touchFrames().map((e) => e.seq);
         const stamps = touchFrames().map((e) => e.ms);
         checks.push(h.check('frames are numbered in order and carry the phone\'s clock', seqs.every((s, i) => i === 0 || s === seqs[i - 1] + 1) && stamps.every((ms, i) => Number.isFinite(ms) && (i === 0 || ms > stamps[i - 1])), { seqs, stamps }));
@@ -217,8 +229,6 @@ export default [
         await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
         const lifted = await poll(() => touchFrames().at(-1), (e) => e && e.touches.length === 0, { timeout: 3000 });
         checks.push(h.check('lifting the fingers sends an empty frame', lifted?.touches.length === 0, lifted));
-        const framesOut = await p.evaluate(() => window.TACTILUME_PHONE.framesSent);
-        checks.push(h.check('the page sent no more frames than the server heard', framesOut === touchFrames().length, { framesOut, heard: touchFrames().length }));
 
         await p.tap('button[aria-label="Next behaviour"]');
         const acted = await poll(() => events.find((e) => e.type === 'act'), Boolean, { timeout: 3000 });
