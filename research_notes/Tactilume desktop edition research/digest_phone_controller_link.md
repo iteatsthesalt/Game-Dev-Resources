@@ -73,7 +73,7 @@ This is the fact-checked digest of phone_controller_link.md, covering the link f
   - Orientation lock: none on iOS or WebView.
   - Wake Lock: full from iOS 18.4, including Home Screen apps.
 - **DeviceMotion.** It needs a secure context. `requestPermission()` exists on iOS 14.5+ and on Chrome, Chrome Android and WebView 152+ (present in Chromium 153), so feature-detect it and call it from a tap everywhere. [Verified correction: BCD; CR; Measured]
-- **Motion rate.** 60 Hz in both engines (the old 20 Hz iOS figure is outdated). [Verified correction: CR device_sensor_event_pump.h; WK WebCoreMotionManager.h] The spec rate is implementation-defined, and 0.1-unit precision means 16-bit fixed point loses nothing. [Verified: DO]
+- **Motion rate.** Both engines request 60 Hz in their source (the old 20 Hz iOS figure is outdated); measure the delivered rate on devices. [Verified correction: CR device_sensor_event_pump.h; WK WebCoreMotionManager.h] The spec rate is implementation-defined, and 0.1-unit precision means 16-bit fixed point loses nothing. [Verified: DO]
 
 ## 5. Haptics and audio in browsers
 - **`navigator.vibrate`.** Chrome Android 32+ and WebView 4.4.3+; it needs a user gesture since Chrome 60. Safari never shipped it. [Verified: BCD]
@@ -118,7 +118,7 @@ This is the fact-checked digest of phone_controller_link.md, covering the link f
   - Cleartext is off by default at targetSdk ≥ 28, by target SDK rather than device version. [Verified correction: SDK]
 - **Bridge.** `addWebMessageListener` with `allowedOriginRules` carries ArrayBuffers (`WEB_MESSAGE_ARRAY_BUFFER`). Its latency is unmeasured. [Verified: AXW]
 - **WebView LNA.** BCD shows none, and under Android 17 WebView traffic inherits the app's permission. [Verified: BCD; ALNP]
-- **Sensors.** Rates above 200 Hz need `HIGH_SAMPLING_RATE_SENSORS` (API 31), so request 100 Hz. `TYPE_GAME_ROTATION_VECTOR` is API 18. [Verified: SDK; API]
+- **Sensors.** Rates above 200 Hz need `HIGH_SAMPLING_RATE_SENSORS` (API 31); the plan requests 100 Hz. `TYPE_GAME_ROTATION_VECTOR` is API 18. [Verified: SDK; API]
 - **Haptics.** `VIBRATE` and the foreground are required. One-shot and amplitude are API 26, predefined effects 29, composition 30, `LOW_TICK`/`THUD` 31, the attributes overload 33 and envelopes 36. [Verified: SDK; API]
 - **Window and touch.** Gesture exclusion has a 200 dp vertical cap, and `WindowInsetsController` is API 30. `getPressure` and historical samples are API 5, and `TOOL_TYPE_STYLUS` is 14. [Verified: SDK; API]
 - **Manifest** (Inference):
