@@ -11,13 +11,18 @@ const NOT_A_BACKUP = 'This is not a Byways backup file.';
 const TRAIL_MAX = 50;
 const ITEMS_MAX = 500;
 const KEY_VALUE_MAX = 4096;
+const NAME_MAX = 80;
+const COLLECTIONS_MAX = 200;
+const LIST_MAX = 500;
+const LABEL_MAX = 200;
 const WEIGHT_CAP = 3;
 const LOCK_ID = '__lock';
 
 const isObject = (v) => v !== null && typeof v === 'object' && !Array.isArray(v);
 const isFiniteNumber = (v) => typeof v === 'number' && Number.isFinite(v);
 const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
-const strings = (list) => (Array.isArray(list) ? [...new Set(list.filter((s) => typeof s === 'string'))] : []);
+const isLabel = (s) => typeof s === 'string' && s.length <= LABEL_MAX;
+const strings = (list) => (Array.isArray(list) ? [...new Set(list.filter(isLabel))].slice(0, LIST_MAX) : []);
 
 /**
  * Everything worth carrying to another device, as one JSON-ready object. Settings are included for reference only;
@@ -75,8 +80,9 @@ function cleanItems(list) {
 function cleanCollections(list) {
   const out = [];
   for (const c of list) {
+    if (out.length === COLLECTIONS_MAX) break;
     if (!isObject(c) || typeof c.id !== 'string' || c.id === '' || c.id.startsWith('@') || !Array.isArray(c.items)) continue;
-    const name = c.id === 'saved' ? 'Saved' : typeof c.name === 'string' && c.name.trim() ? c.name.trim() : c.id;
+    const name = c.id === 'saved' ? 'Saved' : (typeof c.name === 'string' && c.name.trim() ? c.name.trim() : c.id).slice(0, NAME_MAX);
     out.push({ id: c.id, name, created: isFiniteNumber(c.created) ? c.created : 0, items: cleanItems(c.items) });
   }
   return out;
@@ -93,8 +99,13 @@ function cleanHistory(list) {
 
 function cleanWeights(weights) {
   const out = {};
+  let count = 0;
   for (const [key, value] of Object.entries(isObject(weights) ? weights : {})) {
-    if (key !== '__proto__' && isFiniteNumber(value)) out[key] = clamp(value, -WEIGHT_CAP, WEIGHT_CAP);
+    if (count === LIST_MAX) break;
+    if (key !== '__proto__' && isLabel(key) && isFiniteNumber(value)) {
+      out[key] = clamp(value, -WEIGHT_CAP, WEIGHT_CAP);
+      count += 1;
+    }
   }
   return out;
 }
@@ -213,12 +224,24 @@ export function toBookmarksHtml(collection) {
   ].join('\n');
 }
 
-// An opening tag is found in two steps so that a malformed one costs a single scan: the rest of the tag is quote-aware
-// (a `>` inside an attribute value does not end it), and a tag or closing tag that is never finished ends the read.
+// Each anchor is read within the stretch up to the next `<a ` (a quote inside a tag cannot reach past it), so a bad
+// anchor costs one scan of that stretch and the read resumes just after its `<a`. A title ends at the next `</a>` or the
+// next `<a `, whichever comes first, or at the end of the text.
 const ANCHOR_START = /<a\s/gi;
 const TAG_REST = /((?:"[^"]*"|'[^']*'|[^>"'])*)>/y;
-const ANCHOR_CLOSE = /<\/a\s*>/gi;
+const TITLE_END = /<\/a\s*>|<a\s/gi;
 const ATTRIBUTE = /([^\s=/"'>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
+const ATTRIBUTE_ENTITY = /&(?:(amp|lt|gt|quot)|#(\d+)|#[xX]([0-9a-fA-F]+));/g;
+const ATTRIBUTE_ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"' };
+
+/** Decode only the character references an attribute value can carry; nothing else in it is touched. */
+function decodeAttribute(value) {
+  return value.replace(ATTRIBUTE_ENTITY, (m, named, dec, hex) => {
+    if (named) return ATTRIBUTE_ENTITIES[named];
+    const cp = dec ? parseInt(dec, 10) : parseInt(hex, 16);
+    return cp === 0 || (cp >= 0xd800 && cp <= 0xdfff) || cp > 0x10ffff ? '�' : String.fromCodePoint(cp);
+  });
+}
 
 function hrefOf(attributes) {
   for (const [, name, double, single, bare] of attributes.matchAll(ATTRIBUTE)) {
@@ -234,17 +257,21 @@ export function fromBookmarksHtml(html) {
   let at = 0;
   for (;;) {
     ANCHOR_START.lastIndex = at;
-    if (ANCHOR_START.exec(text) === null) break;
-    TAG_REST.lastIndex = ANCHOR_START.lastIndex;
-    const tag = TAG_REST.exec(text);
-    if (tag === null) break;
-    ANCHOR_CLOSE.lastIndex = TAG_REST.lastIndex;
-    const close = ANCHOR_CLOSE.exec(text);
-    if (close === null) break;
+    const start = ANCHOR_START.exec(text);
+    if (start === null) break;
+    const bodyAt = ANCHOR_START.lastIndex;
+    at = start.index + 2;
+    const next = ANCHOR_START.exec(text);
+    TAG_REST.lastIndex = bodyAt;
+    const tag = TAG_REST.exec(next === null ? text : text.slice(0, next.index));
+    if (tag === null) continue;
+    TITLE_END.lastIndex = TAG_REST.lastIndex;
+    const end = TITLE_END.exec(text);
+    const titleEnd = end === null ? text.length : end.index;
+    at = titleEnd;
     const href = hrefOf(tag[1]);
-    const url = href === null ? '' : toPlainText(href).trim();
-    if (isHttpUrl(url)) out.push({ url, title: toPlainText(text.slice(TAG_REST.lastIndex, close.index)) || url });
-    at = close.index + close[0].length;
+    const url = href === null ? '' : decodeAttribute(href).trim();
+    if (isHttpUrl(url)) out.push({ url, title: toPlainText(text.slice(TAG_REST.lastIndex, titleEnd)) || url });
   }
   return out;
 }

@@ -124,3 +124,41 @@ test('bookmarks HTML escapes names, titles and links, and reads quoting and case
   const loose = `<dt><a add_date="1" href='https://s.example/'>Single</a><a data-href="https://no.example/">no</a><A HREF=ftp://f.example/>ftp</A>`;
   assert.deepEqual(fromBookmarksHtml(loose), [{ url: 'https://s.example/', title: 'Single' }]);
 });
+test('an oversized file is imported within the caps', async () => {
+  const to = await openStore(memoryBackend());
+  const many = (n, make) => Array.from({ length: n }, (_, i) => make(i));
+  const long = 'x'.repeat(201);
+  const collections = many(250, (i) => ({ id: `c-${i}`, name: `${i}-${'n'.repeat(500)}`, items: [] }));
+  const weights = Object.fromEntries([...many(600, (i) => [`t${i}`, 1]), [long, 1]]);
+  const taste = {
+    tags: weights, sources: weights,
+    hiddenTags: [...many(600, (i) => `h${i}`), long], blockedDomains: [...many(600, (i) => `d${i}.example`), long], interests: [...many(600, (i) => `i${i}`), long],
+  };
+  const counts = await importBackup(to, envelope({ collections, taste }), {});
+  assert.equal(counts.collections, 200);
+  const list = (await createCollections(to, clock).list()).filter((c) => c.id !== 'saved');
+  assert.equal(list.length, 200); assert.ok(list.every((c) => c.name.length === 80));
+  const kept = await to.get('taste', 'taste');
+  for (const key of ['hiddenTags', 'blockedDomains', 'interests']) assert.equal(kept[key].length, 500);
+  for (const key of ['tags', 'sources']) { assert.equal(Object.keys(kept[key]).length, 500); assert.ok(!(long in kept[key])); }
+  assert.ok(!kept.hiddenTags.includes(long));
+});
+test('a bad anchor is skipped without losing the links after it', () => {
+  const good = (n) => `<DT><A HREF="https://${n}.example/">${n}</A>`;
+  const unfinished = `${good('one')}<A HREF="https://bad.example/"\n<A HREF="https://two.example/">two</A>`;
+  assert.deepEqual(fromBookmarksHtml(unfinished).map((l) => l.url), ['https://one.example/', 'https://two.example/']);
+  const unclosed = `${good('one')}<DT><A HREF="https://open.example/">Open ${good('two')}`;
+  assert.deepEqual(fromBookmarksHtml(unclosed), [
+    { url: 'https://one.example/', title: 'one' }, { url: 'https://open.example/', title: 'Open' }, { url: 'https://two.example/', title: 'two' },
+  ]);
+  const started = Date.now();
+  for (const unit of ["<a x='", '<a ', '<a href="https://h.example/">t ']) fromBookmarksHtml(unit.repeat(150000));
+  assert.ok(Date.now() - started < 3000);
+});
+test('the link address is decoded as an attribute and not read as text', () => {
+  const link = (href) => fromBookmarksHtml(`<A HREF="${href}">x</A>`);
+  assert.deepEqual(link('https://e.example/?a=1&amp;b=2'), [{ url: 'https://e.example/?a=1&b=2', title: 'x' }]);
+  assert.equal(link('https://e.example/?q=&#x41;&#66;&quot;&lt;&gt;&#39;')[0].url, `https://e.example/?q=AB"<>'`);
+  assert.equal(link('https://e.example/a  b <i>c')[0].url, 'https://e.example/a  b <i>c');
+  assert.deepEqual(link('&#106;avascript:alert(1)'), []);
+});
