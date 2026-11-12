@@ -1320,52 +1320,73 @@ git commit -m "Add the GitHub release update check"
 ### Task 13: The Lab on its own origin
 
 **Files:**
-- Modify: `…/byways/MainActivity.kt`, `…/byways/Bridge.kt`, `src/lab/storage-panel.js`, `tests/unit/android-shell.test.js`
+- Modify: `…/byways/MainActivity.kt`, `…/byways/Bridge.kt`, `src/lab/storage-panel.js`, `src/lab/pc.js`
+- Test: `tests/unit/android-shell.test.js`, `tests/unit/platform-android.test.js`
 
 **Interfaces:**
-- Consumes: `AssetRules` (Task 10); `BridgeGate` and `BridgeCodec` (Task 5); `FilesBridge` (Task 9); `labSaveFile` (Task 6); the Task 1 `assets/lab/` layout.
-- Produces: `class LabBridge(webView: WebView, files: FilesBridge) { fun install(): Boolean }`, listening as `BywaysLabNative` for `https://lab.appassets.androidplatform.net` with only `files.save`. Both asset loaders serve one folder each.
+- Consumes: `AssetRules` (Task 10); `BridgeGate` (with `allowSubframes`) and `BridgeCodec` (Task 5); `FilesBridge` and its `save` and `append` ops (Task 9); Plan 06's Android layout `assets/lab/{lab/**, vendor/**, versions.json}`, whose pages reach `vendor/` and `versions.json` through `../`, and whose runner pages are frames of `lab/index.html`; the panel's exports and `pc.js`'s **Download state** (Plan 06 Tasks 10–11).
+- Produces: `class LabBridge(webView: WebView, files: FilesBridge) { fun install(): Boolean }`, listening as `BywaysLabNative` for `https://lab.appassets.androidplatform.net`, in the Lab page and its runner frames, with only `files.save` and `files.append`. In `src/lab/storage-panel.js`: `export const SAVE_CHUNK_BYTES = 6 * 1024 * 1024` and `export function labSaveFile(name, blob, win = globalThis) → Promise<'saved'|'cancelled'>|null`. It lives in the Lab rather than in `platform/android.js`, so the Lab origin loads nothing from the app.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```js
-test('each origin serves only its own folder, and the Lab gets only files.save', () => {
+test('each origin serves only its own folder, and the Lab gets only file saves', () => {
   const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
   const m = k('MainActivity.kt');
   assert.ok(m.includes('"lab.appassets.androidplatform.net"'));
   assert.ok(m.includes('safeAssetPath("www"') && m.includes('safeAssetPath("lab"'));
   assert.doesNotMatch(m, /AssetsPathHandler/);
-  assert.ok(k('Bridge.kt').includes('"BywaysLabNative"'));
-  assert.match(R('src/lab/storage-panel.js'), /labSaveFile/);
+  assert.ok(k('Bridge.kt').includes('"BywaysLabNative"') && k('Bridge.kt').includes('allowSubframes = true'));
+  for (const f of ['storage-panel.js', 'pc.js']) assert.match(R(`src/lab/${f}`), /labSaveFile\(/, f);
+  assert.doesNotMatch(R('src/lab/storage-panel.js'), /platform\/android\.js/);
 });
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+Add to `tests/unit/platform-android.test.js` (importing `labSaveFile` and `SAVE_CHUNK_BYTES` from `../../src/lab/storage-panel.js`):
 
-Run: `node --test tests/unit/android-shell.test.js`
-Expected: FAIL on `"lab.appassets.androidplatform.net"`.
+```js
+test('labSaveFile uses BywaysLabNative only when present, in parts when large', async () => {
+  assert.equal(labSaveFile('s.sav', new Blob(['x']), {}), null);
+  const port = fakePort(), w = { BywaysLabNative: port };
+  const p = labSaveFile('s.sav', new Blob(['x']), w); let m = await port.nth(1);
+  assert.deepEqual(m, { id: '1', ch: 'files', op: 'save', args: { name: 's.sav', mime: 'application/octet-stream', base64: 'eA==' } });
+  port.reply('1', 'saved'); assert.equal(await p, 'saved');
+  assert.equal(SAVE_CHUNK_BYTES, 6 * 1024 * 1024);
+  const big = new Uint8Array(SAVE_CHUNK_BYTES + 1); big[SAVE_CHUNK_BYTES] = 7;
+  const q = labSaveFile('pc.v86state', new Blob([big]), w);
+  m = await port.nth(2); assert.deepEqual([m.op, m.args.saveId, m.args.base64.length], ['append', 's1', 8388608]); port.reply(m.id, true);
+  m = await port.nth(3); assert.deepEqual(m.args, { saveId: 's1', base64: 'Bw==' }); port.reply(m.id, true);
+  m = await port.nth(4); assert.deepEqual([m.op, m.args], ['save', { name: 'pc.v86state', mime: 'application/octet-stream', saveId: 's1' }]);
+  port.reply(m.id, 'cancelled'); assert.equal(await q, 'cancelled');
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/android-shell.test.js tests/unit/platform-android.test.js`
+Expected: FAIL on `"lab.appassets.androidplatform.net"`, and on `does not provide an export named 'labSaveFile'`.
 
 - [ ] **Step 3: Replace the asset loader in `MainActivity`**
 
-Two loaders: domain `APP_HOST` with a path handler at `/assets/www/`, and domain `lab.appassets.androidplatform.net` with one at `/assets/lab/`. Each handler is a `WebViewAssetLoader.PathHandler` that maps the suffix through `AssetRules.safeAssetPath("www"|"lab", suffix)`. It answers `null` for a rejected path and otherwise returns `WebResourceResponse(AssetRules.mimeFor(path), null, assets.open(path))` (`null` on `IOException`). `shouldInterceptRequest` tries the app loader, then the Lab loader. Remove `AssetsPathHandler`. This keeps the Lab files off the app origin, where the main bridge lives.
+Two loaders: domain `APP_HOST` with a path handler at `/assets/www/` (asset path `www/<suffix>`), and domain `lab.appassets.androidplatform.net` with one at `/` (asset path `lab/<suffix>`), so Plan 06's `lab/`, `vendor/` and `versions.json` sit at the Lab origin's root and `caps.labHref` is `https://lab.appassets.androidplatform.net/lab/index.html`. Each handler is a `WebViewAssetLoader.PathHandler` that maps the suffix through `AssetRules.safeAssetPath("www"|"lab", suffix)`. It answers `null` for a rejected path and otherwise returns `WebResourceResponse(AssetRules.mimeFor(path), null, assets.open(path))` (`null` on `IOException`). `shouldInterceptRequest` tries the app loader, then the Lab loader. Remove `AssetsPathHandler`. This keeps the Lab files off the app origin, where the main bridge lives.
 
 - [ ] **Step 4: Add `LabBridge` to `Bridge.kt` and install it**
 
-`WebViewCompat.addWebMessageListener(webView, "BywaysLabNative", setOf(BridgeGate.LAB_ORIGIN))`. Accept only `BridgeGate.accepts(LAB_ORIGIN, origin, isMainFrame)`. Decode with `BridgeCodec`. Only `ch == "files" && op == "save"` reaches `files.handle`; anything else replies `unknown-op`. Install it next to `Bridge` in `onCreate`.
+`WebViewCompat.addWebMessageListener(webView, "BywaysLabNative", setOf(BridgeGate.LAB_ORIGIN))`. Accept only `BridgeGate.accepts(LAB_ORIGIN, origin, isMainFrame, allowSubframes = true)`: the runner pages are frames on the Lab origin, and no other origin gets the object. Decode with `BridgeCodec`. Only `ch == "files"` with `op` `save` or `append` reaches `files.handle`; anything else replies `unknown-op`. Install it next to `Bridge` in `onCreate`.
 
-- [ ] **Step 5: Save Lab files natively in `src/lab/storage-panel.js`**
+- [ ] **Step 5: Save Lab files natively from `src/lab/storage-panel.js` and `src/lab/pc.js`**
 
-Import `labSaveFile` from `../platform/android.js`. Where the panel starts a browser download of a save or export, first run `const native = labSaveFile(name, blob); if (native) { await native; return; }`.
+`labSaveFile` returns `null` when `win.BywaysLabNative` is missing. Otherwise a small client, one per `win`, posts `{id, ch, op, args}` with ids from `"1"`, matches replies by id and rejects `{ok:false}` with `error.code`. A blob of at most `SAVE_CHUNK_BYTES` goes as one `files.save {name, mime, base64}`. A bigger one goes as `files.append {saveId, base64}` per slice, each after the previous reply, then `files.save {name, mime, saveId}`, where `saveId` is `'s' + <a per-client count of saves from 1>`. `mime` is `blob.type || 'application/octet-stream'`. Base64 comes from `btoa` over 32 KiB slices, so it runs in WebView and in Node. Where the panel starts a browser download of an export, and where `pc.js` starts the **Download state** download, first run `const native = labSaveFile(name, blob); if (native) { await native; return; }`. WebView ignores `<a download>` of a blob, so without this the save does nothing.
 
 - [ ] **Step 6: Run the tests**
 
-Run: `node --test tests/unit/android-shell.test.js` and `npm test`
-Expected: PASS (13 shell tests), and the Lab tests from Plan 06 still pass.
+Run: `node --test tests/unit/android-shell.test.js tests/unit/platform-android.test.js` and `npm test`
+Expected: PASS (18 shell tests and 16 platform tests), and the Lab tests from Plan 06 still pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways src/lab/storage-panel.js tests/unit/android-shell.test.js
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways src/lab/storage-panel.js src/lab/pc.js tests/unit/android-shell.test.js tests/unit/platform-android.test.js
 git commit -m "Serve the Lab on its own origin with a save-only bridge"
 ```
 

@@ -1574,25 +1574,58 @@ test('two concurrent next calls return different finds', async () => {
   const [x, y] = await Promise.all([engine.next({ mode: 'tuned' }), engine.next({ mode: 'tuned' })]);
   assert.notEqual(x.find.id, y.find.id); assert.equal(await createSeen(store).count(), 2);
 });
-test('every source failing gives the unreachable message', async () => {
-  const { engine } = await engineFor({ entries: [], only: ['wikipedia'], extraRoutes: [{ match: /wikipedia/, file: 'probe/ok.json', status: 500 }] });
+test('every source failing gives the unreachable message, even with the library on', async () => {
+  const { engine } = await engineFor({ entries: lib(1), only: ['library', 'wikipedia'], extraRoutes: [{ match: /wikipedia/, error: true }] });
+  assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
   assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.unreachable });
 });
-test('a failing source does not stop the others', async () => {
-  const { engine } = await engineFor({ entries: lib(2), only: ['library', 'wikipedia'], extraRoutes: [{ match: /wikipedia/, file: 'probe/ok.json', status: 500 }] });
-  assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
+test('a slow source never holds up a find and is skipped after 8 s', async () => {
+  const hang = [{ match: /wikipedia/, hang: true }];
+  const a = await engineFor({ entries: lib(2), only: ['library', 'wikipedia'], extraRoutes: hang });
+  assert.equal((await a.engine.next({ mode: 'tuned' })).find.source, 'library');
+  const b = await engineFor({ entries: [], only: ['wikipedia'], extraRoutes: hang });
+  const p = b.engine.next({ mode: 'tuned' }); await flush(); b.ctx.clock.advance(8000);
+  assert.deepEqual(await p, { empty: true, reason: EMPTY_REASONS.unreachable });
 });
-test('fate pulls at random and respects a zero weight', async () => {
+test('a source that answers with an error is not "unreachable"', async () => {
+  const { engine } = await engineFor({ entries: lib(1), only: ['library', 'wikipedia'], extraRoutes: [{ match: /wikipedia/, file: 'probe/ok.json', status: 500 }] });
+  assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.exhausted });
+});
+test('createEngine registers every adapter rate and hands adapters the contract ctx', async () => {
+  const { registered } = await engineFor({ entries: [] });
+  for (const a of Object.values(SOURCES)) assert.deepEqual(registered[a.id], a.rate, a.id);
+  assert.deepEqual(registered.github, { perMinute: 10, concurrent: 1 });
+  let got; let current = memorySecrets({ 'src:github': 'A' });
+  const { engine } = await engineFor({ adapters: [fake('spy', { random: async (ctx) => { got = ctx; return []; } })], secrets: () => current });
+  await engine.next({ mode: 'tuned' });
+  assert.deepEqual(Object.keys(got).sort(), ['cache', 'caps', 'clock', 'data', 'dataUrl', 'http', 'platformName', 'rand', 'secrets', 'settings']);
+  assert.equal(got.settings.mode, 'tuned'); assert.equal(await got.secrets.get('src:github'), 'A');
+  current = memorySecrets({ 'src:github': 'B' }); assert.equal(await got.secrets.get('src:github'), 'B');
+});
+test('a refill keeps 3 network calls in flight, at most 50 candidates, and no unprobed source on pwa', async () => {
+  let inFlight = 0, most = 0, probeTierCalls = 0;
+  const many = (id) => Array.from({ length: 20 }, (_, i) => F(`${id}-${i}`));
+  const net = (id) => fake(id, { random: async () => { inFlight++; most = Math.max(most, inFlight); await flush(); inFlight--; return many(id); } });
+  const unprobed = fake('pr', { tier: 'probe', probeUrl: 'https://nowhere.invalid/', random: async () => { probeTierCalls++; return []; } });
+  const { engine } = await engineFor({ adapters: ['n1', 'n2', 'n3', 'n4', 'n5'].map(net).concat(unprobed) });
+  await engine.next({ mode: 'tuned' }); for (let i = 0; i < 5; i++) await flush();
+  assert.ok(most <= 3, `most ${most}`); assert.ok(engine.pool().length <= 50); assert.equal(probeTierCalls, 0);
+});
+test('fate pulls at random, respects a zero weight and leaves out blocked sites', async () => {
   const a = await engineFor({ entries: lib(3) });
   const r = await a.engine.next({ mode: 'fate' }); assert.equal(r.branch, 'fate'); assert.equal(r.why, 'pure random');
   const b = await engineFor({ entries: lib(3), settings: { sources: { library: { enabled: true, fateWeight: 0 } } } });
   assert.deepEqual(await b.engine.next({ mode: 'fate' }), { empty: true, reason: 'No Fate sources are on. Turn some on in Settings → Sources.' });
+  const c = await engineFor({ entries: lib(2) }); c.engine.setTaste({ ...c.engine.taste(), blockedDomains: ['s0.example.com'] });
+  assert.equal((await c.engine.next({ mode: 'fate' })).find.url, 'https://s1.example.com/');
 });
 test('inject drops seen, blocked, duplicate and unknown-tag finds', async () => {
-  const { engine } = await engineFor({ entries: lib(2) });
+  const { engine, store } = await engineFor({ entries: lib(2) });
   const shown = (await engine.next({ mode: 'tuned' })).find;
+  await createSeen(store).add('https://old.example.org/');
   engine.setTaste({ ...engine.taste(), blockedDomains: ['b.example.org'] });
-  engine.inject([shown, F('b'), F('c'), F('c'), F('d', ['toy', 'nonsense'])], 'search');
+  assert.equal(await engine.inject([shown, F('b'), F('c'), F('c'), F('d', ['toy', 'nonsense']), F('old')], 'search'), 2);
   const c = await engine.next({ mode: 'tuned' }); assert.equal(c.find.title, 'c'); assert.equal(c.branch, 'search'); assert.equal(c.why, 'search result');
   const d = await engine.next({ mode: 'tuned' }); assert.equal(d.find.title, 'd'); assert.deepEqual(d.find.tags, ['toy']);
   assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
@@ -1600,13 +1633,19 @@ test('inject drops seen, blocked, duplicate and unknown-tag finds', async () => 
 test('AI mode serves only the injected queue', async () => {
   const { engine } = await engineFor({ entries: lib(2) });
   assert.deepEqual(await engine.next({ mode: 'ai' }), { empty: true, reason: EMPTY_REASONS.aiEmpty });
-  engine.inject([F('x')], 'ai'); const r = await engine.next({ mode: 'ai' });
+  await engine.inject([F('x')], 'ai'); const r = await engine.next({ mode: 'ai' });
   assert.equal(r.find.title, 'x'); assert.equal(r.branch, 'ai'); assert.equal(r.why, 'AI find');
 });
-test('search asks every enabled source and queues the results', async () => {
+test('search asks every enabled source, queues the results and returns what it queued', async () => {
   const { engine } = await engineFor({ entries: [...lib(2), { ...lib(1)[0], id: 'lib-0099', url: 'https://synth.example.com/', title: 'Tiny Synth' }] });
   assert.deepEqual((await engine.search('synth')).map(f => f.title), ['Tiny Synth']);
   assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'Tiny Synth');
+  assert.deepEqual(await engine.search('synth'), []);
+});
+test('search interleaves the sources', async () => {
+  const s = (id, n) => fake(id, { search: async () => Array.from({ length: n }, (_, i) => F(`${id}${i}`)) });
+  const { engine } = await engineFor({ adapters: [s('a', 3), s('b', 2)] });
+  assert.deepEqual((await engine.search('x')).map(f => f.title), ['a0', 'b0', 'a1', 'b1', 'a2']);
 });
 test('feed gives batches of 30 unseen finds', async () => {
   const { engine } = await engineFor({ entries: lib(35) });
@@ -1614,11 +1653,18 @@ test('feed gives batches of 30 unseen finds', async () => {
   assert.equal(a.length, 30); assert.equal(b.length, 5); assert.equal(new Set([...a, ...b].map(f => f.id)).size, 35);
   assert.deepEqual(await engine.feed(), []);
 });
-test('find and empty events fire', async () => {
-  const { engine } = await engineFor({ entries: lib(1) }); const seenEvents = [];
-  engine.on('find', (r) => seenEvents.push(r.find.title)); engine.on('empty', (r) => seenEvents.push(r.reason));
+test('find events carry {find, branch, why} from next and back, and empty fires', async () => {
+  const { engine } = await engineFor({ entries: lib(2) }); const ev = [];
+  engine.on('find', (e) => ev.push([e.find.title, e.branch, e.why])); engine.on('empty', (e) => ev.push(e.reason));
+  const a = (await engine.next({ mode: 'tuned' })).find; await engine.next({ mode: 'tuned' }); engine.back();
   await engine.next({ mode: 'tuned' }); await engine.next({ mode: 'tuned' });
-  assert.deepEqual(seenEvents, ['Site 0', EMPTY_REASONS.exhausted]);
+  assert.deepEqual(ev.map((e) => (typeof e === 'string' ? e : e[1])), ['wildcard', 'wildcard', 'history', 'history', EMPTY_REASONS.exhausted]);
+  assert.deepEqual(ev[2], [a.title, 'history', 'seen before']);
+});
+test('reload reads the stored taste again', async () => {
+  const { engine, store } = await engineFor({ entries: lib(2) });
+  await store.put('taste', 'taste', { ...DEFAULT_TASTE, tags: { space: 2 } }); await engine.reload();
+  assert.equal(engine.taste().tags.space, 2);
 });
 ```
 

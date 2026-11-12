@@ -1822,12 +1822,16 @@ test('app.css declares the font with swap', async () => {
 });
 
 // tests/e2e/settings-access.spec.js
+import { readFileSync } from 'node:fs';
+import { test, expect, stageLibrary } from './helpers/net.js';
+import { gotoApp } from './helpers/app.js';
+import { installFakeSpeech } from './helpers/fakes.js';
+
+const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
+const title = (page) => page.locator('article.card h2');
 async function openAccess(page) {
-  await mockNet(page); await installFakeSpeech(page);
-  await page.goto('./#/stumble'); await skipFirstRun(page);
-  await page.goto('./#/settings/access');
+  await installFakeSpeech(page); await stageLibrary(page, small); await gotoApp(page, '#/settings/access');
 }
-const html = (page) => page.locator('html');
 
 test('text size, theme, font and motion apply and persist', async ({ page }) => {
   await openAccess(page);
@@ -1836,10 +1840,11 @@ test('text size, theme, font and motion apply and persist', async ({ page }) => 
   await page.getByLabel('Easy-read font (Atkinson Hyperlegible)').check();
   await page.getByLabel('Motion').selectOption({ label: 'Reduce motion' });
   await page.reload();
+  const html = page.locator('html');
   expect(await page.evaluate(() => document.documentElement.style.getPropertyValue('--text-scale').trim())).toBe('1.5');
-  await expect(html(page)).toHaveAttribute('data-theme', 'contrast');
-  await expect(html(page)).toHaveAttribute('data-font', 'atkinson');
-  await expect(html(page)).toHaveAttribute('data-motion', 'reduce');
+  await expect(html).toHaveAttribute('data-theme', 'high-contrast');
+  await expect(html).toHaveAttribute('data-font', 'atkinson');
+  await expect(html).toHaveAttribute('data-motion', 'reduced');
   expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(0, 0, 0)');
   expect(await page.evaluate(async () => (await document.fonts.load('16px "Atkinson Hyperlegible"')).length)).toBeGreaterThan(0);
 });
@@ -1861,8 +1866,8 @@ test('screen-reader mode silences read-aloud and uses the live region', async ({
   await openAccess(page);
   await page.getByLabel('Screen-reader mode').check();
   await page.goto('./#/stumble');
+  const t = await title(page).textContent();          // Start reads the find on screen
   await page.getByRole('button', { name: 'Start' }).click();
-  const t = await page.getByRole('main').getByRole('heading', { level: 2 }).first().textContent();
   await expect.poll(() => page.evaluate((t) =>
     window.__announcements.some(([id, x]) => id === 'live-polite' && x.startsWith(t)), t)).toBe(true);
   expect(await page.evaluate(() => window.__spoken.length)).toBe(0);
@@ -1872,18 +1877,17 @@ test('single-key shortcuts can be turned off', async ({ page }) => {
   await openAccess(page);
   await page.getByLabel('Single-key shortcuts').uncheck();
   await page.goto('./#/stumble');
-  const title = page.getByRole('main').getByRole('heading', { level: 2 }).first();
-  const t1 = await title.textContent();
+  const t1 = await title(page).textContent();
   await page.keyboard.press('Space');
   await page.waitForTimeout(500);
-  await expect(title).toHaveText(t1);
+  await expect(title(page)).toHaveText(t1);
 });
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `node --test tests/unit/fonts.test.js`
-Expected: FAIL with `undefined !== '5.3.0'` in the first test.
+Run: `node --test tests/unit/fonts.test.js`, then `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-access.spec.js`
+Expected: FAIL. The unit test fails with `undefined !== '5.3.0'`, and each e2e test times out on its first `getByLabel` (`Text size`, `Seconds on each find`, `Screen-reader mode` or `Single-key shortcuts`).
 
 - [ ] **Step 3: Add the package and copy the files**
 

@@ -26,14 +26,17 @@
 - Link check: "A link that fails two days in a row is left out of the next build, and its entry is flagged for review."
 - Old web: "Each is opened through `archive.org/wayback/available?url=…&timestamp=2009`, and an empty result counts as a miss."
 - Every test mocks the network. Live checks run only in `byways-probe.yml`.
+- Generated data files (`daily.json`, `itch.json`, `vault-index.json`, `webrings.json`, `neocities.json`) are read only at `app.dataUrl(<file>)`: `data/<file>` in the web app, `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>` in the extension and Android (contract).
+- Sub-collections (§10.1) are not discovered at runtime. The Vault queries its explicit list, and the weekly probe (Task 15) reports each parent's sub-collections so they can be added to `VAULT_COLLECTIONS` by hand.
+- Views and `card.js` touch `document`, `window` and `matchMedia` only inside functions, because Node unit tests import `boot.js`, which imports every view.
 
 ## Review Focus
 
-1. **The Archive is down or blocked at first run.** Validation must keep the verified collections, must not cache a partial list for 7 days, and the Vault must show "Archive unavailable" rather than empty shelves. Pinned by `validateCollections keeps verified ids and caches nothing when the Archive is unreachable` (Task 2) and `shows Archive unavailable when a live shelf load fails` (Task 7).
+1. **The Archive is down or blocked.** Validation must keep the verified collections and must not cache a partial list for 7 days. A failed live load must show "Archive unavailable" and keep the snapshot gems, and **Play** must not mark a game broken while the Archive is only unreachable. Pinned by `validateCollections keeps verified ids and caches nothing when the Archive is unreachable` (Task 2), `shows Archive unavailable when a live shelf load fails` (Task 9) and `an unreachable Archive shows a message instead of a frame` (Task 10).
 2. **Archive docs with odd field shapes.** `title`, `creator` and `collection` arrive as a string or an array, `year` as `"1994"`, `"199?"` or missing, `downloads` missing or 0, and `description` as an HTML array. Cards and scores must still work. Pinned by `iaDocToFind and gemScore accept string, array and missing fields` (Task 2).
-3. **UTC midnight while the Daily view is open, or a stale cached `daily.json`.** At 23:59:50 UTC the view must roll to the next day by itself, and a file dated yesterday must give the labelled backup. Pinned by `loadDaily uses the backup when the file is from yesterday` (Task 3) and `rolls over at UTC midnight while open` (Task 9).
-4. **Link-check false positives.** Sites that answer `HEAD` with 405, or block robots with 403 or 429, must not be counted as dead and dropped from the build. Pinned by `HEAD 405 retries with GET, and 401/403/429 do not count as dead` (Task 10).
-5. **Pressing Play twice, or leaving the Vault while the watchdog runs.** There must be one frame, and a pending watchdog must not mark a game broken after the user has left. Pinned by `Play twice mounts one frame, and leaving clears the watchdog` (Task 8).
+3. **UTC midnight while the Daily view is open, or a stale `daily.json`.** At 23:59:50 UTC the view must roll to the next day by itself. A file dated yesterday must give the labelled backup, and a service-worker copy from yesterday must not hide today's file. Pinned by `loadDaily uses the backup when the file is from yesterday` (Task 3), and by `rolls over at UTC midnight while open` and `shows today's three picks from daily.json?d=<today>` (Task 11).
+4. **Link-check false positives.** Sites that answer `HEAD` with 405, or block robots with 403 or 429, must not be counted as dead, and two runs on one day must count once. Pinned by `HEAD 405 retries with GET, and 401/403/429 do not count as dead` and `a second check on the same UTC day does not count again` (Task 12).
+5. **Pressing Play twice, or leaving the Vault while the watchdog runs.** There must be one frame, and a pending watchdog must not mark a game broken after the user has left. Pinned by `Play twice mounts one frame, and leaving clears the watchdog` (Task 10).
 
 ---
 
