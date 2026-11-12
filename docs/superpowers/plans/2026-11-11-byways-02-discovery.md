@@ -1247,9 +1247,9 @@ git commit -m "Add the Art Institute, Met and Cleveland adapters"
 - Produces: the `nasaimages`, `loc` and `smithsonian` adapters. Each `random` searches one seed word picked with `ctx.rand` from its list. `more` returns `[]`.
   - NASA Images: `search(q)`: `GET https://images-api.nasa.gov/search?q=<q>&media_type=image&page_size=20` (`random` adds `page=<1–5>`; words `['nebula','aurora','rover','launch','galaxy','eclipse','saturn','apollo','comet','earth']`). Items from `collection.items[]`: `data[0].{title, description, nasa_id, center, date_created}`, `links[0].href`. Find: id `nasa:<nasa_id>`, `url = 'https://images.nasa.gov/details/<nasa_id>'`, `imageUrl = links[0].href`, `attribution = 'NASA <center>'`, `licence 'Public domain (NASA)'`, why `['NASA Images']`. `probeUrl 'https://images-api.nasa.gov/search?q=moon&media_type=image&page_size=1'`.
   - Library of Congress: `search(q)`: `GET https://www.loc.gov/photos/?q=<q>&fo=json&c=25&sp=1` (`random` uses `sp=<1–5>`; words `['map','poster','bicycle','lighthouse','circus','garden','bridge','train','kite','harbor']`). An HTML reply (the CAPTCHA page) rejects, because `getJson` fails to parse it. Find: `url`, `title`, `description = description[0]`, **no `imageUrl`** (results carry no open-rights flag), why `['Library of Congress']`. `probeUrl 'https://www.loc.gov/photos/?q=map&fo=json&c=1'`.
-  - Smithsonian: needs secret `src:datagov`; without it every method returns `[]` with no request. `search(q)`: `GET https://api.si.edu/openaccess/api/v1.0/search?q=<q>&rows=20&api_key=<key>` (`random` adds `start=<0–199>`; words `['quilt','fossil','meteorite','toy','clock','mask','telescope','shell','banjo','kite']`). Rows from `response.rows[]`; `content.descriptiveNonRepeating` gives `record_link` (the url), `data_source` (the attribution) and `metadata_usage.access`; `imageUrl = online_media.media[0].thumbnail` only when access is `'CC0'`, and then `licence 'CC0'`. Why `['Smithsonian Open Access']`. `probeUrl 'https://api.si.edu/openaccess/api/v1.0/search?q=quilt&rows=1&api_key=DEMO_KEY'`.
+  - Smithsonian: needs secret `src:datagov`; without it every method returns `[]` with no request. `search(q)`: `GET https://api.si.edu/openaccess/api/v1.0/search?q=<q>&rows=20&api_key=<key>` (`random` adds `start=<0–199>`; words `['quilt','fossil','meteorite','toy','clock','mask','telescope','shell','banjo','kite']`). Rows from `response.rows[]`; `content.descriptiveNonRepeating` gives `record_link` (the url), `data_source` (the attribution) and `metadata_usage.access`; `imageUrl = online_media.media[0].thumbnail` only when access is `'CC0'`, and then `licence 'CC0'`. Why `['Smithsonian Open Access']`. `probeUrl 'https://api.si.edu/openaccess/api/v1.0/search?q=quilt&rows=1&api_key=DEMO_KEY'` (the notes do not confirm that `DEMO_KEY` works there, so a refused key still passes the probe through the 4xx rule of Task 5; it is one request a day).
 
-Fixtures: `nasaimages/search.json` (one item: 'Carina Nebula', 'Stars being born.', `nasa_id 'PIA123'`, `center 'GSFC'`, href `https://images-assets.nasa.gov/image/PIA123/PIA123~thumb.jpg`). `loc/photos.json` (one result: 'Map of Boston', `url 'https://www.loc.gov/item/123/'`, `description ['An old map.']`, two `image_url` entries) and `loc/captcha.html`. `smithsonian/search.json` (row 'Quilt' with CC0 access, `data_source 'National Museum of American History'`, a thumbnail; row 'Not open' with `access 'usage conditions apply'` and a thumbnail).
+Fixtures, beyond the values the tests assert: `loc/photos.json` gives its result two `image_url` entries (which stay unused), and `loc/captcha.html` is an HTML page; `smithsonian/search.json` has a second row 'Not open' with `access 'usage conditions apply'` and a thumbnail.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1267,13 +1267,14 @@ test('loc reads JSON, shows no image and treats HTML as a failure', async () => 
   const html = await adapterCtx({ extraRoutes: [{ match: /loc\.gov/, file: 'loc/captcha.html', headers: { 'content-type': 'text/html' } }] });
   await assert.rejects(loc.search('map', html.ctx));
 });
-test('smithsonian needs the api.data.gov key and shows CC0 images only', async () => {
+test('smithsonian needs the api.data.gov key, shows CC0 images only and keeps the key out of the cache', async () => {
   const none = await adapterCtx(); assert.deepEqual(await smithsonian.search('quilt', none.ctx), []); assert.equal(none.calls.length, 0);
-  const { ctx, calls } = await adapterCtx({ secrets: { 'src:apidatagov': 'MYKEY' } });
+  const { ctx, calls, store } = await adapterCtx({ secrets: { 'src:datagov': 'MYKEY' } });
   const [a, b] = await smithsonian.search('quilt', ctx);
   assert.equal(new URL(calls[0].url).searchParams.get('api_key'), 'MYKEY');
   assert.equal(a.licence, 'CC0'); assert.ok(a.imageUrl); assert.equal(a.attribution, 'National Museum of American History');
   assert.equal(b.imageUrl, undefined);
+  const keys = await store.keys('cache'); assert.ok(keys.length >= 1); assert.equal(keys.some((k) => k.includes('MYKEY')), false);
 });
 ```
 
@@ -1287,7 +1288,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-archives.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1307,14 +1308,14 @@ git commit -m "Add the NASA Images, Library of Congress and Smithsonian adapters
 - Consumes: `adapterCtx`, the adapter table, `makeFind`.
 - Produces: the `europeana` and `openverse` adapters. With no credentials, every method returns `[]` and makes no request.
   - Europeana: header `X-Api-Key: <secret src:europeana>` (never the `wskey` parameter). `search(q)`: `GET https://api.europeana.eu/record/v2/search.json?query=<q>&reusability=open&media=true&rows=20`; `random` searches a word from `['map','clock','poster','bird','ship','mask','garden','tile','toy','letter']` with `start=<1–100>`. Find: id `eu:<id>`, `title = title[0]`, `url = edmIsShownAt[0] || guid`, `imageUrl = edmPreview[0]`, `description = dcDescription[0]`, `licence = rights[0]`, `attribution = '<dataProvider[0]> via Europeana'`, why `['Europeana']`. `more` returns `[]`.
-  - Openverse: secret `src:openverse` holds the JSON `{"client_id": …, "client_secret": …}`. A token comes from `POST https://api.openverse.org/v1/auth_tokens/token/` with `Content-Type: application/x-www-form-urlencoded` and body `grant_type=client_credentials&client_id=<id>&client_secret=<secret>`, and is cached in `ctx.cache` as `openverse:token` for `expires_in − 60` seconds. Requests send `Authorization: Bearer <token>`. `search(q)`: `GET https://api.openverse.org/v1/images/?q=<q>&mature=false&page_size=20`; `random` searches a word from `['moss','lighthouse','fox','mushroom','tram','kite','owl','fern','lantern','harbour']` with `page=<1–5>`; `more(find)`: `GET https://api.openverse.org/v1/images/<find.meta.ovId>/related/`. Results with `mature === true` are dropped. Find: id `ov:<id>`, `url = foreign_landing_url`, `imageUrl = thumbnail || url`, `author = creator`, `attribution` as given, `licence`: `cc0` → `'CC0 1.0'`, `pdm` → `'Public Domain Mark 1.0'`, otherwise `'CC <LICENSE> <license_version>'`; why `['Openverse']`.
+  - Openverse: secret `src:openverse` holds the JSON `{clientId, clientSecret}` (overview SecretStore ids). A token comes from `POST https://api.openverse.org/v1/auth_tokens/token/` with `Content-Type: application/x-www-form-urlencoded` and body `grant_type=client_credentials&client_id=<clientId>&client_secret=<clientSecret>`. The token is kept in memory only (a `WeakMap` keyed by `ctx.secrets`, holding `{clientId, token, expiresAt}`) for `expires_in − 60` seconds, and never goes into `ctx.cache` or any store. Requests send `Authorization: Bearer <token>`. `search(q)`: `GET https://api.openverse.org/v1/images/?q=<q>&mature=false&page_size=20`; `random` searches a word from `['moss','lighthouse','fox','mushroom','tram','kite','owl','fern','lantern','harbour']` with `page=<1–5>`; `more(find)`: `GET https://api.openverse.org/v1/images/<find.meta.ovId>/related/`. Results with `mature === true` are dropped. Find: id `ov:<id>`, `url = foreign_landing_url`, `imageUrl = thumbnail || url`, `author = creator`, `attribution` as given, `licence`: `cc0` → `'CC0 1.0'`, `pdm` → `'Public Domain Mark 1.0'`, otherwise `'CC <LICENSE> <license_version>'`; why `['Openverse']`.
 
-Fixtures: `europeana/search.json` (item `id '/123/abc'`, `title ['A blue vase']`, `edmPreview`, `edmIsShownAt ['https://museum.example/vase']`, `dcDescription ['A vase from 1700.']`, `rights ['http://creativecommons.org/publicdomain/mark/1.0/']`, `dataProvider ['Example Museum']`). `openverse/token.json` (`{access_token 'TOK', token_type 'Bearer', expires_in 43200}`), `openverse/images.json` (`ov1` 'Red fox', `foreign_landing_url 'https://www.flickr.com/photos/x/1'`, `thumbnail`, `creator 'Ann'`, `license 'by'`, `license_version '2.0'`, `attribution '"Red fox" by Ann is licensed under CC BY 2.0.'`, `mature false`; `ov2` with `mature true`), `openverse/related.json` (one result `ov3`). Routes: token; `/related/` before `/v1/images/?`.
+Fixtures, beyond the values the tests assert: `openverse/token.json` is `{access_token 'TOK', token_type 'Bearer', expires_in 43200}`; `openverse/images.json` gives `ov1` `license 'by'` and `license_version '2.0'`, and has a second result `ov2` with `mature true`; `openverse/related.json` holds one result `ov3`. Routes: token; `/related/` before `/v1/images/?`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
-const ov = { 'src:openverse': JSON.stringify({ client_id: 'ID', client_secret: 'SECRET' }) };
+const ov = { 'src:openverse': JSON.stringify({ clientId: 'ID', clientSecret: 'SECRET' }) };
 test('europeana needs a key and sends it as a header', async () => {
   const none = await adapterCtx(); assert.deepEqual(await europeana.search('vase', none.ctx), []); assert.equal(none.calls.length, 0);
   const { ctx, calls } = await adapterCtx({ secrets: { 'src:europeana': 'EUKEY' } }); const [f] = await europeana.search('vase', ctx);
@@ -1325,13 +1326,14 @@ test('europeana needs a key and sends it as a header', async () => {
 });
 test('openverse gets a token once and filters mature results', async () => {
   const none = await adapterCtx(); assert.deepEqual(await openverse.search('fox', none.ctx), []);
-  const { ctx, calls } = await adapterCtx({ secrets: ov });
+  const { ctx, calls, store } = await adapterCtx({ secrets: ov });
   const out = await openverse.search('fox', ctx); await openverse.search('fox', ctx);
   assert.equal(calls[0].method, 'POST'); assert.equal(calls[0].headers['content-type'], 'application/x-www-form-urlencoded');
   assert.equal(calls[0].body, 'grant_type=client_credentials&client_id=ID&client_secret=SECRET');
   assert.equal(calls.filter(c => c.url.includes('auth_tokens')).length, 1);
   assert.equal(calls[1].headers.authorization, 'Bearer TOK'); assert.equal(new URL(calls[1].url).searchParams.get('mature'), 'false');
   assert.deepEqual(out.map(f => f.id), ['ov:ov1']); assert.equal(out[0].licence, 'CC BY 2.0'); assert.equal(out[0].url, 'https://www.flickr.com/photos/x/1');
+  assert.equal(JSON.stringify(await store.getAll('cache')).includes('TOK'), false);
 });
 test('openverse more asks for related images', async () => {
   const { ctx, calls } = await adapterCtx({ secrets: ov }); const [f] = await openverse.search('fox', ctx);

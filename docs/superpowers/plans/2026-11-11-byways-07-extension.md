@@ -15,26 +15,28 @@
 - Every item in the overview's "Global constraints (every plan)" and "Working conventions" applies. Commands run in `Apps/Byways/`.
 - Extension CSP, exact: `"script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"` in `content_security_policy.extension_pages`.
 - Chrome/Edge: `action`, with **no** `openPanelOnActionClick`; `side_panel.default_path: panel.html`; `background: { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' }`; 4 commands (§6.3).
-- Permissions: `storage`, `unlimitedStorage`, `sidePanel`, `contextMenus` and `activeTab`; optional: `tts`, and `identity` (for Connect OpenRouter).
-- `host_permissions`: `https://archive.org/*` and `https://*.archive.org/*`; the provider API hosts; the open and probe source hosts; `raw.githubusercontent.com`, `itch.io` and the Pages URL.
-- `optional_host_permissions`: `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` and `http://*/*`, each asked for from a button.
-- Firefox overlay: drops `side_panel` and `sidePanel`, adds `sidebar_action.default_panel: panel.html` and `_execute_sidebar_action`; `browser_specific_settings.gecko`: `id: byways@iteatsthesalt`, `strict_min_version: 140.0`; `data_collection_permissions`: `required: ['none']`, `optional: ['searchTerms', 'browsingActivity']`.
+- Permissions: `storage`, `unlimitedStorage`, `sidePanel`, `contextMenus` and `activeTab`; optional: `tts`, and `identity` (for Connect OpenRouter, through `platform.identity`, Task 3).
+- `host_permissions`: `https://archive.org/*` and `https://*.archive.org/*`; the provider API hosts; the open and probe source hosts; `raw.githubusercontent.com`, `itch.io` and the Pages URL. Task 1, Step 3 lists them exactly.
+- `optional_host_permissions`: `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` and `http://*/*`, each asked for from a button when you add a custom endpoint or a model on your local network, through `platform.requestOrigins(origins)` (Task 3).
+- Firefox overlay: drops `side_panel` and `sidePanel`, adds `sidebar_action.default_panel: panel.html` and `_execute_sidebar_action`; `browser_specific_settings.gecko`: `id: byways@iteatsthesalt`, `strict_min_version: 140.0`; `data_collection_permissions`: `required: ['none']`, `optional: ['searchTerms', 'browsingActivity']`. These are asked for when AI or "More like this page" is turned on (Tasks 3 and 4). The list is checked against AMO's current list by hand only (Task 9).
 - At startup, Byways checks `permissions.contains` and offers **Grant access** if anything was revoked.
 - Namespace: `const ext = globalThis.browser ?? globalThis.chrome`. No polyfill.
 - Suggested shortcuts: Alt+Shift+S to Stumble, Alt+Shift+B to open the panel, Alt+Shift+V to toggle listening, Alt+Shift+M for "More like this page".
-- Toolbar click: the background picks the next find through the core, `tabs.update(tab.id, {url})` loads it, and the find is stored in `storage.session` by tab id.
+- Toolbar click: the background picks the next find through the core, `tabs.update(tab.id, {url})` loads it, and the find is stored in `storage.session` by tab id. It never loads a find the seen-set already has, because the side panel and the Byways tab run their own engines on the same store.
 - Byways tab (`app.html`): the full app UI. Lean-back runs here, and **Open** uses a new tab.
+- Side panel and sidebar (`panel.html`): hands-free there gives voice commands and read-aloud but no auto-advance (`createHandsFree({..., leanBack: false})`, chosen through `platform.leanBack`, Task 3). **Open** uses a new tab here too, as Plan 02's card handler does. Only the toolbar Stumble loads a find in your current tab.
 - Voice: the same web engines, only in the side panel, sidebar or Byways tab, after a one-time mic grant on `permission.html`. Never listens while the panel or tab is closed.
 - Keys live in `chrome.storage.local`, never in IndexedDB, in the extension.
 - **Lab:** the button opens the hosted web Lab, `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/`. The build never copies `src/lab` or `vendor/`.
 - **No content scripts in v1.**
-- Network (§15.1): only the enabled sources and the site you open, AI only to providers you set up. Requests never send cookies (`credentials: 'omit'`).
+- Network (§15.1): only the enabled sources and the site you open, AI only to providers you set up. Requests never send cookies (`credentials: 'omit'`). A privileged `HEAD` to a host Byways has no access to goes out as `no-cors` (Task 3), so link checks still work on any site.
+- Generated data files (`daily.json`, `itch.json`, `vault-index.json`) come from the Pages site through the contract's `dataUrl`. The build ships none of them, and the Pages host is in `host_permissions`.
 - Ollama setup text already lists `chrome-extension://*,moz-extension://*` (§12.9). A 403 from Ollama in the extension is a missing `OLLAMA_ORIGINS` entry.
 
 ## Review Focus
 
-1. **A host missing from `host_permissions`.** A source or provider that works in the web app must not silently fail CORS in the extension. Pinned by `every host the adapters and providers call is covered` (Task 1).
-2. **Rapid repeated Stumble presses** (toolbar double-click, held Alt+Shift+S). Each press must navigate once, in order, to a different find, with no unhandled rejection. Pinned by `concurrent stumbles run one at a time and never repeat a find` (Task 4).
+1. **A host missing from `host_permissions`, or a check on a site outside them.** A source or provider that works in the web app must not silently fail CORS in the extension, and a link check on an arbitrary blog must not mark every find dead. Pinned by `every host the adapters and providers call is covered` (Task 1) and `transport omits cookies, drops the privileged flag and checks hosts it has no access to without CORS` (Task 3).
+2. **Rapid repeated Stumble presses** (toolbar double-click, held Alt+Shift+S). Each press must navigate once, in order, to a different find, with no unhandled rejection, and never to a find the side panel or the Byways tab already showed. Pinned by `concurrent stumbles run one at a time and never repeat a find` and `stumble skips a find another page already showed` (Task 4).
 3. **Stumble with nothing new or while offline.** The engine returns `{empty:true, reason}` or throws. The tab must stay where it is and the toolbar must say why. Pinned by `an empty pool sets the badge and title and does not navigate` and `an engine error sets the badge and does not navigate` (Task 4).
 4. **"More like this page" on a non-web tab** (`chrome://newtab/`, `about:addons`, `file:///`). The panel must still open and say it works only on web pages. Pinned by `more like this page on a non-web tab stores a not-web marker` (Task 4) and `the panel explains a not-web page` (Task 6).
 5. **Host access revoked after install** (Firefox lets users untick it). The badge must show it and the panel must offer **Grant access**, which clears once granted. Pinned by `checkAccess flags revoked hosts and clears when granted` (Task 4) and `the access banner grants and disappears` (Task 6).

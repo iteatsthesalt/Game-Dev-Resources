@@ -1121,40 +1121,59 @@ class LinkPolicyTest {
     assertEquals("lab/vendor/js-dos/js-dos.js", AssetRules.safeAssetPath("lab", "vendor/js-dos/js-dos.js"))
     for (s in listOf("", "../www/index.html", "a/../../x", "/etc/hosts", "a\\b")) assertNull(s, AssetRules.safeAssetPath("lab", s))
   }
+  @Test fun authCallbackIsOnlyTheAppHost() {
+    assertTrue(LinkPolicy.isAuthCallback("https://appassets.androidplatform.net/assets/www/index.html?code=c1"))
+    for (u in listOf("https://appassets.androidplatform.net.evil.com/?code=1", "http://appassets.androidplatform.net/?code=1",
+      "https://lab.appassets.androidplatform.net/?code=1", "https://openrouter.ai/auth", "not a url"))
+      assertFalse(u, LinkPolicy.isAuthCallback(u))
+  }
 }
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+Add to `tests/unit/android-shell.test.js`:
 
-Run: `gradle -p shells/android testDebugUnitTest --tests '*LinkPolicyTest'` (or the CI job).
-Expected: FAIL to compile with `Unresolved reference 'LinkPolicy'`.
+```js
+test('the site view has no bridge, no file access and the spec buttons', () => {
+  const v = R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/SiteView.kt`);
+  for (const s of ['"Back to Byways"', '"Next"', '"Open in browser"', '"Pause"', '"Play"', '"Stop"', 'allowFileAccess = false',
+    'allowContentAccess = false', 'MIXED_CONTENT_NEVER_ALLOW', 'request.deny()', 'isAuthCallback('])
+    assert.ok(v.includes(s), s);
+  assert.doesNotMatch(v, /addWebMessageListener|addJavascriptInterface|setDownloadListener|onShowFileChooser/);
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*LinkPolicyTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
+Expected: Node fails with `ENOENT` on `SiteView.kt`; Gradle fails to compile with `Unresolved reference 'LinkPolicy'`.
 
 - [ ] **Step 3: Implement `LinkPolicy` and `AssetRules`**
 
-Parse with `java.net.URI`; compare scheme and host exactly (lower-cased). A URL that does not parse is `BLOCK`. `safeAssetPath` rejects any `..` segment.
+Parse with `java.net.URI`; compare scheme and host exactly (lower-cased). A URL that does not parse is `BLOCK` (and not an auth callback). `safeAssetPath` rejects any `..` segment.
 
 - [ ] **Step 4: Implement `SiteView` and `openOutside`**
 
-- The site view is a vertical `LinearLayout` over the main WebView: a 56 dp toolbar with three buttons, **Back to Byways** (`close()`), **Next** (`onNext()`) and **Open in browser** (`openOutside` with the current URL); then a one-line `TextView` showing the current host; then a `WebView` created on the first `open`.
+- The site view is a vertical `LinearLayout` over the main WebView: a 56 dp toolbar with **Back to Byways** (`close()`), **Next** (emits `siteNext`), **Pause** or **Play** and **Stop** (emit `sitePause` and `siteStop`; Stop's content description is `Stop reading`) and **Open in browser** (`openOutside` with the current URL); then a one-line `TextView` showing the current host; then a `WebView` created on the first `open`. The labels are string literals in `SiteView.kt`. `setControls(state)` shows **Pause** for `active`, **Play** for `paused` or `suspended`, and **Stop** for every state but `idle`, which hides all three: §6.4 and §6.5 want them visible wherever lean-back runs.
 - Its settings: JavaScript and DOM storage on, `allowFileAccess = false`, `allowContentAccess = false`, `MIXED_CONTENT_NEVER_ALLOW`, `setSupportMultipleWindows(false)`. It has no message listener, no file chooser and no download listener, and `onPermissionRequest` calls `request.deny()`.
 - `shouldOverrideUrlLoading` acts on main-frame requests only: `LOAD` → false; `EXTERNAL` → `openOutside`, true; `BLOCK` → true.
-- `close()` destroys the WebView, removes the layout and calls `onClosed()`.
+- `openAuth(url, onDone)` opens the same view as a login view with only **Back to Byways**. There, a main-frame URL for which `isAuthCallback` is true (a redirect included) is not loaded: the view closes and calls `onDone(url)`. Closing it any other way calls `onDone(null)`. A login view never emits events.
+- `close()` destroys the WebView, removes the layout and emits `siteClosed`.
 - `openOutside`: `intent:` URLs go through `Intent.parseUri(url, Intent.URI_INTENT_SCHEME)`, others through `Intent(ACTION_VIEW, Uri.parse(url))`. Add `CATEGORY_BROWSABLE` and set `component = null` and `selector = null`. On `ActivityNotFoundException`, an `https` `browser_fallback_url` extra goes to `fallback`; otherwise show the toast `No app on this phone can open this link.`
 
 - [ ] **Step 5: Wire it in `MainActivity`**
 
-- The `app` handler gains `openSite {url, title}` (`http(s)` only, else error `scheme`; replies `true`) and `closeSite {}`.
-- `onNext` emits `app` `siteNext {}`, and `onClosed` emits `app` `siteClosed {}`.
+- The `app` handler gains `openSite {url, title}` (`http(s)` only, else error `scheme`; replies `true`), `closeSite {}`, `siteControls {state}` (→ `siteView.setControls(state)`) and `auth {url}` (`https` only, else `scheme`; another `auth` while a login view is open replies `busy`), which runs `siteView.openAuth(url) { cb -> if (cb != null) reply.ok(cb) else reply.error("cancelled") }`.
+- The site view's `emit` forwards `siteNext`, `sitePause`, `siteStop` and `siteClosed` as `app` events with data `{}`.
 - The main WebView's `shouldOverrideUrlLoading` (main frame only) uses `LinkPolicy.forMainView`: `LOAD` → false; `SITE` → `siteView.open(url, "")`, true; `EXTERNAL` → `openOutside`, true; `BLOCK` → true.
 
-- [ ] **Step 6: Run it to see it pass**
+- [ ] **Step 6: Run them to see them pass**
 
-Run: the Step 2 command. Expected: PASS (4 tests).
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 15 tests; Gradle: 5 tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/LinkPolicyTest.kt
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/LinkPolicyTest.kt tests/unit/android-shell.test.js
 git commit -m "Add the in-app site view with link rules"
 ```
 
