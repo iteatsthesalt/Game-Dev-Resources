@@ -1351,7 +1351,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-keyed.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1371,9 +1371,9 @@ git commit -m "Add the Europeana and Openverse adapters"
 - Consumes: `adapterCtx`, the adapter table, `makeFind`, `isHttpUrl`, `siteOrigin`, `domainOf`.
 - Produces: the `kagi`, `kagirandom` and `wiby` adapters, and these `kagi.js` named exports:
   - `KAGI_LISTS = {smallweb: 'https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt', smallyt: '…/smallyt.txt', smallcomic: '…/smallcomic.txt'}` (same folder).
-  - `parseKagiList(text, name) → Array<{url, title}>`: trims each line, drops empty lines and lines starting with `[` or `#`, and takes the first whitespace-separated token, which must pass `isHttpUrl`. For `smallyt` (lines look like `<feed url> # <name> <channel url>`) the find is the trailing channel URL with the name as title. For the others the find is `siteOrigin(token) + '/'` with `domainOf(token)` as title. Results are unique by URL.
-  - `loadKagiList(ctx, name) → Promise<Array<{url, title}>>`: cached in `ctx.cache` as `kagi:list:<name>` for 7 days.
-- Kagi `random`: picks a list with `ctx.rand` (`smallweb` below 0.8, `smallyt` below 0.9, else `smallcomic`), then up to 5 random entries. Domain-only card: no `imageUrl`; `title` from the parser; `kind 'video'` for `smallyt`, else `'site'`; tags `['web','essays']`, `['film']` for `smallyt` and `['comics']` for `smallcomic`; `description` = `'A small personal site from the Kagi Small Web list.'`, `'A small YouTube channel from the Kagi Small Web list.'` or `'An independent web comic from the Kagi Small Web list.'`; `attribution 'Kagi Small Web list (MIT)'`; why `['Kagi Small Web']`. `search` and `more` return `[]`.
+  - `parseKagiList(text, name) → Array<{url, title}>`: trims each line, drops empty lines and lines starting with `[` or `#`, and takes the first whitespace-separated token, which must pass `isHttpUrl`. For `smallyt` the notes give no line format, so two forms are read: a line with a comment (`<feed url> # <name> <channel url>`) gives the trailing channel URL with the name as title; a bare feed URL gives `https://www.youtube.com/channel/<channel_id>` from its `channel_id` parameter, with the channel id as title. For the other lists the find is `siteOrigin(token) + '/'` with `domainOf(token)` as title. Results are unique by URL.
+  - `loadKagiList(ctx, name) → Promise<Array<{url, title}>>`: kept in `ctx.cache` as `kagi:list:<name>` = `{list, fetchedAt}` with a 30-day lifetime. With no list cached it downloads now with `getText(url, {source: 'kagi', timeoutMs: 60000})` (`smallweb.txt` is 1.53 MB). A list older than 7 days is still returned at once while one background refresh runs (60 s timeout, at most one try per list per hour, tracked in memory); only a successful refresh replaces it.
+- Kagi `random`: picks a list with `ctx.rand` (`smallweb` below 0.8, `smallyt` below 0.9, else `smallcomic`). When that list is not cached yet, it starts `loadKagiList` without waiting and returns `[]`, so the 8 s source rule never waits on the download. Otherwise it returns up to 5 random entries. Domain-only card: no `imageUrl`; `title` from the parser; `kind 'video'` for `smallyt`, else `'site'`; tags `['web','essays']`, `['film']` for `smallyt` and `['comics']` for `smallcomic`; `description` = `'A small personal site from the Kagi Small Web list.'`, `'A small YouTube channel from the Kagi Small Web list.'` or `'An independent web comic from the Kagi Small Web list.'`; `attribution 'Kagi Small Web list (MIT)'`; why `['Kagi Small Web']`. `search` and `more` return `[]`.
 - Kagi random: `GET https://kagi.com/smallweb/api/random` (also its `probeUrl`) → `{url, title, author, domain, categories}`. Tags are the categories that are tag ids in `ctx.data.tags`, else `['web','essays']`; why `['Kagi Small Web: random']`.
 - Wiby: `search(q)`: `GET https://wiby.me/json/?q=<q>` → `[{URL, Title, Snippet}]`, why `['Wiby search']`; `random` returns `[]`; `probeUrl 'https://wiby.me/json/?q=games'`. Named export `WIBY_LEAP_URL = 'https://wiby.me/surprise/'` for the navigate-only **Wiby leap** button (Task 24).
 
@@ -1388,7 +1388,7 @@ not a url
 https://www.blog.example.org/atom.xml
 ```
 
-`kagi/smallyt.txt`: `https://www.youtube.com/feeds/videos.xml?channel_id=UCabc # Tom S https://www.youtube.com/channel/UCabc`. `kagi/smallcomic.txt`: `http://comic.example.com/feeds/atom`. `kagirandom/random.json`: `{url 'https://small.example.blog/post/1', title 'A small post', author 'Sam', domain 'small.example.blog', categories ['programming','retro','unknowncat']}`. `wiby/search.json`: `[{URL 'https://oldsite.example/', Title 'My old site', Snippet 'Hand coded since 1999.'}]`.
+`kagi/smallyt.txt` has two lines: `https://www.youtube.com/feeds/videos.xml?channel_id=UCabc # Tom S https://www.youtube.com/channel/UCabc` and `https://www.youtube.com/feeds/videos.xml?channel_id=UCxyz`. `kagi/smallcomic.txt`: `http://comic.example.com/feeds/atom`. `kagirandom/random.json` has `categories ['programming','retro','unknowncat']`. `wiby/search.json` is an array of `{URL, Title, Snippet}`.
 
 - [ ] **Step 1: Write the failing test**
 

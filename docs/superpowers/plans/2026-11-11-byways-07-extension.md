@@ -51,9 +51,9 @@
 | `shells/extension/manifest.chrome.json` | Chrome/Edge overlay: `sidePanel`, `side_panel`, `tts`, the `open-panel` command |
 | `shells/extension/manifest.firefox.json` | Firefox overlay: `sidebar_action`, `_execute_sidebar_action`, `browser_specific_settings.gecko` |
 | `tools/build.js` (modify) | `mergeManifest`, `extensionManifest`, `buildExtension`; the `extension` target |
-| `tools/check.js` (modify) | `checkExtensionDir`: manifest JSON, exact CSP, no remote script URLs, no `lab/` or `vendor/` |
-| `src/platform/extension.js` | `createExtensionPlatform`, `gateVoice`, `createExtSecrets` |
-| `shells/extension/bg.js` | `createBackground(deps)` handlers, plus the top-level event wiring and the engine loader |
+| `tools/check.js` (modify) | `checkExtensionDir` (manifest JSON, exact CSP, no remote script URLs, no `lab/` or `vendor/`), `EXT_PAGE_CSP`, the `csp` option of `checkHtml`, the extension folders in `runChecks` |
+| `src/platform/extension.js` | `createExtensionPlatform`, `gateVoice`, `createExtSecrets`, `requestDataCollection`, `toggleListening` |
+| `shells/extension/bg.js` | `createBackground(deps)` handlers, `loadBackgroundData`, `wire`, and the engine loader |
 | `shells/extension/panel.html` | Side panel / sidebar page (`data-surface="panel"`) |
 | `shells/extension/app.html` | Byways tab page (`data-surface="tab"`) |
 | `shells/extension/panel.js` | Boots the shared UI for either surface; panel extras; access banner |
@@ -61,12 +61,14 @@
 | `tests/unit/ext-manifest.test.js` | Merge rules, both manifests, host coverage |
 | `tests/unit/ext-check.test.js` | `buildExtension` output and `checkExtensionDir` rules |
 | `tests/unit/ext-platform.test.js` | `createExtensionPlatform` with a fake `ext` and `win` |
-| `tests/unit/ext-bg.test.js` | `createBackground` handlers with a fake `ext` and a fake engine |
-| `tests/e2e/helpers/net.js` (modify) | `mockNet` and `unmocked` accept a `BrowserContext` too |
-| `tests/e2e/extension.spec.js` | Loads `dist/chrome` in a persistent context; stumble, panel, routes, mic page |
+| `tests/unit/ext-bg.test.js` | `createBackground` handlers with a fake `ext` and a fake engine; `loadBackgroundData`; `wire` |
+| `tests/unit/build.test.js` (modify) | Plan 01's placeholder test stops expecting empty extension folders |
+| `tests/unit/workflows.test.js` (modify) | The web job uploads the two extension zips |
+| `tests/e2e/helpers/net.js` (modify) | `mockNet`, `unmocked` and `pageProblems` accept a `BrowserContext` too |
+| `tests/e2e/extension.spec.js` | Loads `dist/chrome` in a persistent context; stumble, routes, side panel, mic page, hands-free |
 | `tests/fixtures/http/html/find-page.html` | Stand-in page for a stumbled site |
-| `.github/workflows/byways.yml` (modify) | Zip both builds as artifacts; `xvfb-run` for the extension spec if headless fails |
-| `CHECKLIST.md` (create or modify) | Firefox manual checks |
+| `.github/workflows/byways.yml` (modify; at the repo root, `../../` from `Apps/Byways`) | Zip both builds and upload the zips; `xvfb-run` for the extension spec if headless fails |
+| `CHECKLIST.md` (create) | Manual extension checks. Plan 09 adds its own sections to this file later |
 
 **Message types** (between `bg.js` and the extension pages, all via `ext.runtime.sendMessage`):
 
@@ -76,13 +78,15 @@
 | `tabFind` | bg → pages | `{tabId, windowId, find, branch, why}` | Panel in that window shows the card |
 | `stateChanged` | page → bg | `{}` | bg drops its cached engine (taste changed) |
 | `checkAccess` | page → bg | `{}` | bg re-runs `checkAccess()`. Reply `{needsAccess}` |
-| `toggleListening` | bg → pages | `{}` | Panel or tab toggles the mic |
+| `toggleListening` | bg → pages | `{tabId, windowId, inBywaysTab}` | Only the named page acts: the Byways tab with that `tabId` when `inBywaysTab`, else the panel of that window. It toggles the mic |
 | `rabbit` | bg → pages | `{}` | Panel reads `pendingRabbit` from `storage.session` |
 | `openPermission` | page → bg | `{}` | bg opens or focuses `permission.html`. Reply `{tabId}` |
 | `micGranted` | permission page → pages | `{granted:boolean}` | Panel or tab announces the result |
 | `accessChanged` | bg → pages | `{needsAccess:boolean}` | Pages show or hide the **Grant access** banner |
 
-`storage.session` keys: `find:<tabId>` → `{find, branch, why}`, `pendingRabbit` → `Find` or `{error:'not-web'}`, `permissionTabId` → number. `storage.local` keys: `secret:<id>` → string, `needsAccess` → boolean.
+`storage.session` keys: `find:<tabId>` → `{find, branch, why}`, `pendingRabbit` → `Find`, `{error:'not-web'}` or `{error:'no-consent'}`, `permissionTabId` → number. `storage.local` keys: `secret:<id>` → string, `needsAccess` → boolean.
+
+Pages send nothing until they are told to: every `runtime.sendMessage` ends in `.catch(() => {})`, because a send with no page open rejects.
 
 ### Task 1: Manifest template, overlays and merge
 

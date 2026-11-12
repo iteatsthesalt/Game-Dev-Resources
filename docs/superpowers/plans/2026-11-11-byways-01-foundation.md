@@ -1571,48 +1571,57 @@ test('boots on a memory store when IndexedDB is blocked', async ({ page }) => {
 });
 ```
 
-The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`.
+CI builds with `GITHUB_SHA` as the build id, so the About test reads the id from `build.json` instead of expecting `dev`.
 
 - [ ] **Step 3: Run them and see them fail**
 
-Run: `node --test tests/unit/router.test.js tests/unit/boot-data.test.js`
-Expected: FAIL with `Cannot find module` for `src/ui/router.js` in both files.
+Run: `node --test tests/unit/boot-data.test.js`
+Expected: FAIL with `SyntaxError: The requested module '../../src/ui/boot.js' does not provide an export named …`, because `boot.js` is still the Task 9 stub.
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
 Expected: FAIL with `Cannot find module` for `./helpers/app.js`.
 
-- [ ] **Step 4: Implement `router.js` and the two registries**
+- [ ] **Step 4: Implement the settings registry, the About section and `views/index.js`**
 
-`parseHash`: `#s=<payload>` with a non-empty payload gives `import`. Otherwise it splits `#/route/id`, lower-cases `route`, and checks it with `ROUTES.includes`; an unknown or empty route gives `stumble` with no params. It decodes `id` with `decodeURIComponent` inside try/catch and drops the id when decoding fails. It ignores segments after the id. `buildHash` encodes `id` with `encodeURIComponent`. `startRouter(render)` calls `render(parseHash(location.hash))` with `(route, params)` now and on each `hashchange`. `navigate` sets `location.hash`, and calls `render` directly when the hash is unchanged. The settings view renders an `h1` "Settings" and a list of section links `#/settings/<id>`, or the paragraph "Nothing to set yet." when there are none. For `params.id` matching a section, it renders an `h1` with the section label, an "All settings" link to `#/settings`, and a container passed to `section.render(container, app)`.
+The settings view's `render(container, app, params)`: with no matching `params.id`, it lists one link per section, `#/settings/<id>` labelled with its `label`, in `order`. For a matching id it renders an `h2` with the section's label, an **All settings** link to `#/settings`, and a `div` that it passes to `await section.render(div, app)`.
+
+`about.js` registers `{id: 'about', label: 'About', order: 90, render}`. `render` appends the paragraph `Version <APP_VERSION>`. Next comes the paragraph `Build <id>`, with `id` read from `build.json` through `app.platform.transport.fetch(new URL('build.json', document.baseURI).href)`, or `Build unknown` on any failure. Last is a list of two links: **Source code** to `https://github.com/iteatsthesalt/Game-Dev-Resources` and **Byways web app** to `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`.
+
+`views/index.js` imports `./settings/index.js` and `./settings/about.js`, then registers each placeholder whose route `getView` does not know yet.
 
 - [ ] **Step 5: Implement `boot.js`**
 
-`loadData` fetches `new URL('data/' + file, baseUrl).href` for each `DATA_FILES` entry in parallel. A failed fetch, a non-ok status or bad JSON gives `structuredClone(EMPTY_DATA[key])`.
+`loadData` fetches `new URL('data/' + file, baseUrl).href` for each `DATA_FILES` entry in parallel. A failed fetch, a non-ok status or bad JSON gives `structuredClone(EMPTY_DATA[key])`. `dataUrlFor('pwa', file)` is `'data/' + file`. For any other platform it is `'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/' + file`, because those builds hold no generated data files.
 
 `boot(platform)`:
-1. Opens `openStore(idbBackend())`. If that rejects, it opens `openStore(memoryBackend())` and later calls `announce(STORAGE_OFF_MESSAGE, {assertive: true})`.
+1. Opens `openStore(idbBackend())`. If that rejects, it opens `openStore(memoryBackend())` and, after step 7, calls `announce(STORAGE_OFF_MESSAGE, {assertive: true})`.
 2. Loads settings and calls `applyAccessSettings`.
 3. Builds `clock = realClock`, `rand = mulberry32(crypto.getRandomValues(new Uint32Array(1))[0])`, `http = createHttp({transport: platform.transport, clock})` and `data = await loadData(platform.transport.fetch, document.baseURI)`.
-4. Makes `app = {store, settings, getSettings, saveSettings, http, clock, rand, platform, data}`. `app.saveSettings(patch)` calls the core `saveSettings`, copies the result onto the live `settings` object, and re-applies access settings.
+4. Makes `app = {store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl}`, where `dataUrl = file => dataUrlFor(platform.name, file)`. `app.saveSettings(patch)` calls the core `saveSettings`, copies the result onto the live `settings` object, and re-applies access settings.
 5. Wires the `.skip-link` click to `preventDefault()` and `focusMain()`.
-6. Awaits `runFirstRun(app)` (Task 13; until then, skip this step).
-7. Calls `startRouter(show)` and returns `app`.
+6. Awaits `runFirstRun(app)` (Task 14; until then, skip this step).
+7. Calls `startRouter(show)`.
+8. Awaits `platform.attach?.(app)` (only Plan 08's Android platform has one), then returns `app`.
 
-`show(route, params)` calls the previous view's `leave?.()`. It replaces `#app`'s children with a fresh `div.view` (so a slow render from an earlier route writes into a detached node), and sets `document.title` to `<title> · Byways`. It sets `aria-current="page"` on the matching `nav a[href="#/<route>"]` and removes it from the others. It awaits `view.render(div, app, params)`. On a throw it shows an `h1` with the title, the paragraph `VIEW_FAILED_MESSAGE`, and calls `announce(VIEW_FAILED_MESSAGE, {assertive: true})`. After the first render it calls `focusMain()` on each route change. `boot.js` imports `./views/index.js` for its side effects.
+`show(route, params)` calls the previous view's `leave?.()`. It replaces `#app`'s children with a fresh `div.view` holding an `h1` with the view's `title` and an empty `div.view-body`, so a slow render from an earlier route writes into a detached node. It sets `document.title` to `<title> · Byways`, and `aria-current="page"` on the matching `nav a[href="#/<route>"]` (removing it from the others). It awaits `view.render(body, app, params)`. On a throw it logs the error with `console.warn`, empties the body, adds the paragraph `VIEW_FAILED_MESSAGE` and calls `announce(VIEW_FAILED_MESSAGE, {assertive: true})`. After the first render it calls `focusMain()` on each route change. `boot.js` imports `./views/index.js` for its side effects.
 
-`bootFromShell()`: when `document.documentElement.dataset.shell === 'pwa'`, it opens a secrets store (IndexedDB, or memory on failure), calls `boot(createPwaPlatform({secretsStore}))`, then `registerServiceWorker(window, onUpdate)` (Task 14 supplies `onUpdate`; until then pass `() => {}`). The last line of the module is `if (globalThis.document?.documentElement?.dataset?.shell) bootFromShell();`.
+`bootFromShell()`: when `document.documentElement.dataset.shell === 'pwa'`, it opens a secrets store (IndexedDB, or memory on failure), awaits `boot(createPwaPlatform({secretsStore}))`, then calls `registerServiceWorker(window, onUpdate)` (Task 15 supplies `onUpdate`; until then pass `() => {}`). No rejection escapes it: a boot failure is logged with `console.error`, and a service worker failure with `console.warn`. The last line of the module is `if (globalThis.document?.documentElement?.dataset?.shell) bootFromShell();`.
 
-- [ ] **Step 6: Run them and see them pass**
+- [ ] **Step 6: Write `tests/e2e/helpers/app.js`**
 
-Run: `node --test tests/unit/router.test.js tests/unit/boot-data.test.js`
-Expected: PASS, 4 tests.
+`skipFirstRun(page)` first waits until `[data-firstrun]` or `#app .view > h1` is visible, because boot is asynchronous and an earlier check could run before Welcome appears. Then, while a `[data-firstrun]` section is visible, it clicks that section's **Skip** button. `gotoApp(page, hash)` runs `page.goto('./' + hash)`, then `skipFirstRun(page)`, then waits for `#app .view > h1`, the routed view's heading, which the Welcome heading inside `section[data-firstrun]` cannot satisfy.
+
+- [ ] **Step 7: Run them and see them pass**
+
+Run: `node --test tests/unit/boot-data.test.js`
+Expected: PASS, 2 tests.
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 8: Commit**
 
 ```bash
-git add src/ui/router.js src/ui/views/index.js src/ui/views/settings/index.js src/ui/boot.js tests/e2e/helpers/app.js tests/unit/router.test.js tests/unit/boot-data.test.js tests/e2e/shell.spec.js
-git commit -m "Add the hash router, view registries and app boot"
+git add src/ui/views/index.js src/ui/views/settings/index.js src/ui/views/settings/about.js src/ui/boot.js tests/e2e/helpers/app.js tests/unit/boot-data.test.js tests/e2e/shell.spec.js
+git commit -m "Add the app boot, the view registries and the About section"
 ```
 
 ### Task 13: First run and the Welcome step

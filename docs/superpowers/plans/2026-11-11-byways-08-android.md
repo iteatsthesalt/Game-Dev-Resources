@@ -1157,7 +1157,7 @@ Parse with `java.net.URI`; compare scheme and host exactly (lower-cased). A URL 
 - Its settings: JavaScript and DOM storage on, `allowFileAccess = false`, `allowContentAccess = false`, `MIXED_CONTENT_NEVER_ALLOW`, `setSupportMultipleWindows(false)`. It has no message listener, no file chooser and no download listener, and `onPermissionRequest` calls `request.deny()`.
 - `shouldOverrideUrlLoading` acts on main-frame requests only: `LOAD` → false; `EXTERNAL` → `openOutside`, true; `BLOCK` → true.
 - `openAuth(url, onDone)` opens the same view as a login view with only **Back to Byways**. There, a main-frame URL for which `isAuthCallback` is true (a redirect included) is not loaded: the view closes and calls `onDone(url)`. Closing it any other way calls `onDone(null)`. A login view never emits events.
-- `close()` destroys the WebView, removes the layout and emits `siteClosed`.
+- `close()` destroys the WebView, removes the layout and emits `siteClosed` (a login view calls `onDone(null)` instead).
 - `openOutside`: `intent:` URLs go through `Intent.parseUri(url, Intent.URI_INTENT_SCHEME)`, others through `Intent(ACTION_VIEW, Uri.parse(url))`. Add `CATEGORY_BROWSABLE` and set `component = null` and `selector = null`. On `ActivityNotFoundException`, an `https` `browser_fallback_url` extra goes to `fallback`; otherwise show the toast `No app on this phone can open this link.`
 
 - [ ] **Step 5: Wire it in `MainActivity`**
