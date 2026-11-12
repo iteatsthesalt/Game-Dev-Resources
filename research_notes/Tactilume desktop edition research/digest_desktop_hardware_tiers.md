@@ -91,16 +91,11 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 - **Monitors:** OLED monitors grew 98% year on year in Q2 2026 (TrendForce, 13 Aug 2026), and more than 4M are forecast for 2026. 27-inch 1440p 240 Hz is the growth segment. 480–520 Hz monitors ship, and 1,000 Hz panels were shown at Computex 2026. No trustworthy refresh-mix or HDR-prevalence data exists.
 - **Laptops:** OLED is about 6% of notebook panels in 2026 (TrendForce, 29 Oct 2026), and new OLED notebook panels are 16:10.
 - **HDR tiers:** DisplayHDR 400 is SDR-like (400 nits, 0.4-nit black). DisplayHDR 1000 means 1,000 nits and 0.05-nit black. (displayhdr.org)
-- **Targets (Inference):**
-  - Minimum: 1080p/1200p at 60 Hz, SDR.
-  - Recommended: 1080p144 or 1440p60.
-  - High: 1440p at 144–240 Hz, HDR optional.
-  - Ultra: 4K at 120–144 Hz or 1440p at 360–480 Hz, OLED or DisplayHDR 1000.
-  - SDR is the default look. Offer HDR when `dynamic-range: high` matches and/or `depthPerComponent` > 8.
+- **Targets (Inference):** Minimum 1080p/1200p at 60 Hz, SDR; Recommended 1080p144 or 1440p60; High 1440p at 144–240 Hz, HDR optional; Ultra 4K at 120–144 Hz or 1440p at 360–480 Hz, OLED or DisplayHDR 1000. SDR is the default look; offer HDR when `dynamic-range: high` matches and/or `depthPerComponent` > 8.
 
 ## 6. Store requirement wording (Inference; comparables from search excerpts)
 
-- **Comparables:** Tetris Effect, Rez Infinite, Universe Sandbox, Wallpaper Engine, Teardown, Noita, shapez and CrossCode name reference GPUs "or equivalent", state VRAM, and add an iGPU line and an API floor.
+- **Comparables** (Tetris Effect, Universe Sandbox, Teardown, Wallpaper Engine and others) name reference GPUs "or equivalent", state VRAM, and add an iGPU line and an API floor.
 - **Minimum (1080p60, ~1–2M):** Windows 10 22H2 64-bit, Apple Silicon M1 or 64-bit Linux with Vulkan; 4 cores; 8 GB RAM (16 with an iGPU); a WebGPU-capable GPU (DX12/Vulkan/Metal) such as Iris Xe, Radeon 680M, M1 or GTX 1650; 2 GB video memory, shared OK.
 - **Recommended (1080p144 or 1440p60, ~5–10M):** Windows 11; 6C/12T; 16 GB; RTX 3060/4060, RX 7600/9060 XT, Arc B580, M4/M5 Pro or Ryzen AI Max; 8 GB VRAM.
 - **High (1440p 144–240 Hz, ~10–15M):** 8C/16T; 16–32 GB; RTX 5070, RX 9070 XT, RTX 5060 Ti 16 GB or M4/M5 Max; 12 GB.
@@ -110,11 +105,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 
 ## 7. Detection and calibration (Inference on verified APIs)
 
-- **Startup detection (~100 ms):**
-  - PCI IDs + `active`/`optimus`/`amdSwitchable` feed a local spec table, alongside `adapter.info`.
-  - A fallback adapter is below Minimum: warn and skip the benchmark.
-  - On Apple, use `machineModelName` plus the benchmark (whether `os.cpus()` gives the variant string is unverified).
-  - An internal display plus a battery means a laptop.
+- **Startup detection (~100 ms):** PCI IDs + `active`/`optimus`/`amdSwitchable` feed a local spec table, alongside `adapter.info`. A fallback adapter is below Minimum: warn and skip the benchmark. On Apple, use `machineModelName` plus the benchmark (whether `os.cpus()` gives the variant string is unverified). An internal display plus a battery means a laptop.
 - **Hybrid laptops** (inactive dGPU, WebGPU on the iGPU): prompt once for Windows Graphics → High performance, then re-benchmark. Try Chromium's `--force-high-performance-gpu` first (untested).
 - **Calibration:**
   1. Start from the spec prior; unknown and Apple GPUs start at Minimum.
@@ -123,12 +114,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
   4. Soak for 15–20 s at 85%. Cut 15% and flag the machine as thermal-limited if the last 3 s are > 10% slower, the speed limit drops below 100, or the thermal state reaches serious.
   5. Pick the highest tier whose target fits. Store the result per GPU PCI IDs, driver, display, refresh and power source. Re-run on `gpu-info-update`, a display or power change, or `device.lost`.
 - **Defaults:** the default preset is "Auto (this machine)", public floors stay market-anchored, and Minimum is tested on an Iris Xe or 780M laptop.
-- **Pitfalls:**
-  - Battery saver: benchmark on AC and keep a battery profile.
-  - Throttling: a governor sheds particles or render scale after more than 2 s over budget.
-  - VRR and occlusion distort rAF timing, so use timestamps.
-  - Background load competes for the GPU.
-  - Exclude shader compilation from measurements.
+- **Pitfalls:** battery saver (benchmark on AC, keep a battery profile); throttling (a governor sheds particles or render scale after more than 2 s over budget); VRR and occlusion distort rAF timing (use timestamps); background load; shader compilation (exclude it from measurements).
 - **Ask users only** for laptop TGP, MUX status, monitor HDR tier and Apple GPU-core count.
 
 ## 8. Open gaps
