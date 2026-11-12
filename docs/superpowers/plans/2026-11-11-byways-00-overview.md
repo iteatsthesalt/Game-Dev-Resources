@@ -723,7 +723,7 @@ Plan 02 creates `ui/views/settings/privacy.js` with the whole text. No other pla
 
 ### Version numbers and Android signing (Plan 08 creates; Plan 09 uses)
 
-**Version numbers.** `shells/android/gradle.properties` holds `byways.versionName=<x.y.z>` and `byways.versionCode=<x*10000 + y*100 + z>`. `app/build.gradle.kts` reads both with `providers.gradleProperty(...)`. The versionName must equal `package.json` `version` and the `version` in both extension manifests.
+**Version numbers.** `shells/android/gradle.properties` holds `byways.versionName=<x.y.z>` and `byways.versionCode=<x*10000 + y*100 + z>`. `app/build.gradle.kts` reads both with `providers.gradleProperty(...)`. The versionName must equal the `package.json` `version`, `APP_VERSION`, and the version in both BUILT extension manifests (see "version wiring" below).
 
 No environment variable sets the version. The release APK asset is named `byways-<version>.apk`, and a debug build is named `byways-<version>-debug.apk`. Android's update check picks the first `.apk` asset of the newest `byways-v*` release.
 
@@ -743,9 +743,16 @@ No environment variable sets the version. The release APK asset is named `byways
   - `fetchSources(targets, {fetch, outDir, writeFile}) → Promise<Result[]>`;
   - `sourcesManifest(results) → string`, which writes `SOURCES.txt`;
   - `parseRepoUrl(url) → string|null`;
-  - `codeloadUrl(repo, ref) → string`.
+  - `codeloadUrl(repo, ref) → string`;
+  - `main({argv, fetch, root, log}) → Promise<number>`, the body of the CLI.
 - It takes its component list from `VENDOR_PACKAGES` and its licences from `LICENCE_NOTES`, both in `tools/vendor.js`. There is no second licence table.
-- Each Release attaches source archives for every vendored emulator component and core, whatever the licence, plus SeaBIOS at the ref v86 used.
+- **What each Release attaches.** Source archives for every vendored emulator component and core, whatever the licence. Also the code compiled into them that their own repos leave out: EmulatorJS's RetroArch fork and build scripts as of the core build, and js-dos's `emulators` repository with its DOSBox and DOSBox-X submodules. Also SeaBIOS at the ref v86 used (`rel-1.16.2`).
+
+**`tools/check.js`, version wiring**
+
+- `runChecks({srcDir, outputs, extraHtml, appRoot})`. When the optional `appRoot` is given, it also runs `checkVersions(appRoot)`, and the `--check` build passes it.
+- `src/core/version.js` is exactly one line: `export const APP_VERSION = '<x.y.z>';`.
+- "The version in both extension manifests" means the BUILT manifests, which Plan 07's build writes from `package.json`. `manifest.base.json` keeps `"version": "0.0.0"` and the overlays set no version. `checkVersions` checks both of these.
 
 ## Data file shapes
 
@@ -775,6 +782,10 @@ No environment variable sets the version. The release APK asset is named `byways
 { "v":1, "generatedAt":"ISO", "collections":{ "<id>":{ "numFound":0,
   "gems":[ { "identifier","title","year","creator","downloads","avg_rating","num_reviews","collection" } ] } } }
 
+// The data job ALWAYS writes every generated file (daily, itch, vault-index, linkcheck, webrings, neocities).
+// If a source fails it keeps the last good file from the live site; if there is none, it writes a valid
+// empty shape, so the app never requests a missing file (a 404 would show as a console error).
+// dist/pwa/data/webrings.json and neocities.json: { "v":1, "generatedAt":"ISO", "sites":[ { "url", "title", "ring" } ] }
 // dist/pwa/data/linkcheck.json
 { "v":1, "checkedAt":"ISO", "results":{ "<library entry id>":{ "ok":true, "status":200, "failStreak":0 } } }
 

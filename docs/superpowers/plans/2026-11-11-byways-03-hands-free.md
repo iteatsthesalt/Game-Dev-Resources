@@ -4,9 +4,9 @@
 
 **Goal:** One Start press turns Byways into a hands-free stumbler that reads each find aloud, moves on by itself and obeys voice commands and single keys, with the accessibility settings of §6.7.
 
-**Architecture:** Three engine-agnostic core modules (`voice/grammar.js`, `voice/listener.js`, `voice/reader.js`) and one controller (`handsfree.js`) hold every rule and timer, and take a `VoiceEngine`, a `Tts` and a clock as parameters, so Plans 07 and 08 reuse them unchanged. The web shell supplies `createWebVoice`, a refined `createWebTts` and `createWebMedia`. A thin UI layer (`ui/handsfree-ui.js`, `ui/keymap.js`, two settings sections and one first-run step) wires them to the DOM.
+**Architecture:** Three engine-agnostic core modules (`voice/grammar.js`, `voice/listener.js`, `voice/reader.js`) and one controller (`handsfree.js`) hold every rule and timer, and take a `VoiceEngine`, a `Tts` and a clock as parameters, so Plans 07 and 08 reuse them unchanged. The web shell supplies `createWebVoice`, a refined `createWebTts` and `createWebMedia`. A thin UI layer (`ui/handsfree-ui.js`, `ui/keymap.js`, two settings sections and one first-run step) wires them to the DOM. Boot creates one `app.handsFree` before first run. It never changes identity, and its `start()` runs the whole Start routine, with or without a click.
 
-**Tech Stack:** ES2022 modules, `node:test` with `fakeClock`, `@playwright/test@1.63.0` with `mockNet` and `installFakeSpeech`, `@axe-core/playwright@4.14.0`, `@fontsource/atkinson-hyperlegible@5.3.0` (vendored files only).
+**Tech Stack:** ES2022 modules, `node:test` with `fakeClock`, `@playwright/test@1.63.0` with Plan 01's shared e2e helpers (`test`/`expect`, `gotoApp`, `installFakeSpeech`, and `expectNoSeriousA11y` over `@axe-core/playwright@4.14.0`), `@fontsource/atkinson-hyperlegible@5.3.0` (vendored files only).
 
 **Spec:** `docs/superpowers/specs/2026-11-11-byways-design.md` (§6 all, §2 items 1–2, §5.6 step 3, §4 voice rows). Research: `byways-research/hands-free.md`, `critic.md` (key map), `platform-shells.md` (WebView, for Plans 07–08).
 
@@ -28,6 +28,9 @@
 - "One assertive region for errors only, such as "Microphone blocked" (WCAG 4.1.3)." (§6.7)
 - "Every view is checked with axe-core in end-to-end tests. Any serious or critical issue fails the build." (§6.7)
 - `src/core/**` never touches `window`, `document` or `chrome`; timers come from the injected clock.
+- "Android browsers default to tap-to-talk" (§4). "Hold **V** (or the headset button) to talk in push-to-talk mode." (§6.3)
+- Overview values this plan uses as they are: `theme` `system|light|dark|high-contrast`, `font` `system|atkinson`, `motion` `system|reduced|full`; voice mode "'auto' = always on for on-device/native-13+, push elsewhere"; a cloud-only recogniser before opt-in reports `{kind:'none', vendor, reason:'cloud-only'}`, and "the UI shows the vendor-named opt-in for exactly this case".
+- "**Recap.** It appears when a session ends (Stop, or the session length runs out), and only if something was saved in that session." (overview)
 
 ## Review Focus
 
@@ -49,17 +52,19 @@
 | `src/core/handsfree.js` | `createHandsFree` state machine and lean-back loop, `effectiveListenMode`, `clampDwell` |
 | `src/platform/web-voice.js` | Modify: add `createWebVoice` and `vendorFromUA` next to Plan 01's `createNoVoice` |
 | `src/platform/web-tts.js` | Modify: local voices first, `voiceschanged` plus polling, `lang` option |
-| `src/platform/web-media.js` | Modify: Media Session handlers, `setActive`, silent-audio fallback behind a flag |
+| `src/platform/web-media.js` | Modify: silent-audio fallback behind a flag (Plan 01's Media Session handlers and `setActive` stay) |
 | `src/platform/pwa.js` | Modify: use `createWebVoice` and the media flag |
 | `src/ui/keymap.js` | `keyToCommand` (pure) and `installKeymap` |
-| `src/ui/handsfree-ui.js` | `installHandsFreeUi`: the bar on every screen, help card, captions, first-run step, `describeEngine` |
+| `src/ui/handsfree-ui.js` | `installHandsFreeUi`: the one `app.handsFree`, the bar in `#hf-bar`, the command dispatcher, help card, search dialog, recap, captions, the first-run step, `describeEngine` |
 | `src/ui/views/settings/voice.js` | The Voice settings section, including the cloud opt-in screen |
 | `src/ui/views/settings/access.js` | The Accessibility settings section |
 | `src/ui/views/stumble.js` | Modify: tell hands-free when a find is shown, opened or read |
-| `src/ui/boot.js`, `src/ui/views/index.js` | Modify: create `app.handsFree`; import the two settings sections |
-| `src/ui/styles/app.css`, `src/ui/styles/themes.css` | Modify: bar styles, `@font-face`, contrast theme |
+| `src/ui/boot.js`, `src/ui/views/index.js` | Modify: call `installHandsFreeUi(app)` before first run; import the two settings sections |
+| `src/ui/styles/app.css` | Modify: bar styles and `@font-face` |
 | `src/assets/fonts/` | Vendored Atkinson Hyperlegible woff2 (400, 700) and `OFL.txt` |
-| `tests/e2e/helpers/fakes.js` | Modify: extra fake speech controls |
+| `tests/e2e/helpers/fakes.js` | Modify: extra fake speech, media, live-region and tone controls |
+| `tests/unit/helpers/handsfree-fakes.js` | `makeHarness` and `makeListener` for the controller tests |
+| `tests/unit/web-tts.test.js`, `web-media.test.js`, `web-voice.test.js`, `pwa.test.js`, `tests/e2e/card-actions.spec.js` | Modify: Plan 01's and Plan 02's tests, with this plan's cases appended or adjusted |
 | `tests/unit/*.test.js`, `tests/e2e/*.spec.js` | Tests named in each task |
 
 Unit tests that drive async code with `fakeClock` use this helper at the top of the file: `const flush = () => new Promise((r) => setImmediate(r));`. Call `await flush()` after each `clock.advance(ms)`.
@@ -151,7 +156,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/voice/grammar.js`.
 
 - [ ] **Step 3: Implement `src/core/voice/grammar.js`**
 
-Normalise with: lowercase, replace `[.,!?;:"“”]` with spaces, collapse whitespace, trim. Drop `FILLER_WORDS` from the start. If what is left starts with `search for ` or `find me `, the rest (with trailing filler dropped) is `arg`; an empty `arg` gives `null`. Otherwise drop trailing filler and compare the whole string with each command's `words`.
+Normalise with: lowercase, replace `[.,!?;:"“”]` with spaces, collapse whitespace, trim. Drop `FILLER_WORDS` from the start. If what is left starts with `search for ` or `find me `, the rest (with trailing filler dropped) is `arg`; an empty `arg` gives `null`. Otherwise drop trailing filler and compare the whole string with each command's `words`, except the `search` command's: they never match on their own, so an utterance that is only a search prefix (`search for`, `find me`) gives `null`.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -313,9 +318,16 @@ test('half-duplex ignores all but stop and pause while speaking and for 400 ms a
   clock.advance(1); say(engine, 'save');
   assert.deepEqual(log.command.map((c) => c.id), ['pause', 'save']);
 });
+
+test('start rejects and stays off when the engine cannot start', async () => {
+  const engine = fakeEngine(); engine.failStart = true;
+  const l = createListener(engine, { clock: fakeClock(0), phrases: [], lang: 'en-US', allowCloud: false });
+  await assert.rejects(l.start());
+  assert.equal(l.listening, false);
+});
 ```
 
-`fakeEngine` also counts `stops` (calls to `stop()`).
+`fakeEngine` also counts `stops` (calls to `stop()`), and `engine.failStart = true` makes its `start` reject.
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -331,11 +343,12 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/voice/listener.js`.
 - The idle timer is 600000 ms, reset by every final result that parses to a command (acted on or not).
 - `state` fires only when the listener's own on/off value changes: `{listening:true}` from `start()`, and `{listening:false, reason}` when it stops for good. Engine restarts fire nothing. `listening` returns that value.
 - Non-fatal errors fire no `error` event.
+- `start()` rejects, and the listener stays off, when `engine.start` rejects.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/voice-listener.test.js`
-Expected: PASS, 15 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -352,13 +365,13 @@ git commit -m "Add the voice listener with its restart policy"
 
 **Interfaces:**
 - Consumes: `firstSentence(text)` (`util/text.js`), `domainOf(u)` (`util/url.js`), `getSource(id)` (`sources/index.js`, Plan 02); the `Tts` shape.
-- Produces: `cardScript(find) → string[]` and `createReader(tts, getSettings) → {read(sentences) → Promise<void>, stop(), pause(), resume(), get speaking}`. `read` resolves when the last sentence ends or on `stop()`. It stays pending while paused.
+- Produces: `cardScript(find, why = null) → string[]`, where `why` is the result's reason string (`result.why` from `engine.next`), and `createReader(tts, getSettings) → {read(sentences) → Promise<void>, stop(), pause(), resume(), get speaking}`. `read` resolves when the last sentence ends or on `stop()`. It stays pending while paused. A `tts.speak` that rejects (Plan 01's Tts rejects on errors other than `interrupted` and `canceled`) ends that sentence, and reading goes on with the next.
 
 `cardScript` rules (§6.4): one string per sentence, each ending in `.`, `!` or `?` (add `.` when missing), empty parts left out:
 1. the title;
 2. `From <source>`, where `<source>` is `domainOf(find.url)` for kind `'site'`, else `getSource(find.source)?.name ?? domainOf(find.url)`;
 3. `firstSentence(find.description)`;
-4. `find.why[0]`;
+4. the main why reason: `why` when it is a non-empty string, else `find.why[0]`;
 5. for finds with `foundBy`: `Found by <models>`, the part after ` · ` of each label, de-duplicated and joined with ` and `.
 
 - [ ] **Step 1: Write the failing tests**
@@ -369,11 +382,12 @@ import { getSource } from '../../src/core/sources/index.js';
 
 const site = { id: 'url:1', source: 'library', kind: 'site', title: 'The Toaster Museum',
   description: 'A tiny site about toasters. It has 300 photos.', url: 'https://www.toasters.example/a',
-  tags: [], why: ['Tuned · matches retro +2'], safety: 'curated' };
+  tags: [], why: ['Starter library'], safety: 'curated' };
 
-test('cardScript reads title, domain, first sentence and why', () => {
-  assert.deepEqual(cardScript(site), ['The Toaster Museum.', 'From toasters.example.',
-    'A tiny site about toasters.', 'Tuned · matches retro +2.']);
+test('cardScript reads title, domain, first sentence and the main why reason', () => {
+  assert.deepEqual(cardScript(site, 'matches retro +2'), ['The Toaster Museum.', 'From toasters.example.',
+    'A tiny site about toasters.', 'matches retro +2.']);
+  assert.equal(cardScript(site).at(-1), 'Starter library.');
 });
 
 test('cardScript names the source for non-site finds and the models for AI finds', () => {
@@ -384,10 +398,11 @@ test('cardScript names the source for non-site finds and the models for AI finds
 });
 
 function fakeTts() {
-  const t = { spoken: [], opts: [], cancels: 0, pending: null };
-  t.speak = (text, o) => { t.spoken.push(text); t.opts.push(o); return new Promise((r) => { t.pending = r; }); };
+  const t = { spoken: [], opts: [], cancels: 0, pending: null, failing: null };
+  t.speak = (text, o) => { t.spoken.push(text); t.opts.push(o); return new Promise((r, j) => { t.pending = r; t.failing = j; }); };
   t.cancel = () => { t.cancels++; t.pending?.(); };
   t.finish = () => t.pending?.();
+  t.fail = () => t.failing?.(new Error('synthesis-failed'));
   return t;
 }
 const settings = { voice: { voiceURI: 'local-en', rate: 1.2, volume: 0.8, lang: 'en-US' }, screenReaderMode: false };
@@ -434,6 +449,13 @@ test('screen-reader mode speaks nothing', async () => {
   await r.read(['A.']);
   assert.deepEqual(tts.spoken, []);
 });
+
+test('a sentence that fails to speak is skipped', async () => {
+  const tts = fakeTts(), r = createReader(tts, () => settings);
+  const done = r.read(['A.', 'B.']);
+  tts.fail(); await flush(); tts.finish(); await done;
+  assert.deepEqual(tts.spoken, ['A.', 'B.']);
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -443,12 +465,12 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/voice/reader.js`.
 
 - [ ] **Step 3: Implement `src/core/voice/reader.js`**
 
-`read` calls `tts.speak` for the first sentence before its first `await`, and passes `{voiceURI, rate, volume, lang}` from `getSettings().voice`. Keep a generation counter. `read` and `stop` bump it (a new `read` also calls `tts.cancel()`), and the loop leaves when its generation is stale. `pause` cancels the TTS and makes the loop await a resume promise without moving the sentence index. `tts.speak` resolving after `cancel()` is not a sentence end.
+`read` calls `tts.speak` for the first sentence before its first `await`, and passes `{voiceURI, rate, volume, lang}` from `getSettings().voice`. Keep a generation counter. `read` and `stop` bump it (a new `read` also calls `tts.cancel()`), and the loop leaves when its generation is stale. `pause` cancels the TTS and makes the loop await a resume promise without moving the sentence index. `tts.speak` resolving after `cancel()` is not a sentence end; a rejected `speak` is.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/voice-reader.test.js`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -465,27 +487,31 @@ git commit -m "Add read-aloud with sentence-level pause"
 - Test: `tests/unit/handsfree.test.js`
 
 **Interfaces:**
-- Consumes: `cardScript(find)` (Task 3); the `createListener` and `createReader` objects (Tasks 2–3); `Engine.next({mode})`, `Engine.back()`, `Engine.current()` (Plan 02); `fakeClock`.
+- Consumes: `cardScript(find, why)` (Task 3); the `createListener` and `createReader` objects (Tasks 2–3); `Engine.next({mode})`, `Engine.back()`, `Engine.current()`, `Engine.rabbit.trail()` (Plan 02); `fakeClock`.
 - Produces:
-  - `createHandsFree({engine, listener, reader, clock, getSettings, ui, getListenMode}) → HandsFree`. `listener` may be `null`. `getListenMode() → 'always'|'push'|'off'`.
-  - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find), hold(reason), release(reason), talk(on), setMuted(on), get muted, get state}`.
-  - `ui` gains two fields beyond the contract: `act(id) → Promise<void>` (press the visible card button for that command) and `recap(shown: Find[])`.
+  - `createHandsFree({engine, listener = null, reader, clock, getSettings, ui, leanBack = true, getListenMode = () => 'always', prepare, dispatch}) → HandsFree`:
+    - `leanBack: false` (the extension side panel, §6.5) gives voice commands and read-aloud but nothing that advances by itself (Task 5);
+    - `getListenMode() → 'always'|'push'|'off'`;
+    - `prepare() → Promise<Listener|null>`, optional: `start()` awaits it first and uses the listener it returns in place of the current one, stopping the old one and removing its handlers. A rejected `prepare()` counts as `null`;
+    - `dispatch(id, arg)`, optional: the listener's `command` events go to it instead of to `command(id, arg)`, so the UI has one dispatch point.
+  - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find, why = null), hold(reason), release(reason), talk(on), setMuted(on), get muted, get state}`, with states `'idle'|'active'|'paused'|'suspended'`.
+  - `ui` is the contract's `{show(result), announce(text, opts), setState(state), countdown(secondsLeft|null), openHelp(), navigate(route), search(text)}` plus `act(id) → Promise<void>` (press the visible card button for that command) and `recap(shown: Find[])`.
   - `effectiveListenMode(voiceMode, status: VoiceStatus) → 'always'|'push'|'off'`.
-  - `clampDwell(value) → number`: rounds to an integer in 5–300; anything not a finite number gives 20.
+  - `clampDwell(value) → number`: `Number(value)` for a number or a non-empty string, rounded to an integer in 5–300; anything else, or a non-finite result, gives 20.
 
-`tests/unit/helpers/handsfree-fakes.js` exports `makeHarness(settingsPatch = {})`. It returns `{hf, clock, engine, listener, reader, ui, settings, finds}` where:
+`tests/unit/helpers/handsfree-fakes.js` exports `makeListener()` and `makeHarness(settingsPatch = {}, options = {})`. `makeHarness` returns `{hf, clock, engine, listener, reader, ui, settings, finds}`, where `options` are passed to `createHandsFree` over the defaults, and:
 - `finds` is an endless generator of `{id:'f<n>', kind:'site', url:'https://s<n>.example/', title:'Find <n>', description:'', why:[], tags:[], source:'library', safety:'curated'}`;
-- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:[]}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject; `engine.current()` returns the last find it gave (or `null`), and `engine.back()` returns `null`;
-- `listener` records `starts`, `stops` and `halfDuplex` (an array of booleans), and has `emit(event, payload)`; `listener.failStart = true` makes `start()` reject;
+- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:''}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject; `engine.current()` returns the last find it gave (or `null`), `engine.back()` returns `null`, and `engine.rabbit.trail()` returns `engine.trail` (default `[]`);
+- `listener` comes from `makeListener()`: it records `starts`, `stops` and `halfDuplex` (an array of booleans), has `emit(event, payload)`, and its `on` returns an unsubscribe; `listener.failStart = true` makes `start()` reject;
 - `reader.read(s)` records `s` in `reader.reads` and resolves at once unless `reader.hold = true`, when `reader.finish()` resolves it; it counts `stops`, `pauses`, `resumes`;
-- every `ui` method records its arguments in `ui.log` as `[name, ...args]`; `ui.search` resolves `{finds:[]}`;
+- every `ui` method records its arguments in `ui.log` as `[name, ...args]`; `ui.show(result)` then calls `hf.showing(result.find, result.why)`, as the Stumble view does; `ui.search` resolves `{finds:[]}`;
 - `settings` is `DEFAULT_SETTINGS` deep-merged with `settingsPatch`, and `getListenMode` returns `settings.listenMode ?? 'always'`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
 import { effectiveListenMode, clampDwell } from '../../src/core/handsfree.js';
-import { makeHarness } from './helpers/handsfree-fakes.js';
+import { makeHarness, makeListener } from './helpers/handsfree-fakes.js';
 const said = (ui) => ui.log.filter((l) => l[0] === 'announce').map((l) => l[1]);
 
 test('effectiveListenMode', () => {
@@ -494,7 +520,7 @@ test('effectiveListenMode', () => {
   assert.equal(effectiveListenMode('auto', s('native', true, 'android')), 'always');
   assert.equal(effectiveListenMode('auto', s('native', false, 'android')), 'push');
   assert.equal(effectiveListenMode('auto', s('web-cloud', false, 'google')), 'push');
-  assert.equal(effectiveListenMode('auto', s('web-cloud', true, 'apple')), 'always');
+  assert.equal(effectiveListenMode('auto', s('web-cloud', true, 'apple')), 'push');
   assert.equal(effectiveListenMode('always', s('web-cloud', false, 'google')), 'always');
   assert.equal(effectiveListenMode('push', s('web-local', true)), 'push');
   assert.equal(effectiveListenMode('off', s('web-local', true)), 'off');
@@ -502,7 +528,7 @@ test('effectiveListenMode', () => {
 });
 
 test('clampDwell', () => {
-  assert.deepEqual([3, 1000, 20.4, 'abc', NaN, 5, 300].map(clampDwell), [5, 300, 20, 20, 20, 5, 300]);
+  assert.deepEqual([3, 1000, 20.4, 'abc', NaN, 5, 300, '3', '', null].map(clampDwell), [5, 300, 20, 20, 20, 5, 300, 5, 20, 20]);
 });
 
 test('start goes active, listens once and shows a find', async () => {
@@ -515,6 +541,26 @@ test('start goes active, listens once and shows a find', async () => {
   assert.deepEqual(reader.reads[0], ['Find 1.', 'From s1.example.']);
 });
 
+test('start reads the find on screen instead of fetching one', async () => {
+  const { hf, engine, reader } = makeHarness();
+  engine.current = () => ({ id: 'f0', kind: 'site', url: 'https://zero.example/', title: 'Zero', description: '', why: [], tags: [] });
+  await hf.start();
+  assert.deepEqual(engine.calls, []);
+  assert.deepEqual(reader.reads[0], ['Zero.', 'From zero.example.']);
+});
+
+test('start runs prepare each time and drops the old listener', async () => {
+  const a = makeListener(), b = makeListener(), next = [a, b];
+  const { hf, engine } = makeHarness({}, { listener: null, prepare: async () => next.shift() });
+  await hf.start(); hf.stop(); await hf.start();
+  assert.deepEqual([a.starts, b.starts], [1, 1]); assert.ok(a.stops >= 1);
+  const calls = engine.calls.length;
+  a.emit('command', { id: 'next', text: 'next' }); await flush();
+  assert.equal(engine.calls.length, calls);
+  b.emit('command', { id: 'next', text: 'next' }); await flush();
+  assert.equal(engine.calls.length, calls + 1);
+});
+
 test('push and off modes do not start the mic', async () => {
   for (const listenMode of ['push', 'off']) {
     const { hf, listener } = makeHarness({ listenMode });
@@ -525,14 +571,17 @@ test('push and off modes do not start the mic', async () => {
 
 test('pause, the pause toggle and resume', async () => {
   const { hf, ui, reader } = makeHarness();
+  hf.pause(); hf.resume();
+  assert.equal(hf.state, 'idle');
   await hf.start();
+  assert.deepEqual(said(ui), []);
   hf.pause();
   assert.equal(hf.state, 'paused'); assert.equal(reader.pauses, 1);
   assert.deepEqual(ui.log.filter((l) => l[0] === 'countdown').at(-1), ['countdown', null]);
   await hf.command('pause');
   assert.equal(hf.state, 'active'); assert.equal(reader.resumes, 1);
   await hf.command('pause'); await hf.command('resume');
-  assert.deepEqual(said(ui).slice(-4), ['Lean-back paused', 'Lean-back on', 'Lean-back paused', 'Lean-back on']);
+  assert.deepEqual(said(ui), ['Lean-back paused', 'Lean-back on', 'Lean-back paused', 'Lean-back on']);
 });
 
 test('stop goes idle and shows the recap', async () => {
@@ -552,6 +601,13 @@ test('suspend and wake', async () => {
   assert.equal(hf.state, 'active'); assert.equal(listener.starts, 2); assert.equal(reader.resumes, 1);
 });
 
+test('wake returns to Paused without resuming the reader', async () => {
+  const { hf, reader } = makeHarness();
+  await hf.start(); hf.pause(); hf.suspend();
+  assert.equal(await hf.wake(), true);
+  assert.equal(hf.state, 'paused'); assert.equal(reader.resumes, 0);
+});
+
 test('wake stays suspended when the mic cannot restart', async () => {
   const { hf, listener } = makeHarness();
   await hf.start(); hf.suspend();
@@ -564,7 +620,7 @@ test('commands route to the engine, the card and the UI', async () => {
   const { hf, engine, ui, reader, listener } = makeHarness({ mode: 'ai' });
   await hf.command('next');
   await hf.command('fate');
-  assert.deepEqual(engine.calls, [{ mode: 'tuned' }, { mode: 'fate' }]);
+  assert.deepEqual(engine.calls, [{ mode: 'ai' }, { mode: 'fate' }]);
   for (const id of ['like', 'dislike', 'save', 'share', 'more']) await hf.command(id);
   assert.deepEqual(ui.log.filter((l) => l[0] === 'act').map((l) => l[1]), ['like', 'dislike', 'save', 'share', 'more']);
   await hf.command('read');
@@ -583,7 +639,7 @@ test('back shows the previous find', async () => {
   const prev = { id: 'p', title: 'Prev', url: 'https://p.example/', kind: 'site', why: ['x'] };
   engine.back = () => prev;
   await hf.command('back');
-  assert.deepEqual(ui.log.find((l) => l[0] === 'show')[1], { find: prev, branch: null, why: ['x'] });
+  assert.deepEqual(ui.log.find((l) => l[0] === 'show')[1], { find: prev, branch: null, why: null });
 });
 
 test('open presses Open and pauses lean-back', async () => {
@@ -602,19 +658,24 @@ test('search announces, searches, then shows the next find', async () => {
 });
 
 test('listener events become commands and messages', async () => {
-  const { hf, listener, ui, engine } = makeHarness();
+  const { hf, listener, ui, engine, reader } = makeHarness();
   await hf.start();
   listener.emit('command', { id: 'next', text: 'next' }); await flush();
   assert.equal(engine.calls.length, 2);
-  const msgs = { 'not-allowed': 'Microphone blocked', 'service-not-allowed': 'Microphone blocked',
+  const msgs = { 'not-allowed': 'Microphone blocked', 'service-not-allowed': 'Voice is not available here',
     'audio-capture': 'No microphone found', 'language-not-supported': 'Voice does not support this language',
     network: 'Voice is not available right now' };
   for (const [code, text] of Object.entries(msgs)) {
     listener.emit('error', { code, fatal: true });
     assert.deepEqual(ui.log.filter((l) => l[0] === 'announce').at(-1), ['announce', text, { assertive: true }]);
   }
+  const idle = 'Listening paused after 10 minutes with no command.';
   listener.emit('state', { listening: false, reason: 'idle' });
-  assert.equal(said(ui).at(-1), 'Listening paused after 10 minutes with no command.');
+  assert.equal(said(ui).at(-1), idle); assert.deepEqual(reader.reads.at(-1), [idle]);
+  const got = [], other = makeHarness({}, { dispatch: (id) => got.push(id) });
+  await other.hf.start();
+  other.listener.emit('command', { id: 'next', text: 'next' }); await flush();
+  assert.deepEqual(got, ['next']); assert.equal(other.engine.calls.length, 1);
 });
 
 test('mute stops reading and keeps later finds silent', async () => {
@@ -626,13 +687,19 @@ test('mute stops reading and keeps later finds silent', async () => {
   assert.equal(reader.reads.length, 1);
 });
 
-test('talk starts the mic and stops it 1.5 s after release', async () => {
+test('each talk press is one turn: a hold, a tap and a silent tap', async () => {
   const { hf, listener, clock } = makeHarness({ listenMode: 'push' });
   await hf.start();
-  hf.talk(true); hf.talk(false);
+  hf.talk(true); clock.advance(500); hf.talk(false);
   clock.advance(1499); assert.equal(listener.stops, 0);
   clock.advance(1); assert.equal(listener.stops, 1);
-  assert.equal(listener.starts, 1);
+  hf.talk(true); clock.advance(100); hf.talk(false); clock.advance(2000);
+  assert.equal(listener.stops, 1);
+  listener.emit('command', { id: 'next', text: 'next' }); await flush();
+  assert.equal(listener.stops, 2);
+  hf.talk(true); clock.advance(7999); assert.equal(listener.stops, 2);
+  clock.advance(1); assert.equal(listener.stops, 3);
+  assert.equal(listener.starts, 3);
 });
 ```
 
@@ -644,18 +711,21 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/handsfree.js`.
 - [ ] **Step 3: Implement `src/core/handsfree.js` (state machine and command routing)**
 
 Rules the tests do not spell out:
-- `engine.next` always gets `{mode: settings.mode === 'ai' ? 'tuned' : settings.mode}`, or `{mode:'fate'}` for `fate`. AI runs only through `ui.search`.
+- `start()` does nothing unless idle, or while an earlier `start()` is still running. It awaits `prepare` when given, goes active (`ui.setState('active')`), starts the mic when `getListenMode()` is `'always'`, and begins a new session list for the recap. It then reads the find on screen (the last find given to `showing`, else `engine.current()`) and puts it in that list. Only when both are `null` does it call `engine.next` and `ui.show` the result. It does not announce `Lean-back on`.
+- `start()` and `command()` resolve once the find is shown, and never wait for read-aloud.
+- `engine.next` gets `{mode: settings.mode}`, or `{mode:'fate'}` for `fate`. In `ai` mode the engine serves the search results waiting in its queue, and an `{empty}` result follows Task 5's rule.
 - `command(id)` calls `input()` first for every id except `pause`, `resume`, `stop`, `stopListening` and `help`.
-- `command('pause')` toggles between active and paused; `command('resume')` only resumes.
-- `showing(find)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find for the recap, stops the reader, and in the active state reads `cardScript(find)` (Task 5 adds the dwell).
-- Status messages go to `ui.announce(text)` (polite): `Lean-back paused`, `Lean-back on`, `Listening off`, `Searching for <words>` and the idle message. Errors add `{assertive:true}`.
-- `say(text)` is for spoken cues only (Task 5): `ui.announce(text)` when muted or in screen-reader mode, otherwise `reader.read([text])`.
-- `suspend()` calls `reader.pause()` and remembers the previous state; `wake()` calls `reader.resume()` and returns to it. The reader ignores both when it is not reading.
+- `pause()` does nothing unless active, and `resume()` nothing unless paused. `command('pause')` toggles between active and paused; `command('resume')` only resumes.
+- `showing(find, why)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find and its `why`, adds the find to the session list, stops the reader, and in the active state reads `cardScript(find, why)` (Task 5 adds the dwell). `read` reads the find on screen with its `why`. `back` shows `{find, branch: null, why: null}`.
+- Status messages go to `ui.announce(text)` (polite): `Lean-back paused`, `Lean-back on`, `Listening off`, `Searching for <words>` and the idle line, which is also read aloud unless muted or in screen-reader mode. Errors add `{assertive:true}`.
+- `say(text)` is for spoken cues (Task 5): `ui.announce(text)` when muted or in screen-reader mode, otherwise `reader.read([text])`.
+- `suspend()` (from active or paused) stops the mic, calls `reader.pause()` and remembers the state. `wake()` restarts the mic when it was on. When that fails it stays suspended and returns `false`; otherwise it returns to the remembered state, calling `reader.resume()` only when that state is `'active'`. The reader ignores pause and resume when it is not reading.
+- `talk(on)` works only while active or paused with `getListenMode()` `'push'`. `talk(true)` starts the mic when it is off. Each press is one turn: the mic stops after the first command, 1.5 s after `talk(false)`, or 8 s after `talk(true)`, whichever comes first. A `talk(false)` less than 300 ms after `talk(true)` is a tap and is ignored, so a tap listens for one command. The spec gives no times here; 300 ms, 1.5 s and 8 s are this plan's choice.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree.test.js`
-Expected: PASS, 15 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -672,7 +742,7 @@ git commit -m "Add the hands-free state machine and command routing"
 
 **Interfaces:**
 - Consumes: everything from Task 4.
-- Produces: no new names. Adds the dwell, the countdown, holds, the AI refill rule, the session length, the 45-minute cue and the recap on session end.
+- Produces: no new names. Adds the dwell, the countdown, holds, the AI refill rule, the Rabbit Hole guard, the session length, the 45-minute cue, the recap on session end and what `leanBack: false` turns off.
 
 The tests use `tick(clock, ms)`, which advances one second at a time and flushes after each: `for (let t = 0; t < ms; t += 1000) { clock.advance(1000); await flush(); }`.
 
@@ -787,7 +857,18 @@ test('no AI in lean-back unless Let AI refill lean-back is on', async () => {
   await hf.start(); await hf.command('search', 'maps');
   await tick(clock, 25 * 5000);
   assert.equal(ui.log.filter((l) => l[0] === 'search').length, 1);
-  assert.ok(engine.calls.every((c) => c.mode !== 'ai'));
+  assert.ok(engine.calls.length > 20);
+});
+
+test('lean-back does not advance inside a Rabbit Hole that can use AI', async () => {
+  const { hf, clock, engine, ui } = makeHarness({ aiInRabbitHole: true });
+  engine.trail = [{ id: 'r1' }];
+  await hf.start();
+  await tick(clock, 20000);
+  assert.equal(hf.state, 'paused'); assert.equal(engine.calls.length, 1);
+  assert.equal(count(ui, 'Lean-back paused, because this Rabbit Hole can use AI.'), 1);
+  await hf.command('next');
+  assert.equal(engine.calls.length, 2);
 });
 
 test('with refill on, at most one AI search per 10 finds', async () => {
@@ -829,25 +910,38 @@ test('half-duplex is on while reading', async () => {
   await hf.start();
   assert.deepEqual(listener.halfDuplex, [true, false]);
 });
+
+test('with leanBack false nothing advances by itself', async () => {
+  const { hf, clock, engine, reader, ui } = makeHarness({}, { leanBack: false });
+  await hf.start();
+  await tick(clock, 60000);
+  assert.equal(engine.calls.length, 1); assert.equal(reader.reads.length, 1);
+  assert.ok(ui.log.filter((l) => l[0] === 'countdown').every((l) => l[1] === null));
+  hf.pause();
+  assert.equal(count(ui, 'Reading paused'), 1);
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node --test tests/unit/handsfree-leanback.test.js`
-Expected: FAIL. The first test reports `1 !== 2`, because nothing advances yet.
+Expected: FAIL. The first test fails its `['countdown', 20]` deep-equal, because Task 4 has no dwell yet.
 
 - [ ] **Step 3: Implement the lean-back loop in `src/core/handsfree.js`**
 
 - After `cardScript` is read (or announced in screen-reader mode, or skipped when muted), and only while active with no holds, start the dwell: `clampDwell(settings.dwellSec)` seconds, or `ui.countdown(null)` when `dwellWaitForMe` is on.
 - Tick with `clock.setTimeout(…, 1000)`. Call `ui.countdown(left)` at the start and on each tick.
 - Announce `Next find in 10 seconds` when `left` reaches 10. When the dwell is 10 s or less, announce `Next find in <dwell> seconds` at the start instead. Keep a per-find flag, so `input()` and holds never repeat it.
-- At 0, advance: count the find; when `leanBackAI` is on, a search text exists and 10 finds have passed since the last search, call `ui.search(text)` first and reset the count. Then `engine.next`. An `{empty}` result pauses and announces `reason`. A rejection pauses and announces `Could not load the next find.` assertively.
+- At 0, advance: count the find; when `leanBackAI` is on, a search text exists and 10 finds have passed since the last search, call `ui.search(text)` first and reset the count. Then `engine.next`. An `{empty}` result pauses and announces `reason`. A rejection pauses and announces `Could not load the next find.` assertively. Only `command('search', text)` sets the search text; a search typed into the Stumble form (Plan 02, which calls `app.search` itself) does not feed the refill.
+- Rabbit Hole guard: inside a Rabbit Hole (`engine.rabbit.trail()` not empty) with `settings.aiInRabbitHole` on, `rabbit.next()` may call Plan 05's AI hook, so an auto-advance there pauses instead and announces `Lean-back paused, because this Rabbit Hole can use AI.` An explicit `next` still advances.
+- `resume()` restarts the dwell from the full time.
 - `start()` sets `clock.setTimeout` for the session length (`Session over.`, then `stop()`) and, when `exploringCue` is on, for 45 minutes (`You've been exploring for 45 minutes.`). Both go through `say`. `stop()` clears them.
+- With `leanBack: false`, nothing advances by itself: no dwell, countdown, auto-advance, AI refill, session length or 45-minute cue. `pause()` and `resume()` still pause and resume read-aloud, and announce `Reading paused` and `Reading on` instead.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree-leanback.test.js tests/unit/handsfree.test.js`
-Expected: PASS, 15 tests in each file.
+Expected: PASS, 17 tests in `handsfree-leanback.test.js` and 18 in `handsfree.test.js`.
 
 - [ ] **Step 5: Commit**
 
@@ -860,7 +954,7 @@ git commit -m "Add the lean-back loop with dwell, cue and session length"
 
 **Files:**
 - Modify: `src/platform/web-voice.js` (keep Plan 01's `createNoVoice`)
-- Test: `tests/unit/web-voice.test.js`
+- Modify: `tests/unit/web-voice.test.js` (Plan 01's file: keep its `createNoVoice` test, add the two names to its import and append these tests)
 
 **Interfaces:**
 - Consumes: the `VoiceEngine` and `VoiceStatus` shapes.
@@ -872,12 +966,12 @@ git commit -m "Add the lean-back loop with dwell, cue and session length"
 |---|---|---|---|
 | none | — | any | `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'This browser has no speech recognition.'}` |
 | yes | `'available'` | any | `{kind:'web-local', vendor:null, needsDownload:false, continuous, reason:null}` |
-| yes | `'downloadable'` or `'downloading'` | false | `{kind:'none', vendor, needsDownload:true, continuous, reason:'Download offline voice to use voice on this device.'}` |
+| yes | `'downloadable'` or `'downloading'` | false | `{kind:'none', vendor, needsDownload:true, continuous, reason:'cloud-only'}` |
 | yes | `'downloadable'` or `'downloading'` | true | `{kind:'web-cloud', vendor, needsDownload:true, continuous, reason:null}` |
-| yes | `'unavailable'`, or no `available` | false | `{kind:'none', vendor, needsDownload:false, continuous, reason:'Voice on this browser is sent to <Vendor>. Turn on cloud voice to use it.'}` |
+| yes | `'unavailable'`, or no `available` | false | `{kind:'none', vendor, needsDownload:false, continuous, reason:'cloud-only'}` |
 | yes | `'unavailable'`, or no `available` | true | `{kind:'web-cloud', vendor, needsDownload:false, continuous, reason:null}` |
 
-`<Vendor>` is `Google`, `Apple`, `Microsoft` or `Mozilla`. `kind:'none'` with a non-null `vendor` means "cloud voice would work after the opt-in"; the UI relies on this. The working test start of §6.2 is the listener's `firstTry` rule (Task 2) on the first real start.
+`reason: 'cloud-only'` is the overview's code for "cloud voice would work after the opt-in": the UI shows the vendor-named opt-in for exactly this case (with **Download offline voice** too when `needsDownload`), and `describeEngine` (Task 11) holds the wording. The working test start of §6.2 is the listener's `firstTry` rule (Task 2) on the first real start.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -904,11 +998,10 @@ test('probe follows the table', async () => {
   assert.deepEqual(await p({ ua: UA.chrome, available: 'available' }, false),
     { kind: 'web-local', vendor: null, needsDownload: false, continuous: true, reason: null });
   assert.deepEqual(await p({ ua: UA.edge, available: 'downloadable' }, false),
-    { kind: 'none', vendor: 'microsoft', needsDownload: true, continuous: true, reason: 'Download offline voice to use voice on this device.' });
+    { kind: 'none', vendor: 'microsoft', needsDownload: true, continuous: true, reason: 'cloud-only' });
   assert.equal((await p({ ua: UA.edge, available: 'downloading' }, true)).kind, 'web-cloud');
   assert.deepEqual(await p({ ua: UA.android, prefix: 'webkitSpeechRecognition' }, false),
-    { kind: 'none', vendor: 'google', needsDownload: false, continuous: false,
-      reason: 'Voice on this browser is sent to Google. Turn on cloud voice to use it.' });
+    { kind: 'none', vendor: 'google', needsDownload: false, continuous: false, reason: 'cloud-only' });
   assert.deepEqual(await p({ ua: UA.safari, prefix: 'webkitSpeechRecognition' }, true),
     { kind: 'web-cloud', vendor: 'apple', needsDownload: false, continuous: true, reason: null });
 });
@@ -978,12 +1071,12 @@ Expected: FAIL with `SyntaxError: The requested module '../../src/platform/web-v
 
 - `vendorFromUA`: `Edg/` → microsoft; `CriOS|FxiOS|EdgiOS|iPhone|iPad` or `Safari/` without `Chrome/` → apple; `Firefox/` → mozilla; else google.
 - The recogniser is `win.SpeechRecognition || win.webkitSpeechRecognition`. `start` re-checks `available(...)`: on-device only when it returns `'available'`; otherwise it needs `allowCloud`, or it rejects with `new Error('Cloud voice is off.')` before constructing anything.
-- Set `quality = 'command'` only when `'quality' in rec`. Each result from `resultIndex` emits `{text: transcript.trim(), final: isFinal}`. `stop()` calls `abort()`.
+- Set `quality = 'command'` only when `'quality' in rec`. Each result from `resultIndex` emits `{text: transcript.trim(), final: isFinal}`. `stop()` calls `abort()`. `start` rejects when `rec.start()` throws.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/web-voice.test.js`
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests (Plan 01's `createNoVoice` test and these 8).
 
 - [ ] **Step 5: Commit**
 
@@ -997,85 +1090,50 @@ git commit -m "Add the web voice engine with on-device first"
 **Files:**
 - Modify: `src/platform/web-tts.js`
 - Modify: `src/platform/web-media.js` (keep Plan 01's `createWebWakeLock`)
-- Test: `tests/unit/web-tts.test.js`, `tests/unit/web-media.test.js`
+- Modify: `tests/unit/web-tts.test.js`, `tests/unit/web-media.test.js` (Plan 01's files: keep all of Plan 01's tests, add `silentWavBlob` to the media import and append these tests)
 
 **Interfaces:**
 - Consumes: the `Tts` and `Platform['media']` shapes; `fakeClock`.
 - Produces:
-  - `createWebTts(speechSynthesis, {Utterance = globalThis.SpeechSynthesisUtterance, clock = realClock} = {}) → Tts`. `speak` also takes `opts.lang` (default `'en-US'`).
-  - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {}) → Platform['media']`.
+  - `createWebTts(speechSynthesis, Utterance = globalThis.SpeechSynthesisUtterance, {clock = realClock} = {}) → Tts`. Plan 01's first two parameters and its rules stay: `speak` resolves on `end` and on an `interrupted` or `canceled` error, and rejects on any other error. `speak` also takes `opts.lang` (default `'en-US'`), and `rate` and `volume` default to 1.
+  - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {}) → Platform['media']`. Plan 01's Media Session handlers and `setActive` (`'playing'` or `'none'`) stay as they are.
   - `silentWavBlob() → Blob`: 1 s of 8 kHz, mono, 8-bit silence (`audio/wav`, 8044 bytes). A `blob:` URL is used because the CSP's `media-src` has no `data:`.
 
-The TTS tests use `fakeSynth(voiceLists)`: `getVoices()` returns the next list from `voiceLists` on each call (the last one repeats), `speak(u)` pushes `u` onto `spoken`, `cancel()` counts into `cancels`, and `addEventListener('voiceschanged', fn)` stores `fn` for `fireVoicesChanged()` (the method is absent when the test passes `{noEvents:true}`). `FakeUtterance` stores `text` and dispatches `onend` and `onerror`. Voices: `local = {voiceURI:'local-en', name:'Local English', lang:'en-US', localService:true}`, `net = {voiceURI:'net-en', name:'Online English', lang:'en-US', localService:false}`, `fr = {voiceURI:'local-fr', name:'Local French', lang:'fr-FR', localService:true}`.
+The appended TTS tests reuse Plan 01's `FakeUtterance` and add `fakeSynth(voiceLists)`: `getVoices()` returns the next list from `voiceLists` on each call (the last one repeats), `speak(u)` pushes `u` onto `spoken`, `cancel()` counts into `cancels`, and `addEventListener('voiceschanged', fn)` stores `fn` for `fireVoicesChanged()` (the method is absent when the test passes `{noEvents:true}`). Voices: `local = {voiceURI:'local-en', name:'Local English', lang:'en-US', localService:true}`, `net = {voiceURI:'net-en', name:'Online English', lang:'en-US', localService:false}`, `fr = {voiceURI:'local-fr', name:'Local French', lang:'fr-FR', localService:true}`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
-// tests/unit/web-tts.test.js
+// tests/unit/web-tts.test.js (appended)
 test('voices lists local voices first', async () => {
-  const tts = createWebTts(fakeSynth([[net, local]]), { Utterance: FakeUtterance, clock: fakeClock(0) });
+  const tts = createWebTts(fakeSynth([[net, local]]), FakeUtterance, { clock: fakeClock(0) });
   assert.deepEqual(await tts.voices(), [
     { uri: 'local-en', name: 'Local English', lang: 'en-US', local: true },
     { uri: 'net-en', name: 'Online English', lang: 'en-US', local: false }]);
 });
 
-test('voices waits for voiceschanged', async () => {
-  const synth = fakeSynth([[], [local]]);
-  const p = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) }).voices();
-  synth.fireVoicesChanged();
-  assert.equal((await p).length, 1);
-});
-
 test('voices polls every 250 ms when voiceschanged never fires, and gives up at 2 s', async () => {
   const clock = fakeClock(0);
-  const p = createWebTts(fakeSynth([[], [], [local]], { noEvents: true }), { Utterance: FakeUtterance, clock }).voices();
+  const p = createWebTts(fakeSynth([[], [], [local]], { noEvents: true }), FakeUtterance, { clock }).voices();
   clock.advance(250); await flush(); clock.advance(250); await flush();
   assert.equal((await p).length, 1);
   const c2 = fakeClock(0);
-  const q = createWebTts(fakeSynth([[]], { noEvents: true }), { Utterance: FakeUtterance, clock: c2 }).voices();
+  const q = createWebTts(fakeSynth([[]], { noEvents: true }), FakeUtterance, { clock: c2 }).voices();
   for (let i = 0; i < 8; i++) { c2.advance(250); await flush(); }
   assert.deepEqual(await q, []);
 });
 
 test('speak prefers a local voice for the language and resolves on end', async () => {
   const synth = fakeSynth([[net, fr, local]]);
-  const tts = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) });
+  const tts = createWebTts(synth, FakeUtterance, { clock: fakeClock(0) });
   const p = tts.speak('Hello.', { lang: 'en-GB' }); await flush();
   const u = synth.spoken[0];
   assert.equal(u.voice.voiceURI, 'local-en'); assert.equal(u.lang, 'en-GB'); assert.equal(u.rate, 1); assert.equal(u.volume, 1);
   u.onend(); await p;
 });
 
-test('speak honours voiceURI, rate and volume, and resolves on error', async () => {
-  const synth = fakeSynth([[local, net]]);
-  const tts = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) });
-  const p = tts.speak('Hi.', { voiceURI: 'net-en', rate: 1.5, volume: 0.5 }); await flush();
-  const u = synth.spoken[0];
-  assert.deepEqual([u.voice.voiceURI, u.rate, u.volume], ['net-en', 1.5, 0.5]);
-  tts.cancel(); u.onerror({ error: 'interrupted' }); await p;
-  assert.equal(synth.cancels, 1);
-});
-
-// tests/unit/web-media.test.js
-function fakeNav() {
-  const handlers = {};
-  return { handlers, mediaSession: { playbackState: 'none', setActionHandler: (a, fn) => { handlers[a] = fn; } } };
-}
-
-test('setHandlers maps the headset keys', () => {
-  const nav = fakeNav(), calls = [];
-  createWebMedia(nav).setHandlers({ next: () => calls.push('next'), previous: () => calls.push('back'), playPause: () => calls.push('pp') });
-  for (const a of ['nexttrack', 'previoustrack', 'play', 'pause']) nav.handlers[a]();
-  assert.deepEqual(calls, ['next', 'back', 'pp', 'pp']);
-});
-
-test('setActive sets the playback state; no Media Session is a no-op', () => {
-  const nav = fakeNav(), m = createWebMedia(nav);
-  m.setActive(true); assert.equal(nav.mediaSession.playbackState, 'playing');
-  m.setActive(false); assert.equal(nav.mediaSession.playbackState, 'paused');
-  const bare = createWebMedia({});
-  bare.setHandlers({ next() {} }); bare.setActive(true);
-});
+// tests/unit/web-media.test.js (appended)
+const fakeNav = () => ({ mediaSession: { playbackState: 'none', setActionHandler() {} } });
 
 test('the silent-audio fallback plays a looping blob while active', async () => {
   const audio = { plays: 0, pauses: 0, play() { this.plays++; return Promise.resolve(); }, pause() { this.pauses++; } };
@@ -1100,23 +1158,23 @@ test('silentWavBlob is a valid 1 s WAV', async () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js`
-Expected: FAIL. `voices lists local voices first` fails on order or shape, and `silentWavBlob` is not exported.
+Expected: FAIL. `web-media.test.js` fails to load with `does not provide an export named 'silentWavBlob'`, and `voices lists local voices first` fails on the order.
 
 - [ ] **Step 3: Implement the changes**
 
-- `web-tts.js`: `voices()` uses `getVoices()`, then `voiceschanged`, then polling every 250 ms through `clock`, giving up at 2000 ms. The sort is stable, local first. `speak` picks `voiceURI` when it matches, else the first local voice whose `lang` starts with the first two letters of `opts.lang`, else leaves `voice` unset. It resolves on `onend` or `onerror`.
-- `web-media.js`: each `setActionHandler` call sits in its own `try`, because unsupported actions throw. The silent audio element is created on the first `setActive(true)` and reused.
+- `web-tts.js`: `voices()` uses `getVoices()`, then `voiceschanged`, then polling every 250 ms through `clock`, giving up at 2000 ms, and clears its listener and timer when it resolves. The sort is stable, local first. `speak` picks `voiceURI` when it matches, else the first local voice whose `lang` starts with the first two letters of `opts.lang`, else leaves `voice` unset.
+- `web-media.js`: the silent audio element is created on the first `setActive(true)` with `silentAudio` on, and reused; `setActive(false)` pauses it.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js`
-Expected: PASS, 5 and 4 tests.
+Expected: PASS, 7 tests in `web-tts.test.js` (Plan 01's 4 and these 3) and 6 in `web-media.test.js` (Plan 01's 4 and these 2).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/platform/web-tts.js src/platform/web-media.js tests/unit/web-tts.test.js tests/unit/web-media.test.js
-git commit -m "Prefer local voices and add Media Session keys"
+git commit -m "Prefer local voices and add the silent-audio fallback"
 ```
 
 ### Task 8: Key map
@@ -1129,7 +1187,7 @@ git commit -m "Prefer local voices and add Media Session keys"
 - Consumes: `COMMANDS` (Task 1).
 - Produces:
   - `keyToCommand(e, settings) → string|null`, where `e = {key, target, ctrlKey, altKey, metaKey, repeat}` and `target` may be `null`;
-  - `installKeymap({getSettings, dispatch, onTalk, target = document}) → () => void` (uninstall). `onTalk(true)` on V down and `onTalk(false)` on V up, under the same rules as other single keys.
+  - `installKeymap({getSettings, dispatch, onTalk, target = document}) → () => void` (uninstall), the contract's `installKeymap({getSettings, dispatch(commandId)})` with two optional extras. `onTalk(true)` on V down and `onTalk(false)` on V up, under the same rules as other single keys. (Touch users and people with single keys off use the bar's **Talk** button, Task 9.)
 
 `keymap.js` must not touch `document` at import time, so Node can import it.
 
@@ -1193,7 +1251,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/ui/keymap.js`.
 
 - [ ] **Step 3: Implement `src/ui/keymap.js`**
 
-Text fields are `TEXTAREA`, `SELECT`, `isContentEditable`, and `INPUT` of any type except `checkbox`, `radio`, `button`, `submit`, `reset` and `range`. Controls that own Space are `BUTTON`, `A`, `SUMMARY`, checkbox and radio inputs, and `role` values `button`, `checkbox`, `switch`, `menuitem`, `tab` and `option`. A target without `tagName` counts as the page body.
+Targets that swallow every key, Esc included, are `IFRAME` (an Archive embed or the Lab) and the text fields: `TEXTAREA`, `SELECT`, `isContentEditable`, and `INPUT` of any type except `checkbox`, `radio`, `button`, `submit`, `reset` and `range`. Controls that own Space are `BUTTON`, `A`, `SUMMARY`, checkbox and radio inputs, and `role` values `button`, `checkbox`, `switch`, `menuitem`, `tab` and `option`. A target without `tagName` counts as the page body.
 
 - [ ] **Step 4: Run test to verify it passes**
 

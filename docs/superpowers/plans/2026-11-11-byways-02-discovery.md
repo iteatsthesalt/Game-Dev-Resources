@@ -2,13 +2,13 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build everything that finds, picks, remembers and shows a find: the Find model, the never-twice seen-set, Back history, taste and Tuned picking, Fate, Rabbit Hole, collections, share links, backup, the free source adapters with their probe, the engine, and the Stumble, Feed, Saved, Import and Settings (taste, sources, data) screens, plus the first-run interests step and the starter library.
+**Goal:** Build everything that finds, picks, remembers and shows a find: the Find model, the never-twice seen-set, Back history, taste and Tuned picking, Fate, Rabbit Hole, collections, share links, backup, the free source adapters with their probe, the engine, and the Stumble, Feed, Saved, Import and Settings (taste, sources, data, privacy) screens, plus the first-run interests step and the starter library.
 
-**Architecture:** Pure core modules in `src/core/` (no DOM) hold the state and the rules. Each source is one adapter file that turns a recorded HTTP response into `Find` objects through `makeFind`. `createEngine` owns the candidate pool, the injected queue (search now, AI in Plan 05), the seen-set, history, taste and reactions. The UI calls only the engine and the small stores the engine exposes. Plan 04 adds the Archive sources (`ia`, `vault`, `oldweb`, `itch`) by registering adapters in `sources/index.js`; the engine has no Archive code.
+**Architecture:** Pure core modules in `src/core/` (no DOM) hold the state and the rules. Each source is one adapter file that turns a recorded HTTP response into `Find` objects through `makeFind`. `createEngine` owns the candidate pool, up to 3 prepared finds, the injected queue (search now, AI in Plan 05), the seen-set, history, taste and reactions. The UI calls only the engine and the small stores the engine exposes. Plan 04 adds the Archive sources (`ia`, `vault`, `oldweb`, `itch`) by registering adapters in `sources/index.js`; the engine has no Archive code.
 
-**Tech Stack:** JavaScript ES2022 modules, no framework or bundler. `node:test` for unit tests, `@playwright/test@1.63.0` (Chromium) for end-to-end tests. `CompressionStream('deflate-raw')` for share links. Everything from Plan 01: `createHttp`, `openStore`/`memoryBackend`, `createCache`, `fakeClock`, `hash64`, `gumbel`, `mulberry32`, `normalizeUrl`, `domainOf`, `siteOrigin`, `isHttpUrl`, `toPlainText`, `truncate`, `tokenize`, `utcDate`, `h`, `clear`, `announce`, `showToast`, `registerView`, `registerSettingsSection`, `registerFirstRunStep`, `mockNet`, `installFakeSpeech`.
+**Tech Stack:** JavaScript ES2022 modules, no framework or bundler. `node:test` for unit tests, `@playwright/test@1.63.0` (Chromium) for end-to-end tests. `CompressionStream('deflate-raw')` for share links. Everything from Plan 01: `createHttp`, `openStore`/`memoryBackend`, `createCache`, `fakeClock`, `hash64`, `gumbel`, `mulberry32`, the `util/url.js` and `util/text.js` helpers, `utcDate`, `APP_VERSION`, `h`, `clear`, `announce`, `showToast`, the three UI registries, and the e2e helpers (`test`/`expect`/`mockNet`, `gotoApp`/`skipFirstRun`, `expectNoSeriousA11y`, `installFakeSpeech`).
 
-**Spec:** `docs/superpowers/specs/2026-11-11-byways-design.md` (§5, §7, §8, §9.1, §14.1–§14.3, §15.1). Contract: `docs/superpowers/plans/2026-11-11-byways-00-overview.md`. Research: `docs/superpowers/specs/byways-research/free-sources.md`, `landscape.md`, `critic.md`.
+**Spec:** `docs/superpowers/specs/2026-11-11-byways-design.md` (§5, §7, §8, §9.1, §14.1–§14.3, §15.1; the Privacy text also uses §6.2, §11.2, §12.8 and §15.2). Contract: `docs/superpowers/plans/2026-11-11-byways-00-overview.md`. Research: `docs/superpowers/specs/byways-research/free-sources.md`, `landscape.md`, `critic.md`.
 
 ## Global Constraints
 
@@ -28,13 +28,16 @@
 - **Rates (§7.3):** iNaturalist and Open Library 1 request per second; Art Institute 60 per minute; GitHub search 10 per minute; Wikimedia about 10 per minute; Library of Congress 10 per minute ("an HTML/CAPTCHA reply counts as a failure"); APOD by key tier with a local daily counter.
 - **Caching (§7.3):** "24 h for searches, 7 days for item details, and a week for the Kagi lists"; GitHub results at least 1 hour.
 - **Network (§15.1):** stumbling contacts "Only the enabled sources (§7.2) and the site you open"; the link check contacts "The find's site, before it is shown", and only when **Check links before showing** is on.
+- **Keys:** every key is read through `ctx.secrets`, which is `app.secrets` (overview `App` table). The ids are fixed: `src:europeana`, `src:openverse` (JSON `{clientId, clientSecret}`), `src:datagov` (APOD and Smithsonian; `DEMO_KEY` without it), `src:marginalia` and `src:github`. A key never goes into a cache key, a store other than the secrets store, or a log.
 - **Styles:** the CSP is `style-src 'self'`, so UI code sets dynamic styles only through CSSOM (`el.style.setProperty`), never a `style` attribute.
+- **Console:** app code reports recoverable problems with `console.warn`, never `console.error`; the e2e `test` fixture fails on any console error (Plan 01).
+- **Headings:** the router renders each view's `title` as the page's `h1` (overview, UI conventions), so no view in this plan renders an `h1` of its own.
 
 ## Review Focus
 
 1. **Hostile text and links in source data.** An Artist field holding `<a href="javascript:…">`, an HN `story_text` with `<script>`, or a `data:` image URL must show as plain text and the bad link or image must be dropped. Pinned by `makeFind drops non-http image urls` (Task 1), `commons turns extmetadata HTML into plain text` (Task 12) and the e2e `card shows markup as plain text` (Task 22).
 2. **Double presses.** Pressing Next (or Space, or saying "next") twice fast must give two different finds and add each to the seen-set once. Pinned by `two concurrent next calls return different finds` (Task 20).
-3. **Offline versus used up.** With the network down, Stumble must say it can't reach the sources, not that you have seen everything, and must never hang. Pinned by `every source failing gives the unreachable message` (Task 20).
+3. **Offline versus used up.** With the network down, Stumble must say it can't reach the sources, not that you have seen everything, even with the starter library on, and must never hang. Pinned by `every source failing gives the unreachable message` and `a slow source never holds up a find and is skipped after 8 s` (Task 20).
 4. **Broken, old or future share links and backup files.** A truncated `#s=` link, a payload with `v: 2`, or a backup with the wrong `format` must show a clear message and change nothing. Pinned by `decodeShare rejects v2 and garbage` (Task 9), `importBackup rejects a foreign file and writes nothing` (Task 10) and the e2e `a broken share link shows a message` (Task 26).
 5. **Injected finds that should never show.** Search or AI results that are already seen, on a blocked domain, duplicated, or tagged with ids not in `tags.json` must be dropped or cleaned before they reach a card. Pinned by `inject drops seen, blocked, duplicate and unknown-tag finds` (Task 20).
 
@@ -55,13 +58,13 @@ All paths are under `Apps/Byways/`.
 | `src/core/fate.js` | `fatePull` |
 | `src/core/rabbit.js` | `similarLocal` (tags + TF-IDF), `createRabbitHole` |
 | `src/core/collections.js` | Collections store, default `saved`, current collection |
-| `src/core/share.js` | Share-link codec, `SHARE_BASE`, `MAX_LINK_CHARS` |
+| `src/core/share.js` | Share-link codec, `SHARE_BASE`, `MAX_LINK_CHARS`, `payloadFromLink` |
 | `src/core/backup.js` | Backup export/import, bookmarks HTML |
 | `src/core/liveness.js` | `checkLive` |
 | `src/core/sources/index.js` | `SOURCES`, `getSource`, `enabledSources`, `IDENT` |
 | `src/core/sources/probe.js` | `probeSource`, `runProbes` |
 | `src/core/sources/<id>.js` | 20 adapters: wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian, europeana, openverse, kagi, kagirandom, wiby, library |
-| `src/core/engine.js` | `createEngine`: pool, queue, modes, reactions, Rabbit Hole, feed, search |
+| `src/core/engine.js` | `createEngine`: pool, prefetch, queue, modes, reactions, Rabbit Hole, feed, search |
 | `src/data/library.json` | About 300 curated starter finds |
 | `src/ui/components/card.js` | `renderCard` with every action |
 | `src/ui/components/generated-image.js` | `generatedImage`: initial, hue from `hash64`, source badge |
@@ -72,16 +75,17 @@ All paths are under `Apps/Byways/`.
 | `src/ui/views/settings/taste.js` | Your taste section and the first-run interests step |
 | `src/ui/views/settings/sources.js` | Sources section and source keys |
 | `src/ui/views/settings/data.js` | Backup export/import, reset seen |
-| `src/ui/boot.js` (modify) | Creates `seen`, `history`, `collections`, `engine`, `search` |
+| `src/ui/views/settings/privacy.js` | Settings → Privacy: the §15.1 table and the privacy notes |
+| `src/ui/boot.js` (modify) | Sets `secrets`, creates `seen`, `history`, `collections`, `engine`, `search` |
 | `src/ui/views/index.js` (modify) | Imports this plan's views and settings sections |
-| `tests/unit/helpers/fixture-http.js` | `adapterCtx`: a real `createHttp` over recorded fixtures |
+| `tests/unit/helpers/fixture-http.js` | `adapterCtx`, `memorySecrets`, `engineFor`: a real `createHttp` over recorded fixtures |
 | `tests/fixtures/http/<source>/*.json\|.txt` | Hand-written responses in the documented shapes |
-| `tests/fixtures/routes.js` (modify) | One route per fixture |
+| `tests/fixtures/routes.js` (modify) | One route per endpoint, plus two catch-alls for fixture images and link checks |
 | `tests/e2e/helpers/net.js` (modify) | `stageLibrary(page, entries)` |
-| `tests/e2e/helpers/fakes.js` (modify) | `skipFirstRun(page)` |
+| `tests/e2e/firstrun.spec.js`, `tests/e2e/smoke.spec.js` (modify) | Step past the new interests step |
 | `tests/fixtures/http/library/small.json` | Three-entry library for e2e |
 
-**Adapter conventions (every `sources/<id>.js`).** Each file default-exports one adapter in the contract shape and is added to `ADAPTERS` in `sources/index.js` in the same task. Its fixtures live in `tests/fixtures/http/<id>/`, and `tests/fixtures/routes.js` gets one route per endpoint pattern it calls, including its `probeUrl`, so that the e2e `mockNet` covers every request the app makes. Methods a source does not support return `[]`. Network failures propagate as `NetError` (the engine skips that source silently). Every find is built with `makeFind`, with `source: id`, the adapter's base tags (Task 5 table) and a first `why` chip naming the pool, for example `'Wikipedia: random article'`. Every request goes through `ctx.http` with `source: id`. Search responses are cached in `ctx.cache` for 24 h and item details for 7 days, keyed by the request URL.
+**Adapter conventions (every `sources/<id>.js`).** Each file default-exports one adapter in the contract shape and is added to `ADAPTERS` in `sources/index.js` in the same task. Methods a source does not support return `[]`. Network failures propagate as `NetError` (the engine skips that source silently). Every find is built with `makeFind`, with `source: id`, the adapter's base tags (Task 5 table) and a first `why` chip naming the pool, for example `'Wikipedia: random article'`. Every request goes through `ctx.http` with `source: id`, and keys come only from `ctx.secrets`. `search` responses are cached in `ctx.cache` for 24 h and item details for 7 days (a task names any other cache), keyed by the request URL with its `api_key` parameter removed. **Fixtures** live in `tests/fixtures/http/<id>/`. They are hand-written in the response shapes that `byways-research/free-sources.md` documents, they hold the values the tests assert, and every image URL in them ends in `.jpg` or `.png`. A task lists only the extra items its tests need. `tests/fixtures/routes.js` gets one route per endpoint pattern the adapter calls, including its `probeUrl`, so that the e2e `mockNet` covers every request the app makes.
 
 ### Task 1: The Find model
 
@@ -157,7 +161,7 @@ git commit -m "Add the Find model with url ids and length limits"
 
 **Interfaces:**
 - Consumes: `openStore(backend)`, `memoryBackend()` (store/db.js), `hash64`, `normalizeUrl`, `domainOf`, `makeFind` (Task 1).
-- Produces: `createSeen(store) → {has(url) → Promise<boolean>, add(url) → Promise<void>, count() → Promise<number>, reset() → Promise<void>}`; values are `{t: <ms>}` under key `hash64(normalizeUrl(url))` in the `seen` store. `createHistory(store, {max=50}) → {ready: Promise<void>, push(find), back() → Find|null, forward() → Find|null, current() → Find|null, list() → Find[], recentDomains(n) → string[]}`; it persists `{items, cursor}` under key `'trail'` in the `history` store.
+- Produces: `createSeen(store) → {has(url) → Promise<boolean>, add(url) → Promise<void>, count() → Promise<number>, reset() → Promise<void>}`; values are `{t: <ms>}` under key `hash64(normalizeUrl(url))` in the `seen` store. `createHistory(store, {max=50}) → {ready: Promise<void>, push(find), back() → Find|null, forward() → Find|null, current() → Find|null, list() → Find[], recentDomains(n) → string[], reload() → Promise<void>}`; it persists `{items, cursor}` under key `'trail'` in the `history` store, and `reload()` reads that key again (Task 29 calls it after a backup import).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -195,6 +199,8 @@ test('history survives a restart', async () => {
   const store = await openStore(memoryBackend()); const h = createHistory(store); await h.ready;
   h.push(f('a', 'https://a.example.com/')); await new Promise(r => setTimeout(r, 0));
   const h2 = createHistory(store); await h2.ready; assert.equal(h2.current().title, 'a');
+  await store.put('history', 'trail', { items: [f('z', 'https://z.example.com/')], cursor: 0 });
+  await h2.reload(); assert.equal(h2.current().title, 'z');
 });
 ```
 
@@ -222,13 +228,13 @@ git commit -m "Add the seen-set and the Back history"
 ### Task 3: Tag vocabulary and taste
 
 **Files:**
-- Create (or replace Plan 01's stub): `src/data/tags.json`
+- Modify: `src/data/tags.json` (Plan 01's empty stub)
 - Create: `src/core/taste.js`
 - Test: `tests/unit/tags-data.test.js`, `tests/unit/taste.test.js`
 
 **Interfaces:**
 - Consumes: `domainOf(u)`.
-- Produces: `src/data/tags.json` in the overview shape; `DEFAULT_TASTE`; `applyReaction(taste, find, reaction, extra?) → {taste, change}` (pure, never mutates its input); `describeChange(change) → string`. `extra` is `{tag}` for `interest` and `lessTopic` (default `find.tags[0]`), and `{blockDomain: true}` for `broken`.
+- Produces: `src/data/tags.json` in the overview shape; `DEFAULT_TASTE`; `applyReaction(taste, find, reaction, extra?) → {taste, change}` (pure, never mutates its input); `describeChange(change, labelOf = (id) => id.replace(/-/g, ' ')) → string`, where the engine passes `labelOf` built from `data.tags`. `extra` is `{tag}` for `interest` and `lessTopic` (default `find.tags[0]`), and `{blockDomain: true}` for `broken`.
 
 `tags.json` holds exactly these 40 tags (id, then label), in this group order:
 
@@ -261,9 +267,10 @@ test('like adds 1 per tag and 0.5 to the source', () => {
   assert.deepEqual(taste.tags, { retro: 1, indie: 1 }); assert.deepEqual(taste.sources, { library: 0.5 });
   assert.equal(taste.reactions, 1); assert.deepEqual(change.tagDeltas, { retro: 1, indie: 1 }); assert.equal(change.sourceDelta, 0.5);
 });
-test('weights cap at +3', () => {
+test('save works like like, and weights cap at +3', () => {
   const { taste, change } = applyReaction({ ...DEFAULT_TASTE, tags: { retro: 3 } }, find, 'save');
   assert.equal(taste.tags.retro, 3); assert.equal(change.tagDeltas.retro, 0);
+  assert.equal(taste.tags.indie, 1); assert.deepEqual(taste.sources, { library: 0.5 });
 });
 test('not for me takes 0.5 per tag and 0.25 from the source', () => {
   const { taste } = applyReaction(DEFAULT_TASTE, find, 'dislike');
@@ -297,6 +304,12 @@ test('describeChange words each change', () => {
   assert.equal(describeChange(c({ sourceDelta: 0.5 })), 'More like this from now on.');
   assert.equal(describeChange(c({})), 'Noted.');
 });
+test('describeChange uses the tag labels', () => {
+  const c = (o) => ({ tagDeltas: {}, sourceDelta: 0, hidden: [], blocked: [], ...o });
+  const labelOf = (id) => ({ oldweb: 'Old web', ai: 'AI', retro: 'Retro' })[id];
+  assert.equal(describeChange(c({ tagDeltas: { oldweb: 1, ai: 1, retro: 1 } }), labelOf), 'More old web, AI and retro from now on.');
+  assert.equal(describeChange(c({ hidden: ['oldweb'] }), labelOf), 'Old web is hidden now.');
+});
 ```
 
 - [ ] **Step 2: Run them and see them fail**
@@ -306,12 +319,12 @@ Expected: FAIL (`ENOENT` or a wrong tag count for `tags.json`, `ERR_MODULE_NOT_F
 
 - [ ] **Step 3: Write `tags.json` from the table and implement `taste.js`**
 
-`like`, `dislike`, `save`, `lessTopic` and `neverSite` add 1 to `reactions`; `interest` and `broken` do not. `describeChange` checks `blocked`, then `hidden`, then tag deltas (positive ones before negative), then `sourceDelta`; a tag id is written with hyphens as spaces, and a hidden tag starts with a capital letter. Zero deltas are left out of the wording.
+`save` changes the taste exactly as `like` does (§8.2: "Like, or Save"). `like`, `dislike`, `save`, `lessTopic` and `neverSite` add 1 to `reactions`; `interest` and `broken` do not. `describeChange` checks `blocked`, then `hidden`, then tag deltas (positive ones before negative), then `sourceDelta`. A tag is worded as `labelOf(id)`: inside a sentence it is lower-cased unless the label is all capitals (`AI`, `DIY`), and a hidden tag starts the sentence with a capital letter. Zero deltas are left out of the wording.
 
 - [ ] **Step 4: Run them and see them pass**
 
 Run: `node --test tests/unit/tags-data.test.js tests/unit/taste.test.js`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -405,28 +418,29 @@ git commit -m "Add Tuned branch maths, scoring and filters"
 
 **Files:**
 - Create: `src/core/sources/index.js`, `src/core/sources/probe.js`, `tests/unit/helpers/fixture-http.js`, `tests/fixtures/http/probe/ok.json` (`{"ok":true}`), `tests/fixtures/http/probe/captcha.html` (`<html><body>Are you a robot?</body></html>`)
-- Modify: `tests/fixtures/routes.js` (append the two probe routes: `/probe-ok\.example\//` → `probe/ok.json`, `/probe-html\.example\//` → `probe/captcha.html` with `content-type: text/html`)
+- Modify: `tests/fixtures/routes.js` (append the probe routes: `/probe-ok\.example\//` → `probe/ok.json`, `/probe-403\.example\//` → `probe/ok.json` with status 403, `/probe-html\.example\//` → `probe/captcha.html` with `content-type: text/html`)
 - Test: `tests/unit/sources-index.test.js`, `tests/unit/probe.test.js`
 
 **Interfaces:**
-- Consumes: `createHttp({transport, clock})`, `createCache(store, clock)`, `openStore`, `memoryBackend`, `fakeClock(start)`, `mulberry32(seed)`, `DEFAULT_SETTINGS`, the `routes` array from `tests/fixtures/routes.js`.
+- Consumes: `APP_VERSION` (`src/core/version.js`, Plan 01), `createHttp({transport, clock})`, `createCache(store, clock)`, `openStore`, `memoryBackend`, `fakeClock(start)`, `mulberry32(seed)`, `DEFAULT_SETTINGS`, the `routes` array from `tests/fixtures/routes.js`.
 - Produces:
-  - `IDENT = 'Byways/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)'`, the value of `Api-User-Agent` and `AIC-User-Agent`. Adapters read it inside functions only (the index imports the adapters, so a top-level read would hit the import cycle).
+  - ``IDENT = `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/Game-Dev-Resources)` ``, the value of `Api-User-Agent` and `AIC-User-Agent`. Adapters read it inside functions only (the index imports the adapters, so a top-level read would hit the import cycle).
   - `SOURCES` (id → adapter, in the order of an `ADAPTERS` array that each adapter task extends with one import), `getSource(id) → Adapter|undefined`.
-  - `enabledSources(settings, probe, platformName, all = Object.values(SOURCES)) → Adapter[]`. A source is in when `settings.sources[id]?.enabled` is `true`, or is absent and the adapter's `key` is not `'required'`. On `'pwa'`, a `probe` tier source also needs `probe[id] === 'ok'`, and `privileged` and `navigate` tiers are out.
-  - `probeSource(adapter, http) → Promise<'ok'|'fail'>`: no `probeUrl` gives `'ok'`; otherwise `'ok'` only when `http.getJson(probeUrl, {source: id, timeoutMs: 8000})` resolves.
+  - `enabledSources(settings, probe, platformName, all = Object.values(SOURCES)) → Adapter[]`. A source is in when `settings.sources[id]?.enabled` is `true`, or is absent and the adapter's `key` is not `'required'`. A `navigate` tier source is never in, on any platform (it makes no data calls). On `'pwa'` a `probe` tier source also needs `probe[id] === 'ok'`. A `privileged` source stays in everywhere, because in the web app it reads its daily snapshot instead (Plan 04's `itch`).
+  - `probeSource(adapter, http) → Promise<'ok'|'fail'>`: no `probeUrl` gives `'ok'`. Otherwise it is `'ok'` when `http.getJson(probeUrl, {source: id, timeoutMs: 8000})` resolves, or when it rejects with a `NetError` of kind `http` and a status from 400 to 499 (the host answered with CORS, so a refused `DEMO_KEY` is not a reachability problem). Anything else is `'fail'`.
   - `runProbes(adapters, http, store, clock, platformName = 'pwa') → Promise<Object<string,'ok'|'fail'>>`: reuses `health['probe:<platformName>'] = {at, results}` while it is under 24 h old and covers every adapter id.
-  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]`, reads `tests/fixtures/http/<file>`, records `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `secrets` is an in-memory `SecretStore` seeded from `secrets`, and `data.tags` is read from `src/data/tags.json`.
+  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]` on every request (so a test may change `extraRoutes` later), reads `tests/fixtures/http/<file>`, records `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It takes the same route fields as `mockNet` (`file`, `body`, `json`, `status`, `headers`) plus `error: true` (throw `TypeError('Failed to fetch')`) and `hang: true` (never settle until `init.signal` aborts, then reject with an `AbortError`). It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `{http, rand: mulberry32(seed), clock: fakeClock(now), cache, settings, secrets, data, platformName: 'pwa', caps: {privilegedFetch: false, localNetworkHttp: false, inAppSiteView: false, labHref: 'lab/', framesArchive: true}, dataUrl: (f) => 'data/' + f}`, where `secrets` is `memorySecrets(secrets)` and `data.tags` is read from `src/data/tags.json`.
+  - `memorySecrets(seed = {}) → SecretStore` in the same kit file: an in-memory store, `get` giving `null` for a missing id.
 
 **Adapter table.** Every adapter task builds its row exactly. Rate is `{perMinute, concurrent}`. Key ids are `SecretStore` ids.
 
 | id | name | tier | key · keyName | safety | rate | fate | kinds | base tags |
 |---|---|---|---|---|---|---|---|---|
 | wikipedia | Wikipedia | open | none | mostly | 10·1 | yes | article | education |
-| commons | Wikimedia Commons | open | none | mostly | 10·1 | no | image | photography |
+| commons | Wikimedia Commons | open | none | mixed | 10·1 | no | image | photography |
 | inat | iNaturalist | open | none | mostly | 60·1 | yes | image | nature |
 | openlibrary | Open Library | open | none | mostly | 60·1 | no | book | books |
-| apod | NASA APOD | open | demo · src:apidatagov | curated | 2·1 | yes | image, video | space, science |
+| apod | NASA APOD | open | demo · src:datagov | curated | 2·1 | yes | image, video | space, science |
 | marginalia | Marginalia | open | optional · src:marginalia | mostly | 20·1 | no | site | web |
 | github | GitHub | open | optional · src:github | mostly | 10·1 | no | project, game | indie, programming |
 | hn | Show HN | probe | none | mostly | 60·2 | no | project, game | tech, indie |
@@ -435,7 +449,7 @@ git commit -m "Add Tuned branch maths, scoring and filters"
 | cleveland | Cleveland Museum of Art | probe | none | curated | 60·1 | yes | image | art |
 | nasaimages | NASA Images | probe | none | curated | 30·1 | no | image | space |
 | loc | Library of Congress | probe | none | curated | 10·1 | no | image | history, photography |
-| smithsonian | Smithsonian | probe | required · src:apidatagov | curated | 30·1 | yes | image | history |
+| smithsonian | Smithsonian | probe | required · src:datagov | curated | 30·1 | yes | image | history |
 | europeana | Europeana | open | required · src:europeana | mostly | 30·1 | no | image | culture, history |
 | openverse | Openverse | open | required · src:openverse | mostly | 20·1 | no | image, audio | photography |
 | kagi | Kagi Small Web | open | none | curated | 6·1 | yes | site, video | web, essays |
@@ -451,10 +465,13 @@ const fake = (id, tier, key = 'none') => ({ id, tier, key, fate: true, rate: { p
 const all = [fake('a', 'open'), fake('k', 'open', 'required'), fake('p', 'probe'), fake('n', 'navigate'), fake('v', 'privileged')];
 const ids = (xs) => xs.map(x => x.id);
 test('enabledSources applies settings, keys and the probe', () => {
-  assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'pwa', all)), ['a']);
-  assert.deepEqual(ids(enabledSources({ sources: {} }, { p: 'ok' }, 'pwa', all)), ['a', 'p']);
+  assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'pwa', all)), ['a', 'v']);
+  assert.deepEqual(ids(enabledSources({ sources: {} }, { p: 'ok' }, 'pwa', all)), ['a', 'p', 'v']);
   assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'android', all)), ['a', 'p', 'v']);
-  assert.deepEqual(ids(enabledSources({ sources: { a: { enabled: false }, k: { enabled: true } } }, {}, 'pwa', all)), ['k']);
+  assert.deepEqual(ids(enabledSources({ sources: { a: { enabled: false }, k: { enabled: true }, n: { enabled: true } } }, {}, 'pwa', all)), ['k', 'v']);
+});
+test('IDENT names the app version', () => {
+  assert.equal(IDENT, `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/Game-Dev-Resources)`);
 });
 test('every registered adapter has the contract shape', () => {
   for (const [id, a] of Object.entries(SOURCES)) {
@@ -470,16 +487,17 @@ test('every registered adapter has the contract shape', () => {
 ```js
 // tests/unit/probe.test.js
 const ad = (id, probeUrl) => ({ id, tier: 'probe', probeUrl, rate: { perMinute: 60, concurrent: 1 } });
-test('probeSource needs a JSON reply', async () => {
+test('probeSource needs a JSON reply or a 4xx answer', async () => {
   const { ctx } = await adapterCtx();
   assert.equal(await probeSource(ad('x', 'https://probe-ok.example/'), ctx.http), 'ok');
+  assert.equal(await probeSource(ad('x', 'https://probe-403.example/'), ctx.http), 'ok');
   assert.equal(await probeSource(ad('x', 'https://probe-html.example/'), ctx.http), 'fail');
-  assert.equal(await probeSource(ad('x', 'https://nowhere.example/'), ctx.http), 'fail');
+  assert.equal(await probeSource(ad('x', 'https://nowhere.invalid/'), ctx.http), 'fail');
   assert.equal(await probeSource({ id: 'x' }, ctx.http), 'ok');
 });
 test('runProbes stores results and re-runs after 24 h', async () => {
   const { ctx, calls, store } = await adapterCtx();
-  const list = [ad('x', 'https://probe-ok.example/'), ad('y', 'https://nowhere.example/')];
+  const list = [ad('x', 'https://probe-ok.example/'), ad('y', 'https://nowhere.invalid/')];
   assert.deepEqual(await runProbes(list, ctx.http, store, ctx.clock), { x: 'ok', y: 'fail' });
   assert.deepEqual((await store.get('health', 'probe:pwa')).results, { x: 'ok', y: 'fail' });
   const n = calls.length; ctx.clock.advance(3600e3);
@@ -495,12 +513,12 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 
 - [ ] **Step 3: Implement `sources/index.js`, `sources/probe.js` and `tests/unit/helpers/fixture-http.js`**
 
-`ADAPTERS` starts empty. Probes for a list run in parallel. The kit's responses use `content-type: application/json` for `.json` files and `text/plain` for `.txt`, unless the route sets `headers`.
+`ADAPTERS` starts empty. Probes for a list run in parallel. The kit's responses use `content-type: application/json` for `.json` files and `json` entries, and `text/plain` for `.txt` files and `body` entries, unless the route sets `headers`.
 
 - [ ] **Step 4: Run them and see them pass**
 
 Run: `node --test tests/unit/sources-index.test.js tests/unit/probe.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -517,7 +535,7 @@ git commit -m "Add the source registry, the runtime probe and the adapter test k
 
 **Interfaces:**
 - Consumes: the adapter shape (Task 5).
-- Produces: `fatePull({sources, weights, ctx, rand, seenHas, retries = 3}) → Promise<{find}|{miss: true, reason}>`. `seenHas` is async `(url) → Promise<boolean>`. Only sources with `fate: true` and weight above 0 count; a missing weight is 1. One pull makes at most `retries + 1` `random()` calls. A call that throws, returns `[]` or returns only seen finds is a miss; otherwise the first unseen find wins.
+- Produces: `fatePull({sources, weights, ctx, rand, seenHas, retries = 3, accept = () => true}) → Promise<{find}|{miss: true, reason}>`. `seenHas` is async `(url) → Promise<boolean>`; `accept(find) → boolean` is the engine's always-on filter (blocked domains, hidden tags, the Family filter, the dead set). Only sources with `fate: true` and weight above 0 count; a missing weight is 1. One pull makes at most `retries + 1` `random()` calls. A call that throws, returns `[]` or returns only seen or unaccepted finds is a miss; otherwise the first unseen accepted find wins.
 - Reasons (exact): `'Nothing new here. Try again, or turn on more Fate sources.'` and `'No Fate sources are on. Turn some on in Settings → Sources.'`
 
 - [ ] **Step 1: Write the failing test**

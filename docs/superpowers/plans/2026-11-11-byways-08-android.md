@@ -29,16 +29,22 @@
 - Wake lock: `FLAG_KEEP_SCREEN_ON` on Android. Headset: "Android uses a native media session."
 - Lean-back runs in "the Android card view, or the Android site view when **Go straight to the site** is on (off by default)". "Lean-back never opens tabs by itself."
 - Updates: "Settings → About checks `api.github.com/repos/iteatsthesalt/Game-Dev-Resources/releases/latest` and offers **Download update**."
-- Signing: the release APK is signed when `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD` exist.
-- This machine has no Android SDK and blocks Google Maven downloads. Kotlin steps are verified by the `android` job in `.github/workflows/byways.yml`. Run Gradle locally only when `ANDROID_HOME` is set.
+- **Versions (contract):** `shells/android/gradle.properties` holds `byways.versionName=<package.json version>` and `byways.versionCode=<x*10000 + y*100 + z>`, and `app/build.gradle.kts` reads both with `providers.gradleProperty(...)`. No environment variable sets the version.
+- **Signing (contract):** the release `signingConfig` exists only when `BYWAYS_KEYSTORE_PATH` is set, and reads that file with `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`. Plan 09's release workflow decodes `KEYSTORE_BASE64` into the file. Release assets are `byways-<version>.apk` and `byways-<version>-debug.apk`.
+- **Generated data (contract):** on Android, `app.dataUrl(file)` is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>`, fetched through `nativeFetch`, with the backup recipe as the fallback.
+- This machine has no Android SDK and blocks Google Maven downloads. Run Gradle locally only when `ANDROID_HOME` is set; otherwise every Kotlin red and green step uses **CI checks** below.
+
+**CI checks** (the `android` job in `.github/workflows/byways.yml`). Red: commit the new Kotlin test files alone (`Add the failing <TestName>`), push, then run
+`sha=$(git rev-parse HEAD); until id=$(gh run list -w byways.yml -c "$sha" -L 1 --json databaseId -q '.[0].databaseId') && [ -n "$id" ]; do sleep 10; done; gh run watch "$id" --exit-status`.
+Expected: exit 1, and the `android` job log shows `:app:compileDebugUnitTestKotlin` failing on the step's `Unresolved reference`. Green: make the task's commit, push, and run the same command. Expected: exit 0.
 
 ## Review Focus
 
-1. **Hosts that only look local.** `http://192.168.1.5.nip.io`, `http://10.0.0.1@evil.com`, `http://2130706433`, `http://0x7f000001`, `http://[::ffff:8.8.8.8]` and a redirect from an approved LAN host to an unapproved one must all be refused, with no DNS lookup. Pinned by `deniesLookalikeHosts` (Task 3) and `blocksRedirectToUnapprovedHost` (Task 4).
+1. **Hosts that only look local, and keys on redirects.** `http://192.168.1.5.nip.io`, `http://10.0.0.1@evil.com`, `http://2130706433`, `http://0x7f000001`, `http://010.0.0.1`, `http://[::ffff:8.8.8.8]` and a redirect from an approved LAN host to an unapproved one must all be refused, with no DNS lookup. A redirect to another origin must not carry the API key headers. Pinned by `deniesLookalikeHosts` (Task 3), `blocksRedirectToUnapprovedHost` and `dropsKeysOnCrossOriginRedirect` (Task 4).
 2. **Frames and origins at the bridge.** An Archive embed iframe, a page on another origin, the Lab origin, or a sub-frame of the app must never reach `BywaysNative`. Pinned by `gateRejectsOtherOriginsAndSubframes` (Task 5).
 3. **HTTP replies that are not plain 200s.** A 429 with `Retry-After`, a 204, a native network failure and an aborted request must reach `net/http.js` as a real `Response` or the same errors browser `fetch` gives, so the contract's retry logic still works. Pinned by `transport passes 429 and 204 through, maps failures and aborts` (Task 6).
 4. **Messy shared text.** Text shared from chat apps carries extra words, trailing punctuation, several links, or no link. Byways share links must import, other links must become a find, and text with no link must show a message instead of crashing. Pinned by `extractSharedLink handles real share text` (Task 6) and `share-in with no link says so` (Task 14).
-5. **Rotation and resizing.** Turning the phone or folding it must not reload the WebView and lose the current card or speech mid-sentence. Pinned by `activity keeps the WebView on rotation` (Task 2).
+5. **Recreation and cold starts.** Rotating, folding, a dark-mode or font-size change, or a share that launches Byways must not leave a blank WebView, cut speech off or lose the shared link. Pinned by `activity keeps the WebView on configuration changes` (Task 2) and `a share that launches Byways is shown` (Task 14).
 
 ---
 
@@ -50,13 +56,16 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 
 | File | Responsibility |
 |---|---|
-| `tools/build.js` (modify) | `--target android`: copy the web build into `shells/android/app/src/main/assets/www/`, the Lab and vendor into `…/assets/lab/`, and write the Android entry |
-| `src/platform/android.js` (create) | `createBridgeClient`, `createAndroidPlatform`, `extractSharedLink`, `labSaveFile` |
+| `tools/build.js` (modify) | `--target android`: copy the app into `shells/android/app/src/main/assets/www/` and write its `index.html` and `android-boot.js`. Plan 06's `labOutputs('android')` already fills `…/assets/lab/` |
+| `src/platform/android.js` (create) | `createBridgeClient`, `createAndroidPlatform` (with `requestOrigins`, `identity`, `app`, `attach`), `extractSharedLink` |
 | `src/ui/boot.js` (modify) | call `platform.attach?.(app)` once the app is built |
+| `src/ui/components/card.js` (modify) | **Open** announces the site view on Android; the **⋯** menu closes on `byways:back` |
+| `src/ui/handsfree-ui.js` (modify) | its dialogs close on `byways:back`; **Tap to talk** on Android |
 | `src/ui/views/settings/about.js` (modify) | **Check for updates** and **Download update** when `platform.app` exists |
-| the Plan 03 settings section that renders the dwell-time control (modify) | the **Go straight to the site** toggle when `platform.caps.inAppSiteView` is true |
-| `src/lab/storage-panel.js` (modify) | save through `labSaveFile` when it returns a promise |
-| `tests/unit/build-android.test.js`, `tests/unit/android-shell.test.js`, `tests/unit/platform-android.test.js` (create) | Node tests |
+| `src/ui/views/settings/access.js` (modify) | the **Go straight to the site** checkbox in its `Lean-back` fieldset when `platform.caps.inAppSiteView` is true |
+| `src/ui/views/settings/voice.js` (modify) | the Android line that says why voice is limited |
+| `src/lab/storage-panel.js`, `src/lab/pc.js` (modify) | `labSaveFile` (native save, sent in parts) for exports and **Download state** |
+| `tests/unit/build-android.test.js`, `tests/unit/android-shell.test.js`, `tests/unit/platform-android.test.js` (create), `tests/unit/build.test.js` (modify) | Node tests |
 | `tests/e2e/helpers/fakes.js` (modify), `tests/e2e/android.spec.js` (create) | fake `BywaysNative` and the Android e2e spec |
 | `.github/workflows/byways.yml` (modify) | the `android` job |
 
@@ -64,7 +73,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 
 | File | Responsibility |
 |---|---|
-| `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `app/build.gradle.kts` | build setup, versions, signing |
+| `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `app/build.gradle.kts`, `app/proguard-rules.pro` | build setup, versions, signing |
 | `app/src/main/AndroidManifest.xml`, `app/src/main/res/xml/network_security_config.xml`, `app/src/main/res/values/strings.xml`, `app/src/main/res/values/themes.xml`, `app/src/main/res/drawable/ic_launcher.xml` | manifest and resources |
 | `…/byways/MainActivity.kt` | WebView setup, asset loaders, system behaviour, consent, share-in, lifecycle |
 | `…/byways/SiteView.kt` | the second WebView and its toolbar |
@@ -73,7 +82,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | `…/byways/FetchPolicy.kt` | pure: URL policy |
 | `…/byways/NativeFetch.kt` | pure JVM: HTTP executor over `HttpURLConnection` |
 | `…/byways/LinkPolicy.kt` | pure: what each WebView does with a URL |
-| `…/byways/SpeechErrors.kt` | pure: native error code → `VoiceErrorCode` |
+| `…/byways/SpeechErrors.kt`, `VoiceProbe.kt`, `TtsChoice.kt` | pure: native error code → `VoiceErrorCode`; the voice probe table; which TTS voice to use |
 | `…/byways/SpeechBridge.kt`, `TtsBridge.kt`, `MediaBridge.kt`, `ShareBridge.kt`, `FilesBridge.kt` | native channel handlers |
 | `…/byways/UpdateCheck.kt` | pure: release parsing and version compare |
 | `app/src/test/kotlin/io/github/iteatsthesalt/byways/*Test.kt` | JVM tests |
@@ -86,96 +95,88 @@ Web → native request: `{"id":"<string>","ch":"<channel>","op":"<op>","args":{�
 
 | Channel | Ops (args → result) | Events (data) |
 |---|---|---|
-| `app` | `hello` {} → `{versionName, versionCode, sdk, micConsent}`; `checkUpdate` {} → `{available, latest, url}`; `openExternal` {url} → `true`; `openSite` {url, title} → `true`; `closeSite` {} → `true` | `shared` {text}; `siteNext` {}; `siteClosed` {} |
-| `fetch` | `request` {url, method, headers, body} → `{status, statusText, headers, body, url}`; `abort` {fetchId} → `true`; `approve` {host} → `boolean` | — |
+| `app` | `hello` {} → `{versionName, versionCode, sdk, micConsent}`; `ready` {} → `true`; `checkUpdate` {} → `{available, latest, url}`; `openExternal` {url} → `true`; `openSite` {url, title} → `true`; `closeSite` {} → `true`; `siteControls` {state} → `true`; `auth` {url} → the callback URL | `shared` {text}; `siteNext`, `sitePause`, `siteStop`, `siteClosed`, `paused`, `resumed` (data `{}`) |
+| `fetch` | `request` {url, method, headers, body} → `{status, statusText, headers, body, url}`; `abort` {fetchId} → `true`; `approve` {host} → `boolean` (host without IPv6 brackets) | — |
 | `voice` | `probe` {allowCloud} → `VoiceStatus`; `install` {} → `boolean`; `start` {lang, phrases, allowCloud} → `true`; `stop` {} → `true` | `result` {text, final}; `state` {listening}; `error` {code} |
 | `tts` | `speak` {text, voiceURI, rate, volume} → `true` at the end of the utterance; `cancel` {} → `true`; `voices` {} → `[{uri, name, lang, local}]` | — |
 | `media` | `setActive` {on} → `true` | `next`, `previous`, `playPause` (data `{}`) |
 | `share` | `send` {title, text, url} → `'shared'` | — |
-| `files` | `save` {name, mime, base64} → `'saved'\|'cancelled'` | — |
-| `back` | `result` {token, handled} → `true` | `request` {token} |
+| `files` | `save` {name, mime, base64} or {name, mime, saveId} → `'saved'\|'cancelled'`; `append` {saveId, base64} → `true` | — |
+| `back` | `state` {canHandle} → `true`; `result` {token, handled} → `true` | `request` {token} |
 | `screen` | `keepOn` {on} → `true` | — |
 
-Error codes: `bad-message`, `unknown-channel`, `unknown-op`, `too-large`, `internal`, the `FetchPolicy` and `NativeFetch` codes (Tasks 3–4), and the `VoiceErrorCode` names.
+Native holds every event until the page sends `app.ready`, and holds them again from each main-frame page start. Error codes: `bad-message`, `unknown-channel`, `unknown-op`, `too-large`, `internal`, `cancelled`, `scheme`, the `FetchPolicy` and `NativeFetch` codes (Tasks 3–4), and the `VoiceErrorCode` names.
 
 ### Task 1: Android build target
 
 **Files:**
-- Modify: `tools/build.js`
+- Modify: `tools/build.js` (the `android` branch of `build()`), `tests/unit/build.test.js` (Plan 01's placeholder test)
 - Test: `tests/unit/build-android.test.js`
 
 **Interfaces:**
-- Consumes: `node tools/build.js --target android|all` and `build.json = {"id": <GITHUB_SHA or "dev">, "builtAt": ISO}` (overview, Plan 01); the PWA entry script that `shells/pwa/index.html` loads, which builds a PWA platform and calls `boot(platform)` (Plan 01).
-- Produces: `assets/www/` (the web app, no service worker), `assets/www/android-boot.js`, and `assets/lab/` (a self-contained Lab), all under `shells/android/app/src/main/`. `android-boot.js` imports `createAndroidPlatform` from `./platform/android.js` (Task 6).
+- Consumes: `build({target, outRoot, id, now})` and `OUTPUTS.android = ['shells/android/app/src/main/assets/www', 'shells/android/app/src/main/assets/lab']` (Plan 01 Task 9); `shells/pwa/index.html`, whose root is `data-shell="pwa"` so that `ui/boot.js`'s last line runs `bootFromShell()`, which boots only `'pwa'` and registers the service worker (Plan 01 Task 12); `openStore`, `idbBackend`, `memoryBackend` (`core/store/db.js`), `createPwaPlatform({secretsStore})` (`platform/pwa.js`); Plan 06's `labOutputs('android')` copies and `licenses.json`.
+- Produces: under `shells/android/app/src/main/assets/`, `www/` (the app with no service worker, no manifest and nothing from the Lab) holding `www/index.html` and the entry `www/android-boot.js`. The entry imports `createAndroidPlatform` from `./platform/android.js` (Task 6).
 
 - [ ] **Step 1: Write the failing test**
 
-`tests/unit/build-android.test.js` runs `execFileSync('node', ['tools/build.js', '--target', 'android'])` once in `before`, then:
+`tests/unit/build-android.test.js` runs `await build({ target: 'android', outRoot: out, id: 'abc123' })` once in `before`, with `out = await mkdtemp(join(tmpdir(), 'bw-'))`, `A = join(out, 'shells/android/app/src/main/assets')` and `R = p => readFileSync(join(A, p), 'utf8')`:
 
 ```js
-const A = 'shells/android/app/src/main/assets';
-test('www holds the app without the service worker', () => {
-  const html = readFileSync(`${A}/www/index.html`, 'utf8');
-  assert.match(html, /<script type="module" src="\.\/android-boot\.js"><\/script>/);
-  assert.doesNotMatch(html, /sw\.js/);
-  assert.equal(existsSync(`${A}/www/sw.js`), false);
-  assert.equal(existsSync(`${A}/www/manifest.webmanifest`), false);
-  assert.equal(existsSync(`${A}/www/lab`), false);
-  assert.equal(existsSync(`${A}/www/vendor`), false);
-  assert.match(readFileSync(`${A}/www/android-boot.js`, 'utf8'), /createAndroidPlatform/);
-  assert.match(readFileSync(`${A}/www/android-boot.js`, 'utf8'), /BywaysNative/);
+test('www holds the app with the Android entry', () => {
+  const html = R('www/index.html');
+  assert.match(html, /<html lang="en" data-shell="android"/);
+  assert.match(html, /<script type="module" src="android-boot\.js"><\/script>/);
+  assert.doesNotMatch(html, /rel="manifest"|ui\/boot\.js|sw\.js/);
+  for (const f of ['ui/boot.js', 'platform/android.js', 'platform/pwa.js', 'core/store/db.js', 'data/tags.json', 'assets/icons/icon.svg'])
+    assert.ok(existsSync(join(A, 'www', f)), f);
+  for (const f of ['sw.js', 'manifest.webmanifest', 'lab', 'vendor', 'versions.json']) assert.equal(existsSync(join(A, 'www', f)), false, f);
+  const boot = R('www/android-boot.js');
+  for (const s of ['createAndroidPlatform', 'createPwaPlatform', 'idbBackend', 'BywaysNative']) assert.ok(boot.includes(s), s);
+  assert.doesNotMatch(boot, /registerServiceWorker/);
 });
-test('both outputs carry build.json', () => {
-  for (const d of ['www', 'lab']) {
-    const b = JSON.parse(readFileSync(`${A}/${d}/build.json`, 'utf8'));
-    assert.equal(b.id, process.env.GITHUB_SHA ?? 'dev');
-  }
-});
-test('lab is self-contained', () => {
-  assert.ok(existsSync(`${A}/lab/index.html`));
-  assert.equal(existsSync(`${A}/lab/vendor`), existsSync('dist/pwa/vendor'));
-  for (const f of readdirSync(`${A}/lab`).filter(n => /\.(html|js)$/.test(n)))
-    assert.doesNotMatch(readFileSync(`${A}/lab/${f}`, 'utf8'), /["']\.\.\//, f);
+test('both outputs carry build.json and the Lab keeps the Plan 06 layout', () => {
+  for (const d of ['www', 'lab']) assert.equal(JSON.parse(R(`${d}/build.json`)).id, 'abc123');
+  for (const f of ['lab/index.html', 'vendor/manifest.json', 'versions.json']) assert.ok(existsSync(join(A, 'lab', f)), f);
 });
 ```
 
 - [ ] **Step 2: Run it to see it fail**
 
 Run: `node --test tests/unit/build-android.test.js`
-Expected: FAIL on the `android-boot.js` match (or on `ENOENT` for `assets/www/index.html`).
+Expected: FAIL with `ENOENT` for `www/index.html`.
 
-- [ ] **Step 3: Implement the android target in `tools/build.js`**
+- [ ] **Step 3: Implement the `android` branch of `build()` in `tools/build.js`**
 
-- Build the PWA output first (the same function `--target pwa` uses), then empty and refill `assets/www/` and `assets/lab/`.
-- `assets/www/`: copy `dist/pwa/**` except `sw.js`, `manifest.webmanifest`, `lab/` and `vendor/`. In `index.html`, replace the module entry tag with `<script type="module" src="./android-boot.js"></script>` and drop any service-worker registration markup.
-- `assets/www/android-boot.js`: generate it from the PWA entry. It builds the PWA platform exactly as the PWA entry does (call it `base`), skips service-worker registration, then runs `const bridge = globalThis.BywaysNative; boot(bridge ? createAndroidPlatform({ bridge, base }) : base);`.
-- `assets/lab/`: copy `dist/pwa/lab/**` to `assets/lab/`, rewriting the leading `../` of every relative `import`, `import()`, `src` and `href` in those files to `./`. Copy `dist/pwa/vendor/**` to `assets/lab/vendor/`. Copy every other file the Lab files reference statically (follow references recursively) to `assets/lab/<its path relative to dist/pwa>`.
-- Write `build.json` into both folders. `--target all` includes android, so `--check` checks these outputs too.
+- Write everything under `join(outRoot, …)`, like the other branches, so that `--check` sees fresh files. Plan 06's `labOutputs('android')` copies and `licenses.json` stay as they are.
+- `www/`: copy `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` under the same names, as Plan 07's `buildExtension` does. Nothing from `src/lab`, `src/versions.json` or `vendor/`.
+- `www/index.html`: `shells/pwa/index.html` with three changes: `data-shell="pwa"` becomes `data-shell="android"` (so `bootFromShell()` does nothing), the `<link rel="manifest" href="manifest.webmanifest">` line is removed, and `<script type="module" src="ui/boot.js"></script>` becomes `<script type="module" src="android-boot.js"></script>`.
+- `www/android-boot.js` (fixed text): import `boot`, `createPwaPlatform`, `openStore`/`idbBackend`/`memoryBackend` and `createAndroidPlatform`; `const secretsStore = await openStore(idbBackend()).catch(() => openStore(memoryBackend()))` (the store `bootFromShell` opens); then `boot(createAndroidPlatform({ bridge: globalThis.BywaysNative, base: createPwaPlatform({ secretsStore }) }))`. It never registers a service worker.
+- `tests/unit/build.test.js`: delete Plan 01's placeholder `android target writes only build.json until Plan 08`. If Plan 07 has not run yet, the placeholder is still `extension and android targets write only build.json until Plans 07 and 08`: rename it `extension targets write only build.json until Plan 07` and loop over `OUTPUTS.extension` only.
 
 - [ ] **Step 4: Run it to see it pass**
 
-Run: `node --test tests/unit/build-android.test.js`, then `npm run check`
-Expected: PASS, and the check reports no unresolved references.
+Run: `node --test tests/unit/build-android.test.js tests/unit/build.test.js`, then `npm run check`
+Expected: PASS, and `check passed`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/build.js tests/unit/build-android.test.js
+git add tools/build.js tests/unit/build-android.test.js tests/unit/build.test.js
 git commit -m "Add the Android build target"
 ```
 
 ### Task 2: Gradle project, manifest and the CI job
 
 **Files:**
-- Create: `shells/android/settings.gradle.kts`, `shells/android/build.gradle.kts`, `shells/android/gradle.properties`, `shells/android/app/build.gradle.kts`
+- Create: `shells/android/settings.gradle.kts`, `shells/android/build.gradle.kts`, `shells/android/gradle.properties`, `shells/android/app/build.gradle.kts`, `shells/android/app/proguard-rules.pro`
 - Create: `shells/android/app/src/main/AndroidManifest.xml`, `…/res/xml/network_security_config.xml`, `…/res/values/strings.xml`, `…/res/values/themes.xml`, `…/res/drawable/ic_launcher.xml`
 - Create: `…/byways/MainActivity.kt`
 - Modify: `.gitignore`, `.github/workflows/byways.yml`
 - Test: `tests/unit/android-shell.test.js`
 
 **Interfaces:**
-- Consumes: the Task 1 assets.
-- Produces: `MainActivity` with `companion object { const val APP_HOST = "appassets.androidplatform.net"; const val APP_URL = "https://appassets.androidplatform.net/assets/www/index.html" }` and a `lateinit var webView: WebView`. Gradle reads `BYWAYS_VERSION` (default `"0.1.0"`) for `versionName` and `BYWAYS_VERSION_CODE` (default `1`) for `versionCode`; Plan 09 sets them.
+- Consumes: the Task 1 assets; `package.json` `version`.
+- Produces: `MainActivity` with `companion object { const val APP_HOST = "appassets.androidplatform.net"; const val APP_URL = "https://appassets.androidplatform.net/assets/www/index.html" }` and a `lateinit var webView: WebView`. The Gradle properties `byways.versionName` and `byways.versionCode`, and the release signing inputs `BYWAYS_KEYSTORE_PATH`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`, which Plan 09 uses.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -185,15 +186,25 @@ git commit -m "Add the Android build target"
 test('gradle versions match the spec', () => {
   const app = R(`${S}/app/build.gradle.kts`);
   for (const s of ['namespace = "io.github.iteatsthesalt.byways"', 'applicationId = "io.github.iteatsthesalt.byways"',
-    'compileSdk = 37', 'targetSdk = 36', 'minSdk = 24', '"androidx.webkit:webkit:1.18.0"',
-    '"androidx.activity:activity-ktx:1.11.0"', 'JavaVersion.VERSION_21', '"junit:junit:4.13.2"', '"org.json:json:20240303"'])
+    'compileSdk = 37', 'targetSdk = 36', 'minSdk = 24', '"androidx.activity:activity-ktx:1.11.0"', 'JavaVersion.VERSION_21',
+    '"junit:junit:4.13.2"', '"org.json:json:20240303"', 'isMinifyEnabled = false'])
     assert.ok(app.includes(s), s);
+  assert.match(app, /"androidx\.webkit:webkit:1\.1[78]\.\d+"/);
   assert.doesNotMatch(app + R(`${S}/build.gradle.kts`), /kotlin-android|org\.jetbrains\.kotlin\.android/);
   assert.ok(R(`${S}/build.gradle.kts`).includes('id("com.android.application") version "9.3.2" apply false'));
 });
-test('release signing reads only the four env vars', () => {
+test('the version comes only from gradle.properties', () => {
+  const app = R(`${S}/app/build.gradle.kts`), lines = R(`${S}/gradle.properties`).split('\n').map(l => l.trim());
+  const v = JSON.parse(R('package.json')).version, [x, y, z] = v.split('.').map(Number);
+  assert.ok(app.includes('versionCode = providers.gradleProperty("byways.versionCode").get().toInt()'));
+  assert.ok(app.includes('versionName = providers.gradleProperty("byways.versionName").get()'));
+  assert.ok(lines.includes(`byways.versionName=${v}`)); assert.ok(lines.includes(`byways.versionCode=${x * 10000 + y * 100 + z}`));
+  assert.doesNotMatch(app, /BYWAYS_VERSION/);
+});
+test('release signing reads the keystore path and three secrets', () => {
   const app = R(`${S}/app/build.gradle.kts`);
-  for (const v of ['KEYSTORE_BASE64', 'KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) assert.ok(app.includes(`"${v}"`), v);
+  for (const v of ['BYWAYS_KEYSTORE_PATH', 'KEYSTORE_PASSWORD', 'KEY_ALIAS', 'KEY_PASSWORD']) assert.ok(app.includes(`System.getenv("${v}")`), v);
+  assert.doesNotMatch(app, /KEYSTORE_BASE64|Base64/);
 });
 test('manifest declares permissions, queries and share-in', () => {
   const m = R(`${S}/app/src/main/AndroidManifest.xml`);
@@ -202,9 +213,16 @@ test('manifest declares permissions, queries and share-in', () => {
     'android:networkSecurityConfig="@xml/network_security_config"', 'android:launchMode="singleTask"'])
     assert.ok(m.includes(s), s);
 });
-test('activity keeps the WebView on rotation', () => {
-  assert.ok(R(`${S}/app/src/main/AndroidManifest.xml`)
-    .includes('android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden"'));
+test('activity keeps the WebView on configuration changes', () => {
+  const m = R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainActivity.kt`);
+  assert.ok(R(`${S}/app/src/main/AndroidManifest.xml`).includes('android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|fontScale|locale|layoutDirection|uiMode"'));
+  assert.match(m, /webView\.loadUrl\(APP_URL\)/); assert.doesNotMatch(m, /savedInstanceState == null/);
+});
+test('the main WebView settings follow §13.4', () => {
+  const m = R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainActivity.kt`);
+  for (const s of ['javaScriptEnabled = true', 'domStorageEnabled = true', 'mediaPlaybackRequiresUserGesture = false', 'allowFileAccess = false',
+    'allowContentAccess = false', 'MIXED_CONTENT_NEVER_ALLOW', 'setAcceptThirdPartyCookies(webView, true)', 'request.deny()'])
+    assert.ok(m.includes(s), s);
 });
 test('network config allows cleartext', () => {
   assert.match(R(`${S}/app/src/main/res/xml/network_security_config.xml`), /cleartextTrafficPermitted="true"/);
@@ -230,23 +248,13 @@ Expected: FAIL with `ENOENT` on `shells/android/app/build.gradle.kts`.
 
 - `settings.gradle.kts`: `pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }`, `dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }`, `rootProject.name = "byways"`, `include(":app")`.
 - `build.gradle.kts`: `plugins { id("com.android.application") version "9.3.2" apply false }`.
-- `gradle.properties`: `android.useAndroidX=true`, `android.nonTransitiveRClass=true`, `org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8`.
-- `app/build.gradle.kts`: `plugins { id("com.android.application") }`; `android { namespace, compileSdk = 37, defaultConfig { applicationId, minSdk = 24, targetSdk = 36, versionCode, versionName }, compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }, testOptions { unitTests.isReturnDefaultValues = true } }`. Built-in Kotlin takes its JVM target from `compileOptions`; if CI reports a JVM target mismatch, add `kotlin { jvmToolchain(21) }`. Dependencies: `implementation("androidx.webkit:webkit:1.18.0")`, `implementation("androidx.activity:activity-ktx:1.11.0")`, `testImplementation("junit:junit:4.13.2")`, `testImplementation("org.json:json:20240303")` (android.jar's `org.json` is a stub that throws in JVM tests). If `webkit:1.18.0` does not resolve in CI, use the newest 1.17.x. Bump `activity-ktx` to the newest stable only after a green CI build.
-- Release signing, only when all four variables are set:
-
-```kotlin
-val ks = listOf("KEYSTORE_BASE64", "KEYSTORE_PASSWORD", "KEY_ALIAS", "KEY_PASSWORD").associateWith { System.getenv(it) }
-if (ks.values.all { !it.isNullOrEmpty() }) {
-  val file = layout.buildDirectory.file("keystore/release.jks").get().asFile
-  file.parentFile.mkdirs(); file.writeBytes(java.util.Base64.getDecoder().decode(ks["KEYSTORE_BASE64"]!!.trim()))
-  android.signingConfigs.create("release") { storeFile = file; storePassword = ks["KEYSTORE_PASSWORD"]; keyAlias = ks["KEY_ALIAS"]; keyPassword = ks["KEY_PASSWORD"] }
-  android.buildTypes.getByName("release").signingConfig = android.signingConfigs.getByName("release")
-}
-```
+- `gradle.properties`: `android.useAndroidX=true`, `android.nonTransitiveRClass=true`, `org.gradle.jvmargs=-Xmx3g -Dfile.encoding=UTF-8`, `byways.versionName=0.1.0` and `byways.versionCode=100` (the `package.json` version and `0*10000 + 1*100 + 0`).
+- `app/build.gradle.kts`: `plugins { id("com.android.application") }`; `android { namespace, compileSdk = 37, defaultConfig { applicationId, minSdk = 24, targetSdk = 36, versionCode = providers.gradleProperty("byways.versionCode").get().toInt(), versionName = providers.gradleProperty("byways.versionName").get() }, compileOptions { sourceCompatibility = JavaVersion.VERSION_21; targetCompatibility = JavaVersion.VERSION_21 }, testOptions { unitTests.isReturnDefaultValues = true } }`. Built-in Kotlin takes its JVM target from `compileOptions`; if CI reports a JVM target mismatch, add `kotlin { jvmToolchain(21) }`. Dependencies: `implementation("androidx.webkit:webkit:1.18.0")`, `implementation("androidx.activity:activity-ktx:1.11.0")`, `testImplementation("junit:junit:4.13.2")`, `testImplementation("org.json:json:20240303")` (android.jar's `org.json` is a stub that throws in JVM tests). If `webkit:1.18.0` does not resolve in CI, use the newest 1.17.x; the test accepts both.
+- Release build and signing: `signingConfigs { create("release") { … } }` is filled only when `System.getenv("BYWAYS_KEYSTORE_PATH")` is not null: `storeFile = file(<that path>)`, `storePassword = System.getenv("KEYSTORE_PASSWORD")`, `keyAlias = System.getenv("KEY_ALIAS")`, `keyPassword = System.getenv("KEY_PASSWORD")`. `buildTypes { release { isMinifyEnabled = false; proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro") } }` sets `signingConfig = signingConfigs.getByName("release")` only when that path is set. Gradle never decodes Base64. `app/proguard-rules.pro` holds one comment: `# Byways does not minify. Rules go here if that changes.`
 
 - [ ] **Step 4: Write the manifest and resources**
 
-- Manifest: `<uses-permission>` for `INTERNET` and `RECORD_AUDIO`; `<queries>` with one `<intent>` for action `android.speech.RecognitionService` and one for `android.intent.action.TTS_SERVICE`; `<application android:label="@string/app_name" android:icon="@drawable/ic_launcher" android:theme="@style/Theme.Byways" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="false">`; one `<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden">` with a `MAIN`/`LAUNCHER` filter and a `SEND` filter (`DEFAULT` category, `android:mimeType="text/plain"`).
+- Manifest: `<uses-permission>` for `INTERNET` and `RECORD_AUDIO`; `<queries>` with one `<intent>` for action `android.speech.RecognitionService` and one for `android.intent.action.TTS_SERVICE`; `<application android:label="@string/app_name" android:icon="@drawable/ic_launcher" android:theme="@style/Theme.Byways" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="false">`; one `<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|fontScale|locale|layoutDirection|uiMode">` with a `MAIN`/`LAUNCHER` filter and a `SEND` filter (`DEFAULT` category, `android:mimeType="text/plain"`).
 - `network_security_config.xml`: `<network-security-config><base-config cleartextTrafficPermitted="true" /></network-security-config>`.
 - `strings.xml`: `app_name` = `Byways`. `themes.xml`: `Theme.Byways` with parent `android:Theme.DeviceDefault.NoActionBar`. `ic_launcher.xml`: a 108 dp vector, a single path on a solid background.
 
@@ -258,41 +266,16 @@ if (ks.values.all { !it.isNullOrEmpty() }) {
 - `CookieManager.getInstance().setAcceptThirdPartyCookies(webView, true)`.
 - `WebChromeClient.onPermissionRequest(request)` calls `request.deny()` for every request.
 - `WebView.setWebContentsDebuggingEnabled(true)` only when `applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0`.
-- `webView.loadUrl(APP_URL)` when `savedInstanceState == null`.
+- `webView.loadUrl(APP_URL)` on every `onCreate`, because a recreated activity has a new, empty WebView and all state lives in IndexedDB. Tasks 5 and 8 put the bridge install and the consent screen in front of this load.
 
 - [ ] **Step 6: Add the CI job and ignores**
 
-`.gitignore` gains `shells/android/app/src/main/assets/`, `shells/android/.gradle/`, `shells/android/build/`, `shells/android/app/build/` and `shells/android/local.properties`. Add this job to `.github/workflows/byways.yml`:
-
-```yaml
-  android:
-    runs-on: ubuntu-24.04
-    defaults: { run: { working-directory: Apps/Byways } }
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: Apps/Byways/package-lock.json }
-      - run: npm ci
-      - run: npm run vendor
-      - run: node tools/build.js --target android
-      - uses: actions/setup-java@v6
-        with: { distribution: temurin, java-version: '21' }
-      - uses: gradle/actions/setup-gradle@v6
-        with:
-          cache-provider: basic
-          gradle-version: 9.7.1
-      - run: gradle -p shells/android assembleDebug testDebugUnitTest
-      - uses: actions/upload-artifact@v7
-        with: { name: byways-debug-apk, path: Apps/Byways/shells/android/app/build/outputs/apk/debug/app-debug.apk }
-      - if: failure()
-        uses: actions/upload-artifact@v7
-        with: { name: android-test-reports, path: Apps/Byways/shells/android/app/build/reports/tests/ }
-```
+`.gitignore` gains `shells/android/app/src/main/assets/`, `shells/android/.gradle/`, `shells/android/build/`, `shells/android/app/build/` and `shells/android/local.properties`. Add an `android` job to `.github/workflows/byways.yml`: `runs-on: ubuntu-24.04` and `defaults: { run: { working-directory: Apps/Byways } }`; then `actions/checkout@v7`; `actions/setup-node@v4` with `node-version: 22`, `cache: npm` and `cache-dependency-path: Apps/Byways/package-lock.json`; `npm ci`; `npm run vendor`; `node tools/build.js --target android`; `actions/setup-java@v6` with `distribution: temurin` and `java-version: '21'`; `gradle/actions/setup-gradle@v6` with `cache-provider: basic` and `gradle-version: 9.7.1`; `gradle -p shells/android assembleDebug testDebugUnitTest`; `actions/upload-artifact@v7` of `Apps/Byways/shells/android/app/build/outputs/apk/debug/app-debug.apk` named `byways-debug-apk`; and, with `if: failure()`, `actions/upload-artifact@v7` of `Apps/Byways/shells/android/app/build/reports/tests/` named `android-test-reports`.
 
 - [ ] **Step 7: Run the tests**
 
 Run: `node --test tests/unit/android-shell.test.js`
-Expected: PASS (7 tests).
+Expected: PASS (9 tests).
 
 - [ ] **Step 8: Commit, then check CI**
 
@@ -301,7 +284,7 @@ git add shells/android .gitignore ../../.github/workflows/byways.yml tests/unit/
 git commit -m "Add the Android project and its CI job"
 ```
 
-After the branch is pushed, `gh run watch --exit-status` on the `byways.yml` run. Expected: the `android` job passes and uploads `byways-debug-apk`. If AGP 9.3.2 or webkit 1.18.0 does not resolve, apply the fallbacks above and commit `Use the fallback androidx.webkit version`.
+Push and run the **CI checks** command. Expected: exit 0, and the run lists the artifact `byways-debug-apk`. If `webkit:1.18.0` does not resolve, use the newest 1.17.x and commit `Use the fallback androidx.webkit version`. If AGP 9.3.2 or Gradle 9.7.1 does not resolve, stop and report it: the spec gives no fallback for them.
 
 ### Task 3: The nativeFetch URL policy
 
@@ -342,9 +325,9 @@ class FetchPolicyTest {
       assertEquals(u, allow, FetchPolicy.check(u, ok))
   }
   @Test fun deniesLookalikeHosts() {
-    val ok = setOf("192.168.1.5.nip.io", "10.0.0.1", "2130706433", "0x7f000001", "::ffff:8.8.8.8", "172.32.0.1")
+    val ok = setOf("192.168.1.5.nip.io", "10.0.0.1", "2130706433", "0x7f000001", "::ffff:8.8.8.8", "172.32.0.1", "010.0.0.1")
     for (u in listOf("http://192.168.1.5.nip.io/", "http://10.0.0.1@evil.com/", "http://2130706433/",
-      "http://0x7f000001/", "http://[::ffff:8.8.8.8]/", "http://172.32.0.1/"))
+      "http://0x7f000001/", "http://[::ffff:8.8.8.8]/", "http://172.32.0.1/", "http://010.0.0.1/"))
       assertEquals(u, deny("not-local"), FetchPolicy.check(u, ok))
   }
   @Test fun refusesOtherSchemes() {
@@ -354,6 +337,7 @@ class FetchPolicyTest {
   @Test fun refusesBadUrls() {
     assertEquals(deny("bad-url"), FetchPolicy.check("not a url", none))
     assertEquals(deny("bad-url"), FetchPolicy.check("http://", none))
+    assertEquals(deny("bad-url"), FetchPolicy.check("https:///x", none))
   }
   @Test fun capIsTenMegabytes() = assertEquals(10485760, FetchPolicy.MAX_BYTES)
 }
@@ -361,18 +345,17 @@ class FetchPolicyTest {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run (where `ANDROID_HOME` is set; otherwise read the CI `android` job): `gradle -p shells/android testDebugUnitTest --tests '*FetchPolicyTest'`
+Run: `gradle -p shells/android testDebugUnitTest --tests '*FetchPolicyTest'` where `ANDROID_HOME` is set; otherwise the red half of **CI checks**.
 Expected: FAIL to compile with `Unresolved reference 'FetchPolicy'`.
 
 - [ ] **Step 3: Implement `FetchPolicy`**
 
-- Parse with `java.net.URI`. A parse error or a missing host gives `bad-url`. Check the scheme first (lower-cased): `https` → `Allow`; anything but `http` → `scheme`.
-- For `http`: not `isLocalHost(host)` → `not-local`; host not in `approved` → `not-approved`; else `Allow`. Approval is per host, for any port.
-- `isLocalHost` never resolves DNS. It is true only for: `localhost`; an IPv4 literal of exactly four decimal parts, each 0–255, in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; the IPv6 literal `::1`, or one whose first group is `fc00`–`fdff`; a name ending in `.local` with at least one label of `[a-z0-9-]` before it.
+- In this order: a `java.net.URI` parse error → `bad-url`; a scheme (lower-cased) other than `http` or `https` → `scheme`; a null or empty host → `bad-url`; `https` → `Allow`; for `http`, not `isLocalHost(host)` → `not-local`, host not in `approved` → `not-approved`, else `Allow`. Approval is per host, for any port.
+- `isLocalHost` never resolves DNS. It is true only for: `localhost`; an IPv4 literal of exactly four decimal parts, each 0–255 with no leading zero, in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; the IPv6 literal `::1`, or one whose first group is `fc00`–`fdff`; a name ending in `.local` with at least one label of `[a-z0-9-]` before it.
 
 - [ ] **Step 4: Run it to see it pass**
 
-Run: the Step 2 command. Expected: PASS (8 tests).
+Run: the Step 2 command, or the green half of **CI checks** after Step 5. Expected: PASS (8 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -395,68 +378,95 @@ git commit -m "Add the native fetch URL policy"
 data class FetchRequest(val url: String, val method: String = "GET", val headers: Map<String, String> = emptyMap(), val body: String? = null)
 data class FetchResponse(val status: Int, val statusText: String, val headers: Map<String, String>, val body: String, val url: String)
 class FetchError(val code: String) : Exception(code)   // policy codes, "timeout", "network", "too-large", "redirects", "aborted"
+class FetchCall { val isCancelled: Boolean; fun cancel() }   // cancel() also disconnects the open connection
 class NativeFetch(private val approved: () -> Set<String>, private val connectTimeoutMs: Int = 15_000,
                   private val readTimeoutMs: Int = 90_000, private val maxBytes: Int = FetchPolicy.MAX_BYTES) {
-  fun execute(req: FetchRequest, cancelled: () -> Boolean = { false }): FetchResponse
+  fun execute(req: FetchRequest, call: FetchCall = FetchCall()): FetchResponse
 }
 ```
 
 - [ ] **Step 1: Write the failing test**
 
-The test starts `com.sun.net.httpserver.HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)` in `@Before`, with `base = "http://127.0.0.1:${server.address.port}"` and `nf = NativeFetch({ setOf("127.0.0.1") })`. Each test adds the context it needs. `code { … }` runs the block and returns the `FetchError.code` it throws.
+`com.sun.net.httpserver` is not in `android.jar`, so the test runs its own server on `java.net.ServerSocket(0, 50, InetAddress.getByName("127.0.0.1"))`, started in `@Before` and closed in `@After`. Each connection gets its own thread, reads the request line, headers and a `Content-Length` body, and answers with `Connection: close`. It records the last `/echo` request's headers in `seen: Map<String, String>` (names lower-cased), its body in `seenBody` and the count in `echoHits`. `base = "http://127.0.0.1:$port"`, `nf = NativeFetch({ setOf("127.0.0.1", "localhost") })`, and `code { … }` runs the block and returns the `FetchError.code` it throws. Routes:
+
+| Path | Answer |
+|---|---|
+| `/slow` | 429, `Retry-After: 3`, body `{"error":"slow"}` |
+| `/echo` | 200 `ok`, after recording the request |
+| `/big?n=<n>` | 200 with `n` bytes of `a` |
+| `/a`, `/b` | 302 `Location: /b`; 200 `ok` |
+| `/out`, `/pub` | 302 `Location: http://192.168.77.77/x`; 302 `Location: http://example.com/` |
+| `/loop` | 302 `Location: /loop` |
+| `/hop` | 302 `Location: http://localhost:$port/echo` (same server, another origin) |
+| `/sleep` | waits 1500 ms, then 200 `ok` |
 
 ```kotlin
-@Test fun passesStatusHeadersAndBody() {   // /slow → 429, Retry-After: 3, body {"error":"slow"}
+@Test fun passesStatusHeadersAndBody() {
   val r = nf.execute(FetchRequest("$base/slow"))
   assertEquals(429, r.status); assertEquals("3", r.headers["retry-after"]); assertEquals("""{"error":"slow"}""", r.body)
 }
-@Test fun sendsNoCookiesAndKeepsOtherHeaders() {   // /echo records request headers
+@Test fun sendsNoCookiesAndKeepsOtherHeaders() {
   nf.execute(FetchRequest("$base/echo", headers = mapOf("Cookie" to "a=1", "X-Api-Key" to "k")))
-  assertNull(seen.getFirst("Cookie")); assertEquals("k", seen.getFirst("X-api-key"))
+  assertNull(seen["cookie"]); assertEquals("k", seen["x-api-key"])
+}
+@Test fun dropsKeysOnCrossOriginRedirect() {
+  val keys = mapOf("Authorization" to "Bearer k", "X-Api-Key" to "k", "x-goog-api-key" to "k", "Api-Key" to "k", "Accept" to "text/plain")
+  nf.execute(FetchRequest("$base/hop", headers = keys))
+  for (h in listOf("authorization", "x-api-key", "x-goog-api-key", "api-key")) assertNull(h, seen[h])
+  assertEquals("text/plain", seen["accept"])
 }
 @Test fun sendsPostBody() {
   nf.execute(FetchRequest("$base/echo", "POST", mapOf("Content-Type" to "application/json"), """{"q":1}"""))
   assertEquals("""{"q":1}""", seenBody)
 }
-@Test fun capsResponseSize() {   // /big?n=… returns n bytes
+@Test fun capsResponseSize() {
   val small = NativeFetch({ setOf("127.0.0.1") }, maxBytes = 1024)
   assertEquals(1024, small.execute(FetchRequest("$base/big?n=1024")).body.length)
   assertEquals("too-large", code { small.execute(FetchRequest("$base/big?n=1025")) })
 }
-@Test fun followsSafeRedirects() {   // /a → 302 Location: /b; /b → 200 "ok"
+@Test fun followsSafeRedirects() {
   val r = nf.execute(FetchRequest("$base/a")); assertEquals("ok", r.body); assertTrue(r.url.endsWith("/b"))
 }
-@Test fun blocksRedirectToUnapprovedHost() {   // /out → http://192.168.77.77/x ; /pub → http://example.com/
+@Test fun blocksRedirectToUnapprovedHost() {
   assertEquals("not-approved", code { nf.execute(FetchRequest("$base/out")) })
   assertEquals("not-local", code { nf.execute(FetchRequest("$base/pub")) })
 }
 @Test fun stopsAfterFiveRedirects() = assertEquals("redirects", code { nf.execute(FetchRequest("$base/loop")) })
-@Test fun timesOut() {   // /sleep waits 1500 ms
+@Test fun timesOut() {
   assertEquals("timeout", code { NativeFetch({ setOf("127.0.0.1") }, readTimeoutMs = 300).execute(FetchRequest("$base/sleep")) })
 }
 @Test fun checksPolicyBeforeConnecting() {
   assertEquals("not-approved", code { NativeFetch({ emptySet() }).execute(FetchRequest("$base/echo")) }); assertEquals(0, echoHits)
 }
-@Test fun honoursCancel() = assertEquals("aborted", code { nf.execute(FetchRequest("$base/echo")) { true } })
+@Test fun honoursCancel() {
+  assertEquals("aborted", code { nf.execute(FetchRequest("$base/echo"), FetchCall().apply { cancel() }) }); assertEquals(0, echoHits)
+}
+@Test fun cancelDisconnectsAnOpenRequest() {
+  val call = FetchCall(); val t0 = System.nanoTime()
+  thread { Thread.sleep(100); call.cancel() }
+  assertEquals("aborted", code { nf.execute(FetchRequest("$base/sleep"), call) })
+  assertTrue((System.nanoTime() - t0) / 1_000_000 < 1000)
+}
 ```
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `gradle -p shells/android testDebugUnitTest --tests '*NativeFetchTest'` (or the CI job).
+Run: `gradle -p shells/android testDebugUnitTest --tests '*NativeFetchTest'` where `ANDROID_HOME` is set; otherwise the red half of **CI checks**.
 Expected: FAIL to compile with `Unresolved reference 'NativeFetch'`.
 
 - [ ] **Step 3: Implement `NativeFetch.execute`**
 
-- Check `cancelled()` and `FetchPolicy.check(url, approved())` before every hop. A `Deny` throws `FetchError(deny.code)`.
+- Check `call.isCancelled` and `FetchPolicy.check(url, approved())` before every hop. A `Deny` throws `FetchError(deny.code)`.
 - `instanceFollowRedirects = false`, `useCaches = false`, the two timeouts. Copy request headers except `cookie`, `cookie2`, `host` and `content-length` (any case). Never install a `CookieHandler`.
-- Redirects (301, 302, 303, 307, 308): resolve `Location` against the current URL and loop, at most 5 hops, then `redirects`. 303 always becomes GET without a body, and so do 301 and 302 after a POST. 307 and 308 keep the method and body.
+- Redirects (301, 302, 303, 307, 308): resolve `Location` against the current URL and loop, at most 5 hops, then `redirects`. 303 always becomes GET without a body, and so do 301 and 302 after a POST. 307 and 308 keep the method and body. On a hop whose origin (scheme, host and port) differs from the original URL's, drop `authorization`, `proxy-authorization`, `x-api-key`, `x-goog-api-key` and `api-key`, because keys go only to their own provider's host.
+- The open `HttpURLConnection` is held by `call`; `cancel()` calls its `disconnect()`, and any `IOException` after a cancel becomes `aborted`.
 - Read `errorStream` for status ≥ 400. Stop with `too-large` once more than `maxBytes` bytes arrive (or when `Content-Length` says so). Decode with the `charset` from `Content-Type`, else UTF-8.
 - Header names are lower-cased, and repeated values are joined with `", "`. The null status-line key is skipped.
 - `SocketTimeoutException` → `timeout`; other `IOException` → `network`. Never log a URL, header or body.
 
 - [ ] **Step 4: Run it to see it pass**
 
-Run: the Step 2 command. Expected: PASS (10 tests).
+Run: the Step 2 command, or the green half of **CI checks** after Step 5. Expected: PASS (12 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -473,7 +483,7 @@ git commit -m "Add the native HTTP executor with redirect checks and a size cap"
 - Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/BridgeCodecTest.kt`
 
 **Interfaces:**
-- Consumes: `NativeFetch`, `FetchRequest`, `FetchError` (Task 4); `FetchPolicy.isLocalHost` (Task 3); `MainActivity.webView`, `APP_URL` (Task 2).
+- Consumes: `NativeFetch`, `FetchRequest`, `FetchError`, `FetchCall` (Task 4); `FetchPolicy.isLocalHost` (Task 3); `MainActivity.webView`, `APP_URL` (Task 2).
 - Produces:
 
 ```kotlin
@@ -490,14 +500,15 @@ object BridgeCodec {
 object BridgeGate {
   const val APP_ORIGIN = "https://appassets.androidplatform.net"
   const val LAB_ORIGIN = "https://lab.appassets.androidplatform.net"
-  fun accepts(allowedOrigin: String, sourceOrigin: String, isMainFrame: Boolean): Boolean
+  fun accepts(allowedOrigin: String, sourceOrigin: String, isMainFrame: Boolean, allowSubframes: Boolean = false): Boolean
 }
 // Bridge.kt
 fun interface ChannelHandler { fun handle(req: BridgeCodec.Request, reply: Reply) }
 class Reply(private val id: String, private val post: (String) -> Unit) { fun ok(result: Any?); fun error(code: String, message: String = code) }
 class Bridge(private val webView: WebView, private val handlers: Map<String, ChannelHandler>) {
   fun install(): Boolean                             // false when WEB_MESSAGE_LISTENER is missing
-  fun emit(ch: String, event: String, data: Any?)
+  fun emit(ch: String, event: String, data: Any?)   // held until the page sends app.ready
+  fun pageStarted()                                  // a new main-frame page: hold events again
 }
 ```
 
@@ -533,6 +544,8 @@ class BridgeCodecTest {
     assertFalse(BridgeGate.accepts(app, "https://appassets.androidplatform.net.evil.com", true))
     assertFalse(BridgeGate.accepts(app, "null", true))
     assertTrue(BridgeGate.accepts(BridgeGate.LAB_ORIGIN, "https://lab.appassets.androidplatform.net", true))
+    assertTrue(BridgeGate.accepts(BridgeGate.LAB_ORIGIN, BridgeGate.LAB_ORIGIN, false, allowSubframes = true))
+    assertFalse(BridgeGate.accepts(BridgeGate.LAB_ORIGIN, "https://archive.org", false, allowSubframes = true))
   }
 }
 ```
@@ -544,29 +557,36 @@ test('bridge and fetch code never log', () => {
   for (const f of ['Bridge.kt', 'NativeFetch.kt', 'FetchPolicy.kt'])
     assert.doesNotMatch(R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`), /\bLog\.[vdiwe]\(|println\(/, f);
 });
+test('the bridge checks WEB_MESSAGE_LISTENER and the screen stays on natively', () => {
+  const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
+  assert.ok(k('Bridge.kt').includes('WebViewFeature.WEB_MESSAGE_LISTENER'));
+  assert.ok((k('Bridge.kt') + k('MainActivity.kt')).includes('FLAG_KEEP_SCREEN_ON'));
+  assert.match(k('Bridge.kt'), /newCachedThreadPool/);
+});
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `node --test tests/unit/android-shell.test.js` and `gradle -p shells/android testDebugUnitTest --tests '*BridgeCodecTest'` (or the CI job).
+Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*BridgeCodecTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
 Expected: the Node test fails with `ENOENT` on `Bridge.kt`; Gradle fails with `Unresolved reference 'BridgeCodec'`.
 
 - [ ] **Step 3: Implement `BridgeCodec` and `BridgeGate`**
 
-`decode` checks the length first, then parses with `JSONObject`. `id` must be a non-empty string of at most 64 characters, and `op` a non-empty string. `ok` and `event` write `JSONObject.NULL` for `null`. `accepts` is true only when `isMainFrame` and `sourceOrigin == allowedOrigin` exactly.
+`decode` checks the length first, then parses with `JSONObject`. `id` must be a non-empty string of at most 64 characters, and `op` a non-empty string. `ok` and `event` write `JSONObject.NULL` for `null`. `accepts` is true only when `sourceOrigin == allowedOrigin` exactly and either `isMainFrame` or `allowSubframes`.
 
 - [ ] **Step 4: Implement `Bridge`, `Reply` and the core channels**
 
-- `install()`: if `!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)` return false. Otherwise `WebViewCompat.addWebMessageListener(webView, "BywaysNative", setOf(BridgeGate.APP_ORIGIN)) { _, message, sourceOrigin, isMainFrame, proxy -> … }`. Drop the message unless `BridgeGate.accepts(APP_ORIGIN, sourceOrigin.toString(), isMainFrame)`. Keep the latest `proxy` for `emit`. Decode; on `BadMessage` reply with its code when an id can be read, else drop. Route by `ch`. A handler that throws replies `internal`. An unknown op replies `unknown-op`.
-- `Reply` sends once (later calls do nothing) and always posts to `proxy.postMessage` on the main thread (`webView.post`). `emit` before the first `hello` queues events and flushes them on `hello`.
-- `app` handler: `hello` → `{versionName, versionCode, sdk: Build.VERSION.SDK_INT, micConsent}` (`micConsent` is the `micConsent` boolean in SharedPreferences `byways`, default false); `openExternal {url}` → `ACTION_VIEW` with `CATEGORY_BROWSABLE` for `http(s)` only, else error `scheme`.
-- `fetch` handler (a `FetchChannel` class in `Bridge.kt`): `request` runs `NativeFetch.execute` on a 4-thread executor, with `cancelled` reading a per-request flag; `abort {fetchId}` sets the flag of that request id; `approve {host}` replies true when the host is already in the `approvedHosts` string set, false when `!FetchPolicy.isLocalHost(host)`, else shows an `AlertDialog` titled `Allow a local network device?` with the message `Byways wants to reach http://<host> on your network, for a local AI model. Allow it?` and the buttons **Allow** (store and reply true) and **Cancel** (reply false). `FetchError` replies with its code.
+- `install()`: if `!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)` return false. Otherwise `WebViewCompat.addWebMessageListener(webView, "BywaysNative", setOf(BridgeGate.APP_ORIGIN)) { _, message, sourceOrigin, isMainFrame, proxy -> … }`. Drop the message unless `BridgeGate.accepts(APP_ORIGIN, sourceOrigin.toString(), isMainFrame)`. Keep the latest `proxy`. Decode; on `BadMessage` reply with its code when an id can be read, else drop. Route by `ch`. A handler that throws replies `internal`. An unknown op replies `unknown-op`.
+- `Reply` sends once (later calls do nothing) and always posts to `proxy.postMessage` on the main thread (`webView.post`).
+- `emit` holds events in a queue until the page sends `app.ready`, which `Bridge` answers itself (`true`) before flushing the queue in order. `pageStarted()`, called from the main WebView's `onPageStarted`, clears `ready` and the kept `proxy`, so events never go to a page that is gone.
+- `app` handler: `hello` → `{versionName, versionCode, sdk: Build.VERSION.SDK_INT, micConsent}` (the two versions from `packageManager.getPackageInfo(packageName, 0)` with `PackageInfoCompat.getLongVersionCode`; `micConsent` is the `micConsent` boolean in SharedPreferences `byways`, default false); `openExternal {url}` → `ACTION_VIEW` with `CATEGORY_BROWSABLE` for `http(s)` only, else error `scheme`.
+- `fetch` handler (a `FetchChannel` class in `Bridge.kt`): `request` runs `NativeFetch.execute` with a new `FetchCall` on `Executors.newCachedThreadPool()`, so a slow AI team member never starves other requests; `abort {fetchId}` calls `cancel()` on that request's `FetchCall`; `approve {host}` (only `requestOrigins` sends it; hosts arrive without IPv6 brackets) replies true when the host is already in the `approvedHosts` string set, false when `!FetchPolicy.isLocalHost(host)`, else shows an `AlertDialog` titled `Allow a local network device?` with the message `Byways wants to reach http://<host> on your network, for a local AI model. Allow it?` and the buttons **Allow** (store and reply true) and **Cancel** (reply false). `FetchError` replies with its code.
 - `screen` handler: `keepOn {on}` adds or clears `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
 - In `MainActivity.onCreate`, build the `Bridge` before `loadUrl`. If `install()` is false, load nothing and show a `TextView` saying `This phone's WebView is too old for Byways. Update Android System WebView, then open Byways again.`
 
 - [ ] **Step 5: Run them to see them pass**
 
-Run: the Step 2 commands. Expected: PASS (Node: 8 tests; Gradle: 5 tests).
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 6). Expected: PASS (Node: 11 tests; Gradle: 5 tests).
 
 - [ ] **Step 6: Commit**
 
@@ -590,12 +610,15 @@ export function createBridgeClient(port, { hello = true } = {})
   // → {call(ch, op, args = {}) → Promise<any> (the promise carries the request id as .id),
   //    on(ch, event, fn) → () => void, hello: Promise<{versionName, versionCode, sdk, micConsent}>|null}
 export function createAndroidPlatform({ bridge, base, win = globalThis })
-  // → Platform plus app: {version() → Promise<{versionName, versionCode, sdk, micConsent}>,
+  // → Platform, including requestOrigins(origins) → Promise<boolean> and
+  //    identity: {launchWebAuthFlow({url, interactive}) → Promise<string>}, plus
+  //    app: {version() → Promise<{versionName, versionCode, sdk, micConsent}>,
   //    checkUpdate() → Promise<{available:boolean, latest:string|null, url:string|null}>, openExternal(url) → Promise<void>}
-  //    and attach(app) → Promise<void> (Task 13)
+  //    and attach(app) → Promise<void> (Task 14)
 export function extractSharedLink(text) // → {kind:'share', hash:string} | {kind:'url', url:string} | null
-export function labSaveFile(name, blob, win = globalThis) // → Promise<'saved'|'cancelled'> | null
 ```
+
+`requestOrigins` is the only thing that asks for a local network host: Plan 05's settings call it from the button that adds a local-network model, and `transport.fetch` never prompts. `identity.launchWebAuthFlow` resolves with the first URL on `https://appassets.androidplatform.net/` that the login view reaches, so Plan 05's `redirectUri = location.origin + location.pathname` works unchanged; it rejects with code `cancelled` when the person closes the view.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -605,6 +628,7 @@ export function labSaveFile(name, blob, win = globalThis) // → Promise<'saved'
 function fakePort() {
   const port = { sent: [], onmessage: null, postMessage(s) { port.sent.push(JSON.parse(s)); },
     last() { return port.sent.at(-1); },
+    async nth(n) { while (port.sent.length < n) await tick(); return port.sent[n - 1]; },
     reply(id, result) { port.onmessage({ data: JSON.stringify({ id, ok: true, result }) }); },
     fail(id, code) { port.onmessage({ data: JSON.stringify({ id, ok: false, error: { code, message: code } }) }); },
     emit(ch, event, data = {}) { port.onmessage({ data: JSON.stringify({ ch, event, data }) }); } };
@@ -613,6 +637,7 @@ function fakePort() {
 const win = { location: new URL('https://appassets.androidplatform.net/assets/www/index.html'),
   fetch: async () => new Response('{"v":1}') };
 const tick = () => new Promise(r => setTimeout(r, 0));
+const HELLO = { versionName: '0.1.0', versionCode: 100, sdk: 34, micConsent: false };
 ```
 
 Tests and their assertions:
@@ -641,7 +666,7 @@ test('caps are fixed', () => {
   const p = createAndroidPlatform({ bridge: fakePort(), base: fakeBase(), win });
   assert.equal(p.name, 'android');
   assert.deepEqual(p.caps, { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: true,
-    labHref: 'https://lab.appassets.androidplatform.net/assets/lab/index.html', framesArchive: true });
+    labHref: 'https://lab.appassets.androidplatform.net/lab/index.html', framesArchive: true });
 });
 test('API calls go through nativeFetch', async () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
@@ -650,6 +675,12 @@ test('API calls go through nativeFetch', async () => {
   assert.deepEqual(port.last().args, { url: 'https://api.mistral.ai/v1/models', method: 'GET', headers: { authorization: 'Bearer k' }, body: null });
   port.reply(port.last().id, { status: 200, statusText: 'OK', headers: { 'content-type': 'application/json' }, body: '{"data":[]}', url: 'https://api.mistral.ai/v1/models' });
   const res = await r; assert.equal(res.status, 200); assert.deepEqual(await res.json(), { data: [] });
+  assert.equal(res.url, 'https://api.mistral.ai/v1/models'); assert.equal(res.redirected, false);
+  const g = p.transport.fetch('https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc', { method: 'HEAD', privileged: true });
+  await tick(); port.reply(port.last().id, { status: 200, statusText: 'OK', headers: {}, body: '', url: 'https://real.example/page' });
+  const moved = await g; assert.equal(moved.url, 'https://real.example/page'); assert.equal(moved.redirected, true);
+  p.transport.fetch('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json'); await tick();
+  assert.deepEqual([port.last().op, port.last().args.url], ['request', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json']);
 });
 test('same-origin paths use the page fetch', async () => {
   const port = fakePort(); const calls = [];
@@ -658,25 +689,64 @@ test('same-origin paths use the page fetch', async () => {
   assert.deepEqual(calls, ['data/tags.json']); assert.equal(port.sent.filter(m => m.ch === 'fetch').length, 0);
 });
 test('transport passes 429 and 204 through, maps failures and aborts', async () => {
-  // 429 {retry-after:'3'} → res.status 429, res.headers.get('retry-after') === '3'
-  // 204 → res.status 204, res.body === null
-  // port.fail(id, 'network') → rejects TypeError with e.code === 'network'
-  // AbortController: ctl.abort() after the request is sent → rejects e.name === 'AbortError',
-  //   and port.sent contains { ch: 'fetch', op: 'abort', args: { fetchId: <that request id> } }
-  // a pre-aborted signal → rejects AbortError and sends no fetch message
-  // body: new Blob(['x']) → rejects TypeError, message 'nativeFetch supports string bodies only'
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const get = init => p.transport.fetch('https://api.example/x', init);
+  const answer = async (n, r) => port.reply((await port.nth(n)).id, { statusText: '', headers: {}, body: '', url: 'https://api.example/x', ...r });
+  let r = get(); await answer(2, { status: 429, headers: { 'retry-after': '3' } });
+  r = await r; assert.equal(r.status, 429); assert.equal(r.headers.get('retry-after'), '3');
+  r = get(); await answer(3, { status: 204 }); assert.equal((await r).body, null);
+  r = get(); port.fail((await port.nth(4)).id, 'network'); await assert.rejects(r, { name: 'TypeError', code: 'network' });
+  const ctl = new AbortController(); r = get({ signal: ctl.signal }); const sent = await port.nth(5); ctl.abort();
+  await assert.rejects(r, { name: 'AbortError' }); assert.deepEqual([port.last().op, port.last().args], ['abort', { fetchId: sent.id }]);
+  const n = port.sent.length, pre = new AbortController(); pre.abort();
+  await assert.rejects(get({ signal: pre.signal }), { name: 'AbortError' }); assert.equal(port.sent.length, n);
+  await assert.rejects(get({ method: 'POST', body: new Blob(['x']) }), { name: 'TypeError', message: 'nativeFetch supports string bodies only' });
 });
-test('http to a LAN host asks for approval first', async () => {
-  // fetch('http://192.168.1.20:11434/api/tags'): first message { ch:'fetch', op:'approve', args:{ host:'192.168.1.20' } };
-  // reply true → next message is fetch.request; reply false → rejects TypeError 'Local network host not approved: 192.168.1.20'
+test('http to an unapproved LAN host fails clearly and never prompts', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const r = p.transport.fetch('http://192.168.1.20:11434/api/tags'); const m = await port.nth(2);
+  assert.equal(m.op, 'request'); port.fail(m.id, 'not-approved');
+  await assert.rejects(r, { name: 'TypeError', message: 'Local network host not approved: 192.168.1.20', code: 'not-approved' });
+  assert.equal(port.sent.some(x => x.op === 'approve'), false);
+});
+test('requestOrigins asks natively for http hosts only', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  assert.equal(await p.requestOrigins(['https://api.mistral.ai']), true); assert.equal(port.sent.length, 1);
+  const ok = p.requestOrigins(['https://api.x.ai', 'http://192.168.1.20:11434', 'http://[fd12:3456::1]:8080']);
+  let m = await port.nth(2); assert.deepEqual([m.op, m.args], ['approve', { host: '192.168.1.20' }]); port.reply(m.id, true);
+  m = await port.nth(3); assert.deepEqual(m.args, { host: 'fd12:3456::1' }); port.reply(m.id, true);
+  assert.equal(await ok, true);
+  const no = p.requestOrigins(['http://10.0.0.5']); m = await port.nth(4); port.reply(m.id, false);
+  assert.equal(await no, false);
 });
 test('share, open, files and screen go over the bridge', async () => {
-  // share({title:'Ada', url:'https://example.org'}) → args {title:'Ada', text:null, url:'https://example.org'}; reply 'shared' → 'shared'
-  // openFind({url:'https://example.org', title:'Ex'}) → {ch:'app', op:'openSite', args:{url:'https://example.org', title:'Ex'}}
-  // openFind(find, 'tab') → {ch:'app', op:'openExternal', args:{url:'https://example.org'}}
-  // files.save('b.json', new Blob(['{"a":1}'], {type:'application/json'})) → args {name:'b.json', mime:'application/json', base64:'eyJhIjoxfQ=='}
-  // wakeLock.on() → {ch:'screen', op:'keepOn', args:{on:true}}; wakeLock.off() → {on:false}
-  // checkUpdate() → {ch:'app', op:'checkUpdate', args:{}}; version() resolves to the hello reply
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const last = () => [port.last().ch, port.last().op, port.last().args];
+  const s = p.share({ title: 'Ada', url: 'https://example.org' });
+  assert.deepEqual(last(), ['share', 'send', { title: 'Ada', text: null, url: 'https://example.org' }]);
+  port.reply(port.last().id, 'shared'); assert.equal(await s, 'shared');
+  for (const how of [undefined, 'tab', 'current', 'inapp']) {
+    const o = p.openFind({ url: 'https://example.org', title: 'Ex' }, how);
+    assert.deepEqual(last(), ['app', 'openSite', { url: 'https://example.org', title: 'Ex' }], String(how));
+    port.reply(port.last().id, true); await o;
+  }
+  await assert.rejects(p.openFind({ url: 'javascript:alert(1)', title: 'x' }), /not an http\(s\) link/);
+  p.app.openExternal('https://example.org'); assert.deepEqual(last(), ['app', 'openExternal', { url: 'https://example.org' }]);
+  const n = port.sent.length; p.files.save('b.json', new Blob(['{"a":1}'], { type: 'application/json' })); await port.nth(n + 1);
+  assert.deepEqual(last(), ['files', 'save', { name: 'b.json', mime: 'application/json', base64: 'eyJhIjoxfQ==' }]);
+  p.wakeLock.on(); assert.deepEqual(last(), ['screen', 'keepOn', { on: true }]);
+  p.wakeLock.off(); assert.deepEqual(last(), ['screen', 'keepOn', { on: false }]);
+  p.app.checkUpdate(); assert.deepEqual(last(), ['app', 'checkUpdate', {}]);
+  port.reply('1', HELLO); assert.deepEqual(await p.app.version(), HELLO);
+});
+test('identity opens the login view and returns the callback URL', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const cb = 'https://appassets.androidplatform.net/assets/www/index.html?code=c1';
+  const a = p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth?code_challenge=x', interactive: true });
+  assert.deepEqual([port.last().op, port.last().args], ['auth', { url: 'https://openrouter.ai/auth?code_challenge=x' }]);
+  port.reply(port.last().id, cb); assert.equal(await a, cb);
+  const b = p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth', interactive: true });
+  port.fail(port.last().id, 'cancelled'); await assert.rejects(b, { code: 'cancelled' });
 });
 test('extractSharedLink handles real share text', () => {
   const S = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/';
@@ -692,15 +762,9 @@ test('extractSharedLink handles real share text', () => {
   assert.equal(extractSharedLink('javascript:alert(1)'), null);
   assert.equal(extractSharedLink(''), null);
 });
-test('labSaveFile uses BywaysLabNative only when present', async () => {
-  assert.equal(labSaveFile('s.sav', new Blob(['x']), {}), null);
-  const port = fakePort(); const p = labSaveFile('s.sav', new Blob(['x']), { BywaysLabNative: port });
-  await tick(); assert.deepEqual(port.last(), { id: '1', ch: 'files', op: 'save', args: { name: 's.sav', mime: 'application/octet-stream', base64: 'eA==' } });
-  port.reply('1', 'saved'); assert.equal(await p, 'saved');
-});
 ```
 
-Write each commented test as `assert` calls with exactly those values. `fakeBase()` returns `{ secrets: {}, files: { pick: async () => [] }, persistStorage: async () => true }`.
+`fakeBase()` returns `{ secrets: {}, files: { pick: async () => [] }, persistStorage: async () => true }`.
 
 - [ ] **Step 2: Run them to see them fail**
 
@@ -710,15 +774,16 @@ Expected: FAIL with `Cannot find module '…/src/platform/android.js'`.
 - [ ] **Step 3: Implement `src/platform/android.js` (bridge client, transport, share, files, links)**
 
 - Client: ids are a counter from `"1"`. `port.onmessage = e => …` parses `e.data`, ignores anything that does not parse or has an unknown id, resolves `{id, ok:true}`, rejects `{id, ok:false}` with `Object.assign(new Error(error.message), { code: error.code })`, and fans `{ch, event, data}` out to listeners.
-- `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`. An `http:` URL first awaits `fetch.approve {host}`. Statuses 204, 205 and 304 build `new Response(null, …)`. A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. Any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
-- `share`, `openFind(find, how = 'inapp')`, `files.save` (base64 of `blob.arrayBuffer()`, mime `blob.type || 'application/octet-stream'`), `wakeLock`, `app` as in the bridge table. `files.pick`, `secrets` and `persistStorage` come from `base`.
+- `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`, and `fetch.request` goes out at once, `http:` included. Statuses 204, 205 and 304 build `new Response(null, …)`. Then `Object.defineProperty` gives the `Response` an own `url` (the reply's) and `redirected` (`reply.url !== <request url>`), because the constructor cannot set them. A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. `not-approved` gives `Object.assign(new TypeError(\`Local network host not approved: ${host}\`), { code })`; any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
+- `requestOrigins(origins)`: `https:` origins need nothing. Each `http:` origin, one at a time, sends `fetch.approve {host}` with `new URL(origin).hostname` minus IPv6 brackets. It resolves `true` only when every one is approved.
+- `openFind(find, how)`: every `how` (none, `'tab'`, `'current'`, `'inapp'`) sends `app.openSite {url, title}`, because Android shows finds in the site view (§4). A non-http(s) url rejects with `not an http(s) link`, as the PWA's does. The way out to the browser is `app.openExternal` and the site view's **Open in browser**.
+- `share`, `files.save` (base64 of `blob.arrayBuffer()`, mime `blob.type || 'application/octet-stream'`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`. `files.pick`, `secrets` and `persistStorage` come from `base`.
 - `extractSharedLink`: take every `https?://` run up to whitespace, `<`, `>` or a quote. Trim trailing `.,;:!?'"]}` and a trailing `)` when the run has no `(`. A run whose `origin + pathname` is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/` and whose hash starts with `#s=` wins, as `{kind:'share', hash}`. Otherwise the first run is `{kind:'url', url}`.
-- `labSaveFile`: `null` when `win.BywaysLabNative` is missing; otherwise one cached `createBridgeClient(win.BywaysLabNative, { hello: false })` and `call('files', 'save', …)`.
 
 - [ ] **Step 4: Run them to see them pass**
 
 Run: `node --test tests/unit/platform-android.test.js`
-Expected: PASS (11 tests).
+Expected: PASS (12 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -777,12 +842,12 @@ Expected: the three new tests FAIL with `TypeError: Cannot read properties of un
 
 - [ ] **Step 3: Implement `voice`, `tts` and `media`**
 
-`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1` and `volume ?? 1` and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set.
+`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1` and `volume ?? 1` and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set. `voice.probe` passes native's `VoiceStatus` through unchanged, including the contract's cloud-only form (Task 8).
 
 - [ ] **Step 4: Run them to see them pass**
 
 Run: `node --test tests/unit/platform-android.test.js`
-Expected: PASS (14 tests).
+Expected: PASS (15 tests).
 
 - [ ] **Step 5: Commit**
 
@@ -794,18 +859,23 @@ git commit -m "Add native voice, speech and media to the Android platform"
 ### Task 8: Native voice and the first-run consent
 
 **Files:**
-- Create: `…/byways/SpeechErrors.kt`, `…/byways/SpeechBridge.kt`
+- Create: `…/byways/SpeechErrors.kt`, `…/byways/VoiceProbe.kt`, `…/byways/SpeechBridge.kt`
 - Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
-- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/SpeechErrorsTest.kt`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/SpeechErrorsTest.kt`, `…/VoiceProbeTest.kt` (same folder)
 
 **Interfaces:**
-- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5); the `VoiceStatus` and `VoiceErrorCode` shapes (overview).
+- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5); the `VoiceStatus` and `VoiceErrorCode` shapes and the cloud-only convention (overview).
 - Produces:
 
 ```kotlin
 object SpeechErrors { fun toCode(error: Int): String }     // always a VoiceErrorCode name
+object VoiceProbe {                                         // pure: the probe decision table
+  fun status(sdk: Int, hasMic: Boolean, onDevice: Boolean, anyRecogniser: Boolean, servicePackage: String?,
+             allowCloud: Boolean, langInstalled: Boolean?): Map<String, Any?>   // a VoiceStatus
+}
 class SpeechBridge(private val activity: ComponentActivity, private val emit: (event: String, data: Any?) -> Unit) : ChannelHandler {
   fun stopNow()                                            // called from onPause
+  fun resumed()                                            // called from onResume; runs a held start
 }
 ```
 
