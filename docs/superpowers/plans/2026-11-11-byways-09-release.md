@@ -618,7 +618,7 @@ git commit -m "Write the third-party notices and the privacy policy"
 - Modify: `Apps/Byways/tests/unit/docs.test.js` (add tests)
 
 **Interfaces:**
-- Consumes: the Release file names (Task 3); the version rule (Task 2); the serve command and npm scripts (overview); `DEBUG_WARNING` wording (Task 3); the two README lines earlier plans wrote into Plan 01's stub and this rewrite keeps word for word: the §17.5 Pages line (Plan 01) and `Optional: add a `NASA_API_KEY` repository secret (a free api.data.gov key), so the daily job does not share `DEMO_KEY`.` (Plan 04 Task 16); the weekly probe routine Plan 04 Task 15 hands to this README (its `probe-report.md`, applied by hand to the `tier` field of each `src/core/sources/<id>.js`, §17.4); the Lab limit the contract puts in the README (`EJS_disableLocalStorage` is on, so EmulatorJS's own settings reset each session; Plan 06 Task 3); Plan 07's `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections in `CHECKLIST.md` (Plan 07 Task 9), and its `requestDataCollection`, which calls Firefox's `permissions.request({data_collection})`; the 16 items under Plan 08's `## Real-device checklist (Android)`, which Plan 08 hands to this plan; the device checks Plans 05 and 06 hand over: the xAI, Groq, Mistral and DeepSeek fixtures that `tests/fixtures/http/ai/README.md` marks unverified (Plan 05 Task 8), and voice "stop" while the app is a background tab (Plan 06 Task 12).
+- Consumes: the Release file names (Task 3); the version rule (Task 2); the serve command and npm scripts (overview); `DEBUG_WARNING` wording (Task 3); the two README lines earlier plans wrote into Plan 01's stub and this rewrite keeps word for word: the §17.5 Pages line (Plan 01) and "Optional: add a `NASA_API_KEY` repository secret (a free api.data.gov key), so the daily job does not share `DEMO_KEY`." (Plan 04 Task 16); the weekly probe routine Plan 04 Task 15 hands to this README (its `probe-report.md`, applied by hand to the `tier` field of each `src/core/sources/<id>.js`, §17.4); the Lab limit the contract puts in the README (`EJS_disableLocalStorage` is on, so EmulatorJS's own settings reset each session; Plan 06 Task 3); Plan 07's `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections in `CHECKLIST.md` (Plan 07 Task 9), and its `requestDataCollection`, which calls Firefox's `permissions.request({data_collection})`; the 16 items under Plan 08's `## Real-device checklist (Android)`, which Plan 08 hands to this plan; the device checks Plans 05 and 06 hand over: the xAI, Groq, Mistral and DeepSeek fixtures that `tests/fixtures/http/ai/README.md` marks unverified (Plan 05 Task 8), and voice "stop" while the app is a background tab (Plan 06 Task 12).
 - Produces: documents only.
 
 - [ ] **Step 1: Write the failing tests (append to `docs.test.js`)**
@@ -636,7 +636,13 @@ test('readme lists the one-time setup', () => {
   const t = read('README.md');
   for (const s of ['Settings → Pages → Build and deployment', 'GitHub Actions', 'KEYSTORE_BASE64', 'KEYSTORE_PASSWORD',
     'KEY_ALIAS', 'KEY_PASSWORD', 'AMO_API_KEY', 'AMO_API_SECRET', 'base64 -w0 byways.jks', 'base64 -i byways.jks',
-    'the same password you gave keytool']) assert.ok(t.includes(s), s);
+    'the same password you gave keytool', 'NASA_API_KEY']) assert.ok(t.includes(s), s);
+});
+test('readme states the known limits and the weekly probe routine', () => {
+  const t = read('README.md');
+  for (const s of ['Control remaps and other EmulatorJS settings in the Lab reset each session; your saves are kept.',
+    '**Exit**', 'byways-probe.yml', 'probe-report.md', '`tier`', 'src/core/sources/<id>.js', '`webApp`'])
+    assert.ok(t.includes(s), s);
 });
 test('readme explains the version bump and the release', () => {
   const t = read('README.md');
@@ -647,12 +653,15 @@ test('readme explains the version bump and the release', () => {
 });
 test('checklist covers every real-device item from the spec', () => {
   const t = read('CHECKLIST.md');
-  for (const h of ['## Before you tag', '## Desktop Chrome', '## Desktop Edge', '## Firefox web app',
-    '## Firefox extension (manual)', '## Extension (Chrome and Edge)', '## Android phone']) assert.ok(t.includes(h), h);
-  for (const s of ['byways-probe', 'Speech output', 'Media Session', 'Test connection', 'processLocally', 'Firefox 160',
-    'side panel', 'local network', 'Connect OpenRouter', 'Load Temporary Add-on', 'module background', 'Fullscreen',
-    'segmented', 'own origin', 'PKCE', 'Predictive back']) assert.ok(t.includes(s), s);
-  assert.ok(t.split('\n').filter((l) => l.startsWith('- [ ] ')).length >= 28);
+  const heads = ['## Before you tag', '## Desktop Chrome', '## Desktop Edge', '## Firefox web app',
+    '## Firefox extension (manual)', '## Chrome and Edge extension (manual)', '## Extension, still to verify', '## Android phone'];
+  const at = heads.map((h) => { assert.ok(t.includes(h), h); return t.indexOf(h); });
+  assert.deepEqual(at, [...at].sort((a, b) => a - b));
+  for (const s of ['byways-probe', 'DeepSeek', 'tests/fixtures/http/ai/README.md', 'Speech output', 'Media Session',
+    'Test connection', 'background tab', 'processLocally', 'Firefox 160', 'side panel', 'local network',
+    'permissions.contains', 'Connect OpenRouter', 'Load Temporary Add-on', 'module background', 'Fullscreen', 'segmented',
+    'own origin', 'Predictive back', 'Match my device']) assert.ok(t.includes(s), s);
+  assert.ok(t.split('\n').filter((l) => l.startsWith('- [ ] ')).length >= 31);
 });
 test('root readme links Byways', () => {
   const t = readRoot('README.md');
