@@ -1426,74 +1426,106 @@ Through `addInitScript`, `installFakeAndroidBridge` defines `window.BywaysNative
 
 - [ ] **Step 2: Write the failing e2e spec**
 
-`tests/e2e/android.spec.js`. `beforeEach`: `await mockNet(page)`; then `page.route('https://appassets.androidplatform.net/assets/www/**', …)` fulfils each request from `shells/android/app/src/main/assets/www/<path>` (`index.html` for the bare folder); then `fake = await installFakeAndroidBridge(page, opts)`; then `page.goto('https://appassets.androidplatform.net/assets/www/index.html')` and press **Skip** until the **Like** button shows. `afterEach` asserts `fake.unmatched` is empty. `ops = async () => (await fake.native()).map(m => \`${m.ch}.${m.op}\`)`.
+`tests/e2e/android.spec.js` imports `test` and `expect` from `./helpers/net.js` (so `mockNet` runs first, and `unmocked(page)` and `pageProblems(page)` must stay empty), `gotoApp` and `skipFirstRun` from `./helpers/app.js`, and `installFakeAndroidBridge` from `./helpers/fakes.js`. Each test starts with `openAndroid`, so each can pass its own options:
 
 ```js
-test('boots on the Android origin with native fetch and no service worker', async ({ page }) => {
+const WWW = 'shells/android/app/src/main/assets/www';
+let fake;
+async function openAndroid(page, opts = {}) {
+  await page.route('https://appassets.androidplatform.net/assets/www/**', (route) => route.fulfill({
+    path: join(WWW, new URL(route.request().url()).pathname.slice('/assets/www/'.length) || 'index.html') }));
+  fake = await installFakeAndroidBridge(page, opts);
+  await page.goto('https://appassets.androidplatform.net/assets/www/index.html'); await skipFirstRun(page);
   await expect(page.getByRole('button', { name: 'Like' })).toBeVisible();
+}
+const sent = async (ch, op) => (await fake.native()).filter(m => m.ch === ch && m.op === op);
+const backResult = async (token) => (await sent('back', 'result')).find(m => m.args.token === token)?.args.handled;
+
+test('boots on the Android origin with native fetch and no service worker', async ({ page }) => {
+  await openAndroid(page);
   expect(await page.evaluate(() => navigator.serviceWorker.getRegistrations().then(r => r.length))).toBe(0);
-  expect(await ops()).toContain('app.hello'); expect(await ops()).toContain('fetch.request');
+  await expect.poll(async () => (await sent('app', 'ready')).length).toBe(1);
+  expect((await sent('fetch', 'request')).length).toBeGreaterThan(0);
 });
 test('Open shows the find in the site view', async ({ page }) => {
-  await page.getByRole('button', { name: 'Open' }).click();
-  const m = (await fake.native()).find(x => x.ch === 'app' && x.op === 'openSite');
-  expect(m.args.url).toMatch(/^https?:\/\//);
+  await openAndroid(page); await page.getByRole('button', { name: 'Open' }).click();
+  await expect.poll(async () => (await sent('app', 'openSite')).at(0)?.args.url).toMatch(/^https?:\/\//);
+  await expect(page.locator('#live-polite')).toHaveText('Opened in the site view.');
 });
 test('site view Next loads the next find there', async ({ page }) => {
-  await page.getByRole('button', { name: 'Open' }).click(); await fake.emit('app', 'siteNext', {});
-  await expect.poll(async () => new Set((await fake.native()).filter(x => x.op === 'openSite').map(x => x.args.url)).size).toBe(2);
+  await openAndroid(page); await page.getByRole('button', { name: 'Open' }).click(); await fake.emit('app', 'siteNext', {});
+  await expect.poll(async () => new Set((await sent('app', 'openSite')).map(m => m.args.url)).size).toBe(2);
+});
+test('site controls follow hands-free', async ({ page }) => {
+  await openAndroid(page); await page.getByRole('button', { name: 'Start' }).click();
+  await page.getByRole('button', { name: 'Open' }).click();
+  const state = async () => (await sent('app', 'siteControls')).at(-1)?.args.state;
+  await expect.poll(state).toBe('paused');
+  await fake.emit('app', 'sitePause', {}); await expect.poll(state).toBe('active');
 });
 test('share-in of a link shows it as a find', async ({ page }) => {
-  await fake.emit('app', 'shared', { text: 'Look https://example.org/a so good' });
-  await expect(page.getByText('Shared to Byways')).toBeVisible(); await expect(page.getByText('example.org')).toBeVisible();
+  await openAndroid(page); await fake.emit('app', 'shared', { text: 'Look https://example.org/a so good' });
+  await expect(page.getByText('Shared to Byways').first()).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'example.org' })).toBeVisible();
+});
+test('a share that launches Byways is shown', async ({ page }) => {
+  await openAndroid(page, { pending: [{ ch: 'app', event: 'shared', data: { text: 'Look https://example.org/a' } }] });
+  await expect(page.getByRole('heading', { name: 'example.org' })).toBeVisible();
 });
 test('share-in of a Byways link opens Import', async ({ page }) => {
-  const payload = await page.evaluate(async () => (await import('./core/share.js'))
+  await openAndroid(page);
+  const payload = await page.evaluate(async () => (await import(new URL('core/share.js', document.baseURI).href))
     .encodeShare({ v: 1, t: 'f', n: 'One', i: [['library', 'https://example.org/', 'Example']] }));
   await fake.emit('app', 'shared', { text: `Try https://iteatsthesalt.github.io/Game-Dev-Resources/byways/#s=${payload}.` });
   await expect(page.getByRole('button', { name: 'Import' })).toBeVisible();
 });
 test('share-in with no link says so', async ({ page }) => {
-  await fake.emit('app', 'shared', { text: 'hello there' });
+  await openAndroid(page); await fake.emit('app', 'shared', { text: 'hello there' });
   await expect(page.getByText('That share had no link in it.')).toBeVisible();
 });
 test('Back leaves a view first, then lets the app close', async ({ page }) => {
-  await page.evaluate(() => { location.hash = '#/saved'; });
-  await fake.emit('back', 'request', { token: 1 });
-  await expect.poll(async () => (await fake.native()).find(m => m.ch === 'back' && m.args.token === 1)?.args.handled).toBe(true);
+  await openAndroid(page); await page.evaluate(() => { location.hash = '#/saved'; });
+  await fake.emit('back', 'request', { token: 1 }); await expect.poll(() => backResult(1)).toBe(true);
   await page.evaluate(() => { location.hash = '#/stumble'; });
-  await fake.emit('back', 'request', { token: 2 });
-  await expect.poll(async () => (await fake.native()).find(m => m.ch === 'back' && m.args.token === 2)?.args.handled).toBe(false);
+  await fake.emit('back', 'request', { token: 2 }); await expect.poll(() => backResult(2)).toBe(false);
 });
-test('Settings offers Go straight to the site and keeps it', async ({ page }) => {
-  await page.evaluate(id => { location.hash = `#/settings/${id}`; }, DWELL_SECTION_ID);
-  await page.getByLabel('Go straight to the site').check(); await page.reload();
-  await page.evaluate(id => { location.hash = `#/settings/${id}`; }, DWELL_SECTION_ID);
-  await expect(page.getByLabel('Go straight to the site')).toBeChecked();
+test('Back closes an open menu or help card first', async ({ page }) => {
+  await openAndroid(page); await page.getByRole('button', { name: 'More actions' }).click();
+  await fake.emit('back', 'request', { token: 3 }); await expect.poll(() => backResult(3)).toBe(true);
+  await expect(page.getByRole('menu')).toBeHidden();
+  await page.keyboard.press('?'); await expect(page.getByRole('heading', { name: 'What you can say' })).toBeVisible();
+  await fake.emit('back', 'request', { token: 4 }); await expect.poll(() => backResult(4)).toBe(true);
+  await expect(page.getByRole('heading', { name: 'What you can say' })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Like' })).toBeVisible();
 });
-test('About offers Download update', async ({ page }) => {
-  // opts.update = { available: true, latest: '9.9.9', url: U } with
-  // U = 'https://github.com/iteatsthesalt/Game-Dev-Resources/releases/download/byways-v9.9.9/byways-9.9.9.apk'
-  await page.evaluate(() => { location.hash = '#/settings/about'; });
-  await page.getByRole('button', { name: 'Check for updates' }).click();
-  await expect(page.getByText('Version 9.9.9 is available.')).toBeVisible();
-  await page.getByRole('button', { name: 'Download update' }).click();
-  expect((await fake.native()).find(m => m.op === 'openExternal').args.url).toBe(U);
+test('Back state follows views and open menus', async ({ page }) => {
+  await openAndroid(page);
+  const can = async () => (await sent('back', 'state')).at(-1)?.args.canHandle;
+  await expect.poll(can).toBe(false);
+  await page.getByRole('button', { name: 'More actions' }).click(); await expect.poll(can).toBe(true);
+  await page.keyboard.press('Escape'); await expect.poll(can).toBe(false);
+  await page.evaluate(() => { location.hash = '#/saved'; }); await expect.poll(can).toBe(true);
 });
-test('About says when the check fails', async ({ page }) => {   // opts.update = 'error'
-  await page.evaluate(() => { location.hash = '#/settings/about'; });
-  await page.getByRole('button', { name: 'Check for updates' }).click();
-  await expect(page.getByText('Could not check for updates. Try again later.')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Download update' })).toHaveCount(0);
+test('hands-free starts with no touch on Android 13+', async ({ page }) => {
+  await openAndroid(page, { hello: { versionName: '0.1.0', versionCode: 100, sdk: 34, micConsent: true },
+    probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: true, reason: null } });
+  await expect.poll(async () => (await sent('voice', 'start')).length).toBeGreaterThan(0);
+  expect((await sent('screen', 'keepOn')).at(-1).args).toEqual({ on: true });
+  expect((await sent('media', 'setActive')).at(-1).args).toEqual({ on: true });
+});
+test('Connect OpenRouter finishes through the login view', async ({ page }) => {
+  await openAndroid(page, { auth: 'https://appassets.androidplatform.net/assets/www/index.html?code=test-code' });
+  await page.evaluate(() => { location.hash = '#/settings/ai'; });
+  await page.getByRole('region', { name: 'OpenRouter' }).getByRole('button', { name: 'Connect OpenRouter' }).click();
+  await expect(page.locator('#live-polite')).toHaveText('OpenRouter connected.');
+  expect((await sent('app', 'auth'))[0].args.url).toMatch(/^https:\/\/openrouter\.ai\/auth\?/);
 });
 ```
-
-Also add one test that loads the PWA build at `localhost:4321` without the fake and expects `page.getByLabel('Go straight to the site')` to have count 0 on the same settings section. `DWELL_SECTION_ID` is the id that section registers.
 
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: FAIL. The share-in, Back, Settings, About and site-view `Next` tests time out waiting for `Shared to Byways`, `Import`, `That share had no link in it.`, the `back` result, the checkbox, **Check for updates** and the second `openSite`.
+Expected: FAIL. Every test times out: `openAndroid` waits for **Like**, which never shows, because `boot()` does not call `attach` yet and nothing sends `app.ready`; the later assertions wait for the site view message, the share-in texts, the `back` results and states, `voice.start` and `app.auth`.
 
 - [ ] **Step 4: Implement `attach(app)` in `src/platform/android.js`**
 
