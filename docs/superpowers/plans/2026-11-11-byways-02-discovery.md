@@ -1746,18 +1746,51 @@ test('a Rabbit Hole serves similar finds until it runs dry', async () => {
   assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
   engine.rabbit.climbOut(); assert.equal((await engine.next({ mode: 'tuned' })).empty, true);
 });
+test('rabbit.next on its own records the find and emits it', async () => {
+  const { engine, store } = await engineFor({ entries: lib(3) }); const { find } = await engine.next({ mode: 'tuned' });
+  const events = []; engine.on('find', (e) => events.push(e.branch));
+  engine.rabbit.start(find); const f = await engine.rabbit.next();
+  assert.deepEqual(events, ['rabbit']); assert.equal(engine.current().id, f.id); assert.equal(await createSeen(store).has(f.url), true);
+});
+test('a Rabbit Hole leaves out blocked sites and hidden topics', async () => {
+  const e = (id, title, tags) => ({ id, url: `https://${id}.example.com/`, title, blurb: 'Pixel toy.', tags, kind: 'site', added: '2026-11-01' });
+  const { engine } = await engineFor({ entries: [e('a', 'Pixel Toy A', ['toy']), e('b', 'Pixel Toy B', ['toy', 'retro']), e('c', 'Pixel Toy C', ['toy']), e('d', 'Pixel Toy D', ['toy'])] });
+  engine.setTaste({ ...engine.taste(), hiddenTags: ['retro'], blockedDomains: ['c.example.com'] });
+  engine.rabbit.start(makeFind({ source: 'library', kind: 'site', title: 'Pixel Toy A', tags: ['toy'], safety: 'curated', url: 'https://a.example.com/' }));
+  assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'Pixel Toy D');
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
+});
+test('a dry Rabbit Hole asks the AI hook, which is link-checked', async () => {
+  const asked = []; const transport = { fetch: async (u) => { asked.push(u); return { status: 0 }; } };
+  const { engine } = await engineFor({ entries: lib(1), transport }); const { find } = await engine.next({ mode: 'tuned' });
+  engine.rabbit.start(find);
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
+  engine.rabbit.useAi(async () => [F('ai-pick')]);
+  assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'ai-pick'); assert.deepEqual(asked, ['https://ai-pick.example.org/']);
+  engine.rabbit.useAi(null);
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
+});
 test('AI and Kagi finds are link-checked before they are shown', async () => {
   const asked = [];
   const transport = { fetch: async (u) => { asked.push(u); if (u.includes('dead')) throw new TypeError('Failed to fetch'); return { status: 0 }; } };
   const { engine } = await engineFor({ entries: lib(1), transport });
-  engine.inject([F('dead'), F('alive')], 'ai');
+  await engine.inject([F('dead'), F('alive')], 'ai');
   assert.equal((await engine.next({ mode: 'ai' })).find.title, 'alive');
   assert.deepEqual(asked, ['https://dead.example.org/', 'https://alive.example.org/']);
 });
 test('with Check links off, nothing is contacted', async () => {
   const asked = []; const transport = { fetch: async (u) => { asked.push(u); return { status: 0 }; } };
   const { engine } = await engineFor({ entries: lib(1), transport, settings: { checkLinks: false } });
-  engine.inject([F('x')], 'ai'); await engine.next({ mode: 'ai' }); assert.deepEqual(asked, []);
+  await engine.inject([F('x')], 'ai'); await engine.next({ mode: 'ai' }); assert.deepEqual(asked, []);
+});
+test('the engine prepares at most 3 finds ahead and serves them without waiting', async () => {
+  const asked = []; const transport = { fetch: async (u) => { asked.push(u); return { status: 0 }; } };
+  const kagiLike = fake('kagi', { random: async () => Array.from({ length: 10 }, (_, i) => F(`k${i}`)) });
+  const { engine } = await engineFor({ adapters: [kagiLike], transport });
+  await engine.next({ mode: 'tuned' }); await flush();
+  assert.equal(asked.length, 4);
+  const ahead = asked.slice(1); const b = (await engine.next({ mode: 'tuned' })).find;
+  assert.ok(ahead.includes(new URL(b.url).origin + '/'));
 });
 ```
 
@@ -1766,18 +1799,18 @@ test('with Check links off, nothing is contacted', async () => {
 Run: `node --test tests/unit/engine-react.test.js`
 Expected: FAIL with `TypeError: engine.react is not a function`.
 
-- [ ] **Step 3: Add `react`, `rabbit` and the link checks to `engine.js`**
+- [ ] **Step 3: Add `react`, the `rabbit` wrapper, the link checks and prefetch to `engine.js`**
 
 - [ ] **Step 4: Run both engine tests and see them pass**
 
 Run: `node --test tests/unit/engine.test.js tests/unit/engine-react.test.js`
-Expected: PASS, 18 tests.
+Expected: PASS, 27 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/core/engine.js tests/unit/engine-react.test.js
-git commit -m "Add reactions with undo, Rabbit Hole and link checks to the engine"
+git commit -m "Add reactions with undo, Rabbit Hole, link checks and prefetch to the engine"
 ```
 
 ### Task 22: Boot wiring, the card and the Stumble view

@@ -349,7 +349,7 @@ Fixtures (hand-written from the research shapes):
 
 - [ ] **Step 1: Write the failing tests**
 
-`backupFor(date, wiki = async () => FEED.tfa, apod = async () => APOD)` calls `backupDaily` with the fixtures and spy fetchers. `titles = (file) => file.picks.map((p) => p.find.title)`.
+`FEED`, `APOD`, `VS` and `LIB` are the four fixtures, parsed from `readFixture('daily/…')`. `backupFor(date, wiki = async () => FEED.tfa, apod = async () => APOD)` calls `backupDaily` with `LIB`, `VS` and fetchers that push each date they get to `wikiCalls` and `apodCalls` (both reset per test) before calling `wiki` or `apod`. `titles = (file) => file.picks.map((p) => p.find.title)`.
 
 ```js
 test('dailySeed and the PRNG match the test vectors', () => {
@@ -379,16 +379,18 @@ test('wonder falls back to the other source, and is left out when both fail', as
   assert.equal(titles(await backupFor('2026-11-11', boom))[2], 'Fixture Nebula');
   assert.deepEqual((await backupFor('2026-11-11', boom, async () => null)).picks.map((p) => p.slot), ['game', 'web']);
 });
-test('mappers build finds', () => {
+test('mappers build finds with the same fields as the Stumble adapters', () => {
   const w = wikiFeaturedToFind(FEED.tfa);
-  assert.deepEqual([w.id, w.source, w.kind, w.title, w.url, w.licence], ['wiki:en:Ada_Lovelace', 'wikipedia', 'article', 'Ada Lovelace', 'https://en.wikipedia.org/wiki/Ada_Lovelace', 'CC BY-SA 4.0']);
+  assert.deepEqual([w.id, w.source, w.kind, w.title, w.url, w.licence, w.why[0]], ['wiki:en:Ada_Lovelace', 'wikipedia', 'article', 'Ada Lovelace', 'https://en.wikipedia.org/wiki/Ada_Lovelace', 'CC BY-SA 4.0', "Wikipedia: today's featured article"]);
   const a = apodToFind(APOD);
-  assert.deepEqual([a.id, a.url, a.imageUrl, a.attribution], ['apod:2026-11-14', 'https://apod.nasa.gov/apod/ap261114.html', 'https://apod.nasa.gov/apod/image/2611/fixture.jpg', '© A. Astronomer']);
-  assert.equal(apodToFind({ ...APOD, media_type: 'video', thumbnail_url: 'https://img.youtube.com/vi/x/0.jpg' }).imageUrl, 'https://img.youtube.com/vi/x/0.jpg');
+  assert.deepEqual([a.id, a.kind, a.url, a.imageUrl, a.author, a.licence, a.why[0]], ['apod:2026-11-14', 'image', 'https://apod.nasa.gov/apod/ap261114.html', 'https://apod.nasa.gov/apod/image/2611/fixture.jpg', 'A. Astronomer', '© A. Astronomer', 'NASA APOD']);
+  const v = apodToFind({ ...APOD, media_type: 'video', copyright: undefined, thumbnail_url: 'https://img.youtube.com/vi/x/0.jpg' });
+  assert.deepEqual([v.kind, v.imageUrl, v.licence], ['video', 'https://img.youtube.com/vi/x/0.jpg', 'Public domain (NASA)']);
   const g = starterToFind(VS.entries[1]);
   assert.deepEqual([g.id, g.source, g.kind, g.embedUrl], ['ia:msdos_Whizz_1994', 'vault', 'game', 'https://archive.org/embed/msdos_Whizz_1994']);
-  assert.deepEqual(g.why, ['DOS', '1994']);
-  assert.equal(libraryEntryToFind(LIB.entries[1]).source, 'library');
+  assert.deepEqual([g.why, g.meta], [['Internet Archive', 'DOS', '1994'], { identifier: 'msdos_Whizz_1994', platform: 'DOS', year: 1994 }]);
+  const l = libraryEntryToFind(LIB.entries[1]);
+  assert.deepEqual([l.id, l.source, l.kind, l.why, l.meta], ['lib:lib-0001', 'library', 'site', ['Starter library'], { libraryKind: 'toy', published: '2026-11-01' }]);
 });
 test('loadDaily uses the file when it is for today', async () => {
   const file = { v: 1, date: '2026-11-11', picks: [{ slot: 'web', find: {} }] };

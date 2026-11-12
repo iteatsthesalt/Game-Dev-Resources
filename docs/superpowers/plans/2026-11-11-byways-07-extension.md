@@ -595,19 +595,35 @@ git commit -m "Add the extension platform with storage.local secrets, a mic gate
 - Test: `tests/unit/ext-bg.test.js`
 
 **Interfaces:**
-- Consumes: `buildExtension` (Task 2); `createExtensionPlatform` (Task 3); `openStore`, `idbBackend`; `loadSettings`; `createHttp`; `realClock`; `mulberry32`; `createEngine`; `makeFind`; `isHttpUrl`, `domainOf`. In `dist/<browser>/` these sit at `./core/…` and `./platform/…`, so `bg.js` imports them with those paths.
-- Produces: `createBackground({ext, getEngine: () => Promise<{engine: Engine, settings: Settings}>, resetEngine: () => void}) → Background`, exported from `bg.js`, where `Background` has:
-  - `stumble(tab) → Promise<{ok: true, find} | {ok: false, reason: string}>`
-  - `morePage(tab) → Promise<void>`, `onCommand(command, tab) → Promise<void>`, `onMenuClick(info, tab) → Promise<void>`
-  - `onMessage(msg, sender) → Promise<any> | undefined`
-  - `checkAccess() → Promise<boolean>`, `openPermission() → Promise<{tabId}>`, `onInstalled(details) → Promise<void>`, `onTabRemoved(tabId) → Promise<void>`
+- Consumes, by their paths in `dist/<browser>/` (`bg.js` imports `./core/…` and `./platform/…`):
+  - `buildExtension` (Task 2, for the tests); `createExtensionPlatform({ext, win, surface})` and `requestDataCollection(ext, kinds)` (`platform/extension.js`, Task 3);
+  - `openStore(backend) → Promise<Store>` and `idbBackend()` (`core/store/db.js`); `loadSettings(store) → Promise<Settings>` (`core/settings.js`); `createHttp({transport, clock}) → Http` (`core/net/http.js`); `realClock` (`core/util/clock.js`); `mulberry32(seed)` (`core/util/hash.js`); `isHttpUrl(u)`, `domainOf(u)` (`core/util/url.js`);
+  - `createEngine({store, http, clock, rand, data, platform, settings, seen?}) → Promise<Engine>` and `EMPTY_REASONS` (`core/engine.js`); `createSeen(store) → {has(url), add(url), count(), reset()}` (`core/seen.js`); `makeFind(partial) → Find|null` (`core/model/find.js`).
+- Produces, exported from `bg.js`:
+  - `createBackground({ext, getEngine: () => Promise<{engine: Engine, settings: Settings, seen: {has(url) → Promise<boolean>, add(url) → Promise<void>}}>, resetEngine: () => void}) → Background`, where `Background` has:
+    - `stumble(tab) → Promise<{ok: true, find} | {ok: false, reason: string}>`
+    - `morePage(tab) → Promise<void>`, `onCommand(command, tab) → Promise<void>`, `onMenuClick(info, tab) → Promise<void>`
+    - `onMessage(msg, sender) → Promise<any> | undefined`
+    - `checkAccess() → Promise<boolean>`, `openPermission() → Promise<{tabId}>`, `onInstalled(details) → Promise<void>`, `onTabRemoved(tabId) → Promise<void>`
+  - `loadBackgroundData({fetchFn, base, http, store}) → Promise<{tags, library, vaultStarter, geocities, loadSnapshot, embedBroken}>`
+  - `wire(ext, bg) → void`
 
-The tests import `createBackground` from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
+The tests import from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
 
 Test fakes, written at the top of the test file:
-- `fakeExt({granted = true, sidebar = false})` is Task 3's fake plus: `ext.tabsById = {}` and `tabs.get(id)` (resolves `tabsById[id]` or rejects `'No tab'`, not recorded), `ext.granted` (starts as the option), `action.setBadgeText(o)` → `['badge', o]`, `action.setTitle(o)` → `['title', o]`, `sidePanel.open(o)` → `['sidePanel.open', o]` (or, with `sidebar: true`, no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`), `permissions.contains(q)` → `['contains', q]` and resolves `ext.granted`, `contextMenus.removeAll()` → `['menus.removeAll']`, `contextMenus.create(o)` → `['menus.create', o]`, `runtime.getManifest()` → `{host_permissions: ['https://archive.org/*']}`. Every recorder pushes synchronously, before any `await`.
+- `fakeExt({granted = true, sidebar = false} = {})` returns an object with `calls`, `messages`, `local`, `session`, `tabsById = {}`, `granted` (starts as the option) and `answer = true`, and:
+  - `storage.local` and `storage.session`: plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API, not recorded;
+  - `tabs.query()` resolves `[{id: 7, windowId: 1}]`; `tabs.get(id)` resolves `tabsById[id]` or rejects `'No tab'` (not recorded); `tabs.update(id, p)` → `['tabs.update', id, p]`; `tabs.create(p)` → `['tabs.create', p]` and resolves `{id: 99, ...p}`;
+  - `action.setBadgeText(o)` → `['badge', o]`; `action.setTitle(o)` → `['title', o]`;
+  - `sidePanel.open(o)` → `['sidePanel.open', o]`, or, with `sidebar: true` (Firefox), no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`;
+  - `permissions.contains(q)` → `['contains', q]`, resolves `ext.granted`; `permissions.request(q)` → `['permissions.request', q]`, resolves `ext.answer`;
+  - `contextMenus.removeAll()` → `['menus.removeAll']`; `contextMenus.create(o)` → `['menus.create', o]`;
+  - `runtime.sendMessage(m)` pushes `m` to `messages`; `runtime.getURL(p)` returns `'chrome-extension://test/' + p`; `runtime.getManifest()` returns `{host_permissions: ['https://archive.org/*']}`, plus, with `sidebar: true`, `browser_specific_settings.gecko.data_collection_permissions` `{required: ['none'], optional: ['searchTerms', 'browsingActivity']}`.
+
+  Every recorder pushes synchronously, before any `await`.
 - `fakeEngine(results)`: `next({mode})` records `mode` in `modes`, waits one macrotask, then returns `results.shift()` (throwing it if it is an `Error`). It tracks `maxInFlight`.
-- `bgWith(results, {settings = {mode: 'tuned'}, ...extOpts} = {})` returns `{bg, ext, engine, resets}`.
+- `bgWith(results, {settings = {mode: 'tuned'}, seen = [], ...extOpts} = {})` returns `{bg, ext, engine, resets, seenUrls}`. `getEngine` resolves `{engine, settings, seen}`, where `seen` is `{has: async (u) => seenUrls.has(u), add: async (u) => { seenUrls.add(u); }}` over `seenUrls = new Set(seen)`.
+- `eventsExt()` is an `ext` whose `action.onClicked`, `commands.onCommand`, `contextMenus.onClicked`, `runtime.onInstalled`, `runtime.onStartup`, `runtime.onMessage`, `permissions.onAdded`, `permissions.onRemoved` and `tabs.onRemoved` each have `addListener(fn)`, which stores `fn` in `ext.fns['<namespace>.<event>']`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -616,11 +632,35 @@ const f = (n) => ({ id: `url:${n}`, source: 'library', kind: 'site', title: `Fin
 const tab = { id: 5, windowId: 2 };
 
 test('stumble loads the next find in the tab and remembers it', async () => {
-  const { bg, ext } = bgWith([{ find: f(1), branch: 'taste', why: ['w'] }]);
+  const { bg, ext, seenUrls } = bgWith([{ find: f(1), branch: 'taste', why: ['w'] }]);
   assert.deepEqual(await bg.stumble(tab), { ok: true, find: f(1) });
   assert.deepEqual(ext.calls.find((c) => c[0] === 'tabs.update'), ['tabs.update', 5, { url: 'https://s1.example/' }]);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { tabId: 5, text: null }]);   // null lets a global '!' show
   assert.deepEqual(ext.session['find:5'], { find: f(1), branch: 'taste', why: ['w'] });
   assert.deepEqual(ext.messages.at(-1), { type: 'tabFind', tabId: 5, windowId: 2, find: f(1), branch: 'taste', why: ['w'] });
+  assert.deepEqual([...seenUrls], ['https://s1.example/']);
+});
+
+test('stumble skips a find another page already showed', async () => {                 // Review Focus 2
+  const { bg, ext, seenUrls } = bgWith([{ find: f(1), branch: 'taste', why: [] }, { find: f(2), branch: 'taste', why: [] }],
+    { seen: ['https://s1.example/'] });
+  assert.deepEqual(await bg.stumble(tab), { ok: true, find: f(2) });
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'tabs.update').map((c) => c[2].url), ['https://s2.example/']);
+  assert.ok(seenUrls.has('https://s2.example/'));
+});
+
+test('four finds in a row that were already shown count as an empty pool', async () => {
+  const shown = [1, 2, 3, 4].map((n) => ({ find: f(n), branch: 'taste', why: [] }));
+  const { bg, ext } = bgWith(shown, { seen: shown.map((r) => r.find.url) });
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: EMPTY_REASONS.exhausted });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { tabId: 5, text: '0' }]);
+});
+
+test('stumble never loads a link that is not http(s)', async () => {
+  const { bg, ext } = bgWith([{ find: { ...f(1), url: 'javascript:alert(1)' }, branch: 'taste', why: [] }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'not-web' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
 });
 
 test('stumble uses tuned when the saved mode is ai, and passes fate through', async () => {
