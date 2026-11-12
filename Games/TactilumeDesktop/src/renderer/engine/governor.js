@@ -7,6 +7,11 @@
 // slow frame is the sign of room to spare) or the GPU's own time per frame (where it does).
 // Either way a step up is small, and a count that has just proved too slow is not tried
 // again for a while, so the count does not swing up and down.
+//
+// The third argument says the engine skipped this frame because the GPU already had two
+// queued. Display frames keep coming on time while that happens, so the time alone would
+// look like headroom and the count would climb while the GPU drew a few frames a second.
+// A skipped frame is therefore a slow frame, whatever its time.
 
 const SLOW = 1.25;            // a frame over 1.25 refresh intervals is a slow (missed) frame
 const STRAIN_LIMIT = 6;       // slow frames, net of fast ones, before stepping down
@@ -37,16 +42,16 @@ export function createGovernor({ min = 1, max = Infinity, start = min, refreshHz
     get particles() { return particles; },
     get refreshHz() { return hz; },
 
-    // frameMs: how long the last frame took; now: a clock in ms.
-    // → the new particle count, or null for no change.
-    update(frameMs, now) {
+    // frameMs: how long the last frame took; now: a clock in ms; skipped: the engine did not
+    // draw this frame because the GPU was behind. → the new particle count, or null.
+    update(frameMs, now, skipped = false) {
       if (!finite(frameMs) || !finite(now) || frameMs < 0) return null;
       if (calmSince === null) calmSince = now;
       if (frameMs > PAUSE_MS) { calmSince = now; return null; }
       if (now < settleUntil) return null;
       if (now - ceilingAt > CEILING_MS) ceiling = Infinity;
 
-      const slow = frameMs > budget * SLOW;
+      const slow = skipped === true || frameMs > budget * SLOW;
       strain = slow ? strain + 1 : Math.max(0, strain - RECOVERY);
       if (slow) calmSince = now;
 

@@ -28,6 +28,31 @@ describe('createGovernor', () => {
     assert.equal(createGovernor({ min: 100, max: 1000 }).particles, 100);
   });
 
+  test('display frames on time while the engine skips most of them is a GPU falling behind: step down', () => {
+    // What a GPU drawing about 8 frames a second looks like from requestAnimationFrame:
+    // every tick on time, and seven in eight of them skipped because two frames are queued.
+    const gov = createGovernor({ min: 1000, max: 1e6, start: 1e5, refreshHz: 60 });
+    const changes = [];
+    let now = 0;
+    for (let i = 0; now < 20000; i++) {
+      now += HZ60;
+      const next = gov.update(HZ60, now, i % 8 !== 0);
+      if (next !== null) changes.push(next);
+    }
+    assert.ok(changes.length > 0 && changes.every((n, i) => n < (changes[i - 1] ?? 1e5)), `steps only down: ${changes}`);
+    assert.ok(gov.particles < 1e5 * 0.8, `stepped down at least once: ${gov.particles}`);
+  });
+
+  test('an occasional skipped frame among frames on time does not step down', () => {
+    const gov = createGovernor({ min: 1000, max: 1e6, start: 1e5, refreshHz: 60 });
+    let now = 0;
+    for (let i = 0; now < 20000; i++) {
+      now += HZ60;
+      const next = gov.update(HZ60, now, i % 30 === 0);
+      assert.ok(next === null || next > 1e5 * 0.99, `no step down: ${next}`);
+    }
+  });
+
   test('frames on time change nothing for the first few seconds', () => {
     const gov = createGovernor({ min: 1000, max: 1e6, start: 1e5, refreshHz: 60 });
     const { changes } = run(gov, HZ60, 3.5);

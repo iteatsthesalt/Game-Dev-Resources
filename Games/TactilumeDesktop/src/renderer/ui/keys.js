@@ -21,6 +21,7 @@ export const KEY_LIST = Object.freeze([
 export const PAD_LIST = Object.freeze([
   ['Sticks', 'Move your two points of light'],
   ['Triggers', 'Hold to touch the light; harder is stronger'],
+  ['Click a stick', 'Hold that light down without the trigger; click again to let go'],
   ['A', 'A pulse of light'],
   ['B', 'The next behaviour'],
   ['X', 'The next colours'],

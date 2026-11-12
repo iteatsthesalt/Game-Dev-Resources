@@ -5,11 +5,26 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { applyGpuSwitches, isAppPage, allowPermission, fitBounds, createMainWindow } from '../../src/main/window.js';
+import { applyGpuSwitches, isAppPage, isOwnTopFrame, allowPermission, fitBounds, createMainWindow } from '../../src/main/window.js';
 
 const DIST = path.resolve('/opt/tactilume/resources/app.asar/dist');
 const PAGES = [path.join(DIST, 'renderer'), path.join(DIST, 'classic')];
 const fileUrl = (...parts) => pathToFileURL(path.join(DIST, ...parts)).href;
+
+describe('isOwnTopFrame: who may share the screen and the computer\'s sound', () => {
+  const main = { processId: 4, routingId: 1, parent: null, url: fileUrl('renderer', 'index.html') };
+  test('the window\'s own top frame on an app page may', () => {
+    assert.equal(isOwnTopFrame({ ...main }, main, PAGES), true);
+  });
+  test('a frame inside it, another window\'s frame, or another page may not', () => {
+    assert.equal(isOwnTopFrame({ ...main, parent: main }, main, PAGES), false);
+    assert.equal(isOwnTopFrame({ ...main, routingId: 2 }, main, PAGES), false);
+    assert.equal(isOwnTopFrame({ ...main, processId: 9 }, main, PAGES), false);
+    assert.equal(isOwnTopFrame({ ...main, url: 'https://example.com/' }, { ...main, url: 'https://example.com/' }, PAGES), false);
+    assert.equal(isOwnTopFrame(null, main, PAGES), false);
+    assert.equal(isOwnTopFrame(main, null, PAGES), false);
+  });
+});
 
 describe('isAppPage: the only pages the window shows and listens to', () => {
   test('the renderer and the classic engine, with any query or hash', () => {

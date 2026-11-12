@@ -284,4 +284,48 @@ export default [
       return checks;
     },
   },
+
+  {
+    // The help text is what a first-time player reads before joining, so it must not be faded
+    // with the sleeping pad; and on the smallest phones every button label must fit whole.
+    name: 'phone page: small phones show every label whole, and the help reads clearly before joining',
+    async run(page, h) {
+      const checks = [];
+      const server = createLinkServer({ port: await freePort(), host: '127.0.0.1', staticDir: path.join(DIST, 'phone') });
+      const info = await server.start();
+      const origin = `http://127.0.0.1:${info.port}`;
+      try {
+        for (const [width, height] of [[320, 568], [568, 320]]) {
+          const phone = await h.context.browser().newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
+          await phone.route('**/*', (route) => (route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort()));
+          const p = await phone.newPage();
+          // a wrong code: the page stays outside, as a phone does until it joins
+          await p.goto(`${origin}/#k=notthecodeAAAAAAAAAAAA`);
+          await h.until(p, () => document.body.dataset.state !== 'connecting' && document.body.dataset.state !== 'playing', undefined, 10000);
+          const outside = await p.evaluate(() => {
+            const help = document.getElementById('pad-help');
+            let opacity = 1;
+            for (let el = help; el; el = el.parentElement) opacity *= Number(getComputedStyle(el).opacity);
+            return { state: document.body.dataset.state, opacity, color: getComputedStyle(help).color };
+          });
+          checks.push(h.check(`${width}x${height}: before joining, the help text is not faded`, outside.opacity === 1 && outside.color === 'rgb(184, 184, 192)', outside));
+
+          // joined, with the names of what is playing in the labels (a new page: only the
+          // address's #code changes, which is not a new load)
+          await p.close();
+          const q = await phone.newPage();
+          await q.goto(`${origin}/#k=${info.token}`);
+          checks.push(h.check(`${width}x${height}: the phone joins`, await h.until(q, () => window.TACTILUME_PHONE?.joined === true, undefined, 10000)));
+          const cut = await q.evaluate(() => [...document.querySelectorAll('.controls button')]
+            .filter((b) => b.getClientRects().length && b.scrollWidth > b.clientWidth)
+            .map((b) => `${b.textContent.trim()} (${b.scrollWidth} > ${b.clientWidth})`));
+          checks.push(h.check(`${width}x${height}: every button label fits whole`, cut.length === 0, cut));
+          await phone.close();
+        }
+      } finally {
+        await server.stop().catch(() => {});
+      }
+      return checks;
+    },
+  },
 ];

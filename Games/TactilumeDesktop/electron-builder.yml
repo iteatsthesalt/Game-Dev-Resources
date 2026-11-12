@@ -32,6 +32,10 @@ electronFuses:
   enableNodeOptionsEnvironmentVariable: false
   enableNodeCliInspectArguments: false
   onlyLoadAppFromAsar: true
+  # On Windows and macOS the app checks app.asar against the hash electron-builder embeds, so a
+  # changed app.asar (the per-user Windows install folder is writable by the user's programs)
+  # cannot run its own code with the app's microphone, screen-audio and network permissions.
+  enableEmbeddedAsarIntegrityValidation: true
   # Flipping fuses changes the binary, which breaks the ad-hoc signature Electron ships with,
   # and Apple silicon will not start a binary without one. Unsigned (identity: null below),
   # nothing else would sign it again.

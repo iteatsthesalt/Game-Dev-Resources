@@ -7,7 +7,15 @@
 // The software GPU draws about ten frames a second here, and the engine skips animation
 // frames while the GPU is behind, so these scenarios wait on frames the engine has drawn
 // (engine.stats.frames), not on the app's frame counter.
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { BEHAVIOUR_KEYS as BEHAVIOURS } from '../../../Tactilume/src/js/core/behaviours.js';
+
+// The shader sources, for a scenario that runs one of them on its own. SHADERS may point
+// elsewhere (TL_SHADERS) to try the scenario against another version.
+const SHADERS = process.env.TL_SHADERS
+  || path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'renderer', 'engine', 'shaders');
 
 // ---- helpers ------------------------------------------------------------------------------
 
@@ -201,6 +209,74 @@ export default [
         h.check('with the guard the screen brightens by less than a third as much at first', guarded.soon - guarded.dim < (bare.soon - bare.dim) / 3, info),
         h.check('with the guard the light still arrives, a little later', guarded.later > guarded.dim + (bare.soon - bare.dim) / 2, info),
       ];
+    },
+  },
+
+  {
+    // The guard and the exposure must see light wherever it is. With 16 fixed sample points
+    // the middle of the screen counted for nothing at 4K and at this test's own size, so a
+    // flash where light gathers went unmeasured. The held light of the real engine spreads
+    // too widely to make a fair spot, so this runs adapt.wgsl itself on a known thumbnail:
+    // the smallest bloom level at 4K (30x17) and at 800x500 (25x16), with one bright patch
+    // at the centre, off centre and in a corner. Every place must give the same brightness.
+    name: 'engine flash guard: the same light counts the same at the centre, off centre and in a corner',
+    async run(page, h) {
+      await h.open(page);
+      const code = ['common.wgsl', 'adapt.wgsl'].map((f) => fs.readFileSync(path.join(SHADERS, f), 'utf8')).join('\n');
+      const seen = await page.evaluate(async (code) => {
+        const adapter = await navigator.gpu.requestAdapter();
+        const device = await adapter.requestDevice();
+        const module = device.createShaderModule({ code });
+        const errors = (await module.getCompilationInfo()).messages.filter((m) => m.type === 'error').map((m) => m.message);
+        if (errors.length) return { errors };
+        const pipeline = await device.createComputePipelineAsync({ layout: 'auto', compute: { module, entryPoint: 'adapt' } });
+        // dt, base, amount, guard, rise, glowGain: a fresh state takes the brightness as it is
+        const exposure = device.createBuffer({ size: 32, usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST });
+        device.queue.writeBuffer(exposure, 0, new Float32Array([1 / 60, 1, 1, 1, 1, 0, 0, 0]));
+        const ONE = 0x3c00; // 1.0 as a half float
+        async function measure(w, hgt, px, py) {
+          const texture = device.createTexture({ size: [w, hgt], format: 'rgba16float', usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST });
+          const texels = new Uint16Array(w * hgt * 4);
+          // a 2x2 patch of white light
+          for (const [x, y] of [[px, py], [px + 1, py], [px, py + 1], [px + 1, py + 1]]) texels.fill(ONE, (y * w + x) * 4, (y * w + x) * 4 + 3);
+          device.queue.writeTexture({ texture }, texels, { bytesPerRow: w * 8 }, [w, hgt]);
+          const state = device.createBuffer({ size: 16, usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC });
+          const read = device.createBuffer({ size: 16, usage: GPUBufferUsage.MAP_READ | GPUBufferUsage.COPY_DST });
+          const entries = [{ binding: 0, resource: { buffer: exposure } }, { binding: 1, resource: texture.createView() }, { binding: 3, resource: { buffer: state } }];
+          // a version that samples the thumbnail (TL_SHADERS) also takes a linear sampler
+          if (/@binding\(2\)\s*var\s+\w+\s*:\s*sampler/.test(code)) entries.push({ binding: 2, resource: device.createSampler({ magFilter: 'linear', minFilter: 'linear' }) });
+          const encoder = device.createCommandEncoder();
+          const pass = encoder.beginComputePass();
+          pass.setPipeline(pipeline);
+          pass.setBindGroup(0, device.createBindGroup({ layout: pipeline.getBindGroupLayout(0), entries }));
+          pass.dispatchWorkgroups(1);
+          pass.end();
+          encoder.copyBufferToBuffer(state, 0, read, 0, 16);
+          device.queue.submit([encoder.finish()]);
+          await read.mapAsync(GPUMapMode.READ);
+          const L = new Float32Array(read.getMappedRange())[0];
+          read.unmap();
+          // as a share of the same light spread evenly: 1 is fair
+          return L / (4 / (w * hgt));
+        }
+        const out = {};
+        for (const [w, hgt] of [[30, 17], [25, 16]]) {
+          const cx = Math.floor(w / 2) - 1, cy = Math.floor(hgt / 2) - 1;
+          out[`${w}x${hgt}`] = {
+            centre: await measure(w, hgt, cx, cy),
+            'off centre': await measure(w, hgt, Math.floor(w * 0.375) - 1, Math.floor(hgt * 0.625) - 1),
+            corner: await measure(w, hgt, 0, 0),
+          };
+        }
+        device.destroy();
+        return out;
+      }, code);
+      if (seen.errors) return [h.check('adapt.wgsl compiles on its own', false, seen.errors)];
+      return Object.entries(seen).map(([size, places]) => {
+        const values = Object.values(places);
+        const info = Object.fromEntries(Object.entries(places).map(([k, v]) => [k, +v.toFixed(3)]));
+        return h.check(`${size}: a patch of light counts the same (within 20% of fair) wherever it is`, values.every((v) => v > 0.8 && v < 1.2), info);
+      });
     },
   },
 

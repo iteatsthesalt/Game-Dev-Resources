@@ -1,4 +1,4 @@
-// Eye adaptation and the flash guard. One invocation per frame reads the smallest bloom level
+// Eye adaptation and the flash guard. One workgroup per frame reads the smallest bloom level
 // (a blurred thumbnail of the light) and updates a state that remembers the last frame:
 //   x: the adapted scene brightness (slow), which drives auto exposure
 //   y: the guarded on-screen brightness, which may only rise so fast
@@ -19,20 +19,34 @@ struct Exposure {
 
 @group(0) @binding(0) var<uniform> X: Exposure;
 @group(0) @binding(1) var thumbnail: texture_2d<f32>;
-@group(0) @binding(2) var linearSampler: sampler;
 @group(0) @binding(3) var<storage, read_write> state: vec4f;
 
-@compute @workgroup_size(1)
-fn adapt() {
-  var sum = 0.0;
-  for (var y = 0; y < 4; y++) {
-    for (var x = 0; x < 4; x++) {
-      var c = textureSampleLevel(thumbnail, linearSampler, (vec2f(f32(x), f32(y)) + 0.5) * 0.25, 0.0).rgb;
-      if (bad3(c)) { c = vec3f(0.0); }
-      sum += dot(clamp(c, vec3f(0.0), vec3f(30000.0)), LUMA);
-    }
+const THREADS = 64u;
+var<workgroup> partial: array<f32, 64>;
+
+// The brightness is the mean of every texel of the thumbnail. Mobile sampled 16 fixed points,
+// which is fair only while the thumbnail is tiny: the bloom chain stops at 7 levels, so at
+// 1440p and 4K the thumbnail is 20x12 to 30x17 texels and 16 points leave whole areas unseen,
+// the middle of the screen worst of all, where light gathers. A flash there would pass the
+// guard unmeasured. 64 threads share the texels (at most a few thousand) and add up.
+@compute @workgroup_size(64)
+fn adapt(@builtin(local_invocation_index) i: u32) {
+  let size = textureDimensions(thumbnail);
+  let count = size.x * size.y;
+  var mine = 0.0;
+  for (var t = i; t < count; t += THREADS) {
+    var c = textureLoad(thumbnail, vec2u(t % max(size.x, 1u), t / max(size.x, 1u)), 0).rgb;
+    if (bad3(c)) { c = vec3f(0.0); }
+    mine += dot(clamp(c, vec3f(0.0), vec3f(30000.0)), LUMA);
   }
-  let L = max(sum / 16.0, 0.0);
+  partial[i] = mine;
+  workgroupBarrier();
+  for (var stride = THREADS / 2u; stride > 0u; stride = stride / 2u) {
+    if (i < stride) { partial[i] += partial[i + stride]; }
+    workgroupBarrier();
+  }
+  if (i != 0u) { return; }
+  let L = max(partial[0] / f32(max(count, 1u)), 0.0); // nonzero: at least one texel
   let prev = state;
   // never written (zero), or broken: start afresh
   let first = !(prev.w > 0.5) || badf(prev.w) || bad3(prev.xyz) || prev.z <= 0.0;

@@ -155,6 +155,11 @@ export default [
         show: !document.querySelector('.tl-show').hidden,
       }));
       checks.push(h.check('H hides the controls, leaving a faint way back', hidden.hidden && hidden.corner === 'hidden' && hidden.inert && hidden.show, hidden));
+      // while the mouse or keys are in use, that way back is clear to see (3:1 or better),
+      // not 14% of itself; it fades only once nobody moves
+      await page.mouse.move(200, 200);
+      const clear = await h.until(page, () => Number(getComputedStyle(document.querySelector('.tl-show')).opacity) >= 0.8, undefined, 2000);
+      checks.push(h.check('with the mouse moving, "Show controls" is clearly visible', clear, await page.evaluate(() => getComputedStyle(document.querySelector('.tl-show')).opacity)));
       await page.keyboard.press('p');
       s = await panelState(page, 'phone');
       const unhidden = await page.evaluate(() => window.TACTILUME_DESKTOP.ui.hidden);
@@ -344,6 +349,18 @@ export default [
       };
       checks.push(h.check('the defaults: flash guard on, calm off, team colours on, buzz on, WebGPU not forced, HDR auto',
         start.flashGuard && !start.calm && start.team && start.buzz && !start.force && start.hdrAuto, start));
+
+      // The Graphics facts refresh every second; the list itself must stay, so a screen reader
+      // moving through it is not thrown back to its start. Only a changed value is rewritten.
+      await page.evaluate(() => {
+        window.__factNodes = [...document.querySelectorAll('.tl-facts dt, .tl-facts dd')];
+      });
+      await h.wait(2300);
+      const facts = await page.evaluate(() => ({
+        before: window.__factNodes.length,
+        kept: window.__factNodes.filter((n) => n.isConnected).length,
+      }));
+      checks.push(h.check('the Graphics facts are updated in place, not rebuilt each second', facts.before >= 8 && facts.kept === facts.before, facts));
 
       await sw('Flash guard').click();
       await sw('Calm mode').click();
@@ -739,6 +756,22 @@ export default [
   {
     name: 'app fallback: without WebGPU the classic engine runs',
     async run(page, h) {
+      // Records every Content-Security-Policy violation, and stands in for the preload bridge
+      // on the classic page (the renderer's own shim does not travel with the hand-over).
+      await page.addInitScript(() => {
+        window.__cspViolations = [];
+        addEventListener('securitypolicyviolation', (e) => window.__cspViolations.push(`${e.violatedDirective} ${e.blockedURI}`));
+        if (location.pathname.endsWith('/classic/index.html')) {
+          window.__setSettings = [];
+          window.tactilume = {
+            platform: 'linux',
+            app: {
+              getSettings: async () => ({ forceWebGPU: false }),
+              setSettings: async (p) => { window.__setSettings.push(p); return p; },
+            },
+          };
+        }
+      });
       // webgpu=0 forces the hand-over
       await page.goto(h.url({ webgpu: '0' }));
       const forced = await h.until(page, classicReady, undefined, 30000);
@@ -749,6 +782,28 @@ export default [
       ];
       const f0 = forced ? await page.evaluate(() => window.TACTILUME.frames) : 0;
       checks.push(h.check('the classic engine keeps drawing', forced && await h.until(page, (f) => window.TACTILUME.frames >= f + 3, f0)));
+
+      // It runs under a policy of its own, as strict as the renderer's, and nothing it does
+      // breaks that policy.
+      const policy = await page.evaluate(() => document.querySelector('meta[http-equiv="Content-Security-Policy"]')?.content || '');
+      checks.push(h.check('the classic page has a strict Content-Security-Policy', /script-src 'self' 'sha256-[A-Za-z0-9+/=]{44}'/.test(policy) && /connect-src 'none'/.test(policy) && /object-src 'none'/.test(policy), policy));
+      checks.push(h.check('the classic engine boots without breaking it', forced && (await page.evaluate(() => window.__cspViolations)).length === 0, await page.evaluate(() => window.__cspViolations)));
+
+      // The strip says what is missing and how to get it, and its button does what the menu does.
+      const strip = page.locator('.tl-desk-strip');
+      const shown = await strip.isVisible().catch(() => false);
+      const words = shown ? await strip.innerText() : '';
+      checks.push(h.check('a strip says phones and gamepads are off, and where to turn WebGPU on',
+        shown && /phones and gamepads cannot join/i.test(words) && /Graphics > Force WebGPU on This Computer/.test(words) && /press Alt/.test(words), words));
+      await page.keyboard.press('Tab');
+      const firstTab = await page.evaluate(() => document.activeElement?.textContent || '');
+      checks.push(h.check('the first Tab reaches its button', firstTab === 'Turn on WebGPU', firstTab));
+      await page.keyboard.press('Enter');
+      const asked = await h.until(page, () => window.__setSettings.length > 0, undefined, 5000);
+      checks.push(h.check('the button asks for WebGPU through the bridge', asked && JSON.stringify(await page.evaluate(() => window.__setSettings)) === '[{"forceWebGPU":true}]'));
+      checks.push(h.check('and says it applies from the next start', /next start/.test(await strip.locator('[role="status"]').innerText().catch(() => ''))));
+      if (shown) await page.getByRole('button', { name: 'Dismiss this message' }).click();
+      checks.push(h.check('Dismiss takes the strip away', shown && await strip.count() === 0));
 
       // a browser that has no WebGPU at all finds that out by itself
       const bare = await h.context.newPage();

@@ -7,7 +7,9 @@ light show drawn by a WebGPU particle engine, and you play it in three ways:
   touch pad, with no app to install and no internet needed. Several phones can play at once,
   each in its own colour.
 - **Gamepads.** Each pad is a player. The sticks steer two points of light, the triggers set
-  their strength, and the buttons change the behaviour, colours and scene.
+  their strength, and the buttons change the behaviour, colours and scene. Clicking a stick
+  holds its light down without the trigger, for anyone who cannot keep a trigger pulled;
+  click it again to let go. Settings > Gamepad lists every button.
 - **Sound.** The light can move with a microphone, with what the computer is playing, or with
   a music file.
 
@@ -33,9 +35,13 @@ npm start            # build, then open the app
 
 The first start downloads Electron's binary, which takes a minute.
 
-On Linux, Chromium turns WebGPU off for some graphics drivers. The app then runs the mobile
-engine. "Force WebGPU" in Settings (or in the app's small menu) turns WebGPU on anyway, from
-the next start; the app offers to restart.
+On Linux, Chromium turns WebGPU off for some graphics drivers (AMD ones most often). The app
+then runs the classic engine: the mobile edition's WebGL2 light show, played with the mouse,
+touch and keys. It has no phones, no gamepads, and none of the desktop's Sound or Settings
+panels, and a strip at the top of the window says so. To turn WebGPU on anyway, press the
+strip's "Turn on WebGPU" button, or press Alt to show the menu and choose
+Graphics > Force WebGPU on This Computer. It applies from the next start, and the app offers
+to restart. When WebGPU is running, the same switch is also in Settings.
 
 Chromium refuses to start as root with its sandbox on. Run the app as an ordinary user. In a
 throwaway container where you must be root, add `--no-sandbox` (for example
@@ -77,7 +83,21 @@ Things M1 does not do yet, or that the tests cannot reach. Each is safe to leave
 - **No per-adapter tuning yet.** `docs/design.md` plans to use `subgroups` and `shader-f16`
   where the GPU offers them, and larger workgroups where allowed. The engine requests
   `shader-f16` but its shaders do not use it or subgroups yet; the particle passes use
-  256-wide workgroups everywhere, and eye adaptation runs on a single invocation. The engine is correct without these; they only make it faster.
+  256-wide workgroups everywhere, and eye adaptation runs on one 64-thread workgroup. The
+  engine is correct without these; they only make it faster.
+- **A plugged-in gamepad is not prompted to join.** A pad joins at its first button press, and
+  the first-run hint says so, but the overlay does not yet use `gamepads.pads()` to show
+  "Gamepad 2: press any button to join", nor warn that a pad without the standard mapping
+  may have its buttons in other places.
+- **The HDR highlight limit has no automated test.** The composite keeps a saturated colour's
+  largest channel at the HDR peak (so pure blue no longer runs to 14 times it), but HDR
+  output cannot be read back headless; it was checked against the formula only.
+- **Packaged builds with asar integrity are untested here.** `electron-builder.yml` turns on
+  `enableEmbeddedAsarIntegrityValidation`, which only acts on Windows and macOS. Run the
+  installed app once on each before a release to see that it starts.
+- **No Dependabot for the workflow's actions.** They are pinned to commit SHAs; nothing bumps
+  them yet. A `github-actions` entry in the repository's `.github/dependabot.yml` would, but
+  that file covers every project in the repository, so it is left to its owner.
 - **Settings shows no tier.** The Settings panel shows the GPU and the particle count, but not
   the requirement tier from `docs/design.md`.
 - **One phone cannot be removed.** The link server can drop a single phone for good
@@ -107,6 +127,7 @@ src/main/        Electron's main process: window, settings, phone link server, I
 src/preload/     the bridge the renderer sees as window.tactilume
 src/renderer/    boot and frame loop (main.js), engine/, input/, audio/, ui/
 src/phone/       the controller page served to phones
+src/classic/     the desktop's strip on the classic (fallback) engine's page
 src/shared/      the phone protocol and network helpers, used on both sides
 tools/build.mjs  builds everything into dist/
 tests/           unit tests and browser scenarios

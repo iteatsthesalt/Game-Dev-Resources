@@ -138,6 +138,13 @@ fn hdr(v: Screen) -> TwoPictures {
   let extra = headroom * (1.0 - exp(-max(L - 1.0, 0.0) / headroom)); // nonzero: headroom >= 1
   let tint = s.light / max(dot(s.light, LUMA), 1e-4);
   let base = srgbToLinear(s.shown);
-  out.extended = vec4f(grain(linearToSrgb(base + tint * extra), v.clip.xy), 1.0);
+  // The roll-off above limits brightness, but one channel of saturated light can still go far
+  // past the peak (blue counts little toward brightness: pure blue would reach about 14 times
+  // it). The display would clip that channel alone and shift the hue, so the whole colour is
+  // scaled down until its largest channel is at the peak.
+  let hi = base + tint * extra;
+  let top = max(max(hi.r, max(hi.g, hi.b)), 1e-4);
+  let fitted = hi * min(1.0, max(K.hdrPeak, 1.0) / top); // nonzero: top is at least 1e-4
+  out.extended = vec4f(grain(linearToSrgb(fitted), v.clip.xy), 1.0);
   return out;
 }

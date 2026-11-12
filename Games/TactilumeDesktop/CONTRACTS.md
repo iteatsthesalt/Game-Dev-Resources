@@ -25,7 +25,11 @@ tools/build.mjs           esbuild, builds dist/
   dist/preload.cjs        ← src/preload/preload.js  (node, cjs; external: electron)
   dist/renderer/          ← src/renderer/index.html, style.css, app.js (← src/renderer/main.js, browser, esm; .wgsl as text)
   dist/phone/             ← src/phone/index.html, phone.css, phone.js (← src/phone/phone.js, browser, iife)
-  dist/classic/index.html ← ../Tactilume/Tactilume.html (the mobile engine, used as the fallback)
+  dist/classic/index.html ← ../Tactilume/Tactilume.html (the mobile engine, used as the fallback), with a
+                            Content-Security-Policy meta tag added (its inline script allowed by a sha256
+                            computed at build time) and a script tag for desktop-strip.js
+  dist/classic/desktop-strip.js ← src/classic/desktop-strip.js (browser, iife): with ?desktop=1, a strip
+                            saying phones and gamepads are off and how to turn WebGPU on
 electron-builder.yml      NSIS (Windows, per user), dmg (macOS arm64 + x64), AppImage + deb (Linux); unsigned
 ```
 
@@ -108,7 +112,7 @@ server.broadcast(msg)
 
 HTTP:
 - Serves `GET /` (index.html), `/phone.js` and `/phone.css` from `staticDir`. Everything else gets 404.
-- Headers: `Content-Security-Policy: default-src 'self'; connect-src 'self' ws:; img-src 'self' data:`, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
+- Headers: `Content-Security-Policy: default-src 'self'; connect-src 'self' ws://<the checked Host>; img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'` (`pageCsp(host)`; never a bare `ws:`, which would allow any host), `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`.
 - A request whose remote address is not private gets 403. The same applies to the WebSocket upgrade.
 
 WebSocket (`/link`):
@@ -119,6 +123,7 @@ WebSocket (`/link`):
 
 Agreed additions:
 - Before the token: a Host header that is not an address or a local name gets 403, and so does a browser upgrade whose Origin is not this server's page. At most 16 connections may wait for `hello` (503 beyond). Binary messages close 1003; `full` and `closed` refusals close 1013.
+- Per peer (`PEER_LIMITS`, by remote address with `::ffff:a.b.c.d` folded to `a.b.c.d` by `peerKey`): at most 3 of those 16 waiting connections (503 beyond), at most 16 TCP connections of any kind (more are cut at once), and a connection that sends no byte within 3 s is cut. One peer on the network cannot take the room new phones need. `peerLimits` can be passed in, for tests.
 - A phone that sends the same `hello.id` again replaces its old socket (closed 4000) and keeps its player, and may come back for 60 s after leaving even while allowNew is off.
 - Fingers held with no frame for 1.5 s are let go with an empty `touch` event, so a frozen phone cannot leave a pole stuck. The page repeats its frame four times a second while fingers rest.
 - `touch` events carry `ms` (the phone's clock) when the page sent it.
@@ -136,7 +141,7 @@ Defaults: `{ linkPort: 47615, allowNewPhones: true, forceWebGPU: false, fullscre
 ### main/audio-capture.js
 `installDisplayMedia(session, { platform, release })` sets `setDisplayMediaRequestHandler` so the renderer's `getDisplayMedia({ audio: true, video: true })` gets the primary screen together with `audio: 'loopback'`, wherever Electron supports that (Windows; macOS 14.2+).
 `systemAudioSupport({ platform, release })` → `{ supported, how: 'loopback' | 'monitor-device' | 'none' }`. On Linux the answer is `'monitor-device'`: PipeWire/Pulse monitor sources appear in `enumerateDevices`.
-Where there is no loopback (Linux, macOS before 14.2) the handler answers with no stream, so no system screen picker ever opens. Optional extras: `desktopCapturer`, `allow(request)` (main.js refuses pages that are not the app's), `primaryDisplayId()` and `log(line)`.
+Where there is no loopback (Linux, macOS before 14.2) the handler answers with no stream, so no system screen picker ever opens. Optional extras: `desktopCapturer`, `allow(request)`, `primaryDisplayId()` and `log(line)`. main.js passes all of them: `allow` admits only the window's own top frame on an app page (`window.js` `isOwnTopFrame(frame, mainFrame, pages)`), and `primaryDisplayId` is `screen.getPrimaryDisplay().id`.
 
 ### main/window.js and main/main.js
 - **GPU switches** are set before `ready`. If `forceWebGPU` is on, add `ignore-gpu-blocklist` and `enable-unsafe-webgpu`.
@@ -194,7 +199,7 @@ The shim also sets `window.__tlShim = { emit(event) /* as link:event */, sent: [
   3. `fingers` = the number of held poles, capped at 10.
   4. The behaviour comes from `behaviourFor(scene, fingers)`, with the same crossfade as mobile.
   5. `engine.frame({ dt, time, scene, settings, poles, behaviour, audio, gravity, fingers, players })`.
-  6. The governor runs.
+  6. The governor runs, told whether `engine.stats.skipped` rose during this frame.
   7. After the first frame, `bridge.app.ready()`.
 - **Idle autoplay.** When nobody has played for 20 s, the mobile edition's autopilot (`../Tactilume/src/js/input/autopilot.js`) plays, if it can be imported cleanly.
 - **Test hook:** `window.TACTILUME_DESKTOP = { ready, version, engine, hub, store, audio, ui, actions, bridge, frames, fallback: false }`, plus `desktop` (the desktop settings), `gamepads`, `phones`, `pointer` and `settings()` (the merged settings).
@@ -234,7 +239,9 @@ engine.dispose()
 - `calibrate(engine, { refreshHz, budget = 0.7, timeLimitMs = 10000 })` → `{ particles, results: [{ n, ms }] }`
 - Pure helper: `pickParticles(results, refreshHz, budget)`.
 
-`governor.js`: `createGovernor({ min, max, start, refreshHz })` → `{ update(frameMs, now) → particles | null }`. It steps down after misses and steps up slowly when there is headroom. Pure, and unit-tested.
+`governor.js`: `createGovernor({ min, max, start, refreshHz })` → `{ update(frameMs, now, skipped = false) → particles | null }`. It steps down after misses and steps up slowly when there is headroom. A frame the engine skipped (the GPU had two queued) counts as a miss whatever its time, because the display's frames keep coming on time while the GPU falls behind. Pure, and unit-tested.
+
+`shaders/adapt.wgsl`: the flash guard and eye adaptation measure the mean of every texel of the smallest bloom level (one 64-thread workgroup), not a fixed set of sample points, so light counts the same wherever it is on the screen.
 
 ### renderer/input/
 - **hub.js:**
@@ -329,7 +336,7 @@ It also takes `gamepads`, `cursorCanvas`, `test` and `particlesFixed`, and retur
 | engine | `src/renderer/engine/**`, `tests/unit/engine-*.test.js`, `tests/e2e/scenarios-engine.js` |
 | link | `src/shared/**`, `src/main/link-server.js`, `src/main/qr.js`, `src/phone/**`, `src/renderer/input/phone.js`, `tests/unit/{protocol,lan,link}*.test.js`, `tests/e2e/scenarios-phone.js` |
 | input-audio | `src/renderer/input/{hub,pointer,gamepad}.js`, `src/renderer/audio/**`, `src/main/audio-capture.js`, `tests/unit/{hub,gamepad,features}*.test.js`, `tests/e2e/scenarios-input.js` |
-| shell-ui | `src/main/{main,window,settings}.js`, `src/preload/**`, `src/renderer/{main,bridge}.js`, `src/renderer/ui/**`, `src/renderer/index.html`, `src/renderer/style.css`, `electron-builder.yml`, `.github/workflows/tactilume-desktop.yml`, `tests/unit/{settings,ui}*.test.js`, `tests/e2e/scenarios-app.js` |
+| shell-ui | `src/main/{main,window,settings}.js`, `src/preload/**`, `src/renderer/{main,bridge}.js`, `src/renderer/ui/**`, `src/classic/**`, `src/renderer/index.html`, `src/renderer/style.css`, `electron-builder.yml`, `.github/workflows/tactilume-desktop.yml`, `tests/unit/{settings,ui}*.test.js`, `tests/e2e/scenarios-app.js` |
 | integration | `tests/e2e/scenarios-integration.js`; it may fix any file above at its root, keeping this file true |
 
 The spine also writes a first version of every file above. Each one is a stub that matches its contract, so the build and the tests run from day one. The owners then replace them.

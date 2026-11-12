@@ -179,6 +179,9 @@ html.tl-idle #stage { cursor: none; }
   font-size: var(--fs-s); font-weight: 600; opacity: 0.14;
   transition: opacity var(--t) var(--ease);
 }
+/* Faint only while nobody moves: any mouse movement or key (which ends idle) shows it clearly,
+   so a mouse-only player who missed the "Press H" toast can always see the way back. */
+#ui.is-hidden:not(.is-idle) .tl-show { opacity: 0.85; }
 .tl-show:hover, .tl-show:focus-visible { opacity: 1; }
 
 /* ---- panels -------------------------------------------------------------------------------- */

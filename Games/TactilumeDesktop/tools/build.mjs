@@ -10,6 +10,7 @@
 // temporary name and then renamed into place. A test reading dist/ mid-build sees the old
 // file or the new one, never half of one.
 import { build } from 'esbuild';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +30,8 @@ const BUNDLES = [
   // Phones run whatever browser they have, so this one is a classic script for older engines
   // (iOS 15 and Android Chrome 100 onward).
   { entry: 'src/phone/phone.js', out: 'phone/phone.js', platform: 'browser', format: 'iife', target: ['safari15', 'chrome100'] },
+  // The desktop's note on the classic engine's page (see classicPage below).
+  { entry: 'src/classic/desktop-strip.js', out: 'classic/desktop-strip.js', platform: 'browser', format: 'iife', target: 'chrome130' },
 ];
 
 const COPIES = [
@@ -37,6 +40,38 @@ const COPIES = [
   ['src/phone/index.html', 'phone/index.html'],
   ['src/phone/phone.css', 'phone/phone.css'],
 ];
+
+// The classic engine (the mobile edition's page) runs in the app's window with the same
+// preload bridge as the renderer, so it gets a Content-Security-Policy as strict as the
+// renderer's. Its code is one inline script, allowed by its hash, computed here so it always
+// matches the mobile build being copied. It also gets the desktop strip (an external script),
+// which tells the player what the classic engine lacks and how to turn WebGPU on.
+function classicPage(html) {
+  const text = html.toString('utf8');
+  const hashes = [];
+  for (const m of text.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/g)) {
+    if (/\ssrc\s*=/.test(m[1] || '')) continue;
+    // the browser hashes the script as its parser sees it, with every line break a plain \n
+    const source = m[2].replace(/\r\n?/g, '\n');
+    hashes.push(`'sha256-${crypto.createHash('sha256').update(source, 'utf8').digest('base64')}'`);
+  }
+  if (!hashes.length) throw new Error('the classic page has no inline script; tools/build.mjs expects one');
+  const csp = [
+    "default-src 'self'",
+    `script-src 'self' ${hashes.join(' ')}`,
+    "style-src 'self' 'unsafe-inline'",   // the mobile page has an inline <style> and sets styles from script
+    "img-src 'self' data: blob:",
+    "media-src 'self' blob:",               // a music file plays from a blob: URL
+    "connect-src 'none'",
+    "object-src 'none'",
+    "base-uri 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+  ].join('; ');
+  const head = `<meta charset="utf-8">\n<meta http-equiv="Content-Security-Policy" content="${csp}">\n<script src="desktop-strip.js" defer></script>`;
+  if (!/<meta charset="utf-8">/i.test(text)) throw new Error('the classic page has no <meta charset="utf-8"> to put its policy after');
+  return Buffer.from(text.replace(/<meta charset="utf-8">/i, head), 'utf8');
+}
 
 function writeAtomic(rel, contents) {
   const file = path.join(dist, rel);
@@ -72,7 +107,7 @@ async function main() {
   // Bundle everything before writing anything, so a failed build leaves dist/ as it was.
   const outputs = (await Promise.all(BUNDLES.map(bundle))).flat();
   for (const [from, to] of COPIES) outputs.push([to, fs.readFileSync(path.join(root, from))]);
-  outputs.push(['classic/index.html', fs.readFileSync(CLASSIC)]);
+  outputs.push(['classic/index.html', classicPage(fs.readFileSync(CLASSIC))]);
 
   const sizes = outputs.map(([rel, contents]) => `${rel} ${(writeAtomic(rel, contents) / 1024).toFixed(0)} KB`);
   console.log(`built dist/ in ${((Date.now() - t0) / 1000).toFixed(1)} s: ${sizes.join(', ')}`);

@@ -337,7 +337,6 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
       entries: [
         { binding: 0, resource: { buffer: r.exposureBuffer } },
         { binding: 1, resource: r.levels[r.levels.length - 1].view },
-        { binding: 2, resource: r.sampler },
         { binding: 3, resource: { buffer: r.state } },
       ],
     });

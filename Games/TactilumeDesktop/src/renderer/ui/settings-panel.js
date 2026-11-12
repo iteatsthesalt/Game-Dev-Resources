@@ -178,8 +178,28 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     if (status) rows.push(['Chromium reports WebGPU', String(status).replace(/_/g, ' ')]);
     const device = (gpuInfo?.gpuDevice || []).find((d) => d.active) || gpuInfo?.gpuDevice?.[0];
     if (device?.driverVersion) rows.push(['Driver', `${device.driverVendor ? `${device.driverVendor} ` : ''}${device.driverVersion}`]);
-    gpuFacts.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })]));
+    drawFacts(rows);
     showReadout();
+  }
+
+  // This runs every second while the panel is open, and the frame time changes each time. Only
+  // what changed is redrawn: rebuilding the list would throw a screen reader moving through it
+  // back to its start every second.
+  let shownFacts = [];   // [{ key, dd, value }] as on screen
+  function drawFacts(rows) {
+    const sameRows = rows.length === shownFacts.length && rows.every(([k], i) => shownFacts[i].key === k);
+    if (!sameRows) {
+      shownFacts = rows.map(([key, value]) => ({ key, value, dd: h('dd', { text: value }) }));
+      gpuFacts.replaceChildren(...shownFacts.flatMap((f) => [h('dt', { text: f.key }), f.dd]));
+      return;
+    }
+    rows.forEach(([, value], i) => {
+      const f = shownFacts[i];
+      if (f.value !== value) {
+        f.value = value;
+        f.dd.textContent = value;
+      }
+    });
   }
 
   // ---- doing what was asked -------------------------------------------------------------------

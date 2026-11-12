@@ -32,6 +32,15 @@ export function isAppPage(url, dirs) {
   });
 }
 
+// True when `frame` (an Electron WebFrameMain) is the window's own top frame, `mainFrame`,
+// showing one of the app's pages. A frame is the same frame when its process and routing ids
+// match. Used for requests that carry a frame instead of a webContents, such as a screen share.
+export function isOwnTopFrame(frame, mainFrame, dirs) {
+  return !!frame && !!mainFrame && !frame.parent
+    && frame.processId === mainFrame.processId && frame.routingId === mainFrame.routingId
+    && isAppPage(frame.url, dirs);
+}
+
 // What a page in the window may use. Electron grants every permission unless told otherwise,
 // so this is a short list of yeses and a no to everything else (notifications, location,
 // camera, MIDI, HID, serial, USB, the local network, ...).

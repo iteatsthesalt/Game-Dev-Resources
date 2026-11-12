@@ -39,8 +39,14 @@ const FILES = new Map([
   ['/phone.js', ['phone.js', 'text/javascript; charset=utf-8']],
   ['/phone.css', ['phone.css', 'text/css; charset=utf-8']],
 ]);
+// The page may talk only to this server. In CSP Level 3, 'self' already covers ws:// to the
+// same host and port; older Safari does not read it that way, so the socket's exact address is
+// named too, built from the Host header once that has been checked (pageCsp). A bare "ws:"
+// would let the page open a socket to any host at all.
+const CSP_REST = "img-src 'self' data:; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+export const pageCsp = (host) => `default-src 'self'; connect-src 'self'${host ? ` ws://${host}` : ''}; ${CSP_REST}`;
 const HEADERS = Object.freeze({
-  'Content-Security-Policy': "default-src 'self'; connect-src 'self' ws:; img-src 'self' data:",
+  'Content-Security-Policy': pageCsp(''),
   'X-Content-Type-Options': 'nosniff',
   'Referrer-Policy': 'no-referrer',
   'Cache-Control': 'no-store',
@@ -71,7 +77,22 @@ const CLOSE_GRACE_MS = 1000;       // a peer that does not finish closing is cut
 // matches the hub's palette order, so most phones never see it change.
 const SLOT_COLORS = ['#e69f00', '#56b4e9', '#009e73', '#f0e442', '#0072b2', '#d55e00', '#cc79a7', '#ffffff'];
 
-const pathOf = (url) => String(url || '').split('?')[0];
+// One peer on the network must not be able to fill the room that new phones need. A phone
+// opens one socket for the link and a few for the page, so these leave it plenty, and a peer
+// that holds more is refused: a phone whose Wi-Fi blinks can always get back in. Tests pass others.
+export const PEER_LIMITS = Object.freeze({
+  pending: 3,       // sockets from one address waiting to say hello (503 beyond)
+  sockets: 16,      // TCP connections from one address, of any kind (cut beyond)
+  firstByte: 3000,  // ms a new connection may stay silent before its request starts
+});
+
+// An IPv4 peer on a dual-stack socket shows as ::ffff:a.b.c.d; it is the same peer as a.b.c.d.
+export const peerKey = (address) => {
+  const a = String(address || '').toLowerCase();
+  return a.startsWith('::ffff:') && a.includes('.') ? a.slice(7) : a;
+};
+
+const pathOf = (url) =>String(url || '').split('?')[0];
 const isWildcard = (host) => !host || host === '0.0.0.0' || host === '::';
 
 // A token bucket: `rate` messages a second on average, up to `burst` at once.
@@ -92,16 +113,23 @@ export function createLinkServer({
   port = 47615, host = '0.0.0.0', staticDir, onEvent = () => {},
   allowNew = true, maxPhones = 8, log = () => {}, now = Date.now,
   randomBytes = (n) => crypto.randomBytes(n), interfaces = () => os.networkInterfaces(),
-  isPeerAllowed = isPrivateAddress, timeouts: timeoutOverrides = {},
+  isPeerAllowed = isPrivateAddress, timeouts: timeoutOverrides = {}, peerLimits: peerLimitOverrides = {},
 } = {}) {
   if (!Number.isInteger(port) || port < 0 || port > 65535) throw new TypeError(`createLinkServer: bad port ${port}`);
   if (!Number.isInteger(maxPhones) || maxPhones < 1 || maxPhones > 8) throw new TypeError('createLinkServer: maxPhones is 1..8');
   const timeouts = { ...TIMEOUTS, ...timeoutOverrides };
+  const peerLimits = { ...PEER_LIMITS, ...peerLimitOverrides };
   let token = newToken(randomBytes);
   let running = false;
   let boundPort = 0;
   let heartbeat = null;
   let pending = 0;                                // connections that have not said hello
+  const pendingByPeer = new Map();                // peer → how many of those are its
+  const socketsByPeer = new Map();                // peer → its open TCP connections
+  const bump = (map, key, by) => {
+    const n = (map.get(key) || 0) + by;
+    if (n > 0) map.set(key, n); else map.delete(key);
+  };
   const phones = new Map();                       // player → { conn, name, since }
   const sessions = new Map();                     // session id → { player, leftAt } (0 while connected)
   const latest = { behaviour: '', palette: '' };  // what the renderer last said is playing
@@ -118,6 +146,7 @@ export function createLinkServer({
   };
 
   const server = http.createServer({ maxHeaderSize: 8192 }, (req, res) => {
+    req.socket.setTimeout(0);   // it spoke, so the first-byte limit is over (see 'connection')
     const refuse = (status, text) => respond(res, status, 'text/plain; charset=utf-8', text);
     if (!isPeerAllowed(req.socket.remoteAddress)) return refuse(403, 'Forbidden');
     if (!isLocalHostHeader(req.headers.host)) return refuse(403, 'Forbidden');
@@ -128,7 +157,9 @@ export function createLinkServer({
         log(`link: cannot read ${entry[0]}: ${err.message}`);
         return refuse(404, 'Not found');
       }
-      res.writeHead(200, { ...HEADERS, 'Content-Type': entry[1], 'Content-Length': body.length });
+      // isLocalHostHeader passed above, so the Host is an address or a plain local name
+      const csp = pageCsp(String(req.headers.host).toLowerCase());
+      res.writeHead(200, { ...HEADERS, 'Content-Security-Policy': csp, 'Content-Type': entry[1], 'Content-Length': body.length });
       res.end(req.method === 'HEAD' ? undefined : body);
     });
   });
@@ -139,6 +170,23 @@ export function createLinkServer({
   server.keepAliveTimeout = 5000;
   server.maxConnections = 128;
 
+  // Every TCP connection, before HTTP sees it: one peer may hold only its share, and a socket
+  // that sends nothing is cut soon, so idle sockets cannot sit on the 128 for half a minute.
+  server.on('connection', (socket) => {
+    socket.on('error', () => {});
+    const key = peerKey(socket.remoteAddress);
+    if ((socketsByPeer.get(key) || 0) >= peerLimits.sockets) {
+      log(`link: too many connections from ${key}; one was cut`);
+      socket.destroy();
+      return;
+    }
+    bump(socketsByPeer, key, 1);
+    socket.once('close', () => bump(socketsByPeer, key, -1));
+    // Cleared when the request or the upgrade arrives; HTTP's own keep-alive timeout and the
+    // link's hello timer take over from there.
+    socket.setTimeout(peerLimits.firstByte, () => socket.destroy());
+  });
+
   // ---- WebSocket: the link itself --------------------------------------------------------
 
   const wss = new WebSocketServer({ noServer: true, maxPayload: LIMITS.maxMessageBytes, perMessageDeflate: false });
@@ -146,14 +194,19 @@ export function createLinkServer({
   server.on('upgrade', (req, socket, head) => {
     // a peer that vanishes mid-handshake must not take the main process down
     socket.on('error', () => {});
+    socket.setTimeout(0);       // it spoke, so the first-byte limit is over (see 'connection')
     const refuse = (status) => socket.end(`HTTP/1.1 ${status}\r\nConnection: close\r\nContent-Length: 0\r\n\r\n`, () => socket.destroy());
     if (!isPeerAllowed(req.socket.remoteAddress)) return refuse('403 Forbidden');
     if (pathOf(req.url) !== '/link') return refuse('404 Not Found');
     if (!isLocalHostHeader(req.headers.host)) return refuse('403 Forbidden');
     // browsers always send Origin; a client without one is not a web page
     if (req.headers.origin !== undefined && !isSameOrigin(req.headers.origin, req.headers.host)) return refuse('403 Forbidden');
-    if (pending >= MAX_PENDING) return refuse('503 Service Unavailable');
-    wss.handleUpgrade(req, socket, head, (ws) => accept(ws, req.socket.remoteAddress));
+    // the room for phones about to join is shared, and no one peer may take it all
+    const peer = peerKey(req.socket.remoteAddress);
+    if (pending >= MAX_PENDING || (pendingByPeer.get(peer) || 0) >= peerLimits.pending) {
+      return refuse('503 Service Unavailable');
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => accept(ws, peer));
   });
 
   const freeSlot = () => {
@@ -189,6 +242,7 @@ export function createLinkServer({
       helloTimer: null,
     };
     pending++;
+    bump(pendingByPeer, remote, 1);
     conn.helloTimer = setTimeout(() => { if (!conn.player) cut(conn, 1008, 'hello'); }, timeouts.hello);
     ws.on('message', (data, isBinary) => onMessage(conn, data, isBinary));
     ws.on('pong', () => { conn.lastHeard = now(); conn.pingSent = false; });
@@ -197,7 +251,7 @@ export function createLinkServer({
   }
 
   function settle(conn) {
-    if (conn.counted) { conn.counted = false; pending--; }
+    if (conn.counted) { conn.counted = false; pending--; bump(pendingByPeer, conn.remote, -1); }
     clearTimeout(conn.helloTimer);
   }
 

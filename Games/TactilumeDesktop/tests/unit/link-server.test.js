@@ -9,7 +9,7 @@ import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { WebSocket } from 'ws';
-import { createLinkServer, TIMEOUTS } from '../../src/main/link-server.js';
+import { createLinkServer, TIMEOUTS, PEER_LIMITS, peerKey } from '../../src/main/link-server.js';
 import { haptic, state, LIMITS } from '../../src/shared/protocol.js';
 
 const ID_A = 'sessionAAAAAAAAAAAAAAA';
@@ -53,8 +53,10 @@ async function start(options = {}) {
 
 // A WebSocket client that keeps what it hears. `failed` is the HTTP status when the server
 // refused the upgrade.
-function client(port, { origin, headers, autoPong = true, path: urlPath = '/link' } = {}) {
-  const ws = new WebSocket(`ws://127.0.0.1:${port}${urlPath}`, { origin, headers, autoPong });
+// localAddress picks the peer: on Linux all of 127/8 is this machine, so 127.0.0.2 is a second
+// address on the network as far as the server can tell.
+function client(port, { origin, headers, autoPong = true, path: urlPath = '/link', localAddress } = {}) {
+  const ws = new WebSocket(`ws://127.0.0.1:${port}${urlPath}`, { origin, headers, autoPong, localAddress });
   const c = { ws, messages: [], close: null, failed: 0 };
   c.opened = new Promise((resolve) => {
     ws.on('open', () => resolve(true));
@@ -85,9 +87,9 @@ async function join(port, token, { id, name = '', ...opts } = {}) {
   return c;
 }
 
-function get(port, urlPath, { method = 'GET', headers = {} } = {}) {
+function get(port, urlPath, { method = 'GET', headers = {}, localAddress } = {}) {
   return new Promise((resolve, reject) => {
-    const req = http.request({ host: '127.0.0.1', port, path: urlPath, method, headers }, (res) => {
+    const req = http.request({ host: '127.0.0.1', port, path: urlPath, method, headers, localAddress, agent: false }, (res) => {
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => { body += chunk; });
@@ -109,7 +111,11 @@ describe('HTTP: the controller page', () => {
     assert.equal(page.status, 200);
     assert.equal(page.body, '<!doctype html><title>pad</title>');
     assert.equal(page.headers['content-type'], 'text/html; charset=utf-8');
-    assert.equal(page.headers['content-security-policy'], "default-src 'self'; connect-src 'self' ws:; img-src 'self' data:");
+    // the socket may go only to this server: no bare "ws:", which would allow any host
+    assert.equal(page.headers['content-security-policy'],
+      `default-src 'self'; connect-src 'self' ws://127.0.0.1:${port}; img-src 'self' data:; `
+      + "object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'");
+    assert.doesNotMatch(page.headers['content-security-policy'], /ws:(;|\s|$)/);
     assert.equal(page.headers['x-content-type-options'], 'nosniff');
     assert.equal(page.headers['referrer-policy'], 'no-referrer');
     assert.equal(page.headers['cache-control'], 'no-store');
@@ -283,7 +289,8 @@ describe('WebSocket: who gets in', () => {
   });
 
   test('at most 16 connections may wait to say hello; the 17th gets 503', async () => {
-    const { port, token } = await start();
+    // every client here is 127.0.0.1, so the per-peer share is lifted to reach the total
+    const { port, token } = await start({ peerLimits: { pending: 32, sockets: 64 } });
     const waiting = [];
     for (let i = 0; i < 16; i++) {
       const c = client(port);
@@ -297,6 +304,91 @@ describe('WebSocket: who gets in', () => {
     waiting[0].send({ t: 'hello', v: 1, token });
     await waiting[0].next('welcome');
     assert.equal(await client(port).opened, true);
+  });
+});
+
+describe('one peer cannot take the room new phones need', () => {
+  const OTHER = '127.0.0.2';
+  const rawSocket = (port, localAddress) => new Promise((resolve) => {
+    const s = net.connect({ port, host: '127.0.0.1', localAddress }, () => resolve(s));
+    s.on('error', () => {});
+  });
+  const closedWithin = (s, ms) => Promise.race([
+    new Promise((resolve) => s.once('close', () => resolve(true))),
+    sleep(ms).then(() => false),
+  ]);
+
+  test('peerKey folds the IPv4-mapped form into plain IPv4', () => {
+    assert.equal(peerKey('::ffff:192.168.1.5'), '192.168.1.5');
+    assert.equal(peerKey('::FFFF:10.0.0.2'), '10.0.0.2');
+    assert.equal(peerKey('192.168.1.5'), '192.168.1.5');
+    assert.equal(peerKey('fe80::1'), 'fe80::1');
+  });
+
+  test('the defaults leave a phone room and cut silent sockets within seconds', () => {
+    assert.ok(PEER_LIMITS.pending >= 2 && PEER_LIMITS.pending <= 3);
+    assert.ok(PEER_LIMITS.sockets <= 16);
+    assert.ok(PEER_LIMITS.firstByte <= 3000);
+  });
+
+  test('a peer holding sockets that never say hello gets 503 past its share; another phone still joins', async () => {
+    const { port, token, events } = await start();
+    const idle = [];
+    for (let i = 0; i < 16; i++) {
+      const c = client(port);
+      await c.opened;
+      idle.push(c);
+    }
+    assert.equal(idle.filter((c) => c.ws.readyState === WebSocket.OPEN).length, PEER_LIMITS.pending);
+    assert.ok(idle.filter((c) => c.failed === 503).length >= 16 - PEER_LIMITS.pending);
+    const phone = await join(port, token, { localAddress: OTHER, name: 'B' });
+    assert.equal(phone.welcome.player, 1);
+    assert.equal(joins(events).length, 1);
+  });
+
+  test('once one of its sockets says hello, that peer has room again', async () => {
+    const { port, token } = await start();
+    const waiting = [];
+    for (let i = 0; i < PEER_LIMITS.pending; i++) {
+      const c = client(port);
+      assert.equal(await c.opened, true);
+      waiting.push(c);
+    }
+    assert.equal(await client(port).opened, false);
+    waiting[0].send({ t: 'hello', v: 1, token });
+    await waiting[0].next('welcome');
+    assert.equal(await client(port).opened, true);
+  });
+
+  test('a peer past its TCP share is cut at once; the page still loads for another address', async () => {
+    const { port, logs } = await start({ peerLimits: { firstByte: 60000 } });
+    const held = [];
+    for (let i = 0; i < PEER_LIMITS.sockets; i++) held.push(await rawSocket(port, '127.0.0.3'));
+    const extra = await rawSocket(port, '127.0.0.3');
+    assert.equal(await closedWithin(extra, 1000), true, 'the extra socket from the same address is cut');
+    assert.ok(logs.some((l) => /too many connections from 127\.0\.0\.3/.test(l)), logs.join('\n'));
+    assert.equal((await get(port, '/', { localAddress: OTHER })).status, 200);
+    // the held ones are not cut just for being many
+    assert.equal(held.some((s) => s.destroyed), false);
+    for (const s of held) s.destroy();
+    // and with them gone, that address may connect again
+    await waitFor(() => held.every((s) => s.closed), 'the held sockets to close');
+    await sleep(20);
+    assert.equal((await get(port, '/', { localAddress: '127.0.0.3' })).status, 200);
+  });
+
+  test('a socket that sends nothing is cut after the first-byte time; one that asks in time is served', async () => {
+    const { port } = await start({ peerLimits: { firstByte: 150 } });
+    const silent = await rawSocket(port);
+    const t0 = Date.now();
+    assert.equal(await closedWithin(silent, 2000), true, 'the silent socket is cut');
+    assert.ok(Date.now() - t0 < 1000);
+    // a page load and a link that joins are not cut by it
+    assert.equal((await get(port, '/')).status, 200);
+    const c = client(port);
+    assert.equal(await c.opened, true);
+    await sleep(300);
+    assert.equal(c.ws.readyState, WebSocket.OPEN, 'the upgraded socket outlives the first-byte time');
   });
 });
 

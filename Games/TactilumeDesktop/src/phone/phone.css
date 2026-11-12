@@ -79,7 +79,12 @@ body[data-state="playing"] #pad {
   border-color: var(--player);
   box-shadow: inset 0 0 40px -10px var(--player);
 }
-body:not([data-state="playing"]) #pad { opacity: 0.55; }
+/* Before the phone has joined, the pad looks asleep: only its border and background dim. Not
+   opacity, which would fade the help text inside too, just when a first-time player reads it. */
+body:not([data-state="playing"]) #pad {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: radial-gradient(circle at 50% 45%, #0d0d11, #030304 75%);
+}
 #pad:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 
 .pad-help {
@@ -156,6 +161,12 @@ body:not([data-state="playing"]) #fullscreen { display: none; }
 
 .note { grid-area: note; margin: 0; font-size: 14px; color: var(--muted); text-align: center; }
 
+/* Small phones (320 px wide): three buttons share the row, so each gets a little less padding
+   and type, and "Surprise" fits whole. */
+@media (max-width: 340px) {
+  .row > button { font-size: 15px; padding: 6px 4px; }
+}
+
 /* A phone on its side: the buttons move to a column on the right, so the pad keeps its height. */
 @media (orientation: landscape) and (max-height: 560px) {
   body {
@@ -165,7 +176,8 @@ body:not([data-state="playing"]) #fullscreen { display: none; }
   }
   .controls { align-content: center; }
   .row { flex-wrap: wrap; }
-  .row > button { flex: 1 1 45%; }
+  /* the side column can be 180 px, two buttons a row: the same smaller type keeps labels whole */
+  .row > button { flex: 1 1 45%; font-size: 15px; padding: 6px 4px; }
   .note { font-size: 14px; }
 }
 

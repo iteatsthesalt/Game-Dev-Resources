@@ -397,6 +397,9 @@ async function boot() {
     }
     blend.mix = Math.min(1, blend.mix + dt / BLEND_SECONDS);
 
+    // engine.frame skips a frame while the GPU has two queued; the governor must hear of it,
+    // because the display's clock keeps ticking on time while the GPU falls behind
+    const skippedBefore = engine.stats.skipped;
     engine.frame({
       dt, time, scene, settings, poles, fingers,
       behaviour: { a: blend.a, b: blend.b, mix: blend.mix },
@@ -406,7 +409,7 @@ async function boot() {
     });
 
     if (governor) {
-      const next = governor.update(interval, now);
+      const next = governor.update(interval, now, engine.stats.skipped > skippedBefore);
       if (next) engine.setQuality({ particles: next });
     }
     ui.update(dt);

@@ -17,7 +17,7 @@ import { createSettings } from './settings.js';
 import { createLinkServer } from './link-server.js';
 import { qrSvg } from './qr.js';
 import { installDisplayMedia, systemAudioSupport } from './audio-capture.js';
-import { allowPermission, applyGpuSwitches, createMainWindow, fitBounds, isAppPage } from './window.js';
+import { allowPermission, applyGpuSwitches, createMainWindow, fitBounds, isAppPage, isOwnTopFrame } from './window.js';
 import { haptic, state } from '../shared/protocol.js';
 
 const SMOKE = process.argv.includes('--smoke');
@@ -225,7 +225,16 @@ function start() {
       event.preventDefault();
       callback();
     });
-    installDisplayMedia(ses, { platform: process.platform, release: os.release(), desktopCapturer });
+    // Sharing the screen and the computer's sound skips the picker, so only the app's own
+    // top-level page may ask, and the screen shared is the primary one.
+    installDisplayMedia(ses, {
+      platform: process.platform,
+      release: os.release(),
+      desktopCapturer,
+      allow: (request) => !!win && !win.isDestroyed() && isOwnTopFrame(request?.frame, win.webContents.mainFrame, pages),
+      primaryDisplayId: () => screen.getPrimaryDisplay().id,
+      log,
+    });
   }
 
   // ---- the window's place and state ----------------------------------------------------
