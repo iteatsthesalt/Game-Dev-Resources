@@ -1592,21 +1592,19 @@ Expected: FAIL in every test except `Connect OpenRouter finishes through the log
 3. Sends `back.state {canHandle}` now, and again whenever `canHandle` changes: on `hashchange`, and through a `MutationObserver` on `document.body` (`subtree`, `childList`, and the attributes `open` and `aria-expanded`). `canHandle` is true when the hash is not home, or when a `dialog[open]` or a `[aria-haspopup="menu"][aria-expanded="true"]` exists.
 4. **Starts hands-free with no touch** (§6.1) when `hello.micConsent && hello.sdk >= 33 && getSettings().firstRunDone && ['auto', 'always'].includes(getSettings().voice.mode) && app.handsFree.state === 'idle'`: it calls `app.handsFree.start()`, which probes, makes a new listener, keeps the screen on, starts the media session and starts lean-back, as the **Start** button does.
 
-- [ ] **Step 5: Wire boot, the card and the dialogs**
+- [ ] **Step 5: Wire the card's Open announcement**
 
-- `src/ui/boot.js`: call `await platform.attach?.(app)` after the app object is complete, just before it is returned.
-- `card.js`: in `makeActionHandler`, when `app.platform.caps.inAppSiteView` is true, `open` announces `Opened in the site view.` instead of `Opened in a new tab.`. While the **⋯** menu is open, a `byways:back` listener on `window` closes it the way Escape does and calls `event.preventDefault()`; closing the menu removes the listener.
-- `handsfree-ui.js`: while the help card, the recap or the search dialog is open, a `byways:back` listener closes it the way its **Close** button does, so its `hold` is released, and calls `event.preventDefault()`.
+`card.js`: in `makeActionHandler`, when `app.platform.caps.inAppSiteView` is true, `open` announces `Opened in the site view.` instead of `Opened in a new tab.`. Nothing else changes: Plan 01's `boot()` already calls `attach`, its router already closes an open dialog on `byways:back`, and Plan 02's **⋯** menu already closes itself on it.
 
 - [ ] **Step 6: Run it to see it pass**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`, then `npm test`
-Expected: PASS (13 e2e tests), and all unit tests still pass.
+Expected: PASS (14 e2e tests), and all unit tests still pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/platform/android.js src/ui/boot.js src/ui/components/card.js src/ui/handsfree-ui.js tests/e2e/helpers/fakes.js tests/e2e/android.spec.js
+git add src/platform/android.js src/ui/components/card.js tests/e2e/helpers/fakes.js tests/e2e/android.spec.js
 git commit -m "Wire share-in, Back, the site view and hands-free into the Android app"
 ```
 
