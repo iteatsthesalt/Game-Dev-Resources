@@ -9,7 +9,10 @@
 //   --eval file.js         run this file's code in the page once it has booted; it may return a promise
 //   --wait 300             milliseconds to wait before the picture (default 300)
 //   --target artifact      the published-page build instead of the standalone one
-// It reads the dev build in .build/, so run "npm run build:dev" first. Exits 1 if the page logs an error.
+//   --page file.html       this built page instead of the one in .build/ (a build of your own:
+//                          node tools/build.js --out <folder>, then --page <folder>/Tollbound.html)
+// It reads the dev build in .build/ unless --page is given, so run "npm run build:dev" first. Exits 1 if the page
+// logs an error.
 const fs = require('fs'), path = require('path');
 const { chromium } = require('playwright');
 
@@ -21,10 +24,11 @@ for (let i = 0; i < args.length; i++) {
   if (next === undefined || next.startsWith('--')) opt[a.slice(2)] = true;
   else { opt[a.slice(2)] = next; i++; }
 }
-if (!opt.out) { console.error('usage: node tools/shot.js --out file.png [--query q] [--size WxH] [--mobile] [--dpr n] [--eval file.js] [--wait ms] [--target artifact]'); process.exit(1); }
+if (!opt.out) { console.error('usage: node tools/shot.js --out file.png [--query q] [--size WxH] [--mobile] [--dpr n] [--eval file.js] [--wait ms] [--target artifact] [--page file.html]'); process.exit(1); }
 
 const root = path.join(__dirname, '..');
-const file = path.join(root, '.build', opt.target === 'artifact' ? 'Tollbound.artifact.html' : 'Tollbound.html');
+const file = typeof opt.page === 'string' ? path.resolve(opt.page)
+  : path.join(root, '.build', opt.target === 'artifact' ? 'Tollbound.artifact.html' : 'Tollbound.html');
 const [w, h] = String(opt.size || '960x540').split('x').map(Number);
 
 (async () => {
