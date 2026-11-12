@@ -1168,7 +1168,7 @@ test('cleveland keeps CC0 only and pages by skip', async () => {
   const { ctx, calls } = await adapterCtx(); const out = await cleveland.random(ctx);
   assert.ok(+new URL(calls[1].url).searchParams.get('skip') < 30000);
   assert.deepEqual(out.map(f => f.title), ['Twilight in the Wilderness']); assert.equal(out[0].licence, 'CC0');
-  await cleveland.random(ctx); assert.equal(calls.filter(c => c.url.includes('limit=1')).length, 1);
+  await cleveland.random(ctx); assert.equal(calls.filter(c => c.url.endsWith('limit=1')).length, 1);
 });
 ```
 

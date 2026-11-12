@@ -210,14 +210,15 @@ git commit -m "Add the extension manifest template and browser overlays"
 ### Task 2: Extension build target and manifest checks
 
 **Files:**
-- Modify: `tools/build.js` (the `extension` target), `tools/check.js`
+- Modify: `tools/build.js` (the `extension` branch of `build()`), `tools/check.js`, `tests/unit/build.test.js` (Plan 01's placeholder test)
 - Test: `tests/unit/ext-check.test.js`
 
 **Interfaces:**
-- Consumes: `extensionManifest` (Task 1).
+- Consumes: `extensionManifest` (Task 1); Plan 01's `build({target, outRoot, id, now})`, `OUTPUTS.extension = ['dist/chrome', 'dist/firefox']`, `runChecks({srcDir, outputs, extraHtml})`, `checkHtml` and `APP_CSP`.
 - Produces:
-  - `buildExtension(browser: 'chrome'|'firefox', outDir: string) → Promise<void>` in `tools/build.js`
+  - `buildExtension(browser: 'chrome'|'firefox', outDir: string, {id = process.env.GITHUB_SHA || 'dev', now = new Date()} = {}) → Promise<void>` in `tools/build.js`
   - `checkExtensionDir(dir: string, browser: 'chrome'|'firefox') → Promise<string[]>` in `tools/check.js` (empty array = clean)
+  - `EXT_PAGE_CSP` in `tools/check.js`, exactly `APP_CSP` with its `connect-src` replaced by `connect-src 'self' https: http:` (the extension may reach models on your local network): `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`
 
 - [ ] **Step 1: Write the failing tests** in `tests/unit/ext-check.test.js`
 
@@ -225,8 +226,9 @@ git commit -m "Add the extension manifest template and browser overlays"
 let dir;
 before(async () => {
   dir = await mkdtemp(join(tmpdir(), 'byways-ext-'));
-  await buildExtension('chrome', join(dir, 'chrome'));
-  await buildExtension('firefox', join(dir, 'firefox'));
+  const stamp = { id: 'abc123', now: new Date('2026-11-11T00:00:00Z') };
+  await buildExtension('chrome', join(dir, 'chrome'), stamp);
+  await buildExtension('firefox', join(dir, 'firefox'), stamp);
 });
 const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
 // copyBuild(): cp(join(dir, 'chrome'), <new tmp dir>, {recursive: true}) and return that dir
@@ -237,7 +239,7 @@ for (const b of ['chrome', 'firefox']) test(`buildExtension writes the ${b} mani
   for (const f of ['core/engine.js', 'ui/boot.js', 'platform/extension.js', 'data/library.json', 'assets/icons/icon-192.png'])
     assert.ok(existsSync(join(d, f)), f);
   for (const f of readdirSync('shells/extension').filter((f) => !f.startsWith('manifest.'))) assert.ok(existsSync(join(d, f)), f);
-  assert.equal(JSON.parse(readFileSync(join(d, 'build.json'), 'utf8')).id, process.env.GITHUB_SHA ?? 'dev');
+  assert.deepEqual(JSON.parse(readFileSync(join(d, 'build.json'), 'utf8')), { id: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' });
 });
 
 test('buildExtension never copies the Lab, vendor or manifest parts', () => {
@@ -282,9 +284,11 @@ test('checkExtensionDir reports a lab folder', async () => {
 Run: `node --test tests/unit/ext-check.test.js`
 Expected: FAIL with `does not provide an export named 'buildExtension'`.
 
-- [ ] **Step 3: Implement `buildExtension(browser, outDir)` in `tools/build.js`**
+In `tests/unit/build.test.js`, rename Plan 01's `extension and android targets write only build.json until Plans 07 and 08` to `android target writes only build.json until Plan 08`, and loop over `OUTPUTS.android` only.
 
-It removes `outDir`, then copies `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` into `outDir` under the same names. It copies every file in `shells/extension/` except `manifest.*.json` to the root of `outDir`. It writes `manifest.json` from `extensionManifest(browser, {version: <package.json version>})` and `build.json` = `{"id": process.env.GITHUB_SHA ?? "dev", "builtAt": new Date().toISOString()}`. It never reads `src/lab`, `src/versions.json` or `vendor/`. The `extension` target (and `all`) calls it for `chrome` → `dist/chrome` and `firefox` → `dist/firefox`.
+- [ ] **Step 3: Implement `buildExtension(browser, outDir, {id, now})` in `tools/build.js`**
+
+It empties `outDir`, then copies `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` into `outDir` under the same names. It copies every file in `shells/extension/` except `manifest.*.json` to the root of `outDir`. It writes `manifest.json` from `extensionManifest(browser, {version: <package.json version>})` and `build.json` = `{id, builtAt: now.toISOString()}`. It never reads `src/lab`, `src/versions.json` or `vendor/`. The `extension` branch of `build()` (also used by `all` and `--check`) now calls `buildExtension('chrome', join(outRoot, 'dist/chrome'), {id, now})` and the same for `firefox`, instead of writing an empty folder.
 
 - [ ] **Step 4: Implement `checkExtensionDir(dir, browser)` in `tools/check.js`**
 
@@ -294,7 +298,7 @@ The rules, in this order, each adding the exact message from the tests:
 3. No `lab/` or `vendor/` folder at the root: `<name>/: must not be in the extension build`.
 4. Every `.html` file: each `<script … src=…>` whose value matches `/^(?:https?:)?\/\//i` gives `<file>: remote script <src>`.
 
-The `--check` run builds both browsers into its temporary folder and adds `checkExtensionDir` errors to its failure list.
+`runChecks` calls `checkExtensionDir` for each output folder whose last segment is `chrome` or `firefox`, and adds its errors to the list. `checkHtml` expects `EXT_PAGE_CSP` instead of `APP_CSP` for HTML files inside those two folders.
 
 - [ ] **Step 5: Run the tests and see them pass**
 

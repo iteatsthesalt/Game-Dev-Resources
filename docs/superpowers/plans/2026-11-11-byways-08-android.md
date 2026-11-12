@@ -1232,4 +1232,165 @@ git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways src/la
 git commit -m "Serve the Lab on its own origin with a save-only bridge"
 ```
 
-<!-- PLAN CONTINUES -->
+### Task 14: Wire the Android platform into the app
+
+**Files:**
+- Modify: `src/platform/android.js`, `src/ui/boot.js`, `src/ui/views/settings/about.js`, the Plan 03 settings section that renders the dwell-time control (find it in `src/ui/views/settings/`)
+- Modify: `tests/e2e/helpers/fakes.js`
+- Create: `tests/e2e/android.spec.js`
+
+**Interfaces:**
+- Consumes: `boot(platform) → Promise<App>` and the `App` fields `engine`, `getSettings()`, `saveSettings(patch)`, `handsFree`, `platform` (overview); `navigate(route)` (`ui/router.js`); `showResult(result)` (`ui/views/stumble.js`); `makeFind(partial)` (`core/model/find.js`); `domainOf(u)` (`core/util/url.js`); `showToast(message)` (`ui/toast.js`); `createHandsFree(…).start()` and `.state`; `mockNet(page)` and `tests/fixtures/routes.js` (Plan 01); `extractSharedLink`, `platform.app` (Task 6).
+- Produces:
+  - `platform.attach(app) → Promise<void>`. `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
+  - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. Any open panel, card menu or help card that closes itself calls `event.preventDefault()`.
+  - `installFakeAndroidBridge(page, {hello?, update?}) → Promise<{native: () => Promise<object[]>, emit(ch, event, data), unmatched: string[]}>` in `tests/e2e/helpers/fakes.js`.
+
+- [ ] **Step 1: Add the fake bridge helper**
+
+`installFakeAndroidBridge` exposes a binding `__nativeFetch(req)` that answers from `tests/fixtures/routes.js`, reading the fixture with the same path rule `mockNet` uses. It returns `{status, statusText, headers, body, url}`, or `{error: 'network'}` after pushing the URL to `unmatched`. Through `addInitScript` it defines `window.BywaysNative = {onmessage: null, postMessage(s)}`, which records every message in `window.__native` and replies:
+
+| Message | Reply |
+|---|---|
+| `app.hello` | `hello`, default `{versionName:'0.1.0', versionCode:1, sdk:34, micConsent:false}` |
+| `app.checkUpdate` | `update`, default `{available:false, latest:'0.1.0', url:null}`; `update:'error'` replies `{ok:false, error:{code:'network'}}` |
+| `fetch.request` | `await window.__nativeFetch(args)`, as a result or a `network` error |
+| `fetch.approve` | `true` |
+| `voice.probe` | `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'test'}` |
+| `tts.voices` | `[]` |
+| anything else | `true` |
+
+`emit(ch, event, data)` runs `BywaysNative.onmessage({data: JSON.stringify({ch, event, data})})` in the page.
+
+- [ ] **Step 2: Write the failing e2e spec**
+
+`tests/e2e/android.spec.js`. `beforeEach`: `await mockNet(page)`; then `page.route('https://appassets.androidplatform.net/assets/www/**', …)` fulfils each request from `shells/android/app/src/main/assets/www/<path>` (`index.html` for the bare folder); then `fake = await installFakeAndroidBridge(page, opts)`; then `page.goto('https://appassets.androidplatform.net/assets/www/index.html')` and press **Skip** until the **Like** button shows. `afterEach` asserts `fake.unmatched` is empty. `ops = async () => (await fake.native()).map(m => \`${m.ch}.${m.op}\`)`.
+
+```js
+test('boots on the Android origin with native fetch and no service worker', async ({ page }) => {
+  await expect(page.getByRole('button', { name: 'Like' })).toBeVisible();
+  expect(await page.evaluate(() => navigator.serviceWorker.getRegistrations().then(r => r.length))).toBe(0);
+  expect(await ops()).toContain('app.hello'); expect(await ops()).toContain('fetch.request');
+});
+test('Open shows the find in the site view', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open' }).click();
+  const m = (await fake.native()).find(x => x.ch === 'app' && x.op === 'openSite');
+  expect(m.args.url).toMatch(/^https?:\/\//);
+});
+test('site view Next loads the next find there', async ({ page }) => {
+  await page.getByRole('button', { name: 'Open' }).click(); await fake.emit('app', 'siteNext', {});
+  await expect.poll(async () => new Set((await fake.native()).filter(x => x.op === 'openSite').map(x => x.args.url)).size).toBe(2);
+});
+test('share-in of a link shows it as a find', async ({ page }) => {
+  await fake.emit('app', 'shared', { text: 'Look https://example.org/a so good' });
+  await expect(page.getByText('Shared to Byways')).toBeVisible(); await expect(page.getByText('example.org')).toBeVisible();
+});
+test('share-in of a Byways link opens Import', async ({ page }) => {
+  const payload = await page.evaluate(async () => (await import('./core/share.js'))
+    .encodeShare({ v: 1, t: 'f', n: 'One', i: [['library', 'https://example.org/', 'Example']] }));
+  await fake.emit('app', 'shared', { text: `Try https://iteatsthesalt.github.io/Game-Dev-Resources/byways/#s=${payload}.` });
+  await expect(page.getByRole('button', { name: 'Import' })).toBeVisible();
+});
+test('share-in with no link says so', async ({ page }) => {
+  await fake.emit('app', 'shared', { text: 'hello there' });
+  await expect(page.getByText('That share had no link in it.')).toBeVisible();
+});
+test('Back leaves a view first, then lets the app close', async ({ page }) => {
+  await page.evaluate(() => { location.hash = '#/saved'; });
+  await fake.emit('back', 'request', { token: 1 });
+  await expect.poll(async () => (await fake.native()).find(m => m.ch === 'back' && m.args.token === 1)?.args.handled).toBe(true);
+  await page.evaluate(() => { location.hash = '#/stumble'; });
+  await fake.emit('back', 'request', { token: 2 });
+  await expect.poll(async () => (await fake.native()).find(m => m.ch === 'back' && m.args.token === 2)?.args.handled).toBe(false);
+});
+test('Settings offers Go straight to the site and keeps it', async ({ page }) => {
+  await page.evaluate(id => { location.hash = `#/settings/${id}`; }, DWELL_SECTION_ID);
+  await page.getByLabel('Go straight to the site').check(); await page.reload();
+  await page.evaluate(id => { location.hash = `#/settings/${id}`; }, DWELL_SECTION_ID);
+  await expect(page.getByLabel('Go straight to the site')).toBeChecked();
+});
+test('About offers Download update', async ({ page }) => {
+  // opts.update = { available: true, latest: '9.9.9', url: U } with
+  // U = 'https://github.com/iteatsthesalt/Game-Dev-Resources/releases/download/byways-v9.9.9/byways-9.9.9.apk'
+  await page.evaluate(() => { location.hash = '#/settings/about'; });
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByText('Version 9.9.9 is available.')).toBeVisible();
+  await page.getByRole('button', { name: 'Download update' }).click();
+  expect((await fake.native()).find(m => m.op === 'openExternal').args.url).toBe(U);
+});
+test('About says when the check fails', async ({ page }) => {   // opts.update = 'error'
+  await page.evaluate(() => { location.hash = '#/settings/about'; });
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByText('Could not check for updates. Try again later.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download update' })).toHaveCount(0);
+});
+```
+
+Also add one test that loads the PWA build at `localhost:4321` without the fake and expects `page.getByLabel('Go straight to the site')` to have count 0 on the same settings section. `DWELL_SECTION_ID` is the id that section registers.
+
+- [ ] **Step 3: Run it to see it fail**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
+Expected: FAIL. `boots…` fails on `fetch.request` only if Task 6 is wrong; the others fail with timeouts waiting for `Shared to Byways`, `Import`, the `back` result, the checkbox and **Check for updates**.
+
+- [ ] **Step 4: Implement `attach(app)` in `src/platform/android.js`**
+
+`attach` loads its UI imports with dynamic `import()`, so the Node tests of Tasks 6–7 stay DOM-free. It then:
+
+- **Share-in:** handles `app` `shared {text}` with `extractSharedLink`.
+  - `null` → `showToast('That share had no link in it.')`.
+  - `share` → `win.location.hash = hash`; the router opens Import.
+  - `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: ['Shared to Byways']})`. The find is `makeFind({url, title: domainOf(url), source: 'marginalia', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`, so **More like this** uses Marginalia similar sites.
+- **Back:** handles `back` `request {token}`. Dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`. If it was cancelled, `handled = true`. Otherwise, when the hash is not `''`, `'#'` or `'#/stumble'`, call `win.history.back()` and `handled = true`. Otherwise `handled = false`. Send `back.result {token, handled}`.
+- **Site view:**
+  - `openSite` sets `siteOpen = true`, and `app` `siteClosed` sets it false.
+  - `app` `siteNext` runs `await app.engine.next({mode: app.getSettings().mode})`, then `showResult(result)`, then `openFind(result.find, 'inapp')` when there is a find.
+  - `app.engine.on('find', find => …)` opens the find in the site view when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`.
+- **Hands-free start:** when `hello.micConsent && hello.sdk >= 33 && settings.firstRunDone && ['auto', 'always'].includes(settings.voice.mode)`, call `app.handsFree?.start()` with no touch.
+
+- [ ] **Step 5: Wire boot, About and the setting**
+
+- `src/ui/boot.js`: call `await platform.attach?.(app)` after the app object is complete, just before it is returned.
+- `about.js`: when `app.platform.app` exists, show `Version <versionName>` and a **Check for updates** button.
+  - On click, call `checkUpdate()`.
+  - `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`.
+  - Not available → `You have the latest version (<versionName>).`
+  - A rejection → `Could not check for updates. Try again later.`
+  - Each status line also goes through `announce`.
+- The dwell section: when `app.platform.caps.inAppSiteView`, add a checkbox labelled `Go straight to the site`, with the hint `In lean-back, show each find's real site instead of its card.` It is bound to `goStraightToSite` through `app.saveSettings({goStraightToSite})`.
+
+- [ ] **Step 6: Run it to see it pass**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`, then `npm test`
+Expected: PASS (11 e2e tests), and all unit tests still pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/platform/android.js src/ui/boot.js src/ui/views/settings tests/e2e/helpers/fakes.js tests/e2e/android.spec.js
+git commit -m "Wire share-in, Back, the site view and updates into the Android app"
+```
+
+---
+
+## Real-device checklist (Android)
+
+Plan 09 copies this list into `CHECKLIST.md`. Fill it in by hand on a real phone before each release. These are the §20 items for Android that no test here can cover.
+
+- [ ] **First CI build:** AGP 9.3.2, `androidx.webkit` 1.18.0 and Gradle 9.7.1 resolve. If not, note the 1.17.x fallback that was used.
+- [ ] **Android voice, 13+:** after consent, launch starts listening with no touch. "next one", "go back" and "save it" work with the on-device recogniser, in a segmented session with no beeps. **Download offline voice** appears when the language is missing.
+- [ ] **Android voice, 24–32:** tap to talk works, and Settings says why it is not always on.
+- [ ] **No recogniser or no Google speech:** Settings says why, and keyboard, touch and headset buttons still work.
+- [ ] **Read-aloud:** native voices are listed, network voices are marked "online", and Stop stops mid-sentence.
+- [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off.
+- [ ] **Keep the screen on** during lean-back, and off again after Stop.
+- [ ] **Fullscreen for Archive embeds:** Play, then the embed's full-screen button fills the screen, and Back leaves full screen first.
+- [ ] **Site view:** **Back to Byways**, **Next** and **Open in browser** work. An `intent:` link opens outside. **Go straight to the site** follows lean-back.
+- [ ] **Predictive back:** Back closes panels, then leaves views, then closes the app. The back preview animation shows.
+- [ ] **Rotation and folding:** the current card stays, and speech does not restart.
+- [ ] **The Lab on its own origin:** a DOS and a console file run, saves export through **BywaysLabNative**, and the Lab cannot see the app's keys. The fallback is serving it from the same origin, with the passphrase lock recommended.
+- [ ] **OpenRouter PKCE in the Android WebView.** The fallback is pasting a key.
+- [ ] **Local network models:** an Ollama on another computer (`OLLAMA_HOST=0.0.0.0`, `https://appassets.androidplatform.net` in `OLLAMA_ORIGINS`) asks for approval once, then lists models.
+- [ ] **Share-in:** sharing a link from a browser and a Byways link from a chat app both work.
+- [ ] **Update:** with an older APK installed, **Download update** opens the newer release APK. A signed build installs over the last signed build.
+
