@@ -674,7 +674,7 @@ test('root readme links Byways', () => {
 - [ ] **Step 2: Run the tests and see them fail**
 
 Run: `node --test tests/unit/docs.test.js`
-Expected: FAIL on `readme gives install steps for every version` (and on the checklist test, at `## Before you tag`, and the root readme test).
+Expected: FAIL. The four README tests fail on their first missing string, the checklist test fails at `## Before you tag`, and the root readme test fails on `## Apps`.
 
 - [ ] **Step 3: Write `Apps/Byways/README.md`**
 
@@ -712,7 +712,7 @@ Insert, between `## Editors and tools` and `## Guides`:
 - [ ] **Step 6: Run the tests and see them pass**
 
 Run: `node --test tests/unit/docs.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 7: Commit**
 
