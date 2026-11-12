@@ -1317,7 +1317,7 @@ The Start press routine (module-private; the bar's Start and the first-run step'
 | `network` | `Voice needs a connection. Turn hands-free off and on to try again.` |
 
 Wiring rules:
-- `ui.show(result)`: when Stumble is on screen (`parseHash(location.hash).route === 'stumble'` and no `[data-firstrun]` in `#app`), call `showResult(result)`; otherwise `navigate('stumble')`, and the view's first render shows `engine.current()`.
+- `ui.show(result)`: while a `[data-firstrun]` step is in `#app`, do nothing; on any route but `stumble`, `navigate('stumble')`; in both cases Stumble's first render then shows `engine.current()`, the find just fetched. Otherwise call `showResult(result)`. (Before the router starts, `navigate` to an unchanged hash would render directly, so first run must not reach it.)
 - `ui.act(id)` clicks the first button in `main` whose trimmed text equals the command's label (for `open`, `Open` or `Play`), else announces `No <label> button here`. `ui.openHelp()` and `ui.recap()` do nothing until Task 10.
 - `dispatch(id, arg)` (module-private) is the one command entry point. The keymap, the bar, the media keys, the search dialog (Task 10) and voice (through `createHandsFree({dispatch})`) all call it, and it ends in `app.handsFree.command(id, arg)`. A `search` with no `arg` opens search instead (Task 10). Plan 06 adds its Lab stop here.
 - Installed once, by `installHandsFreeUi`: `installKeymap({getSettings: app.getSettings, dispatch, onTalk: (on) => app.handsFree.talk(on)})`, and the media handlers `next` → `dispatch('next')`, `previous` → `dispatch('back')`, `playPause` → `dispatch('pause')`.

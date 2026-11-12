@@ -873,7 +873,7 @@ git commit -m "Add the extension background: toolbar Stumble, commands, menu, co
 
 **Interfaces:**
 - Consumes: `boot(platform) → Promise<App>` (`ui/boot.js`); `createExtensionPlatform` (Task 3); bg message `stumble` (Task 4); Plan 01's `test`, `expect`, `mockNet`, `unmocked`, `pageProblems` and the `ignoreProblems` option (`tests/e2e/helpers/net.js`); `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`, Plans 01 and 03; it also records `window.__spoken` and `window.__announcements`); `SOURCES` (`core/sources/index.js`), `openStore`, `idbBackend` (`core/store/db.js`), `saveSettings(store, patch)` (`core/settings.js`); Plan 04's fixtures `daily/daily-2026-11-11.json`, `ia/vault-index.json`, `ia/thumb.svg`, `itch/itch.json` and `itch/platform-web.xml`, and its `routes.js` entries for the Daily backup (Wikipedia's featured feed and APOD); Plan 04's Daily view and Vault reading `app.dataUrl(file)`; Plan 06's Lab link and `licenses.json`.
-- Produces: `mockNet(target: Page|BrowserContext, {overrides?})`, `unmocked(target) → string[]` and `pageProblems(target, {ignore = []} = {}) → string[]`, now accepting a `BrowserContext`. Spec helpers local to `extension.spec.js` and reused by Tasks 6 and 7: `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `useSources(page, ids = ['library']) → Promise<void>`, `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, `grantMic(context, extId) → Promise<void>`, `said(page) → Promise<string[]>`, and the fixture's `EXT_ROUTES` list.
+- Produces: `mockNet(target: Page|BrowserContext, {overrides?})`, `unmocked(target) → string[]` and `pageProblems(target, {ignore = []} = {}) → string[]`, now accepting a `BrowserContext`. Spec helpers local to `extension.spec.js` and reused by Tasks 6 and 7: `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `useSources(page, ids = ['library']) → Promise<void>`, `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, `tell(sw, msg, session?) → Promise<void>`, `grantMic(context, extId) → Promise<void>`, `said(page) → Promise<string[]>`, and the fixture's `EXT_ROUTES` list.
 
 - [ ] **Step 1: Let `mockNet`, `unmocked` and `pageProblems` take a `BrowserContext`**
 
@@ -1104,11 +1104,9 @@ test.describe('side panel', () => {
   test('the panel explains a not-web page and a refused consent', async ({ context, sw, extId }) => {   // Review Focus 4
     const panel = await extPage(context, extId, 'panel.html');
     await useSources(panel);
-    const send = (pending) => sw.evaluate((p) => chrome.storage.session.set({ pendingRabbit: p })
-      .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })), pending);
-    await send({ error: 'not-web' });
+    await tell(sw, { type: 'rabbit' }, { pendingRabbit: { error: 'not-web' } });
     await expect.poll(() => said(panel)).toContain('More like this page works only on web pages.');
-    await send({ error: 'no-consent' });
+    await tell(sw, { type: 'rabbit' }, { pendingRabbit: { error: 'no-consent' } });
     await expect.poll(() => said(panel)).toContain("More like this page needs permission to send this site's address to Marginalia. Nothing was sent.");
   });
 
@@ -1117,9 +1115,8 @@ test.describe('side panel', () => {
     context.on('request', (r) => asked.push(r.url()));
     const panel = await extPage(context, extId, 'panel.html');
     await useSources(panel, ['marginalia']);         // Marginalia's random gives nothing, so no local find can stand in
-    await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
-      title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } })
-      .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
+    await tell(sw, { type: 'rabbit' }, { pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
+      title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } });
     await expect.poll(() => asked.some((u) => u.startsWith('https://api2.marginalia-search.com/api/v2/site/small.example/similar'))).toBe(true);
     await expect.poll(() => said(panel)).toContain('No similar sites found for small.example.');
   });
@@ -1128,8 +1125,8 @@ test.describe('side panel', () => {
     test(`the access banner on ${path} grants and disappears`, async ({ context, sw, extId }) => {     // Review Focus 5
       const page = await extPage(context, extId, path);
       await useSources(page);
-      await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true })
-        .then(() => chrome.runtime.sendMessage({ type: 'accessChanged', needsAccess: true })));
+      await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true }));
+      await tell(sw, { type: 'accessChanged', needsAccess: true });
       const banner = page.locator('#access-banner');
       await expect(banner).toContainText('Byways lost access to some sites. Grant access to turn them back on.');
       await banner.getByRole('button', { name: 'Grant access' }).click();
