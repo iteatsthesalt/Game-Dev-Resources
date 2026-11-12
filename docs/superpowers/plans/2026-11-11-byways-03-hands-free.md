@@ -1648,23 +1648,41 @@ The first-run step (`id:'handsfree'`, `order:30`): heading `Hands-free`; the tex
 - [ ] **Step 1: Write the failing e2e tests**
 
 ```js
+// tests/e2e/settings-voice.spec.js
+import { readFileSync } from 'node:fs';
+import { test, expect, stageLibrary } from './helpers/net.js';
+import { gotoApp, skipFirstRun } from './helpers/app.js';
+import { installFakeSpeech } from './helpers/fakes.js';
+
+const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
 const ANDROID = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36';
+const CLOUD_OFF = 'Voice on this device goes to Google. It stays off unless you turn on cloud voice.';
+const engineLine = (page) => page.locator('#voice-engine');
 async function openVoice(page, opts) {
-  await mockNet(page); await installFakeSpeech(page, opts);
-  await page.goto('./#/stumble'); await skipFirstRun(page);
-  await page.goto('./#/settings/voice');
+  await installFakeSpeech(page, opts); await stageLibrary(page, small); await gotoApp(page, '#/settings/voice');
+}
+// Skips Welcome and the interests step (overview order: welcome, interests, handsfree, ai).
+async function toHandsFreeStep(page, opts) {
+  await installFakeSpeech(page, opts); await stageLibrary(page, small); await page.goto('./#/stumble');
+  for (const id of ['welcome', 'interests']) {
+    await expect(page.locator(`[data-firstrun="${id}"]`)).toBeVisible();
+    await page.getByRole('button', { name: 'Skip' }).click();
+  }
+  return page.locator('[data-firstrun="handsfree"]');
 }
 
 test('an on-device browser says so', async ({ page }) => {
   await openVoice(page, { available: 'available' });
-  await expect(page.locator('#voice-engine')).toHaveText('Voice runs on this device.');
+  await expect(engineLine(page)).toHaveText('Voice runs on this device.');
 });
 
-test('Download offline voice calls install from a click', async ({ page }) => {
+test('a downloadable voice offers both choices, and Download calls install from a click', async ({ page }) => {
   await openVoice(page, { available: 'downloadable' });
-  await expect(page.locator('#voice-engine')).toHaveText('Voice can run on this device after a one-time download.');
+  await expect(engineLine(page)).toHaveText('Voice can run on this device after a one-time download.');
+  await expect(page.getByRole('button', { name: 'Use Google cloud voice' })).toBeVisible();
   await page.getByRole('button', { name: 'Download offline voice' }).click();
-  await expect(page.locator('#voice-engine')).toHaveText('Voice runs on this device.');
+  await expect(engineLine(page)).toHaveText('Voice runs on this device.');
+  expect(await page.evaluate(() => window.__installs)).toBe(1);
 });
 
 test.describe('on a cloud-only browser', () => {
@@ -1672,33 +1690,38 @@ test.describe('on a cloud-only browser', () => {
 
   test('voice stays off until the opt-in that names the vendor', async ({ page }) => {
     await openVoice(page, { available: null });
-    await expect(page.locator('#voice-engine')).toHaveText('Voice on this browser goes to Google. It stays off unless you turn on cloud voice.');
+    await expect(engineLine(page)).toHaveText(CLOUD_OFF);
     await page.getByRole('button', { name: 'Start' }).click();
-    expect(await page.evaluate(() => window.__recognizers)).toBe(0);
+    await expect(page.locator('#hf-listening')).toHaveText('No voice');
+    expect(await page.evaluate(() => window.__recognizers.length)).toBe(0);
     await page.getByRole('button', { name: 'Turn off hands-free' }).click();
     await page.goto('./#/settings/voice');
     await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
     await expect(page.getByRole('heading', { name: 'Use Google cloud voice?' })).toBeVisible();
-    await expect(page.getByText('voice commands are sent to Google')).toBeVisible();
     await page.getByRole('button', { name: 'Not now' }).click();
-    await expect(page.locator('#voice-engine')).toHaveText('Voice on this browser goes to Google. It stays off unless you turn on cloud voice.');
+    await expect(engineLine(page)).toHaveText(CLOUD_OFF);
     await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
     await page.getByRole('button', { name: 'Turn on cloud voice' }).click();
-    await expect(page.locator('#voice-engine')).toHaveText('Voice goes to Google to be recognised.');
+    await expect(engineLine(page)).toHaveText('Voice goes to Google to be recognised.');
     await page.reload();
     await expect(page.getByRole('checkbox', { name: 'Cloud voice (Google)' })).toBeChecked();
   });
 
-  test('Automatic means push to talk here', async ({ page }) => {
+  test('Automatic means push or tap to talk here, and a tap on Talk listens', async ({ page }) => {
     await openVoice(page, { available: null });
     await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
     await page.getByRole('button', { name: 'Turn on cloud voice' }).click();
     await page.getByRole('button', { name: 'Start' }).click();
-    await expect(page.locator('#hf-listening')).toHaveText('Hold V to talk');
+    await expect(page.locator('#hf-listening')).toHaveText('Push to talk');
     expect(await page.evaluate(() => window.__recStarts)).toBe(0);
-    await page.keyboard.down('v');
+    await page.getByRole('button', { name: 'Talk' }).click();
     await expect.poll(() => page.evaluate(() => window.__recStarts)).toBe(1);
-    await page.keyboard.up('v');
+    await expect(page.locator('#hf-listening')).toHaveText('Listening');
+  });
+
+  test('first run offers the cloud opt-in', async ({ page }) => {
+    const step = await toHandsFreeStep(page, { available: null });
+    await expect(step.getByRole('heading', { name: 'Use Google cloud voice?' })).toBeVisible();
   });
 });
 
@@ -1714,24 +1737,20 @@ test('reading voice, speed and volume are saved and used', async ({ page }) => {
 });
 
 test('the first-run step explains hands-free and its Start starts it', async ({ page }) => {
-  await mockNet(page); await installFakeSpeech(page);
-  await page.goto('./#/stumble');
-  const heading = page.getByRole('heading', { name: 'Hands-free' });
-  while (!(await heading.isVisible())) await page.getByRole('button', { name: 'Skip' }).click();
-  await expect(page.getByText('Voice runs on this device.')).toBeVisible();
-  await page.getByRole('button', { name: 'Start' }).click();
+  const step = await toHandsFreeStep(page);
+  await expect(step.getByText('Voice runs on this device.')).toBeVisible();
+  await step.getByRole('button', { name: 'Start' }).click();
+  await skipFirstRun(page);
   await expect(page.locator('#hf-listening')).toHaveText('Listening');
 });
 ```
-
-`skipFirstRun` is the same helper as in Task 9; copy it into this spec.
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-voice.spec.js`
 Expected: FAIL. The first test times out on `#voice-engine`.
 
-- [ ] **Step 3: Implement `voice.js`, the `handsfree-ui.js` additions, the fake counters and the import line in `views/index.js`**
+- [ ] **Step 3: Implement `voice.js`, the `handsfree-ui.js` additions and the import line in `views/index.js`**
 
 Every control has a visible `<label>`. Each change saves at once with `app.saveSettings({voice: {...}})`.
 

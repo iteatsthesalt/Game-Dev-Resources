@@ -1708,20 +1708,21 @@ git commit -m "Add the first-run registry with the Welcome step"
 
 ```js
 test.use({ serviceWorkers: 'allow' });
-const swr = fileURLToPath(new URL('../../dist/pwa/data/swr-test.json', import.meta.url));
+const dist = f => fileURLToPath(new URL(`../../dist/pwa/${f}`, import.meta.url));
+const swr = dist('data/swr-test.json'); const swFile = dist('sw.js');
 test.afterAll(() => rmSync(swr, { force: true }));
 async function controlled(page) {
   await gotoApp(page);
   await page.evaluate(() => navigator.serviceWorker.ready);
   await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller);
 }
-test('precaches the shell under byways-<build id>', async ({ page }) => {
+test('precaches the shell under byways-<build id>, same-origin only', async ({ page }) => {
   await controlled(page);
   const { id } = await (await page.request.get('build.json')).json();
   expect(await page.evaluate(async name => {
-    const c = await caches.open(name);
-    return [await caches.keys(), !!(await c.match('./index.html')), !!(await c.match('./ui/boot.js'))];
-  }, `byways-${id}`)).toEqual([[`byways-${id}`], true, true]);
+    const c = await caches.open(name); const same = (await c.keys()).every(r => new URL(r.url).origin === location.origin);
+    return [await caches.keys(), !!(await c.match('./index.html')), !!(await c.match('./ui/boot.js')), same];
+  }, `byways-${id}`)).toEqual([[`byways-${id}`], true, true, true]);
 });
 test('reloads offline from the cache', async ({ page, context }) => {
   await controlled(page); await context.setOffline(true); await page.reload();
@@ -1729,17 +1730,32 @@ test('reloads offline from the cache', async ({ page, context }) => {
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
   await context.setOffline(false);
 });
+test('only the app URL gets the cached shell', async ({ page }) => {
+  await controlled(page); await page.goto('build.json');
+  expect(await page.evaluate(() => document.contentType)).toBe('application/json');
+});
 test('data files are stale-while-revalidate', async ({ page }) => {
   writeFileSync(swr, '{"n":1}'); await controlled(page);
   const get = () => page.evaluate(() => fetch('data/swr-test.json').then(r => r.json()));
   expect(await get()).toEqual({ n: 1 });
+  await expect.poll(() => page.evaluate(async () => !!(await caches.match('data/swr-test.json')))).toBe(true);
   writeFileSync(swr, '{"n":2}');
   expect(await get()).toEqual({ n: 1 });
   await expect.poll(get).toEqual({ n: 2 });
 });
+test('a new build shows the update toast and Reload switches to it', async ({ page }) => {
+  await controlled(page); const original = readFileSync(swFile, 'utf8');
+  try {
+    writeFileSync(swFile, original.replace(/const BUILD_ID = "[^"]*";/, 'const BUILD_ID = "next";'));
+    await page.evaluate(() => navigator.serviceWorker.getRegistration().then(r => r.update()));
+    await expect(page.locator('#toasts')).toContainText('Update available, reload');
+    await Promise.all([page.waitForEvent('load'), page.getByRole('button', { name: 'Reload' }).click()]);
+    expect(await page.evaluate(() => caches.keys())).toEqual(['byways-next']);
+  } finally { writeFileSync(swFile, original); }
+});
 ```
 
-`page.route` cannot see service worker requests, so this spec makes only same-origin requests. The spec imports `rmSync` and `writeFileSync` from `node:fs` and `fileURLToPath` from `node:url`.
+`page.route` cannot see service worker requests, so this spec makes only same-origin requests. The spec imports `readFileSync`, `rmSync` and `writeFileSync` from `node:fs`, `fileURLToPath` from `node:url`, `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`. The SWR test waits for the first response to reach the cache, which the worker writes inside `waitUntil` after the page already has its answer; otherwise the second read can miss the cache. The update test restores `dist/pwa/sw.js`, so `--check` still finds the build fresh.
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -1751,16 +1767,16 @@ Expected: FAIL: `caches.keys()` returns `[]`, because `sw.js` has no install han
 - `install`: `event.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)))`. It does not call `skipWaiting`.
 - `activate`: delete every cache whose name starts with `byways-` and is not `CACHE`, then `self.clients.claim()`.
 - `message`: `{type: 'skip-waiting'}` calls `self.skipWaiting()`.
-- `fetch`: ignore non-GET and cross-origin requests (no `respondWith`, so Archive thumbnails and source APIs are never cached). For a path matching `/\/data\/[^/]+\.json$/`, use stale-while-revalidate: answer from the cache when it has the file, and always fetch, putting ok responses in the cache inside `event.waitUntil`. For `request.mode === 'navigate'`, answer with the cached `./index.html` (resolved against `self.registration.scope`), else the network. For everything else, use the cache first, then the network.
+- `fetch`: ignore non-GET and cross-origin requests (no `respondWith`, so Archive thumbnails and source APIs are never cached). For a path matching `/\/data\/[^/]+\.json$/`, use stale-while-revalidate: answer from the cache when it has the file, otherwise from the network, and always fetch, putting ok responses in the cache inside `event.waitUntil`; a failed revalidation is caught, so offline use stays quiet. A navigation whose path is the scope path itself, or the scope path plus `index.html` (query and hash ignored), gets the cached `./index.html` (resolved against `self.registration.scope`), else the network. Everything else, other navigations included, uses the cache first, then the network: the Lab at `lab/` is a separate page in the same scope (§11.2) and must not get the app shell.
 
 - [ ] **Step 4: Wire the update toast in `boot.js`**
 
-`onUpdate(reg)` calls `showToast(UPDATE_MESSAGE, {ms: 0, action: {label: 'Reload', run}})`. `run` sets a `reloading` flag and posts `{type: 'skip-waiting'}` to `reg.waiting`. A `controllerchange` listener calls `location.reload()` only when `reloading` is set, because `clients.claim()` on a first install also fires `controllerchange`.
+`onUpdate(reg)` calls `showToast(UPDATE_MESSAGE, {ms: 0, action: {label: 'Reload', run}})`, which is sticky, so later Undo toasts do not hide it. `run` sets a `reloading` flag and posts `{type: 'skip-waiting'}` to `reg.waiting`. A `controllerchange` listener, added in `bootFromShell`, calls `location.reload()` only when `reloading` is set, because `clients.claim()` on a first install also fires `controllerchange`.
 
 - [ ] **Step 5: Run it and see it pass**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/sw.spec.js`
-Expected: PASS, 3 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 6: Commit**
 
