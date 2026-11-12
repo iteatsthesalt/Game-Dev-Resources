@@ -33,24 +33,30 @@ export function createHttp({ transport, clock }) {
     });
   }
 
-  /** One fetch with a timeout and the caller's signal linked in. Returns the Response or throws a NetError. */
+  /**
+   * One fetch with a timeout and the caller's signal linked in. Resolves with {res, finish, failure} or throws a
+   * NetError. The deadline stays armed until finish() is called, so a body read can still time out, and the
+   * caller's signal stays linked for good (aborting a finished controller does nothing). failure() names why the
+   * request was cut short (aborted or timeout), or gives null.
+   */
   async function fetchOnce(url, o) {
     const { method, headers, body, source, timeoutMs, privileged, signal } = o;
     if (signal?.aborted) throw aborted(source);
     const ac = new AbortController();
     let timedOut = false;
-    const onAbort = () => ac.abort();
-    signal?.addEventListener('abort', onAbort, { once: true });
+    signal?.addEventListener('abort', () => ac.abort(), { once: true });
     const timer = clock.setTimeout(() => { timedOut = true; ac.abort(); }, timeoutMs);
+    const finish = () => clock.clearTimeout(timer);
+    const failure = () => {
+      if (signal?.aborted) return aborted(source);
+      if (timedOut) return new NetError('timeout', `timed out after ${timeoutMs} ms`, { source });
+      return null;
+    };
     try {
-      return await transport.fetch(url, { method, headers, body, signal: ac.signal, privileged });
+      return { res: await transport.fetch(url, { method, headers, body, signal: ac.signal, privileged }), finish, failure };
     } catch (err) {
-      if (signal?.aborted) throw aborted(source);
-      if (timedOut) throw new NetError('timeout', `timed out after ${timeoutMs} ms`, { source });
-      throw new NetError('network', err?.message || 'network', { source });
-    } finally {
-      clock.clearTimeout(timer);
-      signal?.removeEventListener('abort', onAbort);
+      finish();
+      throw failure() ?? new NetError('network', err?.message || 'network', { source });
     }
   }
 
@@ -61,9 +67,9 @@ export function createHttp({ transport, clock }) {
       throw new NetError('circuit', `circuit open for ${source}`, { source });
     }
     for (let attempt = 1; ; attempt++) {
-      let res;
+      let sent;
       try {
-        res = await fetchOnce(url, o);
+        sent = await fetchOnce(url, o);
       } catch (err) {
         if (circuit && (err.kind === 'network' || err.kind === 'timeout')) {
           circuit.fails++;
@@ -72,7 +78,9 @@ export function createHttp({ transport, clock }) {
         throw err;
       }
       if (circuit) circuit.fails = 0;
-      if (res.status < 400) return res;
+      const { res } = sent;
+      if (res.status < 400) return sent;
+      sent.finish();
       if (res.status === 429 || res.status === 503) {
         const ra = parseRetryAfter(res.headers.get('Retry-After'), clock.now());
         if (attempt === 1 && ra !== null && ra <= RETRY_MAX_MS) {
@@ -86,10 +94,31 @@ export function createHttp({ transport, clock }) {
     }
   }
 
-  function request(url, opts = {}) {
-    const o = { method: 'GET', timeoutMs: 8000, privileged: false, ...opts };
+  /** Resolves with fetchOnce's {res, finish, failure}. An option given as undefined keeps its default. */
+  function send(url, opts = {}) {
+    const o = { method: 'GET', timeoutMs: 8000, privileged: false };
+    for (const [key, value] of Object.entries(opts ?? {})) if (value !== undefined) o[key] = value;
     const limiter = o.source === undefined ? undefined : limiters.get(o.source);
     return limiter ? limiter.schedule(() => run(url, o)) : run(url, o);
+  }
+
+  /** The deadline covers the headers only; the caller's signal still reaches the body stream. */
+  async function request(url, opts) {
+    const { res, finish } = await send(url, opts);
+    finish();
+    return res;
+  }
+
+  /** The deadline and the caller's signal both cover the body read; `kind` names any other read failure. */
+  async function readBody(url, opts, read, kind) {
+    const { res, finish, failure } = await send(url, opts);
+    try {
+      return await read(res);
+    } catch (err) {
+      throw failure() ?? new NetError(kind, err?.message || kind, { source: opts?.source });
+    } finally {
+      finish();
+    }
   }
 
   return {
@@ -97,21 +126,7 @@ export function createHttp({ transport, clock }) {
       limiters.set(sourceId, createLimiter({ perMinute, concurrent, clock }));
     },
     request,
-    async getJson(url, opts) {
-      const res = await request(url, opts);
-      try {
-        return await res.json();
-      } catch (err) {
-        throw new NetError('parse', err?.message || 'parse', { source: opts?.source });
-      }
-    },
-    async getText(url, opts) {
-      const res = await request(url, opts);
-      try {
-        return await res.text();
-      } catch (err) {
-        throw new NetError('network', err?.message || 'network', { source: opts?.source });
-      }
-    },
+    getJson: (url, opts) => readBody(url, opts, res => res.json(), 'parse'),
+    getText: (url, opts) => readBody(url, opts, res => res.text(), 'network'),
   };
 }

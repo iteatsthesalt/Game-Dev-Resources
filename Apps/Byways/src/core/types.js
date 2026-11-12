@@ -85,7 +85,7 @@
  *  @property {*} store
  *  @property {Settings} settings
  *  @property {() => Settings} getSettings
- *  @property {(patch:Partial<Settings>) => Promise<void>} saveSettings
+ *  @property {(patch:Partial<Settings>) => Promise<Settings>} saveSettings   resolves with the live settings object
  *  @property {*} http
  *  @property {*} clock
  *  @property {() => number} rand

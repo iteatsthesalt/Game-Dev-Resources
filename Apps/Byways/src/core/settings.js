@@ -76,19 +76,20 @@ export async function loadSettings(store) {
   return repairSettings(await store.get(STORE, KEY));
 }
 
-/** Plain objects merge key by key; arrays and every other value replace. */
+/** Plain objects merge key by key; arrays and every other value replace. An undefined value changes nothing. */
 function deepMerge(base, patch) {
   if (!isPlainObject(base) || !isPlainObject(patch)) return patch;
   const out = { ...base };
   for (const [k, v] of Object.entries(patch)) {
-    if (isUnsafeKey(k)) continue;
+    if (isUnsafeKey(k) || v === undefined) continue;
     out[k] = isPlainObject(v) && isPlainObject(base[k]) ? deepMerge(base[k], v) : v;
   }
   return out;
 }
 
-/** Deep-merge `patch` over the stored settings, repair, persist and return the result. */
+/** Deep-merge `patch` over the stored settings, repair, persist and return the result. A patch must be a plain object. */
 export async function saveSettings(store, patch) {
+  if (!isPlainObject(patch)) throw new TypeError('saveSettings: the patch must be a plain object');
   const next = repairSettings(deepMerge(await loadSettings(store), patch));
   await store.put(STORE, KEY, next);
   return next;

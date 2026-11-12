@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { toPlainText, firstSentence, truncate, tokenize } from '../../src/core/util/text.js';
+import { toPlainText, firstSentence, truncate, tokenize, renameStyleAttributes, MAX_HTML_LENGTH } from '../../src/core/util/text.js';
 
 test('toPlainText strips tags and decodes entities without DOMParser', () => {
   assert.equal(toPlainText('<p>Fish &amp; <b>chips</b></p>'), 'Fish & chips');
@@ -10,6 +10,19 @@ test('toPlainText strips tags and decodes entities without DOMParser', () => {
   assert.equal(toPlainText('un<b>believ</b>able'), 'unbelievable');
   assert.equal(toPlainText('&#x110000; &#0; &#xZZ;'), '� � &#xZZ;');
   assert.equal(toPlainText(null), '');
+});
+
+test('renameStyleAttributes renames style in tags only and is linear on tags that never close', () => {
+  assert.equal(renameStyleAttributes('<p style="x" title="a style=b">style=x</p><textarea><b style="q"></textarea>'),
+    '<p data-style="x" title="a style=b">style=x</p><textarea><b style="q"></textarea>');
+  for (const s of ['<a'.repeat(5000), '<a "'.repeat(2500), '<a b'.repeat(2500)]) {
+    const start = performance.now(); renameStyleAttributes(s); toPlainText(s);
+    assert.ok(performance.now() - start < 200, `${s.slice(0, 4)} took ${performance.now() - start} ms`);
+  }
+});
+
+test('toPlainText reads at most MAX_HTML_LENGTH characters', () => {
+  assert.equal(toPlainText('x'.repeat(MAX_HTML_LENGTH + 500)).length, MAX_HTML_LENGTH);
 });
 
 test('firstSentence', () => {

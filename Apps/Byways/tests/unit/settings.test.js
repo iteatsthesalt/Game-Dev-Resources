@@ -23,6 +23,16 @@ test('saveSettings deep-merges a patch and persists it', async () => {
   assert.equal(again.voice.rate, 1.5); assert.deepEqual(again.ai.team.roles.scout, { provider: 'groq', model: 'm' });
   assert.equal(again.ai.team.roles.digger, null);
 });
+test('saveSettings refuses a patch that is not a plain object and keeps what is stored', async () => {
+  const store = await openStore(memoryBackend()); await saveSettings(store, { dwellSec: 40 });
+  for (const bad of [null, undefined, 'x', 3, [1], new Date()]) await assert.rejects(saveSettings(store, bad), TypeError);
+  assert.equal((await loadSettings(store)).dwellSec, 40);
+});
+test('saveSettings skips undefined values instead of resetting them', async () => {
+  const store = await openStore(memoryBackend()); await saveSettings(store, { dwellSec: 40, voice: { voiceURI: 'v1', rate: 1.5 } });
+  const s = await saveSettings(store, { dwellSec: undefined, voice: { voiceURI: undefined, rate: 2 } });
+  assert.deepEqual([s.dwellSec, s.voice.voiceURI, s.voice.rate], [40, 'v1', 2]);
+});
 test('loadSettings repairs bad stored values', async () => {
   const store = await openStore(memoryBackend());
   await store.put('settings', 'current', { dwellSec: 9999, textScale: 0.2, theme: 7, voice: null, ai: { team: 'x', baseUrls: { ollama: 'http://localhost:11434' } },

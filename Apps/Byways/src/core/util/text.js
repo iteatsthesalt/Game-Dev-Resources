@@ -24,15 +24,17 @@ const collapse = (s) => s.replace(/\s+/g, ' ').trim();
 
 // One tag, quote-aware so a `>` or `<style>` inside an attribute value does not end it. Raw-text elements (group 2)
 // also capture their body (group 3), which is left alone, so markup written inside them is never touched.
+// Each character after `<x` has exactly one way to match, so input with no closing `>` cannot backtrack.
 const MARKUP =
-  /(<(script|style|textarea|title|xmp|iframe|noembed|noframes)\b(?:"[^"]*"|'[^']*'|[^>"'])*>)([\s\S]*?(?:<\/\2\s*>|$))|(<[a-z][^\s/>]*(?:"[^"]*"|'[^']*'|[^>"'])*>)/gi;
+  /(<(script|style|textarea|title|xmp|iframe|noembed|noframes)\b(?:"[^"]*"|'[^']*'|[^>"'])*>)([\s\S]*?(?:<\/\2\s*>|$))|(<[a-z](?:"[^"]*"|'[^']*'|[^>"'])*>)/gi;
 const STYLE_ATTR = /("[^"]*"|'[^']*')|([\s/])style(?=\s*=)/gi;
 
 /**
  * Chromium checks every parsed `style` attribute against the page's style-src CSP, even in an inert document, and
  * logs a violation for each. Rename the attribute (tags only, never text) so parsing is silent; the text is unchanged.
+ * Exported for tests only.
  */
-function renameStyleAttributes(html) {
+export function renameStyleAttributes(html) {
   const rename = (tag) => tag.replace(STYLE_ATTR, (m, quoted, pre) => quoted ?? `${pre}data-style`);
   return html.replace(MARKUP, (m, rawOpen, name, rawBody, tag) => (rawOpen ? rename(rawOpen) + rawBody : rename(tag)));
 }
@@ -62,10 +64,13 @@ function plainTextWithRegex(html) {
   return collapse(decodeEntities(stripped));
 }
 
+/** Longest input read, in UTF-16 units; callers keep 400 code points at most, so the rest is never shown. */
+export const MAX_HTML_LENGTH = 20000;
+
 /** HTML to collapsed plain text. Uses an inert <template> when the browser can fill one from a string, a regex fallback otherwise. */
 export function toPlainText(html) {
   if (html == null) return '';
-  const s = String(html);
+  const s = String(html).slice(0, MAX_HTML_LENGTH);
   return globalThis.document && globalThis.HTMLTemplateElement?.prototype.setHTMLUnsafe
     ? plainTextWithDom(s)
     : plainTextWithRegex(s);

@@ -32,6 +32,33 @@ test('a caller abort gives kind aborted', async () => {
   next = [hang]; const ac = new AbortController(); const p = http.request('https://a.test/', { signal: ac.signal });
   await flush(); ac.abort(); await assert.rejects(p, { kind: 'aborted' });
 });
+test('an option given as undefined keeps its default', async () => {
+  next = [hang]; const p = http.request('https://a.test/', { timeoutMs: undefined, method: undefined }); await flush();
+  assert.equal(calls[0].init.method, 'GET');
+  let settled = false; p.catch(() => {}).finally(() => { settled = true; });
+  clock.advance(7999); await flush(); assert.equal(settled, false);
+  clock.advance(1); await assert.rejects(p, { kind: 'timeout' });
+});
+// Headers arrive, then the body never ends; the stream errors when the request's signal aborts, as fetch's does.
+const stalledBody = init => Promise.resolve(new Response(new ReadableStream({
+  start(c) { init.signal.addEventListener('abort', () => c.error(new DOMException('x', 'AbortError'))); },
+})));
+test('a body that stalls after the headers still times out', async () => {
+  for (const read of ['getJson', 'getText']) {
+    next = [stalledBody]; const p = http[read]('https://a.test/', { source: 's' }); await flush(); clock.advance(8000);
+    await assert.rejects(p, { kind: 'timeout', source: 's' }, read);
+  }
+});
+test('a caller abort during the body read gives kind aborted', async () => {
+  for (const read of ['getJson', 'getText']) {
+    next = [stalledBody]; const ac = new AbortController(); const p = http[read]('https://a.test/', { signal: ac.signal });
+    await flush(); ac.abort(); await assert.rejects(p, { kind: 'aborted' }, read);
+  }
+});
+test('request leaves the caller signal linked to the body stream', async () => {
+  next = [stalledBody]; const ac = new AbortController(); const res = await http.request('https://a.test/', { signal: ac.signal });
+  const read = res.text(); ac.abort(); await assert.rejects(read, { name: 'AbortError' });
+});
 test('429 with Retry-After of 10 s or less retries once', async () => {
   next = [() => Promise.resolve(new Response('', { status: 429, headers: { 'Retry-After': '2' } })), () => Promise.resolve(new Response('ok'))];
   const p = http.getText('https://a.test/'); await flush(); assert.equal(calls.length, 1);
