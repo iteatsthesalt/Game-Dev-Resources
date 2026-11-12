@@ -6,6 +6,14 @@
 
 *How this was gathered: this session's network allowlist blocked direct fetches of apps.apple.com, web.archive.org, macstories.net and apppricinglab.com. Every App Store fact below therefore comes from search-engine summaries, 2010-era press and third-party mirrors (AppAdvice, AppFollow, soft112 and others), and the snapshot dates and storefronts are unknown. The shared web-search budget ran out before I could check archived copies of the listing, so that check is still open. Re-check prices, ratings, version dates and screenshots on the live listing before relying on them. Items tagged **[DISTINCTIVE]** are specific to Uzu and feed list (a) in §7.*
 
+*Fact-check of 2026-11-12. The 15 claims that could change a design or requirement decision were re-checked:*
+- *[Verified: source] means re-read at that source.*
+- *[Verified correction: source] means the sentence was rewritten to match the source.*
+- *[Unverified] means it was checked but could not be confirmed, because the host was blocked or no source was found.*
+- *"(search summary)" after a source means only a search-engine summary of that page was seen. apps.apple.com and learn.microsoft.com stayed blocked.*
+- *"Measured in this container" means headless Chromium 153.0.8010.12 (Playwright 1.63.0) on Linux with a SwiftShader fallback adapter. It gives software results, not GPU data.*
+- *The summary table is the Verification section at the end. Untagged findings were not re-checked.*
+
 ## 1. Who made Uzu, when was it released and updated, at what price and for which devices? Did it support external displays, AirPlay or Apple TV? Is it still sold?
 
 ### Takeaway
@@ -15,9 +23,11 @@
   - an iPhone spin-off, "Little Uzu", in 2010;
   - a universal iPad/iPhone app with v3.0 in 2014;
   - updates up to v3.2.1 in September 2021;
-  - a rebuild as v4.0 on Apple's Metal graphics engine, date unknown.
-- It was never pulled in the 32-bit purge and is **still sold as of 2026-11-12**. The listing is "Designed for iPad", requires iPadOS 17.6 or later, and costs about US$2.99–4.99 depending on the snapshot.
+  - a rebuild as v4.0 on Apple's Metal graphics engine, date unknown;
+  - further 4.x updates: the current listing's newest version is 4.2 [Verified correction: https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary)].
+- It was never pulled in the 32-bit purge and is **still sold as of 2026-11-12**. The listing is "Designed for iPad" and requires iPadOS 17.6 or later. The current US listing costs US$3.99. Older snapshots show $2.49 to $4.99, and the UK and Austrian listings show £3.99 and €3.99 [Verified correction: https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary; the page itself is blocked here)].
 - The listing advertises an external-display mode in which the iPad acts as the controller. I found no Apple TV, Mac or visionOS edition and no AirPlay-specific feature.
+  - That is not the same as being unavailable. Apple offers compatible iPad apps on Apple-silicon Macs and on Apple Vision Pro by default, unless the developer opts out in App Store Connect. So Uzu may well run on Macs without any Mac edition [Verified correction: https://developer.apple.com/documentation/apple-silicon/running-your-ios-apps-in-macos; https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-apple-vision-pro].
 
 ### Cited Findings
 **Creator and studio**
@@ -42,7 +52,7 @@
 - **v3.0:** made Uzu universal (iPad, iPhone, iPod touch) and added Retina support, a redesigned UI, and new modes and presets. Mirrors disagree on the date: 2014-08-07 vs 2014-12-29 — [AppFollow](https://apps.appfollow.io/ios/uzu-an-interactive-light-show/376551723); [AppAdvice](https://appadvice.com/app/uzu-an-interactive-light-show/376551723)
 - **Later 3.x updates:**
   - one restored the v3.0 factory presets into a "Legacy Presets" section — [AppFollow](https://apps.appfollow.io/ios/uzu-an-interactive-light-show/376551723)
-  - one made Uzu run at the device's maximum frame rate: 60 fps on iPhone/iPad and 120 fps on iPad Pro — [AppAdvice listing mirror](https://appadvice.com/app/uzu-an-interactive-light-show/376551723); [AppFollow](https://apps.appfollow.io/ios/uzu-an-interactive-light-show/376551723)
+  - one made Uzu run at the device's maximum frame rate: 60 fps on iPhone/iPad and 120 fps on iPad Pro — [AppAdvice listing mirror](https://appadvice.com/app/uzu-an-interactive-light-show/376551723); [AppFollow](https://apps.appfollow.io/ios/uzu-an-interactive-light-show/376551723) [Unverified]. The Uzu release note itself could not be read. The hardware part holds: iPad Pro ProMotion displays switch between 24 Hz and 120 Hz [Verified: https://developer.apple.com/documentation/quartzcore/optimizing-iphone-and-ipad-apps-to-support-promotion-displays]
 - **v3.2.1:** released 2021-09-06; the latest version shown on third-party mirrors — [soft112](https://uzu-a-generative-design-playground-ios.soft112.com/); [UpdateStar](https://uzu-an-interactive-light-show.updatestar.com/)
 - **v4.0 (release date not found)** — [App Store listing (via search)](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723):
   - an all-new Metal rendering engine;
@@ -53,13 +63,13 @@
   - render-quality settings from Low to Ultra.
 - The listing names ten effects: Glow, Warp, Kaleidoscope, Sparkle, Feedback, Color, Gradient, Pixelate, Scanlines and Vignette **[DISTINCTIVE as a set]** — [App Store listing (via search)](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723)
 - An earlier listing snapshot claimed "21 unique animation modes" tied to touch counts, 55 factory presets, and animation that responds to the microphone — [App Store (via search)](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723)
-- **Current status, as of 2026-11-12:** still listed and sold. It requires iOS/iPadOS 17.6 or later and is "Designed for iPad". One US snapshot shows no in-app purchases — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723)
+- **Current status, as of 2026-11-12:** still listed and sold. It requires iPadOS 17.6 or later and is "Designed for iPad". The newest listed version is 4.2. One US snapshot shows no in-app purchases — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723) [Verified: https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary; the UK and Costa Rica listings show the same requirement)]. The in-app-purchase detail was not re-checked.
 - **Price history:**
   - about $0.99 in 2010 reviews — [Tapscape](https://www.tapscape.com/?p=1320)
   - $1.99 for the iPad app and $0.99 for Little Uzu — [SFGate](https://www.sfgate.com/tech/article/app-of-the-week-little-uzu-5282839.php)
   - $1.99 in a YouTube video description — [YouTube](https://www.youtube.com/watch?v=KuD5ZPrmztw)
   - $1.99 in an autism-apps chart — [Enabling Devices](https://enablingdevices.com/apps-charts-for-the-disabled/apps-for-autism-spectrum/)
-  - current snapshots of $2.99, $3.99 and $4.99, and £3.99 in the UK — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723); [SearchMan](https://searchman.com/ios/app/us/376551723/en/colordodge-labs/uzu-an-interactive-light-show/)
+  - later snapshots of $2.49 (with an iPadOS 11.0 minimum), $2.99 and $4.99. The current US listing is $3.99, with £3.99 in the UK and €3.99 in Austria — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723); [SearchMan](https://searchman.com/ios/app/us/376551723/en/colordodge-labs/uzu-an-interactive-light-show/) [Verified correction: https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary). The $4.99 snapshot was not found again]
 
 **External display, AirPlay and Apple TV**
 - The listing says Uzu appears on an external display while the iPad is used as the controller. It recommends this for social gatherings together with auto-play. This is a **direct precedent for the Tactilume "handheld controls the big screen" idea** — [App Store (via search)](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723)
@@ -77,8 +87,13 @@
   - Third-party directories cite about 130 presets, Metal, an Auto-Play mode, and recording and sharing (low-quality sources) — [Beam Tools directory](https://beamtools.com/tool/fluidium)
 
 ### Inferences
-- **v4.0 is recent.** It requires iPadOS 17.6 or later, and iOS 17.6 shipped in mid-2024 (general knowledge), so v4.0 dates from 2024 or later. The app is therefore maintained in the mid-2020s, after a gap from 2021 to at least 2024.
-- **Colordodge stays on Apple platforms.** Fluidium's App Store ID range points to registration around 2025 (low confidence). With its Vision Pro page, this suggests the developer is extending the touch-light-toy line into fluids and spatial computing on Apple platforms only. **No Colordodge product exists for Windows or Linux.**
+- **The 4.x line is recent.** The current build, 4.2, requires iPadOS 17.6 or later, so it shipped after iPadOS 17.6 existed. Apple's 17.6 release notes exist (apps for 17.6 are built with the 17.5 SDK in Xcode 15.4) but carry no date, so "mid-2024" remains general knowledge [Unverified].
+  - The 17.6 minimum belongs to the current build, not necessarily to 4.0. Older snapshots required iPadOS 11.0, and 4.0's own date is still unknown.
+  - The app is therefore maintained in the mid-2020s, after a gap from 2021 to at least 2024 [Verified correction: https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-17_6-release-notes; https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary)].
+- **Colordodge stays on Apple platforms.** Fluidium's App Store ID range points to registration around 2025 (low confidence).
+  - A Vision Pro page variant is not evidence of a visionOS edition. The App Store lists iPhone and iPad apps on Apple Vision Pro unless the developer opts out [Verified correction: https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-apple-vision-pro].
+  - So the evidence shows the line moving into fluids on Apple platforms, not into spatial computing.
+  - **No Colordodge product exists for Windows or Linux.**
 - **Uzu is now a premium legacy title.** The price rose from about $0.99 to about $3–5 with no in-app purchases. It now lives on brand recognition, not chart position (see the #181 Entertainment snapshot in §3).
 - **The second-screen idea is not new.** Uzu's external display with the iPad as controller already did "a handheld controls the big screen". Tactilume's novelty has to come from **several simultaneous phone controllers and gamepads, desktop-class scale and social play**.
 
@@ -87,7 +102,10 @@
 - Archived copies of listing 376551723 on web.archive.org could not be read: the fetch was blocked and the search budget was used up. So the pre-4.0 description, the launch price as listed, and the early "What's New" notes are rebuilt from 2010-era coverage and third-party mirrors, not from the archive.
 - Whether Little Uzu (ID 386764406) is still sold, or was folded into the universal app at v3.0.
 - Whether the external display used screen mirroring or a dedicated second-screen output. Also when external display, auto-play and microphone input were each added.
-- Whether the iPad build may run on Apple-silicon Macs. No AirPlay-specific or Apple TV feature was found, but that absence is not proven.
+- Whether the iPad build is offered on Apple-silicon Macs. By default it would be: the App Store makes compatible iPhone and iPad apps available on Apple-silicon Macs unless the developer opts out.
+  - Apple suggests opting out when an app relies heavily on custom multi-finger touch with no practical alternative, which fits Uzu's finger-count modes [Verified correction: https://developer.apple.com/documentation/apple-silicon/running-your-ios-apps-in-macos].
+  - Check the Mac App Store by hand.
+- No AirPlay-specific or Apple TV feature was found, but that absence is not proven.
 - The name's meaning: "Uzu" is Japanese for swirl or whirlpool. This is general knowledge and was not sourced in this research.
 
 ## 2. How did Uzu's interaction work, and what made it feel distinctive?
@@ -266,7 +284,10 @@ I found **no direct Uzu clone or "Uzu 2"**. Its lineage continues only through t
 
 **Fluid toys**
 - **Pavel Dobryakov's WebGL Fluid Simulation (October 2017):** a GPU fluid based on the GPU Gems article "Fast Fluid Dynamics Simulation on the GPU". It was featured on Google Experiments and has iOS and Android apps — [Google Experiments](https://experiments.withgoogle.com/fluid-simulation); [Kottke](https://kottke.org/19/05/webgl-fluid-dynamics-simulator)
+  - The README cites that GPU Gems chapter, and the code is MIT-licensed, copyright 2017 [Verified: https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/README.md; https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/LICENSE]. The month (October), the Google Experiments feature and the apps were not re-checked.
   - A 2019 update improved bloom, made behaviour consistent across resolutions and **improved handling of high-refresh-rate displays** — [X post](https://x.com/paveldogreat/status/1158862042964602882)
+    - The post's ID decodes to 2019-08-06, because X post IDs encode their posting time. The current code steps the simulation by wall-clock time capped at 1/60 s (`calcDeltaTime`), so speed does not depend on refresh rate [Verified: https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/script.js].
+    - The post's own wording could not be read.
   - *Best at:* instant delight in the browser with nothing to install; widely forked.
 - **Magic Fluids** (developer "Mad Scientist"): a "relaxing" fluid app with 70+ presets, video recording, an Android live-wallpaper mode and a Lite tier. It requires iOS 15.6 or later — [App Store](https://apps.apple.com/us/app/magic-fluids-visual-art-fun/id1437510558); [Google Play](https://play.google.com/store/apps/details?id=com.magicfluids&hl=en); [magicfluids.net](https://magicfluids.net/)
 - **Fluidium** (Colordodge Labs): see §1.
@@ -314,10 +335,21 @@ I found **no direct Uzu clone or "Uzu 2"**. Its lineage continues only through t
 
 **Music visualisers**
 - **The MilkDrop lineage:**
-  - libprojectM 4.1.4 (2025-01-24) fixed an issue on systems with only core OpenGL 4.1 or lower, mainly macOS.
-  - Releases continued to 4.1.8, dated 2026-10-06 on a SourceForge mirror whose dates are hard to reconcile.
-  - Butterchurn, a WebGL port of MilkDrop, is on npm at 2.6.7 under the MIT licence, with a last push in April 2026.
-  - It is embedded in a Jellyfin plugin **with TV and controller support**, in the Cider music player and in a Chrome extension.
+  - libprojectM 4.1.4 (2025-01-24) fixed an issue on systems with only core OpenGL 4.1 or lower: mainly macOS, but also some older Linux distributions [Verified: https://sourceforge.net/projects/projectm.mirror/files/v4.1.4/].
+  - Releases continued with 4.1.5 (2025-11-03), 4.1.6 (2025-11-28), 4.1.7 (2026-07-14) and 4.1.8 (2026-10-06).
+    - The mirror's dates are consistent, and the v4.1.4 to v4.1.8 tags exist on GitHub.
+    - `master` is at 4.2.0, which is not yet released.
+    - libprojectM is LGPL-2.1-or-later.
+    - [Verified: https://sourceforge.net/projects/projectm.mirror/files/; https://github.com/projectM-visualizer/projectm/blob/v4.1.8/CMakeLists.txt; https://github.com/projectM-visualizer/projectm/blob/master/CMakeLists.txt; https://github.com/projectM-visualizer/projectm/blob/master/COPYING]
+  - Butterchurn, a WebGL port of MilkDrop, is MIT-licensed.
+    - Its npm `latest` is still 2.6.7, published 2019-03-12.
+    - A 3.0 line has been in beta since 2021. 3.0.0-beta.5, published 2025-07-13 under the `beta` tag, is what `master`'s package.json declares.
+    - [Verified correction: https://registry.npmjs.org/butterchurn; https://github.com/jberg/butterchurn/blob/master/package.json; https://github.com/jberg/butterchurn/blob/master/LICENSE]
+    - The last push in April 2026 could not be checked, because the GitHub API is blocked here [Unverified].
+  - It is embedded in a Jellyfin plugin **with TV and controller support**.
+    - The plugin, jellybutter, takes a D-pad, remote or gamepad and is MIT-licensed. It pins Butterchurn 2.6.7 and butterchurn-presets 2.4.7.
+    - The presets package is MIT too, though each preset carries its author's name [Verified: https://github.com/rappo/jellybutter/blob/main/README.md; https://registry.npmjs.org/butterchurn-presets].
+    - It also appears in the Cider music player and in a Chrome extension [Unverified].
   - Sources: [projectM discussion](https://github.com/orgs/projectM-visualizer/discussions/867); [SourceForge mirror](https://sourceforge.net/projects/projectm.mirror/files/); [jsDelivr: butterchurn](https://www.jsdelivr.com/package/npm/butterchurn); [jellybutter](https://github.com/rappo/jellybutter); [Cider plugin](https://marketplace.cider.sh/plugins/4); [Wikipedia: MilkDrop](https://en.wikipedia.org/wiki/MilkDrop)
   - *Best at:* a huge preset library and audio reactivity you can set and forget.
 - **Synesthesia (Gravity Current; out of beta around 2015):** shader-based, audio-reactive VJ software whose scenes draw on Shadertoy-style GLSL shaders.
@@ -338,6 +370,9 @@ I found **no direct Uzu clone or "Uzu 2"**. Its lineage continues only through t
 **Emergent artificial life**
 - Jeffrey Ventrella's "Clusters" inspired Tom Mohr's Particle Life, which simplified the rules — [Ventrella: Clusters](https://www.ventrella.com/Clusters/); [particle-life.com project](https://particle-life.com/about/project.html); [implementations list](https://particle-life.com/about/implementations.html)
   - Mohr ships a Java desktop app for Windows, with source on GitHub.
+    - It is at version 1.3.1. It installs on Windows and runs from source with JDK 17–25, using a Java 21 runtime.
+    - It is licensed GPL-3.0, so reusing its code would put Tactilume under GPL-3.0 too.
+    - [Verified: https://github.com/tom-mohr/particle-life-app/blob/main/README.md; https://github.com/tom-mohr/particle-life-app/blob/main/LICENSE.md; https://github.com/tom-mohr/particle-life-app/blob/main/gradle.properties]
   - Ventrella's iOS app is no longer on the App Store.
   - Community ports exist for the GPU and WebGPU, plus a browser version with generative audio.
   - *Best at:* lifelike emergence from a few sliders, and endless novelty.
@@ -352,6 +387,10 @@ I found **no direct Uzu clone or "Uzu 2"**. Its lineage continues only through t
 - **Notch:** evidence is limited to an InfoComm 2026 session on building interactive systems with TouchDesigner and Notch (19 June 2026) — [InfoComm 2026](https://www.infocommshow.org/2026-sessions/build-it-live-interactive-systems-with-touchdesigner-notch)
 - **Shadertoy:** an online community for GLSL shaders, with no evidence found of a move to WebGPU.
   - compute.toys is described as "Shadertoy for WebGPU compute shaders".
+    - Its README calls it a WebGPU compute-shader playground that runs in the browser.
+    - Shaders are now written in Slang, which is compiled to WGSL.
+    - The code is MIT-licensed.
+    - [Verified: https://github.com/compute-toys/compute.toys/blob/master/README.md; https://github.com/compute-toys/compute.toys/blob/master/LICENSE]
   - wgshadertoy and Rust GPU ports of Shadertoy shaders (April 2025) also exist.
   - Sources: [Wikipedia: Shadertoy](https://en.wikipedia.org/wiki/Shadertoy); [compute.toys](https://awesome.ecosyste.ms/projects/github.com%2Fcompute-toys%2Fcompute.toys); [Rust GPU blog](https://rust-gpu.github.io/blog/2025/04/10/shadertoys)
 
@@ -412,10 +451,10 @@ The big pitfalls are:
 
 ### Cited Findings
 - **Latency:**
-  - Microsoft Research reported that typical touchscreens lag about 100 ms and demonstrated a 1 ms prototype in 2012 — [Microsoft blog](https://blogs.microsoft.com/next/2012/03/12/taking-touch-screens-from-100-millisecond-lag-to-1-millisecond/)
-  - A 2014 stylus study found people could tell about 1 ms from 2 ms when dragging, but only about 7 ms from 40 ms when scribbling. Dragging is the most latency-sensitive gesture — [CHI 2014 stylus-latency paper](https://webdocs.cs.ualberta.ca/~wfb/publications/C-2014-SIGCHI-Latency.pdf)
-  - For inking, the noticeable latency is about 50 ms, against about 2–7 ms for tasks other than inking — [GI 2014 inking paper](https://webdocs.cs.ualberta.ca/%7Ewfb/publications/C-2014-GI-Latency.pdf)
-  - A related patent reports thresholds of about 2.4–11.4 ms (mean about 6 ms) against a 1 ms reference — [US patent 9836313](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9836313)
+  - Microsoft Research reported that typical touchscreens lag about 100 ms and demonstrated a 1 ms prototype in 2012 — [Microsoft blog](https://blogs.microsoft.com/next/2012/03/12/taking-touch-screens-from-100-millisecond-lag-to-1-millisecond/) [Unverified]. The host is blocked. The CHI 2014 paper below gives 65–120 ms end-to-end latency for commercial devices, which is consistent.
+  - A 2014 stylus study found people could tell about 1 ms from 2 ms when dragging, but only about 7 ms from 40 ms when scribbling. Dragging is the most latency-sensitive gesture — [CHI 2014 stylus-latency paper](https://webdocs.cs.ualberta.ca/~wfb/publications/C-2014-SIGCHI-Latency.pdf) [Verified: https://webdocs.cs.ualberta.ca/~wfb/publications/C-2014-SIGCHI-Latency.pdf (search summary of the abstract; the host is blocked here)]
+  - For inking, the noticeable latency is about 50 ms, against about 2–7 ms for tasks other than inking — [GI 2014 inking paper](https://webdocs.cs.ualberta.ca/%7Ewfb/publications/C-2014-GI-Latency.pdf) [Unverified]
+  - A related patent reports thresholds of about 2.4–11.4 ms (mean about 6 ms) against a 1 ms reference — [US patent 9836313](https://image-ppubs.uspto.gov/dirsearch-public/print/downloadPdf/9836313) [Unverified]
 - **Frame rate matters to users:**
   - Uzu reviewers welcomed the 120 Hz iPad Pro update — [App Store reviews (via search)](https://apps.apple.com/us/app/376551723?see-all=reviews&platform=iphone)
   - Dobryakov updated his fluid simulation specifically for high-refresh displays — [X](https://x.com/paveldogreat/status/1158862042964602882)
@@ -440,16 +479,30 @@ The big pitfalls are:
   - Uzu 4.0 added preset export and import — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723)
   - creator communities keep toys alive: Wallpaper Engine's Workshop and Shadertoy — [Wikipedia: Wallpaper Engine](https://en.wikipedia.org/wiki/Wallpaper_Engine); [Wikipedia: Shadertoy](https://en.wikipedia.org/wiki/Shadertoy)
 - **Photosensitivity: hard constraints:**
-  - **Xbox Accessibility Guideline 118** — [Xbox AG 118](https://learn.microsoft.com/en-us/gaming/accessibility/xbox-accessibility-guidelines/118):
+  - **Xbox Accessibility Guideline 118** — [Xbox AG 118](https://learn.microsoft.com/en-us/gaming/accessibility/xbox-accessibility-guidelines/118). The page now lives at https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/118. It:
     - fails flashing above about 3 flashes per second;
     - fails flashes covering about 20% or more of the screen;
-    - sets a lower threshold for transitions to or from saturated red;
+    - counts a flash as a luminance change of 10% of full white, where the darker state is below 0.8 (definition since XAG version 3.0, May 2022);
+    - sets a lower threshold for transitions to or from saturated red. The test applies when either extreme has R/(R+G+B) ≥ 0.8, and a flash counts when (R−G−B)×320 changes by more than 20;
     - can fail even low-intensity flashing that lasts a long time;
-    - lists Harding FPA testing.
-  - **WCAG 2.3** sets the three-flashes limit with general and red-flash thresholds. Guides point to tools such as PEAT for checking video — [MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Seizure_disorders); [TAMUCC WCAG 2.3](https://www.tamucc.edu/information-technology/accessibility/wcag/2-3.php)
+    - lists Harding FPA testing;
+    - is offered as best practice, not as a compliance checklist.
+    - [Verified: https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/118 (search summary; learn.microsoft.com is blocked here); https://learn.microsoft.com/en-us/xbox/accessibility/xag-version-history (search summary)]
+  - **WCAG 2.3.1** (level A) allows no more than three flashes in any one-second period, unless the flashing stays below the general and red flash thresholds. The thresholds:
+    - A general flash is a pair of opposing changes of at least 10% of maximum relative luminance, where the darker state is below 0.80.
+    - A red flash is a pair of opposing transitions to or from saturated red, meaning R/(R+G+B) ≥ 0.8 with a chromaticity change above 0.2 in CIE 1976 UCS.
+    - The area test passes if the combined concurrent flash area is at most 0.006 sr, or 25% of any 10° visual field.
+      - WCAG estimates a 10° field as a 341×256 px rectangle on a 1024×768 screen (15–17 inches viewed at 22–26 inches).
+      - So the limit is a quarter of that rectangle.
+    - WCAG 2.3.2 (level AAA) drops the threshold exception.
+    - [Verified: https://github.com/w3c/wcag/blob/main/guidelines/sc/20/three-flashes-or-below-threshold.html; https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html; https://github.com/w3c/wcag/blob/main/guidelines/sc/20/three-flashes.html]
+  - **Checking tools.** Guides point to PEAT and the Harding test for checking video — [MDN](https://developer.mozilla.org/en-US/docs/Web/Accessibility/Guides/Seizure_disorders); [TAMUCC WCAG 2.3](https://www.tamucc.edu/information-technology/accessibility/wcag/2-3.php)
+    - PEAT's terms forbid its use on material made commercially for television, film, home entertainment or gaming.
+    - So a commercial game like Tactilume must use the Harding test or another commercial tool [Verified correction: https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md (quoting the PEAT page)].
   - **The Epilepsy Foundation working-group consensus paper** (attribution of the figures via search summary) — [consensus paper copy](https://puc.sd.gov/commission/dockets/electric/2019/el19-027/prefiledexhibits/CRWII/A178.pdf):
-    - the chance of a photoparoxysmal (seizure-related brain) response rises steeply above 3 flashes per second, reaching 65% at 10 per second;
-    - the UK broadcast regulator ITC restricted bright flashes above 3 per second covering more than 25% of the screen;
+    - the paper's hazard definition: a flash is a potential hazard at a luminance of 20 cd/m² or more, a frequency of 3 Hz or more, and a solid angle of 0.006 sr or more. That is about 10% of the central visual field, or 25% of screen area at the viewing distances of the time (2 m or more from a TV). A transition to or from saturated red is a risk on its own [Verified: https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md (MDN's quotation of the paper)];
+    - the chance of a photoparoxysmal (seizure-related brain) response rises steeply above 3 flashes per second, reaching 65% at 10 per second [Unverified];
+    - the UK broadcast regulator ITC restricted bright flashes above 3 per second covering more than 25% of the screen [Unverified]. The 25%-of-screen figure matches the consensus text quoted by MDN, but the ITC attribution was not re-checked;
     - games have nearly limitless paths through them, which makes frame-by-frame certification hard.
   - An Epilepsy Australia factsheet from May 2026 gives current guidance — [Epilepsy Australia](https://www.epilepsy.org.au/wp-content/uploads/2026/05/Factsheet_Photosensitive-epilepsy_May2026.pdf)
   - Strobe "party" apps that flash to the beat exist on the App Store. That is the exact anti-pattern to avoid — [App Store: Strobe Light DJ](https://apps.apple.com/us/app/-/id6745205521)
@@ -468,15 +521,22 @@ The big pitfalls are:
 6. **Capture and share by default.** Build in clip recording, stills, and sharing of presets and scenes.
 7. **Safe by construction.**
    - Run a global limiter on flashes and luminance change: at most 3 flashes per second, aware of screen area and of red.
+     - Measure area as a visual angle, not only as a share of the screen.
+     - WCAG's limit is 0.006 sr of concurrent flashing within any 10° field. At distance d that is about 0.006 × d² of screen surface.
+     - At a 60 cm desk distance that is about 22 cm², about 1% of a 27-inch 16:9 monitor. At 2.5 m it is about 375 cm², about 3% of a 65-inch TV. Both are far stricter than XAG 118's whole-screen ~20%.
+     - So the limiter needs the screen size and viewing distance, with a conservative default, and should treat saturated-red transitions separately.
+     - [Verified correction: https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html; https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/118 (search summary)]. The arithmetic is this fact-check's own.
+     - Beat-synced pulses that exceed the luminance and area thresholds count as flashes. One pulse per beat stays within 3 per second up to 180 BPM, but eighth-note pulses at 120 BPM (4 per second) do not (inference from the WCAG definition).
    - Offer a "calm" profile.
    - Cap brightness, which becomes critical with HDR.
    - Ship no strobe presets.
-   - Run Harding/PEAT-style checks on trailers and recorded sessions.
+   - Run Harding FPA checks on trailers and recorded sessions. PEAT's terms exclude commercial games, so it cannot be used here [Verified correction: https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md (quoting the PEAT page)].
 8. **Fight fading novelty.** Use curated "worlds" (the Panoramical and Electroplankton model), light goals and multiplayer games (the Plasma Pong model), seasonal content and community presets.
 
 ### Gaps
 - No controlled studies were found on engagement or retention for light toys specifically.
 - No research was found on photosensitivity thresholds for HDR. The Xbox AG 118 and WCAG thresholds assume standard-dynamic-range (SDR) luminance. How "luminance change" scales with HDR brightness levels needs specialist input.
+  - WCAG and XAG measure change relative to SDR white. The consensus paper's criterion is absolute (20 cd/m² or more), so it is the less ambiguous reference for HDR output. This is an inference, not a cited finding.
 
 ## 6. What would "next gen" plausibly mean for this genre on desktop?
 
@@ -518,7 +578,10 @@ Each has a precedent somewhere on its own. Nobody yet combines them.
 ### Inferences
 - **Scale and light:**
   - HDR lets particle cores glow brighter than standard white while the background stays deep black. This is the most visible "next gen" upgrade, and no surveyed toy advertises it.
+    - Measured in this container, Chromium 153's WebGPU canvas accepts `rgba16float` with `toneMapping: {mode: "extended"}`, and `getConfiguration()` reports it back, so an HDR swap chain can be configured.
+    - Presenting a WebGPU canvas failed here, both headless and under Xvfb, so the on-screen HDR result is untested.
   - It must be paired with limits on luminance change, because brighter peaks raise the risk of harmful flashes.
+  - Particle scale ("millions") is a target, not a measurement. In this container only a software adapter was available: about 22 ms per step for 20k particles and 131 ms for 300k. That is software timing, not GPU data, so GPU budgets are still unmeasured.
 - **Motion:** at 120–240 Hz, with trails that don't smear, swirls feel liquid. Users notice, as the Uzu reviews show.
 - **Many hands:**
   - Uzu's ten-finger ceiling becomes "ten-plus players": each phone is a multitouch surface, and each gamepad offers two analog "hands".
@@ -582,7 +645,9 @@ Each has a precedent somewhere on its own. Nobody yet combines them.
 - **Rules, presets and effects:** the auto-play wraparound rule; the 55 and 67 factory presets and the "Legacy Presets" folder; the 10-effect set; the Low-to-Ultra tiers — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723); [AppFollow](https://apps.appfollow.io/ios/uzu-an-interactive-light-show/376551723)
 - **Trademark risk is real in this genre:** Plasma Pong was pulled over "Pong" — [Wikipedia](https://en.wikipedia.org/wiki/Plasma_Pong)
 - **Requests Uzu users made that went unmet:** video export, background colour, randomise-all, hidden controls, sharing, and new platforms such as Apple Watch — [App Store reviews](https://apps.apple.com/us/app/376551723?see-all=reviews&platform=iphone)
+  - Version 4.2 added a new colour panel, so the colour request may now be partly met. What the panel covers was not seen [Unverified].
 - **Apple-only:** Uzu and the rest of the developer's line run only on Apple platforms — Uzu is "Designed for iPad", and Fluidium is on iPad and Vision Pro — [App Store](https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723); [App Store: Fluidium](https://apps.apple.com/us/app/fluidium/id6745104628)
+  - Vision Pro, and Apple-silicon Macs too, come by default with being an iPad app unless the developer opts out. So neither implies a dedicated edition [Verified correction: https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-apple-vision-pro; https://developer.apple.com/documentation/apple-silicon/running-your-ios-apps-in-macos].
 
 ### Inferences
 
@@ -630,6 +695,7 @@ Each has a precedent somewhere on its own. Nobody yet combines them.
 
 **(b) Open opportunities Tactilume Desktop can own**
 1. **Desktop platforms at all.** There is no Uzu or Colordodge product for Windows or Linux. On desktop, the genre is professional tools, visualisers or small Steam toys.
+   - On macOS the iPad app may still be offered on Apple-silicon Macs, which is Apple's default. This was not checked by hand, so treat macOS as possibly contested [Verified correction: https://developer.apple.com/documentation/apple-silicon/running-your-ios-apps-in-macos].
 2. **Many players at once.**
    - Several phones and gamepads, each with its own colour, sound and tool.
    - Co-op painting; competitive arenas, an original fluid sport in the spirit of Plasma Pong; conductor and painter roles.
@@ -665,7 +731,12 @@ Each has a precedent somewhere on its own. Nobody yet combines them.
     - MIDI and OSC mapping and BPM sync.
     - It serves the party and club use that Uzu only hinted at.
 11. **Safety and comfort as a feature.**
-    - flash limiting to certification-style standards (at most 3 flashes per second, aware of screen area and of red);
+    - flash limiting to certification-style standards:
+      - at most 3 flashes per second;
+      - flash area judged as a visual angle at the expected viewing distance (WCAG: 0.006 sr in any 10° field, about 1% of a 27-inch monitor at 60 cm) as well as a share of the screen (XAG 118: about 20%);
+      - red handled separately;
+      - Harding FPA, not PEAT, for checking;
+      - [Verified correction: https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html; https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md];
     - a calm/sensory profile, session timers, a caregiver lock, and palettes safe for colour-blind players.
     - These are aimed at the therapy, children's and autism audiences that adopted Uzu informally.
 12. **A living product.**
@@ -677,3 +748,54 @@ Each has a precedent somewhere on its own. Nobody yet combines them.
 ### Gaps
 - Uzu's preset names, App Store screenshots and in-app UI layout could not be reviewed because fetches were blocked. Review the live listing and recent YouTube captures by hand before finalising the "do not copy" list.
 - There was no legal review of trademarks on "Uzu" or related names. Do one if any swirl- or whirlpool-themed naming is considered.
+
+## Verification
+
+Fact-check of 12 November 2026. These are the 15 claims in this file that could change a design or requirement decision: platform reach, versions and dates, prices, licences, latency figures and photosensitivity limits.
+
+How the sources were read:
+- Raw files from GitHub (raw.githubusercontent.com).
+- The npm registry.
+- developer.apple.com pages and DocC JSON.
+- The SourceForge projectM mirror.
+
+Hosts that stayed blocked:
+- apps.apple.com, itunes.apple.com and support.apple.com;
+- learn.microsoft.com;
+- webdocs.cs.ualberta.ca, blogs.microsoft.com and patents.google.com;
+- w3.org, which was not needed because w3c/wcag is on GitHub;
+- the github.com web pages, API and feeds. Only raw files worked, so push dates could not be read.
+
+Three web searches were used: XAG 118, the Uzu listing, and the CHI 2014 abstract. Their results are marked "(search summary)".
+
+Nothing in these notes contradicted the container measurements (headless Chromium 153.0.8010.12, SwiftShader). Two measured facts were added in §6:
+- the HDR canvas configuration is accepted;
+- particle timing here is software-only.
+
+Counts: 15 checked, 8 confirmed, 5 corrected and 2 unverifiable.
+
+| # | Claim | Verdict | Source |
+|---|---|---|---|
+| 1 | Uzu is still sold, "Designed for iPad", requires iPadOS 17.6 or later and costs about US$2.99–4.99. The latest version is the v4.0 Metal rebuild | **Corrected.** Still sold, "Designed for iPad" and iPadOS 17.6 or later are confirmed (UK and Costa Rica listings agree). The current US price is $3.99, with older snapshots at $2.49–$4.99, £3.99 in the UK and €3.99 in Austria. The newest version is 4.2, not 4.0 | https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary; page blocked) |
+| 2 | v4.0 dates from 2024 or later, because it requires iPadOS 17.6, which shipped in mid-2024 | **Corrected.** The 17.6 minimum belongs to the current build (4.2), so it dates 4.2, not 4.0; an older snapshot required iPadOS 11.0. The 17.6 release notes exist (17.5 SDK, Xcode 15.4) but carry no date, so "mid-2024" stays general knowledge | https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-17_6-release-notes; https://apps.apple.com/us/app/uzu-an-interactive-light-show/id376551723 (search summary) |
+| 3 | There is no Mac or visionOS edition, and Fluidium's Vision Pro page suggests a move into spatial computing. Whether the iPad build runs on Apple-silicon Macs was a gap | **Corrected.** The App Store offers compatible iPhone and iPad apps on Apple-silicon Macs and on Vision Pro by default, unless the developer opts out. Apple suggests opting out for custom multi-finger input with no alternative. A Vision Pro page is therefore not a visionOS edition, and Uzu may be on Macs: macOS is possibly contested | https://developer.apple.com/documentation/apple-silicon/running-your-ios-apps-in-macos; https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-macs-with-apple-silicon; https://developer.apple.com/help/app-store-connect/manage-your-apps-availability/manage-availability-of-iphone-and-ipad-apps-on-apple-vision-pro; https://developer.apple.com/documentation/visionos/making-your-app-compatible-with-visionos |
+| 4 | A 3.x update made Uzu run at 120 fps on iPad Pro | **Unverifiable** for Uzu, because the release notes could not be read. The hardware part is confirmed: iPad Pro ProMotion displays switch between 24 Hz and 120 Hz | https://developer.apple.com/documentation/quartzcore/optimizing-iphone-and-ipad-apps-to-support-promotion-displays |
+| 5 | CHI 2014 stylus study: people tell about 1 ms from 2 ms when dragging, and about 7 ms from 40 ms when scribbling | **Confirmed** from the abstract. The paper also puts commercial end-to-end latency at 65–120 ms | https://webdocs.cs.ualberta.ca/~wfb/publications/C-2014-SIGCHI-Latency.pdf (search summary; host blocked) |
+| 6 | Other latency figures: Microsoft Research 2012 (about 100 ms typical, a 1 ms prototype); GI 2014 (inking about 50 ms against 2–7 ms); US patent 9836313 (2.4–11.4 ms, mean about 6 ms) | **Unverifiable.** The hosts are blocked and no search was spent. The 100 ms figure fits CHI 2014's 65–120 ms | https://blogs.microsoft.com/next/2012/03/12/taking-touch-screens-from-100-millisecond-lag-to-1-millisecond/; https://webdocs.cs.ualberta.ca/%7Ewfb/publications/C-2014-GI-Latency.pdf (both blocked) |
+| 7 | WCAG 2.3 sets a three-flash limit with general and red flash thresholds | **Confirmed**, with the numbers added. A general flash is an opposing change of at least 10% of relative luminance, with the darker state below 0.80. A red flash has R/(R+G+B) ≥ 0.8 with a chromaticity change above 0.2. The area limit is 0.006 sr, or 25% of any 10° field (341×256 px at 1024×768). 2.3.2 (AAA) drops the exception | https://github.com/w3c/wcag/blob/main/guidelines/sc/20/three-flashes-or-below-threshold.html; https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html; https://github.com/w3c/wcag/blob/main/guidelines/sc/20/three-flashes.html |
+| 8 | XAG 118 fails more than about 3 flashes per second and flashes over about 20% of the screen. It has a stricter red test, can fail long low-intensity flashing and lists Harding FPA | **Confirmed.** Added: the 10%-of-white luminance definition (since version 3.0, May 2022), the red formula ((R−G−B)×320 change above 20), the moved URL (/xbox/ instead of /gaming/), and Microsoft's statement that the XAGs are best practice, not a compliance checklist | https://learn.microsoft.com/en-us/xbox/accessibility/xbox-accessibility-guidelines/118; https://learn.microsoft.com/en-us/xbox/accessibility/xag-version-history (search summary; host blocked) |
+| 9 | Guides point to PEAT for checking video, and the design rule is "Harding/PEAT-style checks" | **Corrected.** PEAT's terms forbid its use on material made commercially for TV, film, home entertainment or gaming. Tactilume must use the Harding test or another commercial tool | https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md (quoting the PEAT page) |
+| 10 | Epilepsy Foundation consensus: risk rises above 3 flashes per second (65% at 10 per second), and ITC restricted flashes over 25% of the screen | **Confirmed** for the thresholds. A flash is a hazard at 20 cd/m² or more, 3 Hz or more and 0.006 sr or more (about 25% of a TV screen at 2 m or more). A saturated-red transition is a risk on its own. The 65% figure and the ITC attribution remain unverifiable | https://github.com/mdn/content/blob/main/files/en-us/web/accessibility/guides/seizure_disorders/index.md (quoting the paper) |
+| 11 | Butterchurn is on npm at 2.6.7 under MIT, with a last push in April 2026, and is embedded in a Jellyfin plugin with TV and controller support | **Corrected.** MIT and npm `latest` 2.6.7 are confirmed, but 2.6.7 dates from 2019-03-12. 3.0.0-beta.5 (2025-07-13, `beta` tag) is what `master` declares. The April 2026 push is unverifiable. The jellybutter part is confirmed: D-pad, remote or gamepad, pins Butterchurn 2.6.7 and presets 2.4.7, MIT | https://registry.npmjs.org/butterchurn; https://github.com/jberg/butterchurn/blob/master/package.json; https://github.com/jberg/butterchurn/blob/master/LICENSE; https://github.com/rappo/jellybutter/blob/main/README.md; https://registry.npmjs.org/butterchurn-presets |
+| 12 | libprojectM 4.1.4 (2025-01-24) fixed systems with only core OpenGL 4.1 or lower, mainly macOS, and releases continued to 4.1.8 on 2026-10-06 | **Confirmed.** Also 4.1.5 (2025-11-03), 4.1.6 (2025-11-28) and 4.1.7 (2026-07-14); the tags exist on GitHub. `master` is at 4.2.0, not yet released. The licence is LGPL-2.1-or-later. The fix also covers older Linux distributions | https://sourceforge.net/projects/projectm.mirror/files/; https://sourceforge.net/projects/projectm.mirror/files/v4.1.4/; https://github.com/projectM-visualizer/projectm/blob/v4.1.8/CMakeLists.txt; https://github.com/projectM-visualizer/projectm/blob/master/COPYING |
+| 13 | Dobryakov's WebGL Fluid (2017) builds on the GPU Gems fluid chapter, and a 2019 update improved handling of high-refresh displays | **Confirmed.** The README cites the chapter, and the code is MIT, copyright 2017. The cited post's ID decodes to 2019-08-06. The code steps by wall-clock time capped at 1/60 s. The month (October) was not checked | https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/README.md; https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/LICENSE; https://github.com/PavelDoGreat/WebGL-Fluid-Simulation/blob/master/script.js |
+| 14 | Tom Mohr ships a Java desktop Particle Life app for Windows, with source on GitHub | **Confirmed.** Version 1.3.1 installs on Windows and runs from source with JDK 17–25 on a Java 21 runtime. Added: the licence is GPL-3.0 | https://github.com/tom-mohr/particle-life-app/blob/main/README.md; https://github.com/tom-mohr/particle-life-app/blob/main/LICENSE.md; https://github.com/tom-mohr/particle-life-app/blob/main/gradle.properties |
+| 15 | compute.toys is "Shadertoy for WebGPU compute shaders" | **Confirmed.** The README describes a WebGPU compute-shader playground that runs in the browser. Shaders are now written in Slang and compiled to WGSL, and the code is MIT | https://github.com/compute-toys/compute.toys/blob/master/README.md; https://github.com/compute-toys/compute.toys/blob/master/LICENSE |
+
+Not re-checked, and still resting on the original sources:
+- the 12 June 2010 release date and the 2010 chart peak;
+- the 2010–2021 version dates;
+- Atomic Particle Engine's April 2026 Steam release;
+- the TouchDesigner build numbers;
+- the Plasma Pong takedown;
+- prices other than Uzu's.

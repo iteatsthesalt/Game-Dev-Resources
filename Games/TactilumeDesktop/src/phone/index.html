@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<title>Tactilume controller</title>
+<link rel="icon" href="data:,">
+<link rel="stylesheet" href="phone.css">
+<script src="phone.js" defer></script>
+</head>
+<body>
+<p id="status" role="status">Connecting…</p>
+<div id="pad" role="application" aria-label="Touch pad. Touch and drag to move the light."></div>
+<div class="buttons" role="group" aria-label="Controls">
+  <button type="button" data-act="behaviour" data-v="-1" aria-label="Previous behaviour">◀</button>
+  <button type="button" data-act="behaviour" data-v="1" aria-label="Next behaviour">▶</button>
+  <button type="button" data-act="palette" data-v="1">Colours</button>
+  <button type="button" data-act="surprise">Surprise</button>
+  <button type="button" data-act="pulse">Pulse</button>
+</div>
+<p class="note">Your screen may go to sleep while you play: this page cannot keep it awake.</p>
+</body>
+</html>

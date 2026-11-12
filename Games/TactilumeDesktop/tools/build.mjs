@@ -26,8 +26,9 @@ const BUNDLES = [
   { entry: 'src/preload/preload.js', out: 'preload.cjs', ...node },
   // The renderer runs in Electron's Chromium; its WGSL shaders are imported as strings.
   { entry: 'src/renderer/main.js', out: 'renderer/app.js', platform: 'browser', format: 'esm', target: 'chrome130' },
-  // Phones run whatever browser they have, so this one is a classic script for older engines.
-  { entry: 'src/phone/phone.js', out: 'phone/phone.js', platform: 'browser', format: 'iife', target: ['safari14', 'chrome90'] },
+  // Phones run whatever browser they have, so this one is a classic script for older engines
+  // (iOS 15 and Android Chrome 100 onward).
+  { entry: 'src/phone/phone.js', out: 'phone/phone.js', platform: 'browser', format: 'iife', target: ['safari15', 'chrome100'] },
 ];
 
 const COPIES = [

@@ -1,0 +1,99 @@
+/* The desktop renderer's page: a full-window canvas with the overlay on top.
+   First version, written by the spine. The shell-ui part owns this file and replaces it. */
+
+:root {
+  --text: #f2f2f2;
+  --panel: rgba(16, 16, 20, 0.92);
+  --edge: rgba(255, 255, 255, 0.18);
+  --focus: #ffd23a;
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  color: var(--text);
+  font: 16px/1.4 system-ui, sans-serif;
+}
+
+#stage {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* the canvas takes every touch and drag itself: no scrolling, zooming or text selection */
+  touch-action: none;
+  user-select: none;
+}
+
+#ui { position: fixed; inset: 0; pointer-events: none; }
+#ui > * { pointer-events: auto; }
+
+button, input, label { font: inherit; color: inherit; }
+
+button {
+  min-height: 36px;
+  padding: 6px 14px;
+  border: 1px solid var(--edge);
+  border-radius: 8px;
+  background: var(--panel);
+  cursor: pointer;
+}
+
+/* a visible focus ring on everything that can be focused */
+:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+.corner { position: absolute; top: 12px; right: 12px; display: flex; gap: 8px; }
+
+.panel {
+  position: absolute;
+  top: 60px;
+  right: 12px;
+  width: min(340px, calc(100vw - 24px));
+  max-height: calc(100vh - 80px);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--edge);
+  border-radius: 12px;
+  background: var(--panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.panel h2 { margin: 0; font-size: 18px; }
+.panel p { margin: 0; font-size: 14px; }
+.panel .qr { width: 220px; height: 220px; align-self: center; image-rendering: pixelated; background: #fff; }
+.panel .address { font-family: ui-monospace, monospace; word-break: break-all; }
+.players { margin: 0; padding-left: 20px; font-size: 14px; }
+/* the player's colour as a marker beside the name, never instead of it */
+.players li::marker { color: var(--player, var(--text)); content: '● '; }
+
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 15px;
+  transition: opacity 0.2s;
+}
+
+#fatal {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  padding: 24px;
+  background: #000;
+  text-align: center;
+}
+#fatal[hidden], [hidden] { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
