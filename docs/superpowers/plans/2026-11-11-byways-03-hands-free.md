@@ -1219,7 +1219,7 @@ git commit -m "Add the single-key map with a text-field guard"
 - Consumes: `createHandsFree`, `effectiveListenMode` (Tasks 4–5); `createListener` (Task 2); `createReader`, `cardScript` (Task 3); `COMMANDS`, `commandPhrases` (Task 1); `installKeymap` (Task 8); `createWebVoice` (Task 6); `createWebMedia` (Task 7); `showResult` from `ui/views/stumble.js`; `announce` (`ui/a11y.js`); `h`, `clear` (`ui/dom.js`); `navigate` (`ui/router.js`); `app.search`, `app.collections.has`, `app.platform`, `app.getSettings`, `app.clock`.
 - Produces:
   - `installHandsFreeUi(app) → void`. It sets `app.handsFree` at once (with `listener: null`) and replaces it with a freshly wired controller and listener on every **Start** press, so voice settings apply from the next Start.
-  - `describeEngine(status: VoiceStatus) → string` and `VENDOR_NAMES = {google:'Google', apple:'Apple', microsoft:'Microsoft', mozilla:'Mozilla', android:'Android'}`, used by Task 10.
+  - `startHandsFree(app) → Promise<void>`: the Start press routine, also called by the first-run step (Task 10).
   - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js` and passed as `createWebMedia(navigator, {silentAudio: SILENT_AUDIO_FALLBACK})`. `pwa.js` also switches `voice` to `createWebVoice(window, {lang: 'en-US'})`.
   - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`, keeping Plan 01's behaviour and adding:
     - the static `SpeechRecognition.available()` resolving `available` (no static when `available` is `null`), and `install()` resolving `true`;
@@ -1232,7 +1232,7 @@ Bar contents. `#handsfree` is a `<section aria-label="Hands-free">` outside the 
 
 | Element | Visible text and behaviour |
 |---|---|
-| Start button | `Start`, shown while idle. The press: probe with `allowCloud: settings.voice.cloudOptIn`, build listener and controller, `wakeLock.on()`, `media.setActive(true)`, `hf.start()` |
+| Start button | `Start`, shown while idle. Calls `startHandsFree(app)`: probe with `allowCloud: settings.voice.cloudOptIn`, build listener and controller with `getListenMode = () => effectiveListenMode(settings.voice.mode, status)`, `wakeLock.on()`, `media.setActive(true)`, `hf.start()` |
 | Turn off button | `Turn off hands-free`, shown when not idle; calls `stop()` |
 | Listening indicator `#hf-listening` | `Listening`, `Not listening`, `Hold V to talk` (push mode) or `No voice` (off) |
 | Pause/Play | `Pause` while active, `Play` while paused; hidden while idle |

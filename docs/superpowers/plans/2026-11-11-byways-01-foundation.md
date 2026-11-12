@@ -1184,4 +1184,226 @@ git add src/ui/dom.js src/ui/a11y.js src/ui/theme.js src/ui/toast.js tests/unit/
 git commit -m "Add the DOM builder, live regions, access attributes and toasts"
 ```
 
+### Task 12: Router, view registries and boot
+
+**Files:**
+- Create: `src/ui/router.js`, `src/ui/views/index.js`, `src/ui/views/settings/index.js`, `tests/e2e/helpers/app.js`
+- Modify: `src/ui/boot.js` (replace the Task 9 stub)
+- Test: `tests/unit/router.test.js`, `tests/unit/boot-data.test.js`, `tests/e2e/shell.spec.js`
+
+**Interfaces:**
+- Consumes: everything from Tasks 2–11; `createPwaPlatform`, `registerServiceWorker` (Task 7).
+- Produces:
+  - `router.js`: `ROUTES`, `registerView(route, {title, render(container, app, params), leave?})` (a later registration for the same route replaces the earlier one; an unknown route throws `Error('unknown route: <route>')`), `getView(route) → view|undefined`, `parseHash(hash) → {route, params}`, `buildHash(route, params = {}) → string`, `startRouter(render)`, `navigate(route, params = {})`. `params` is `{id?: string}` for `#/<route>/<id>` (a Daily Fate date or a settings section id) and `{payload: string}` for `#s=<payload>`.
+  - `views/settings/index.js`: `registerSettingsSection({id, label, order, render(container, app)})`, `listSettingsSections() → Array` sorted by `order`. It registers the `settings` view.
+  - `views/index.js`: imports `./settings/index.js`, then registers a placeholder view for each of `stumble feed daily vault saved import` that has no view yet. Later plans add their import lines above this.
+  - `boot.js`: `DATA_FILES = {tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json'}`, `EMPTY_DATA` (the empty shapes from Task 9), `loadData(fetchFn, baseUrl) → Promise<object>`, `STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.'`, `VIEW_FAILED_MESSAGE = 'This view failed to load.'`, `boot(platform) → Promise<App>` with the Plan 01 `App` fields plus `getSettings()`, and `bootFromShell()`. Plans 07 and 08 add their shells' branches to `bootFromShell`.
+  - `tests/e2e/helpers/app.js`: `gotoApp(page, hash = '#/stumble')`. It loads the page, then clicks **Skip** while a `[data-firstrun]` element is shown, then waits for the `h1`.
+
+View titles: `stumble` "Stumble", `feed` "Feed", `daily` "Daily Fate", `vault` "Vault", `saved` "Saved", `settings` "Settings", `import` "Import". A placeholder renders an `h1` with its title and the paragraph "Nothing here yet.".
+
+- [ ] **Step 1: Write the failing unit tests**
+
+`tests/unit/router.test.js`:
+
+```js
+test('parseHash reads the hash forms', () => {
+  for (const h of ['', '#', '#/']) assert.deepEqual(parseHash(h), { route: 'stumble', params: {} });
+  assert.deepEqual(parseHash('#/feed'), { route: 'feed', params: {} });
+  assert.deepEqual(parseHash('#/FEED'), { route: 'feed', params: {} });
+  assert.deepEqual(parseHash('#/daily/2026-11-11'), { route: 'daily', params: { id: '2026-11-11' } });
+  assert.deepEqual(parseHash('#/settings/a%20b'), { route: 'settings', params: { id: 'a b' } });
+  assert.deepEqual(parseHash('#s=abc-_'), { route: 'import', params: { payload: 'abc-_' } });
+  assert.deepEqual(parseHash('#/nope'), { route: 'stumble', params: {} });
+});
+test('parseHash never throws on malformed input', () => {
+  for (const h of ['#/daily/%E0%A4%A', '#%', '#/%', '#s=', '#s=%%%', '#/__proto__', '#/constructor/x', null, undefined, '#/' + 'x'.repeat(100000)]) {
+    const r = parseHash(h); assert.ok(ROUTES.includes(r.route), String(h).slice(0, 20));
+  }
+  assert.deepEqual(parseHash('#/daily/%E0%A4%A'), { route: 'daily', params: {} });
+  assert.deepEqual(parseHash('#s='), { route: 'stumble', params: {} });
+});
+test('buildHash writes the hash forms', () => {
+  assert.equal(buildHash('stumble'), '#/stumble');
+  assert.equal(buildHash('daily', { id: '2026-11-11' }), '#/daily/2026-11-11');
+  assert.equal(buildHash('settings', { id: 'a b' }), '#/settings/a%20b');
+  assert.equal(buildHash('import', { payload: 'xyz' }), '#s=xyz');
+  assert.throws(() => buildHash('nope'), /unknown route: nope/);
+});
+```
+
+`tests/unit/boot-data.test.js`:
+
+```js
+test('loadData falls back to empty shapes for missing or broken files', async () => {
+  const fetchFn = async url => {
+    if (url.endsWith('/data/tags.json')) return Response.json({ v: 1, groups: [{ id: 'g', label: 'G', tags: [] }] });
+    if (url.endsWith('/data/library.json')) return new Response('nope', { status: 404 });
+    if (url.endsWith('/data/vault-starter.json')) throw new TypeError('offline');
+    return new Response('{not json');
+  };
+  const data = await loadData(fetchFn, 'http://localhost:4321/Game-Dev-Resources/byways/');
+  assert.equal(data.tags.groups[0].id, 'g');
+  assert.deepEqual([data.library, data.vaultStarter, data.geocities], [EMPTY_DATA.library, EMPTY_DATA.vaultStarter, EMPTY_DATA.geocities]);
+  assert.notEqual(data.library, EMPTY_DATA.library);
+});
+```
+
+- [ ] **Step 2: Write the failing e2e spec** `tests/e2e/shell.spec.js`
+
+```js
+test('routes between the registered views', async ({ page }) => {
+  await gotoApp(page); const nav = page.getByRole('navigation', { name: 'Main' });
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  for (const label of ['Feed', 'Daily Fate', 'Vault', 'Saved', 'Settings']) {
+    await nav.getByRole('link', { name: label }).click();
+    await expect(page.getByRole('heading', { level: 1, name: label })).toBeVisible();
+    await expect(page).toHaveTitle(`${label} · Byways`);
+    await expect(nav.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
+  }
+  await expect(page.locator('#main')).toBeFocused();
+});
+test('unknown hashes land on Stumble', async ({ page }) => {
+  await gotoApp(page, '#/nope'); await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+});
+test('settings sections register and route', async ({ page }) => {
+  await gotoApp(page, '#/settings');
+  await page.evaluate(async () => {
+    const s = await import(new URL('ui/views/settings/index.js', document.baseURI).href);
+    s.registerSettingsSection({ id: 'test', label: 'Test section', order: 5, render: c => c.append('hello') });
+    location.hash = '#/feed'; location.hash = '#/settings';
+  });
+  await page.getByRole('link', { name: 'Test section' }).click();
+  await expect(page).toHaveURL(/#\/settings\/test$/); await expect(page.locator('#app')).toContainText('hello');
+  await expect(page.getByRole('link', { name: 'All settings' })).toHaveAttribute('href', '#/settings');
+});
+test('a view that throws leaves the shell working', async ({ page }) => {
+  await gotoApp(page);
+  await page.evaluate(async () => {
+    const r = await import(new URL('ui/router.js', document.baseURI).href);
+    r.registerView('vault', { title: 'Vault', render() { throw new Error('boom'); } }); r.navigate('vault');
+  });
+  await expect(page.locator('#app')).toContainText('This view failed to load.');
+  await expect(page.locator('#live-assertive')).toHaveText('This view failed to load.');
+  await page.getByRole('link', { name: 'Feed' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Feed' })).toBeVisible();
+});
+test('boots on a memory store when IndexedDB is blocked', async ({ page }) => {
+  await page.addInitScript(() => Object.defineProperty(window, 'indexedDB', { get() { throw new DOMException('blocked', 'SecurityError'); } }));
+  await gotoApp(page);
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await expect(page.locator('#live-assertive')).toHaveText('Storage is blocked in this browser. Nothing you save will be kept.');
+});
+```
+
+The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`.
+
+- [ ] **Step 3: Run them and see them fail**
+
+Run: `node --test tests/unit/router.test.js tests/unit/boot-data.test.js`
+Expected: FAIL with `Cannot find module` for `src/ui/router.js`, and `loadData` missing from `boot.js`.
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
+Expected: FAIL with `Cannot find module` for `./helpers/app.js`.
+
+- [ ] **Step 4: Implement `router.js` and the two registries**
+
+`parseHash`: `#s=<payload>` with a non-empty payload gives `import`. Otherwise it splits `#/route/id`, lower-cases `route`, and checks it with `ROUTES.includes`; an unknown or empty route gives `stumble` with no params. It decodes `id` with `decodeURIComponent` inside try/catch and drops the id when decoding fails. It ignores segments after the id. `buildHash` encodes `id` with `encodeURIComponent`. `startRouter(render)` calls `render(parseHash(location.hash))` with `(route, params)` now and on each `hashchange`. `navigate` sets `location.hash`, and calls `render` directly when the hash is unchanged. The settings view renders an `h1` "Settings" and a list of section links `#/settings/<id>`, or the paragraph "Nothing to set yet." when there are none. For `params.id` matching a section, it renders an `h1` with the section label, an "All settings" link to `#/settings`, and a container passed to `section.render(container, app)`.
+
+- [ ] **Step 5: Implement `boot.js`**
+
+`loadData` fetches `new URL('data/' + file, baseUrl).href` for each `DATA_FILES` entry in parallel. A failed fetch, a non-ok status or bad JSON gives `structuredClone(EMPTY_DATA[key])`.
+
+`boot(platform)`:
+1. Opens `openStore(idbBackend())`. If that rejects, it opens `openStore(memoryBackend())` and later calls `announce(STORAGE_OFF_MESSAGE, {assertive: true})`.
+2. Loads settings and calls `applyAccessSettings`.
+3. Builds `clock = realClock`, `rand = mulberry32(crypto.getRandomValues(new Uint32Array(1))[0])`, `http = createHttp({transport: platform.transport, clock})` and `data = await loadData(platform.transport.fetch, document.baseURI)`.
+4. Makes `app = {store, settings, getSettings, saveSettings, http, clock, rand, platform, data}`. `app.saveSettings(patch)` calls the core `saveSettings`, copies the result onto the live `settings` object, and re-applies access settings.
+5. Wires the `.skip-link` click to `preventDefault()` and `focusMain()`.
+6. Awaits `runFirstRun(app)` (Task 13; until then, skip this step).
+7. Calls `startRouter(show)` and returns `app`.
+
+`show(route, params)` calls the previous view's `leave?.()`. It replaces `#app`'s children with a fresh `div.view` (so a slow render from an earlier route writes into a detached node), and sets `document.title` to `<title> · Byways`. It sets `aria-current="page"` on the matching `nav a[href="#/<route>"]` and removes it from the others. It awaits `view.render(div, app, params)`. On a throw it shows an `h1` with the title, the paragraph `VIEW_FAILED_MESSAGE`, and calls `announce(VIEW_FAILED_MESSAGE, {assertive: true})`. After the first render it calls `focusMain()` on each route change. `boot.js` imports `./views/index.js` for its side effects.
+
+`bootFromShell()`: when `document.documentElement.dataset.shell === 'pwa'`, it opens a secrets store (IndexedDB, or memory on failure), calls `boot(createPwaPlatform({secretsStore}))`, then `registerServiceWorker(window, onUpdate)` (Task 14 supplies `onUpdate`; until then pass `() => {}`). The last line of the module is `if (globalThis.document?.documentElement?.dataset?.shell) bootFromShell();`.
+
+- [ ] **Step 6: Run them and see them pass**
+
+Run: `node --test tests/unit/router.test.js tests/unit/boot-data.test.js`
+Expected: PASS, 4 tests.
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
+Expected: PASS, 5 tests.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add src/ui/router.js src/ui/views/index.js src/ui/views/settings/index.js src/ui/boot.js tests/e2e/helpers/app.js tests/unit/router.test.js tests/unit/boot-data.test.js tests/e2e/shell.spec.js
+git commit -m "Add the hash router, view registries and app boot"
+```
+
+### Task 13: First run and the Welcome step
+
+**Files:**
+- Create: `src/ui/firstrun.js`
+- Modify: `src/ui/boot.js` (await `runFirstRun(app)` before `startRouter`)
+- Test: `tests/e2e/firstrun.spec.js`
+
+**Interfaces:**
+- Consumes: `h`, `clear` (Task 11); `app.getSettings()`, `app.saveSettings(patch)` (Task 12).
+- Produces: `registerFirstRunStep({id, order, render(container, app, done)})`, `runFirstRun(app) → Promise<void>`, `PRIVACY_PROMISE` = `'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.'` (the §1 promise, verbatim). Each step renders inside `section[data-firstrun="<id>"]` in `#app`.
+
+- [ ] **Step 1: Write the failing spec** `tests/e2e/firstrun.spec.js`
+
+```js
+const PRIVACY = 'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.';
+test('the first visit shows Welcome with the privacy promise, once', async ({ page }) => {
+  await page.goto('./');
+  await expect(page.getByRole('heading', { level: 1, name: 'Welcome to Byways' })).toBeVisible();
+  await expect(page.getByText(PRIVACY, { exact: true })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible();
+  await page.getByRole('button', { name: 'Continue' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await expect(page.locator('[data-firstrun]')).toHaveCount(0);
+});
+test('steps run in order, Skip moves on, and a broken step is passed over', async ({ page }) => {
+  await gotoApp(page);
+  const done = page.evaluate(async () => {
+    const f = await import(new URL('ui/firstrun.js', document.baseURI).href);
+    f.registerFirstRunStep({ id: 'b', order: 20, render: (c, app, done) => c.append(Object.assign(document.createElement('button'), { textContent: 'Finish b', onclick: done })) });
+    f.registerFirstRunStep({ id: 'boom', order: 15, render: () => { throw new Error('x'); } });
+    f.registerFirstRunStep({ id: 'a', order: 10, render: c => c.append('Step a') });
+    await f.runFirstRun({ getSettings: () => ({ firstRunDone: false }), saveSettings: async p => { window.__saved = p; } });
+    return window.__saved;
+  });
+  await expect(page.locator('[data-firstrun="welcome"]')).toBeVisible();
+  await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page.locator('[data-firstrun="a"]')).toContainText('Step a');
+  await page.getByRole('button', { name: 'Skip' }).click();
+  await page.getByRole('button', { name: 'Finish b' }).click();
+  expect(await done).toEqual({ firstRunDone: true });
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/firstrun.spec.js`
+Expected: FAIL: the "Welcome to Byways" heading is not found.
+
+- [ ] **Step 3: Implement `src/ui/firstrun.js` and wire it into boot**
+
+`runFirstRun(app)` returns at once when `app.getSettings().firstRunDone` is true. Otherwise it runs the steps sorted by `order`. For each step it clears `#app` and appends a `section` with `data-firstrun=<id>`. It calls `render(section, app, done)` and appends a **Skip** button. It moves on when `done()` is called or Skip is pressed. A step whose `render` throws is passed over. After the last step it awaits `app.saveSettings({firstRunDone: true})`. The module registers the Welcome step `{id: 'welcome', order: 0}`, which renders an `h1` "Welcome to Byways" (`tabindex="-1"`, focused on show), a paragraph with `PRIVACY_PROMISE`, and a **Continue** button that calls `done`. In `boot.js`, await `runFirstRun(app)` before `startRouter(show)`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/firstrun.spec.js tests/e2e/shell.spec.js`
+Expected: PASS, 7 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/firstrun.js src/ui/boot.js tests/e2e/firstrun.spec.js
+git commit -m "Add the first-run registry with the Welcome step"
+```
+
 <!-- PLAN CONTINUES -->

@@ -1097,4 +1097,139 @@ git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainAc
 git commit -m "Add full screen, file picking, predictive back, insets and share-in"
 ```
 
+### Task 12: The update check
+
+**Files:**
+- Create: `…/byways/UpdateCheck.kt`
+- Modify: `…/byways/MainActivity.kt` (the `app` handler)
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/UpdateCheckTest.kt`
+
+**Interfaces:**
+- Consumes: `NativeFetch`, `FetchRequest` (Task 4).
+- Produces (pure Kotlin):
+
+```kotlin
+object UpdateCheck {
+  const val LATEST_URL = "https://api.github.com/repos/iteatsthesalt/Game-Dev-Resources/releases/latest"
+  const val LIST_URL = "https://api.github.com/repos/iteatsthesalt/Game-Dev-Resources/releases?per_page=30"
+  data class Release(val version: String, val url: String)
+  fun versionOf(tag: String): String?               // "byways-v1.2.0" → "1.2.0"; any other tag → null
+  fun isNewer(candidate: String, current: String): Boolean
+  fun fromLatest(json: String): Release?            // null when the tag is not byways-v*
+  fun fromList(json: String): Release?              // first non-draft, non-prerelease byways-v* release
+}
+```
+
+The `app` op `checkUpdate {}` replies `{available, latest, url}`.
+
+- [ ] **Step 1: Write the failing test**
+
+```kotlin
+class UpdateCheckTest {
+  private val apk = "https://github.com/iteatsthesalt/Game-Dev-Resources/releases/download/byways-v1.3.0/byways-1.3.0.apk"
+  @Test fun readsByWaysTagsOnly() {
+    assertEquals("1.2.0", UpdateCheck.versionOf("byways-v1.2.0"))
+    assertNull(UpdateCheck.versionOf("cinderdeep-v2.0.0")); assertNull(UpdateCheck.versionOf("v1.2.0"))
+  }
+  @Test fun comparesNumerically() {
+    assertTrue(UpdateCheck.isNewer("1.10.0", "1.9.3")); assertTrue(UpdateCheck.isNewer("1.2.1", "1.2"))
+    assertTrue(UpdateCheck.isNewer("0.1.1", "0.1.0")); assertFalse(UpdateCheck.isNewer("1.2.0", "1.2.0"))
+    assertFalse(UpdateCheck.isNewer("1.2", "1.2.0")); assertFalse(UpdateCheck.isNewer("2.0.0-beta", "1.0.0"))
+  }
+  @Test fun picksTheApkAsset() {
+    val j = """{"tag_name":"byways-v1.3.0","html_url":"https://github.com/r/1.3.0","assets":[
+      {"name":"byways-chrome.zip","browser_download_url":"https://x/c.zip"},{"name":"byways-1.3.0.apk","browser_download_url":"$apk"}]}"""
+    assertEquals(UpdateCheck.Release("1.3.0", apk), UpdateCheck.fromLatest(j))
+  }
+  @Test fun fallsBackToTheReleasePage() =
+    assertEquals(UpdateCheck.Release("1.3.0", "https://github.com/r/1.3.0"),
+      UpdateCheck.fromLatest("""{"tag_name":"byways-v1.3.0","html_url":"https://github.com/r/1.3.0","assets":[]}"""))
+  @Test fun ignoresOtherProjectsReleases() =
+    assertNull(UpdateCheck.fromLatest("""{"tag_name":"cinderdeep-v2.0.0","html_url":"https://x","assets":[]}"""))
+  @Test fun listSkipsDraftsPrereleasesAndOtherTags() {
+    val j = """[{"tag_name":"byways-v1.4.0","draft":true,"prerelease":false,"html_url":"a","assets":[]},
+      {"tag_name":"byways-v1.3.5","draft":false,"prerelease":true,"html_url":"b","assets":[]},
+      {"tag_name":"cinderdeep-v1.0.0","draft":false,"prerelease":false,"html_url":"c","assets":[]},
+      {"tag_name":"byways-v1.3.0","draft":false,"prerelease":false,"html_url":"d","assets":[]}]"""
+    assertEquals(UpdateCheck.Release("1.3.0", "d"), UpdateCheck.fromList(j))
+  }
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `gradle -p shells/android testDebugUnitTest --tests '*UpdateCheckTest'` (or the CI job).
+Expected: FAIL to compile with `Unresolved reference 'UpdateCheck'`.
+
+- [ ] **Step 3: Implement `UpdateCheck`**
+
+`isNewer` splits both on `.`, pads missing parts with 0 and compares them as integers. It returns false when any part of either version is not a plain number. The release URL is the first asset whose `name` ends in `.apk`, else `html_url`.
+
+- [ ] **Step 4: Add `checkUpdate` to the `app` handler**
+
+On the fetch executor, GET `LATEST_URL` with `Accept: application/vnd.github+json` and `User-Agent: Byways/<versionName> (+https://github.com/iteatsthesalt/Game-Dev-Resources)`. A 200 goes to `fromLatest`. If that gives `null`, GET `LIST_URL` and use `fromList`. Reply `{available: release != null && isNewer(release.version, versionName), latest: release?.version, url: release?.url}`. A non-200 status or a `FetchError` replies the error `network`.
+
+- [ ] **Step 5: Run it to see it pass**
+
+Run: the Step 2 command. Expected: PASS (6 tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/UpdateCheckTest.kt
+git commit -m "Add the GitHub release update check"
+```
+
+### Task 13: The Lab on its own origin
+
+**Files:**
+- Modify: `…/byways/MainActivity.kt`, `…/byways/Bridge.kt`, `src/lab/storage-panel.js`, `tests/unit/android-shell.test.js`
+
+**Interfaces:**
+- Consumes: `AssetRules` (Task 10); `BridgeGate` and `BridgeCodec` (Task 5); `FilesBridge` (Task 9); `labSaveFile` (Task 6); the Task 1 `assets/lab/` layout.
+- Produces: `class LabBridge(webView: WebView, files: FilesBridge) { fun install(): Boolean }`, listening as `BywaysLabNative` for `https://lab.appassets.androidplatform.net` with only `files.save`. Both asset loaders serve one folder each.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('each origin serves only its own folder, and the Lab gets only files.save', () => {
+  const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
+  const m = k('MainActivity.kt');
+  assert.ok(m.includes('"lab.appassets.androidplatform.net"'));
+  assert.ok(m.includes('safeAssetPath("www"') && m.includes('safeAssetPath("lab"'));
+  assert.doesNotMatch(m, /AssetsPathHandler/);
+  assert.ok(k('Bridge.kt').includes('"BywaysLabNative"'));
+  assert.match(R('src/lab/storage-panel.js'), /labSaveFile/);
+});
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `node --test tests/unit/android-shell.test.js`
+Expected: FAIL on `"lab.appassets.androidplatform.net"`.
+
+- [ ] **Step 3: Replace the asset loader in `MainActivity`**
+
+Two loaders: domain `APP_HOST` with a path handler at `/assets/www/`, and domain `lab.appassets.androidplatform.net` with one at `/assets/lab/`. Each handler is a `WebViewAssetLoader.PathHandler` that maps the suffix through `AssetRules.safeAssetPath("www"|"lab", suffix)`. It answers `null` for a rejected path and otherwise returns `WebResourceResponse(AssetRules.mimeFor(path), null, assets.open(path))` (`null` on `IOException`). `shouldInterceptRequest` tries the app loader, then the Lab loader. Remove `AssetsPathHandler`. This keeps the Lab files off the app origin, where the main bridge lives.
+
+- [ ] **Step 4: Add `LabBridge` to `Bridge.kt` and install it**
+
+`WebViewCompat.addWebMessageListener(webView, "BywaysLabNative", setOf(BridgeGate.LAB_ORIGIN))`. Accept only `BridgeGate.accepts(LAB_ORIGIN, origin, isMainFrame)`. Decode with `BridgeCodec`. Only `ch == "files" && op == "save"` reaches `files.handle`; anything else replies `unknown-op`. Install it next to `Bridge` in `onCreate`.
+
+- [ ] **Step 5: Save Lab files natively in `src/lab/storage-panel.js`**
+
+Import `labSaveFile` from `../platform/android.js`. Where the panel starts a browser download of a save or export, first run `const native = labSaveFile(name, blob); if (native) { await native; return; }`.
+
+- [ ] **Step 6: Run the tests**
+
+Run: `node --test tests/unit/android-shell.test.js` and `npm test`
+Expected: PASS (13 shell tests), and the Lab tests from Plan 06 still pass.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways src/lab/storage-panel.js tests/unit/android-shell.test.js
+git commit -m "Serve the Lab on its own origin with a save-only bridge"
+```
+
 <!-- PLAN CONTINUES -->
