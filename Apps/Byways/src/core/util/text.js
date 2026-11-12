@@ -23,7 +23,9 @@ function decodeEntities(s) {
 const collapse = (s) => s.replace(/\s+/g, ' ').trim();
 
 function plainTextWithDom(html) {
-  const doc = new globalThis.DOMParser().parseFromString(html, 'text/html');
+  // A parsed <style> block is checked against the page's style-src CSP and logs a violation, so drop it before parsing.
+  const withoutStyles = html.replace(/<style\b[^>]*>[\s\S]*?(?:<\/style\s*>|$)/gi, '');
+  const doc = new globalThis.DOMParser().parseFromString(withoutStyles, 'text/html');
   for (const el of doc.querySelectorAll('script, style, template')) el.remove();
   const space = () => doc.createTextNode(' ');
   for (const br of doc.querySelectorAll('br')) br.before(space());

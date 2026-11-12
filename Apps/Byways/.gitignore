@@ -3,3 +3,4 @@ dist/
 vendor/
 shells/android/app/src/main/assets/www/
 shells/android/app/src/main/assets/lab/
+test-results/
