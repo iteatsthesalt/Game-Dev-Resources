@@ -265,6 +265,7 @@
         UI.h('div', { class: 'ui-rule' }),
         UI.h('p', { class: 'ui-sub' }, 'The bells have fallen silent. Keep the vigil; leave by the gate.'),
         UI.button('Begin vigil', function () { Game.start(); }, { class: 'primary', dataset: { focus: '' } }),
+        typeof Settings.open === 'function' ? UI.button('Settings', function () { Settings.open(); }, { class: 'second' }) : null,
         build);
     },
     close: function () {

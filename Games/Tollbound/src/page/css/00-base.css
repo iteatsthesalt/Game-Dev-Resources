@@ -57,6 +57,10 @@ html, body {
   margin: 0;
 }
 
+/* The setting "Text and controls" (ui.scale, which 51-settings.js sets as --ui-scale on the root) scales the
+   root font size, so every size given in rem follows it: the title, the menus, the dialogs and the toasts. */
+html { font-size: calc(100% * var(--ui-scale, 1)); }
+
 body {
   overflow: hidden;
   overscroll-behavior: none;

@@ -13,8 +13,8 @@
 //   settings  defaults, checking and clamping, listeners, the --ui-scale property, the screen (a row for every
 //             setting, each changed by keys, and on the phone by real taps; up and down walk every row), a
 //             hand-made row; a reload keeps what was set; storage that throws or holds rubbish breaks nothing
-// Not here: the reduced-motion defaults (the runner cannot ask for that preference) and real gamepads (the
-// page is handed a stand-in navigator.getGamepads).
+//   calm      where the system asks for less motion, shake and flash start at 0.3, and a chosen value wins
+// Not here: real gamepads (the page is handed a stand-in navigator.getGamepads).
 // Each function below runs inside the page (see tests/run.js), so it uses only T, TB and the page itself.
 
 // ---- keys and the mouse, on a desktop window ----
@@ -801,6 +801,29 @@ const rubbish = async function () {
   return T.done();
 };
 
+// A player whose system asks for less motion starts with shake and flash at 0.3, and what they choose wins.
+const calmBefore = async function () {
+  const { Settings, Store } = TB;
+  await T.until(() => Settings.loaded, 5000);
+  T.check('the page sees the request for less motion', matchMedia('(prefers-reduced-motion: reduce)').matches);
+  T.check('shake and flash start at 0.3, damage numbers at 1', Settings.get('fx.shake') === 0.3 && Settings.get('fx.flash') === 0.3 && Settings.get('fx.numbers') === 1,
+    [Settings.get('fx.shake'), Settings.get('fx.flash'), Settings.get('fx.numbers')]);
+  Settings.set('fx.shake', 0.8);
+  if (T.target === 'standalone') T.check('a value chosen is stored', await T.until(async () => { const s = await Store.read('settings'); return !!s && s.values['fx.shake'] === 0.8; }, 3000));
+  return T.done();
+};
+
+const calmAfter = async function () {
+  const { Settings } = TB;
+  await T.until(() => Settings.loaded, 5000);
+  if (T.target === 'standalone') {
+    T.check('after a reload the chosen value holds, and the other keeps the calm default', Settings.get('fx.shake') === 0.8 && Settings.get('fx.flash') === 0.3, [Settings.get('fx.shake'), Settings.get('fx.flash')]);
+  } else {
+    T.check('without lasting storage both start calm again', Settings.get('fx.shake') === 0.3 && Settings.get('fx.flash') === 0.3, [Settings.get('fx.shake'), Settings.get('fx.flash')]);
+  }
+  return T.done();
+};
+
 module.exports = [
   { name: 'input: keys and mouse, desktop 1280x720', viewport: { width: 1280, height: 720 }, mobile: false, query: 'view=2d', run: keys },
   { name: 'input: touch, phone 390x844', viewport: { width: 390, height: 844 }, mobile: true, query: 'view=2d', run: touch },
@@ -812,4 +835,5 @@ module.exports = [
   { name: 'input: settings and their screen, desktop 1280x720', viewport: { width: 1280, height: 720 }, mobile: false, query: 'view=2d', run: settings },
   { name: 'input: settings on a phone, by keys', viewport: { width: 390, height: 844 }, mobile: true, query: 'view=2d', run: settings },
   { name: 'input: settings survive a reload, and storage that fails', viewport: { width: 1280, height: 720 }, mobile: false, query: '', run: [keptBefore, keptAfter, rubbish] },
+  { name: 'input: less motion, where the system asks for it', viewport: { width: 390, height: 844 }, mobile: true, query: 'view=2d', reducedMotion: true, run: [calmBefore, calmAfter] },
 ];

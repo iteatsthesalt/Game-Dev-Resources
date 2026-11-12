@@ -49,6 +49,10 @@
 //   Keys, while a screen is open: the arrow keys call UI.nav, Enter activates, Escape calls UI.back and Tab
 //   stays inside the top screen. A text field keeps its own arrow keys. A gamepad is wired by the input module
 //   to UI.nav, UI.activate and UI.back.
+// Notices, for sound and anything else that follows the menus: Plat.emit('ui', what, id), where id is the id of
+// the screen concerned and what is 'open' (a screen went on the stack), 'close' (one left it), 'back' (UI.back
+// acted, before the screen closes), 'move' (UI.nav moved focus or changed a control) or 'press' (a control of a
+// screen was clicked, by a pointer or by UI.activate).
 (function () {
   'use strict';
 
@@ -173,6 +177,7 @@
     stack.push(entry);
     root().appendChild(entry.wrap);
     focusInto(entry.wrap);
+    Plat.emit('ui', 'open', entry.id);
     return entry;
   }
 
@@ -193,6 +198,7 @@
       else if (top) focusInto(top.wrap);
       else if (now && now !== document.body && typeof now.blur === 'function') now.blur();
     }
+    Plat.emit('ui', 'close', entry.id);
     return entry.id;
   }
 
@@ -244,6 +250,7 @@
   UI.back = function () {
     const top = topEntry();
     if (!top || top.def.back === false) return false;
+    Plat.emit('ui', 'back', top.id);
     if (typeof top.def.back === 'function') top.def.back(); else closeAt(stack.length - 1, false);
     return true;
   };
@@ -342,11 +349,14 @@
     const at = focused(top.wrap);
     if (!at) return focusInto(top.wrap);
     const asked = new CustomEvent('ui-nav', { bubbles: true, cancelable: true, detail: { dx: dx, dy: dy } });
-    if (!at.dispatchEvent(asked)) return true;
-    if (dx && adjust(at, dx)) return true;
+    if (!at.dispatchEvent(asked) || (dx && adjust(at, dx))) {
+      Plat.emit('ui', 'move', top.id);
+      return true;
+    }
     const next = nearest(at, controls(top.wrap), dx, dy);
     if (!next) return false;
     next.focus();
+    Plat.emit('ui', 'move', top.id);
     return true;
   };
 
@@ -421,5 +431,10 @@
     UI.setKeys(!Plat.isTouch);
     window.addEventListener('keydown', onKey);
     window.addEventListener('pointerdown', function () { UI.setKeys(false); }, { capture: true, passive: true });
+    root().addEventListener('click', function (e) {
+      const screen = e.target && e.target.closest ? e.target.closest('[data-screen]') : null;
+      const control = screen && e.target.closest(FOCUSABLE);
+      if (control && screen.contains(control) && control !== screen) Plat.emit('ui', 'press', screen.dataset.screen);
+    });
   }
 })();

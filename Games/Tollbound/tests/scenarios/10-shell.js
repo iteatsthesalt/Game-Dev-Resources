@@ -48,6 +48,17 @@ const menus = async function () {
   key('Escape');
   T.check('Escape does not close the title', UI.top() === 'title' && UI.back() === false);
   T.check('the focus ring starts shown, except on a touch screen', ui.classList.contains('ui-keys') === !phone);
+  if (typeof TB.Settings.open === 'function') {
+    const toSettings = button('Settings'), ringWas = ui.classList.contains('ui-keys');
+    T.check('the title has a Settings button below "Begin vigil"', !!toSettings && toSettings.getBoundingClientRect().top > begin.getBoundingClientRect().bottom);
+    toSettings.focus();   // as a key or pad user reaches it: .click() alone does not move focus
+    toSettings.click();
+    T.check('it opens the settings over the title', UI.top() === 'settings' && stackNow().startsWith('title (under)'), stackNow());
+    UI.back();
+    T.check('and back returns to the title, with focus on the button', UI.top() === 'title' && document.activeElement === toSettings, UI.top());
+    begin.focus();
+    UI.setKeys(ringWas);
+  }
 
   // ---- the picture behind the title, and the scale of the view ----
   const picture = () => new Promise((resolve) => requestAnimationFrame(() => {
@@ -172,6 +183,20 @@ const menus = async function () {
   here.addEventListener('ui-nav', stay);
   T.check('a control can keep a move for itself', UI.nav(0, -1) === true && document.activeElement === here);
   here.removeEventListener('ui-nav', stay);
+
+  // ---- the notices that sound follows: Plat.emit('ui', what, id) ----
+  const notices = [], offUi = Plat.on('ui', (what, id) => notices.push(what + ' ' + id));
+  UI.nav(0, 1);          // from c or d down to e: focus moves
+  UI.activate();         // a press
+  UI.open('test.grid', { n: 9 });
+  UI.back();             // back, then the close it causes
+  UI.open('test.bare');
+  UI.back();             // refused: nothing is posted
+  UI.close();
+  offUi();
+  T.check('the menus post move, press, open, back and close, and nothing for a refused back',
+    notices.join() === 'move test.grid,press test.grid,open test.grid,back test.grid,close test.grid,open test.bare,close test.bare', notices);
+  here.focus();
 
   // ---- fields: a text field keeps its arrows, a slider and a select take left and right ----
   const changes = [];

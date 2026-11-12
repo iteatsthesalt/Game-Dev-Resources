@@ -3,7 +3,8 @@
    52-input.js sets the place and size of every touch control from the window, the safe-area insets (the
    padding of #touch) and the setting ui.scale; this file only gives them their look. The controls stay light
    and see-through: the fight goes on under them.
-   --ui-scale is set on the root by 51-settings.js (0.85 to 1.4); the settings screen multiplies its text by it.
+   --ui-scale is set on the root by 51-settings.js (0.85 to 1.4); 00-base.css scales the root font size by it,
+   so text sized in rem (the settings screen's too) follows it without multiplying again.
    Colours are custom properties on :root: the tokens of 00-base.css, and the see-through ones below. */
 
 :root {
@@ -167,7 +168,7 @@
   width: min(100%, 38rem);
   max-height: 100%;
   padding: 0;
-  font-size: calc(1rem * var(--ui-scale));
+  font-size: 1rem;
   text-align: left;
 }
 

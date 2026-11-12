@@ -18,7 +18,8 @@
 // Optional fields: timeout (ms for the whole scenario, default 120000), dpr (device pixel ratio, default 1),
 // safeArea ({top, right, bottom, left} in px: what env(safe-area-inset-*) reports, as on a phone with a notch),
 // args (any JSON value; run gets a copy of it as its one argument: the way to hand the page what only Node
-// can work out, such as what the simulation gives when the Node loader runs it).
+// can work out, such as what the simulation gives when the Node loader runs it), reducedMotion (true: the page
+// sees prefers-reduced-motion: reduce, as for a player who asked the system for less motion).
 //
 // Every scenario gets a fresh browser context, so storage starts empty. It passes only if nothing threw,
 // every check passed and the page stayed clean: no uncaught error, no console.error (a "Failed to load
@@ -147,6 +148,7 @@ const tidy = (env, text, lines) => env.source.mark(text).split('\n').filter((l) 
 async function play(browser, s, env) {
   const context = await browser.newContext({
     viewport: s.viewport || { width: 1280, height: 720 }, isMobile: !!s.mobile, hasTouch: !!s.mobile, deviceScaleFactor: s.dpr || 1,
+    reducedMotion: s.reducedMotion ? 'reduce' : 'no-preference',
   });
   const checks = [], errors = [], watch = { threw: false, onThrow: null };
   const note = (text) => {

@@ -32,6 +32,10 @@ node --test tests/sim/00-core.test.js   # one simulation test file
 node tests/bench.js 300 6000 --strict   # 300 enemies, 6000 steps; also fail if the worst step is above 4 ms
 node tools/build.js --out /tmp/mine     # both builds into a folder of your own, and then
 GAME=/tmp/mine/Tollbound.html node tests/run.js   # test that build instead of .build/
+
+node tools/shot.js --out .build/shots/x.png --size 390x844 --mobile   # a picture of the running game
+node tools/hear.js --all                # every sound effect to .build/hear/*.wav, checked for silence, clipping
+                                        # and loudness against the others (node tools/hear.js --list for the ids)
 ```
 
 Node 22 is needed. `npm run test:full` runs on GitHub for every change under `Games/Tollbound/`.
@@ -41,7 +45,7 @@ Node 22 is needed. `npm run test:full` runs on GitHub for every change under `Ga
 - `Tollbound.html`: the built game. Tracked, so the game can be played straight from the repository.
 - `src/page/`: the page around the game. `head.html` and `tail.html` are the wrapper of the standalone page, `body.html` holds the game area and its six layers, and `css/NN-owner.css` files are joined in name order.
 - `src/js/NN-name.js`: the game, one module per file, joined in the order of the numbers.
-- `tools/`: `modules.js` gives the module order to everything else, `build.js` builds, `lint.js` checks the code rules.
+- `tools/`: `modules.js` gives the module order to everything else, `build.js` builds, `lint.js` checks the code rules, `shot.js` takes a picture of the running game and `hear.js` renders the sound effects to WAV files.
 - `tests/`: `run.js` runs the browser scenarios of `scenarios/*.js`, and `helpers.js` is loaded into the page for them. `sim/*.test.js` are the Node tests, and `sim/loader.js` loads the simulation for them. `bench.js` measures the step time of the simulation.
 - `docs/`: `engine.md` holds the contracts every module is written against: the run state, the entities, the modules with their signatures, the data shapes and the rules. Read it before writing code. `tests/sim/docs.test.js` holds parts of it against the code, so a change to the fields of an entity or of the run state goes into both.
 - `.build/`: development builds. Not tracked.
