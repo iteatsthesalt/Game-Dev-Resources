@@ -72,25 +72,40 @@ export function createPhonePanel({ bridge, hub, toast, onClose }) {
   let open = false;
   let refreshTimer = 0;
   let stuckTimer = 0;
+  // What is on screen now. The link is asked again every 2 s, and only what changed is
+  // redrawn, so a screen reader moving through the list is not thrown back to its start.
+  let shownQr = '';
+  let shownTips = '';
+  let shownPlayers = '';
 
   function showInfo(next) {
     info = next;
     const reachable = !!(info.running && info.url);
-    if (info.qrSvg) qr.src = svgImage(info.qrSvg);
+    if (info.qrSvg && info.qrSvg !== shownQr) {
+      shownQr = info.qrSvg;
+      qr.src = svgImage(info.qrSvg);
+    }
     join.hidden = !reachable;
-    url.textContent = info.url || '';
+    if (url.textContent !== (info.url || '')) url.textContent = info.url || '';
     if (!info.running) linkNote.show('The phone link could not start, so phones cannot join. Another program may be using its network port: restart Tactilume to try again.', 'error');
     else if (!info.url) linkNote.show('This computer is not on a local network. Connect it to the same Wi-Fi or network as the phone, and the code appears here.', 'error');
     else linkNote.hide();
     allow.set(info.allowNew);
     allow.setDisabled(!info.running);
     newCode.disabled = !info.running;
-    tipList.replaceChildren(...connectionTips(bridge.platform, info.port).map((t) => h('li', { text: t })));
+    const tips = connectionTips(bridge.platform, info.port);
+    if (tips.join('\n') !== shownTips) {
+      shownTips = tips.join('\n');
+      tipList.replaceChildren(...tips.map((t) => h('li', { text: t })));
+    }
     if (info.phones?.length) clearTimeout(stuckTimer);
   }
 
   function showPlayers() {
     const players = hub.players();
+    const signature = JSON.stringify(players.map((p) => [p.id, p.name, p.kind, p.key, p.colorName, p.color]));
+    if (signature === shownPlayers) return;
+    shownPlayers = signature;
     list.replaceChildren(...players.map((p) => {
       const d = describe(p);
       const dot = h('span', { class: 'tl-player-dot', 'aria-hidden': 'true' });

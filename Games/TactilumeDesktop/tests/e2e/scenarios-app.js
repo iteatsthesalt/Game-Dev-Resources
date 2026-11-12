@@ -710,17 +710,19 @@ export default [
       checks.push(h.check('a key-focused button shows a ring of light with a dark halo', ring.style === 'solid' && ring.width >= 2 && /255, 255, 255/.test(ring.color) && ring.halo !== 'none', ring));
 
       // the controls grow with the screen
-      const sizeAt = async (width, height) => {
+      // The window's size changes at once, but its resize event (which rescales the controls)
+      // comes with the next frame, and frames are slow at 4K on a software GPU: wait for it.
+      const sizeAt = async (width, height, scale) => {
         await page.setViewportSize({ width, height });
-        await h.until(page, (w) => innerWidth === w, width, 3000);
+        await h.until(page, (want) => Math.abs(Number(document.getElementById('ui').style.getPropertyValue('--ui-scale')) - want) < 0.01, scale, 5000);
         return page.evaluate(() => ({
           scale: Number(document.getElementById('ui').style.getPropertyValue('--ui-scale')),
           chip: parseFloat(getComputedStyle(document.querySelector('.tl-chip')).fontSize),
           tall: document.querySelector('.tl-chip').getBoundingClientRect().height,
         }));
       };
-      const hd = await sizeAt(1920, 1080);
-      const uhd = await sizeAt(3840, 2160);
+      const hd = await sizeAt(1920, 1080, 1.08);
+      const uhd = await sizeAt(3840, 2160, 2.16);
       await page.setViewportSize({ width: 1920, height: 1080 });
       checks.push(h.check('at 1080p the controls are at their normal size', Math.abs(hd.scale - 1.08) < 0.01 && hd.chip >= 15, hd));
       checks.push(h.check('at 4K they are twice that, so they read the same from the same place', Math.abs(uhd.scale - 2.16) < 0.01 && uhd.chip >= 30 && uhd.tall >= 2 * hd.tall - 2, uhd));

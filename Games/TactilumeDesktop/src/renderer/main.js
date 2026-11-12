@@ -193,6 +193,7 @@ async function boot() {
   let refreshHz = 60;           // measured before the first frame (60 in tests)
   let governor = null;          // only while the count is automatic
   let measuring = null;         // the benchmark's promise while it runs; the frame loop waits for it
+  let ui = null;                // the overlay, made once the inputs exist
   // The engine reads one settings object: the shared settings plus the desktop-only ones.
   let merged = null;
   let mergedFrom = null;
@@ -237,7 +238,6 @@ async function boot() {
   // ---- inputs, sound and the overlay ----------------------------------------------------
   const hub = createHub({ maxPoles: 64 });
   const audio = createAudio({ bridge });
-  let ui = null;
   let presetCursor = Math.max(0, PRESETS.findIndex((p) => p.name === store.scene.name));
   const random = TEST ? mulberry32(7) : Math.random;
   const say = (text) => ui?.toast(text);

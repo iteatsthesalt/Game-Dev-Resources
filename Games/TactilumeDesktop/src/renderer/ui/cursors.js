@@ -9,7 +9,7 @@
 
 const BASE_RADIUS = 15;          // CSS px at power 0, before the UI scale
 const POWER_RADIUS = 9;          // CSS px more at full power
-const LABEL_GAP = 10;            // CSS px between a ring and its name
+const LABEL_GAP = 5;             // CSS px between a ring and its name
 const FONT_PX = 14;              // the smallest text the overlay uses
 // A pad put down keeps its rings, but they dim so a resting pad does not mark the light.
 const REST_AFTER = 4;            // s without play before the rings dim
@@ -106,7 +106,7 @@ export function createCursorLayer(canvas, { hub, gamepads, engine, scale = () =>
       ctx.lineWidth = 4 * k;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.lineJoin = 'round';
-      const ty = py + r + LABEL_GAP * k * 0.5;
+      const ty = py + r + LABEL_GAP * k;
       ctx.strokeText(c.label, px, ty);
       ctx.fillStyle = '#f5f6fa';
       ctx.fillText(c.label, px, ty);

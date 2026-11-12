@@ -17,6 +17,11 @@ asar: true
 # the overlay is in English, so Chromium's own words (its error pages, for one) are too
 electronLanguages:
   - en-US
+# Added to the packed app's package.json. A .deb must say where the app comes from (its
+# Homepage), and on Linux desktopName ties the running window to its launcher entry.
+extraMetadata:
+  homepage: https://github.com/iteatsthesalt/Game-Dev-Resources
+  desktopName: tactilume.desktop
 
 # Fuses are switches compiled into Electron's binary. A shipped app does not need these, and
 # each is a way to turn the app into something else: running it as plain Node, NODE_OPTIONS,
@@ -64,6 +69,8 @@ dmg:
 linux:
   category: AudioVideo
   executableName: tactilume
+  # the launcher entry is named for desktopName above, so desktops match the window to it
+  syncDesktopName: true
   synopsis: A light show played with phones, gamepads and sound
   # a .deb needs a maintainer; without an e-mail in package.json it is named here
   maintainer: Tactilume

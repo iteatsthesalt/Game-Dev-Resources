@@ -31,7 +31,7 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     onChange: (v) => (v === 'auto' ? setParticles('auto') : setParticles(Number(count.select.value))),
   });
   const count = selectField({ label: 'Particles', onChange: (v) => setParticles(Number(v)) });
-  const readout = h('p', { class: 'tl-help', 'aria-live': 'polite' });
+  const readout = h('p', { class: 'tl-help' });
   const measureButton = button('Measure again', { onClick: measure });
   const fixedNote = notice();
 
@@ -113,24 +113,37 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     return list.sort((a, b) => a - b).map((n) => ({ value: n, label: countText(n) }));
   }
 
+  // The words under the choices. Refreshed every second while the panel is open (the governor
+  // moves the count), so it is not a live region: a screen reader would read it out each time.
+  function showReadout() {
+    const d = desktop.get();
+    const drawing = countText(engine.stats.particles);
+    let text;
+    if (measuringNow) text = 'Measuring this computer…';
+    else if (particlesFixed) text = `Drawing ${drawing} particles.`;
+    else if (d.particleMode === 'auto') text = `Drawing ${drawing} particles now${d.particles ? `, of ${countText(d.particles)} measured for this computer` : ''}. The count steps down if frames run late, and back up when there is room.`;
+    else text = `Drawing ${drawing} particles, as chosen.`;
+    if (readout.textContent !== text) readout.textContent = text;
+  }
+
+  // The choices themselves, only when a setting changes or the panel opens: rebuilding the
+  // list while someone has it open would snatch it away.
   function showParticles() {
     const d = desktop.get();
     const auto = d.particleMode === 'auto';
+    const list = counts();
+    const now = engine.stats.particles;
+    const nearest = list.reduce((best, o) => (Math.abs(o.value - now) < Math.abs(best - now) ? o.value : best), list[0].value);
     mode.set(d.particleMode);
-    count.setOptions(counts(), auto || !d.manualParticles ? nearest(engine.stats.particles) : d.manualParticles);
+    count.setOptions(list, auto || !d.manualParticles ? nearest : d.manualParticles);
     count.el.hidden = auto;
-    const drawing = engine.stats.particles;
     const fixed = !!particlesFixed;
-    if (measuringNow) readout.textContent = 'Measuring this computer…';
-    else if (fixed) readout.textContent = `Drawing ${countText(drawing)} particles.`;
-    else if (auto) readout.textContent = `Drawing ${countText(drawing)} particles now${d.particles ? `, of ${countText(d.particles)} measured for this computer` : ''}. The count steps down if frames run late, and back up when there is room.`;
-    else readout.textContent = `Drawing ${countText(drawing)} particles, as chosen.`;
     mode.setDisabled(fixed || measuringNow);
     count.setDisabled(fixed || measuringNow);
     measureButton.disabled = fixed || measuringNow;
-    fixedNote.show(fixed ? `The page’s address sets the count (particles=${countText(drawing)}), so these choices are off.` : '');
+    fixedNote.show(fixed ? `The page’s address sets the count (particles=${countText(now)}), so these choices are off.` : '');
+    showReadout();
   }
-  const nearest = (n) => counts().reduce((best, o) => (Math.abs(o.value - n) < Math.abs(best - n) ? o.value : best), counts()[0].value);
 
   function showSettings() {
     const s = store.settings;
@@ -145,7 +158,7 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     showParticles();
   }
 
-  async function showGpu() {
+  function showGpu() {
     const c = engine.caps;
     const st = engine.stats;
     const a = c.adapter || {};
@@ -166,7 +179,7 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     const device = (gpuInfo?.gpuDevice || []).find((d) => d.active) || gpuInfo?.gpuDevice?.[0];
     if (device?.driverVersion) rows.push(['Driver', `${device.driverVendor ? `${device.driverVendor} ` : ''}${device.driverVersion}`]);
     gpuFacts.replaceChildren(...rows.flatMap(([k, v]) => [h('dt', { text: k }), h('dd', { text: v })]));
-    showParticles();
+    showReadout();
   }
 
   // ---- doing what was asked -------------------------------------------------------------------
