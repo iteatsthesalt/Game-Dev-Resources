@@ -1674,4 +1674,283 @@ git add src/core/engine.js tests/unit/engine-react.test.js
 git commit -m "Add reactions with undo, Rabbit Hole and link checks to the engine"
 ```
 
+### Task 22: Boot wiring, the card and the Stumble view
+
+**Files:**
+- Create: `src/ui/components/card.js`, `src/ui/components/generated-image.js`, `src/ui/views/stumble.js`, `tests/fixtures/http/library/small.json`
+- Modify: `src/ui/boot.js`, `src/ui/views/index.js` (import `./stumble.js`), `tests/e2e/helpers/net.js`, `tests/e2e/helpers/fakes.js`
+- Test: `tests/e2e/stumble.spec.js`
+
+**Interfaces:**
+- Consumes: Plan 01's `App` fields, `registerView`, `h`, `clear`, `announce`; `createSeen`, `createHistory`, `createCollections`, `createEngine`, `EMPTY_REASONS` (Tasks 2, 8, 20); `getSource`, `domainOf`, `hash64`.
+- Produces:
+  - `boot.js` adds, after Plan 01's fields: `app.seen = createSeen(store)`, `app.history = createHistory(store, {max: 50})` (awaiting `ready`), `app.collections = createCollections(store, clock)`, `app.engine = await createEngine({store, http, clock, rand, data, platform, settings: () => app.getSettings(), seen, history, collections})`, and `app.search = async (text) => { const finds = await app.engine.search(text); return finds.length ? {finds} : {finds, note: 'No results for "<text>".'}; }`.
+  - `generatedImage(find) → HTMLElement`: `div.gen-image` with `aria-hidden="true"`, `data-hue` = `parseInt(hash64(domainOf(find.url)).slice(0, 8), 16) % 360` (also set as CSS `--hue` through `el.style.setProperty`), a `span.initial` with the domain's first letter in upper case, and a `span.badge` with `getSource(find.source)?.name ?? find.source`.
+  - `renderCard(find, {onAction, compact = false, whyLine}) → HTMLElement`: `article.card` (`.compact` when compact) with an `h2` title, an `<img alt="">` for `imageUrl` (on error: `find.meta.lqip` once, then `generatedImage`) or `generatedImage(find)`, `p.description` (cut to 160 characters when compact), `p.domain` = the domain, plus `' · by <author>'` when known, `p.why` = `whyLine ?? find.why.join(' · ')`, `p.found-by` = `'Found by <foundBy joined with ", ">'` when set, `span.team-pick` = `'Team pick'` when set, and `p.licence` = licence and attribution joined with `' · '`. All text goes in through `text`/`textContent`. Task 23 adds the actions.
+  - `views/stumble.js`: `registerView('stumble', {title: 'Stumble', render})` and the exports `showResult(result)`, `getCurrentFind() → Find|null`, `setMode(mode)` (Task 24 fills in `setMode`). The view has `h1 'Stumble'`, a card slot, `p.empty` for empty reasons, and **Back** and **Next** buttons. The why line is `[MODE_LABEL[mode], result.why, ...find.why].join(' · ')` with `MODE_LABEL = {tuned: 'Tuned', fate: 'Fate', ai: 'AI Search'}`. Showing a find announces `'Now showing: <title>'` politely; an empty result shows and announces its reason. On first render it shows `engine.current()` if there is one, else calls `engine.next`. **Back** with no earlier find announces `'This is the first find.'`
+  - `stageLibrary(page, entries)` in `net.js`: call it after `mockNet` and before `goto`. It answers `**/data/library.json` with `{v: 1, entries}` and every non-localhost request with status 503 and body `{}`.
+  - `skipFirstRun(page, heading = 'Stumble')` in `fakes.js`: waits for a **Skip** button or the `heading` level-1 heading, clicks **Skip** while one shows, then waits for the heading.
+- `library/small.json` entries (all `added '2026-11-01'`): `lib-0001` `https://example.com/` 'Tiny Synth' 'Make sounds with a tiny synth.' `['music','art']` toy; `lib-0002` `https://example.net/` 'Pixel Garden' 'Grow a pixel garden.' `['art','toy']` game; `lib-0003` `https://example.org/` 'Moth Atlas' 'Pictures of moths from one back garden.' `['nature','science']` site.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+import { test, expect } from '@playwright/test';
+import { readFileSync } from 'node:fs';
+import { mockNet, stageLibrary } from './helpers/net.js';
+import { skipFirstRun } from './helpers/fakes.js';
+import { hash64 } from '../../src/core/util/hash.js';
+const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
+const open = async (page, entries) => { await mockNet(page); await stageLibrary(page, entries); await page.goto('./#/stumble'); await skipFirstRun(page); };
+const title = (page) => page.locator('article.card h2');
+
+test('shows a library find with a generated image and a why line', async ({ page }) => {
+  await open(page, [small[0]]); const card = page.locator('article.card');
+  await expect(title(page)).toHaveText('Tiny Synth');
+  await expect(card.locator('.domain')).toHaveText('example.com');
+  await expect(card.locator('.why')).toHaveText('Tuned · wildcard · Starter library');
+  await expect(card.locator('.gen-image')).toHaveAttribute('data-hue', String(parseInt(hash64('example.com').slice(0, 8), 16) % 360));
+  await expect(card.locator('.gen-image .initial')).toHaveText('E');
+  await expect(page.locator('#live-polite')).toHaveText('Now showing: Tiny Synth');
+});
+test('Next, Back and the end of the pool', async ({ page }) => {
+  await open(page, small); const seenTitles = [await title(page).textContent()];
+  for (let i = 0; i < 2; i++) { await page.getByRole('button', { name: 'Next' }).click(); seenTitles.push(await title(page).textContent()); }
+  expect(new Set(seenTitles).size).toBe(3);
+  await page.getByRole('button', { name: 'Back' }).click(); await expect(title(page)).toHaveText(seenTitles[1]);
+  await page.getByRole('button', { name: 'Next' }).click(); await expect(title(page)).toHaveText(seenTitles[2]);
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.locator('p.empty')).toHaveText('You have seen everything we have right now. Turn on more sources in Settings, or try Fate.');
+});
+test('card shows markup as plain text', async ({ page }) => {
+  await open(page, [{ ...small[0], title: '&lt;b&gt;Bold&lt;/b&gt;', blurb: '&lt;img src=x onerror=alert(1)&gt;Hi' }]);
+  await expect(title(page)).toHaveText('<b>Bold</b>');
+  await expect(page.locator('article.card b, article.card img[src="x"]')).toHaveCount(0);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/stumble.spec.js`
+Expected: FAIL: `stageLibrary` is not exported, then the `Stumble` heading never shows.
+
+- [ ] **Step 3: Add the helpers, the boot wiring, `generated-image.js`, `card.js` and `stumble.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/stumble.spec.js`
+Expected: PASS, 3 tests, and `unmocked(page)` empty after each.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/boot.js src/ui/views/index.js src/ui/components/card.js src/ui/components/generated-image.js src/ui/views/stumble.js tests/e2e/helpers/net.js tests/e2e/helpers/fakes.js tests/fixtures/http/library/small.json tests/e2e/stumble.spec.js
+git commit -m "Wire the engine into boot and add the card and Stumble view"
+```
+
+### Task 23: Card actions
+
+**Files:**
+- Modify: `src/ui/components/card.js`, `src/ui/views/stumble.js`
+- Test: `tests/e2e/card-actions.spec.js`
+
+**Interfaces:**
+- Consumes: `renderCard`, `showResult` (Task 22), `engine.react`, `engine.rabbit` (Task 21), `showToast`, `announce`, `platform.share`, `platform.openFind`, `platform.tts.speak`, `firstSentence`, `domainOf`.
+- Produces:
+  - The card's buttons, in this order and with these exact labels: **Like**, **Not for me** (both with `aria-pressed`), **Save**, **Share**, **Open** (**Play** when `find.embedUrl` is set; action `'play'`), **More like this**, **Read it**, and **⋯** (`aria-label "More actions"`, `aria-haspopup "menu"`, `aria-expanded`) opening a `role="menu"` with `menuitem`s **Less of this topic**, **Never this site**, **Broken or spam** and **Why am I seeing this?**. Each calls `onAction(action, find, extra)` with `like dislike save share open play more read lessTopic neverSite broken why`.
+  - `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` in `card.js`, used by Stumble, Feed and Saved:
+    - `like`, `dislike`, `save`, `neverSite`, `lessTopic` (`extra.tag = find.tags[0]`): `engine.react`, then `showToast(message, {undo})`; the undo runs `r.undo()` and announces `'Undone.'`. `neverSite` then calls `advance()`. A find with no tags gives the toast `'This find has no topic to hide.'` for `lessTopic`.
+    - `broken`: the card shows `'Also block <domain>?'` with **Block site** and **Just this find**; either one reacts with `{blockDomain}`, shows the toast without undo and calls `advance()`.
+    - `share`: `platform.share({title, url})`; on `'copied'` the toast is `'Link copied.'`.
+    - `open` and `play`: `platform.openFind(find, 'tab')`, then announce `'Opened in a new tab.'` (Plan 04 replaces `play`).
+    - `read`: `app.handsFree.command('read')` when Plan 03 has set it up, else `platform.tts.speak('<title>. From <domain>. <firstSentence(description)>')`.
+    - `more`: `engine.rabbit.start(find)` then `advance()`.
+    - `why`: toggles `div.why-detail` under the card holding `whyLine(find)`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js; every test starts with: await open(page, [small[0]]);
+const menu = (page) => page.getByRole('button', { name: 'More actions' }).click();
+test('the card has every action label', async ({ page }) => {
+  for (const name of ['Like', 'Not for me', 'Save', 'Share', 'Open', 'More like this', 'Read it']) await expect(page.getByRole('button', { name, exact: true })).toBeVisible();
+  await menu(page);
+  for (const name of ['Less of this topic', 'Never this site', 'Broken or spam', 'Why am I seeing this?']) await expect(page.getByRole('menuitem', { name })).toBeVisible();
+});
+test('Like shows a note and Undo reverts it', async ({ page }) => {
+  const like = page.getByRole('button', { name: 'Like', exact: true }); await like.click();
+  await expect(page.getByText('More music and art from now on.')).toBeVisible(); await expect(like).toHaveAttribute('aria-pressed', 'true');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  await expect(page.locator('#live-polite')).toHaveText('Undone.'); await expect(like).toHaveAttribute('aria-pressed', 'false');
+});
+test('Save and Never this site offer Undo', async ({ page }) => {
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('Saved to Saved.')).toBeVisible(); await expect(page.getByRole('button', { name: 'Undo' })).toBeVisible();
+  await menu(page); await page.getByRole('menuitem', { name: 'Never this site' }).click();
+  await expect(page.getByText("You won't see example.com again.")).toBeVisible();
+});
+test('Broken or spam asks about the site', async ({ page }) => {
+  await menu(page); await page.getByRole('menuitem', { name: 'Broken or spam' }).click();
+  await expect(page.getByText('Also block example.com?')).toBeVisible();
+  await page.getByRole('button', { name: 'Just this find' }).click();
+  await expect(page.getByText('Thanks. This find is hidden now.')).toBeVisible();
+});
+test('Share copies the link and Open opens a tab', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Share' }).click(); await expect(page.getByText('Link copied.')).toBeVisible();
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Open' }).click()]);
+  expect(popup.url()).toBe('https://example.com/');
+});
+test('Read it speaks the card and Why explains it', async ({ page }) => {
+  // this test calls installFakeSpeech(page) before open(...)
+  await page.getByRole('button', { name: 'Read it' }).click();
+  await expect.poll(() => page.evaluate(() => window.__spoken)).toContain('Tiny Synth. From example.com. Make sounds with a tiny synth.');
+  await menu(page); await page.getByRole('menuitem', { name: 'Why am I seeing this?' }).click();
+  await expect(page.locator('.why-detail')).toHaveText('Tuned · wildcard · Starter library');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/card-actions.spec.js`
+Expected: FAIL: no button named `Like`.
+
+- [ ] **Step 3: Add the actions to `card.js` and pass `makeActionHandler` from `stumble.js`**
+
+`advance` in Stumble is "call `engine.next` with the current mode and `showResult`".
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/card-actions.spec.js tests/e2e/stumble.spec.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/components/card.js src/ui/views/stumble.js tests/e2e/card-actions.spec.js
+git commit -m "Add the card actions, the ⋯ menu and Undo"
+```
+
+### Task 24: Modes, search, Rabbit Hole trail and Wiby leap
+
+**Files:**
+- Modify: `src/ui/views/stumble.js`
+- Test: `tests/e2e/stumble-modes.spec.js`
+
+**Interfaces:**
+- Consumes: `app.search`, `app.saveSettings`, `app.getSettings`, `engine.next`, `engine.rabbit` (Task 21), `WIBY_LEAP_URL` (Task 18), `makeFind`, `announce`.
+- Produces, in the Stumble view:
+  - A `fieldset` with legend **Mode** and radios **Tuned**, **AI Search** and **Fate** (values `tuned`, `ai`, `fate`), checked from `settings.mode`. `setMode(mode)` checks the radio, saves `{mode}` and, for `ai`, focuses the search field. In `ai` mode with `settings.ai.provider` unset, `p.note` says `'No AI is set up yet, so search uses the free sources.'`
+  - A search form: label **Search**, an `input type="search"`, button **Search**. Submitting calls `app.search(text)`; with finds it shows the next result, otherwise it shows the `note` in `p.empty`. A `note` that comes with finds (Plan 05's cost line) is shown in `p.note`.
+  - While `engine.rabbit.trail()` is not empty: `nav[aria-label="Rabbit Hole"]` with an `ol` of trail titles and a **Climb out** button, which calls `climbOut()`, hides the trail, announces `'Back to Stumble.'` and shows the next find.
+  - A **Wiby leap** button: `platform.openFind(makeFind({source: 'wiby', kind: 'site', title: 'Wiby leap', url: WIBY_LEAP_URL, safety: 'curated'}), 'tab')`. It fetches nothing and is never added to the seen-set.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('Fate mode shows a pure random find and the mode survives a reload', async ({ page }) => {
+  await open(page, small); await page.getByRole('radio', { name: 'Fate' }).check();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.locator('article.card .why')).toHaveText('Fate · pure random · Starter library');
+  await page.reload(); await expect(page.getByRole('radio', { name: 'Fate' })).toBeChecked();
+});
+test('search finds a library entry, or says it found nothing', async ({ page }) => {
+  await open(page, small);
+  await page.getByRole('searchbox', { name: 'Search' }).fill('moth'); await page.getByRole('button', { name: 'Search' }).click();
+  await expect(page.locator('article.card h2')).toHaveText('Moth Atlas');
+  await expect(page.locator('article.card .why')).toHaveText('Tuned · search result · Starter library');
+  await page.getByRole('searchbox', { name: 'Search' }).fill('zzzz'); await page.getByRole('button', { name: 'Search' }).click();
+  await expect(page.locator('p.empty')).toHaveText('No results for "zzzz".');
+});
+test('AI Search without AI explains keyword search', async ({ page }) => {
+  await open(page, small); await page.getByRole('radio', { name: 'AI Search' }).check();
+  await expect(page.locator('p.note')).toHaveText('No AI is set up yet, so search uses the free sources.');
+  await expect(page.getByRole('searchbox', { name: 'Search' })).toBeFocused();
+});
+test('More like this opens a Rabbit Hole and Climb out leaves it', async ({ page }) => {
+  await open(page, small.slice(0, 2)); const first = await page.locator('article.card h2').textContent();
+  await page.getByRole('button', { name: 'More like this' }).click();
+  const trail = page.getByRole('navigation', { name: 'Rabbit Hole' });
+  await expect(trail.locator('li')).toHaveCount(2); await expect(trail.locator('li').first()).toHaveText(first);
+  await page.getByRole('button', { name: 'Climb out' }).click();
+  await expect(trail).toBeHidden(); await expect(page.locator('#live-polite')).toHaveText('Back to Stumble.');
+});
+test('Wiby leap opens wiby.me/surprise/ in a new tab', async ({ page }) => {
+  await open(page, small);
+  const [popup] = await Promise.all([page.waitForEvent('popup'), page.getByRole('button', { name: 'Wiby leap' }).click()]);
+  expect(popup.url()).toBe('https://wiby.me/surprise/');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/stumble-modes.spec.js`
+Expected: FAIL: no radio named `Fate`.
+
+- [ ] **Step 3: Add the mode switch, the search form, the trail and the Wiby leap button to `stumble.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/stumble-modes.spec.js tests/e2e/stumble.spec.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/stumble.js tests/e2e/stumble-modes.spec.js
+git commit -m "Add modes, search, the Rabbit Hole trail and Wiby leap to Stumble"
+```
+
+### Task 25: Feed
+
+**Files:**
+- Create: `src/ui/views/feed.js`
+- Modify: `src/ui/views/index.js` (import `./feed.js`)
+- Test: `tests/e2e/feed.spec.js`
+
+**Interfaces:**
+- Consumes: `engine.feed(30)` (Task 20), `renderCard`, `makeActionHandler` (Tasks 22–23), `EMPTY_REASONS`, `registerView`.
+- Produces: `registerView('feed', {title: 'Feed', render})`. The view has `h1 'Feed'`, a `fieldset` with legend **Order** and radios **Shuffled** (default; the engine's random order) and **Newest first** (the batch sorted by `meta.published`, newest first, finds without a date last), and a `ul.feed` of compact cards. After each batch: `p.end`, which reads `"That's 30. Stumble on or call it a day"` with a **Stumble on** button that appends the next batch when the batch had 30 finds, and otherwise reads `EMPTY_REASONS.exhausted` with no button. Never ranked by engagement.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports and helpers as stumble.spec.js
+const many = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://site-${i}.example.com/`,
+  title: `Site ${i}`, blurb: `Blurb ${i}.`, tags: ['toy'], kind: 'site', added: `2026-10-${String((i % 28) + 1).padStart(2, '0')}` }));
+test('the feed comes in batches of 30 with an end', async ({ page }) => {
+  await mockNet(page); await stageLibrary(page, many(31)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
+  await expect(page.locator('ul.feed article.card')).toHaveCount(30);
+  await expect(page.locator('p.end')).toHaveText("That's 30. Stumble on or call it a day");
+  await page.getByRole('button', { name: 'Stumble on' }).click();
+  await expect(page.locator('ul.feed article.card')).toHaveCount(31);
+  await expect(page.locator('p.end').last()).toHaveText('You have seen everything we have right now. Turn on more sources in Settings, or try Fate.');
+});
+test('Newest first sorts the batch by date', async ({ page }) => {
+  await mockNet(page); await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
+  await page.getByRole('radio', { name: 'Newest first' }).check();
+  await expect(page.locator('ul.feed article.card h2')).toHaveText(['Site 2', 'Site 1', 'Site 0']);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/feed.spec.js`
+Expected: FAIL: the `Feed` heading never shows.
+
+- [ ] **Step 3: Implement `feed.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `npm run e2e -- tests/e2e/feed.spec.js`
+Expected: PASS, 2 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/feed.js src/ui/views/index.js tests/e2e/feed.spec.js
+git commit -m "Add the Feed with batches of 30"
+```
+
 <!-- PLAN CONTINUES -->

@@ -193,6 +193,10 @@ The `Platform`, `VoiceEngine`, `Tts` and `SecretStore` shapes below are the only
  *    PWA: resolves true (CORS decides). Extension: permissions.request for those origins.
  *    Android: the native per-host approval dialog for http hosts (https needs none).
  *  @property {(app:App) => Promise<void>} [attach]   optional; boot calls `await platform.attach?.(app)` once the app is built
+ *  @property {{launchWebAuthFlow(opts:{url:string, interactive:boolean}):Promise<string>}} [identity]
+ *    optional; Connect OpenRouter outside the PWA. Extension (Plan 07): chrome.identity / browser.identity,
+ *    with the optional "identity" permission. Android (Plan 08): an in-app login WebView that catches the
+ *    callback URL. The PWA has none, and uses a redirect to the Pages callback instead.
  *  @property {{version():Promise<{versionName:string, versionCode:number, sdk:number, micConsent:boolean}>,
  *              checkUpdate():Promise<{available:boolean, latest:string|null, url:string|null}>,
  *              openExternal(url:string):Promise<void>}} [app]   Android only
@@ -344,6 +348,9 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   | `ia` | 04 |
   | `keyring`, `budget` | 05 |
 
+- **The Stumble search form (Plan 02).** It has a text field labelled **Search for** and a button **Search**, and submitting calls `app.search(text)`. The `/` key (Plan 03) focuses that field. Plan 05's e2e tests use this same form.
+- **AI badges (Plan 02).** `renderCard` shows **Found by <labels>** from `find.foundBy`, and **Team pick** when `find.teamPick` is set. Plan 05 only fills those fields.
+- **Rabbit Hole AI hook (Plan 02 defines; Plan 05 uses).** `engine.rabbit.useAi(fn|null)`, where `fn(find) → Promise<Find[]>`. Rabbit Hole mixes those finds in, after the source and local ones. Plan 05 sets it only when `settings.aiInRabbitHole` is on and an AI provider is ready.
 - `ui/views/stumble.js` (Plan 02) also exports:
   - `showResult(result)`, which renders a `{find, branch, why}` or `{empty, reason}` result;
   - `getCurrentFind() → Find|null`;
@@ -396,6 +403,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   voice: { mode: 'auto', cloudOptIn: false, voiceURI: null, rate: 1, volume: 1, lang: 'en-US' },
     // mode 'auto' | 'always' | 'push' | 'off'; 'auto' = always on for on-device/native-13+, push elsewhere
   ai: { provider: null, model: null, runCapUsd: 0.5, dailySearchCap: 50, dailySpendCapUsd: 2,
+        baseUrls: {},                            // {[providerId]: user-entered base URL} for custom, ollama, lmstudio
         team: { enabled: false, captain: false, roles: { scout: null, digger: null, wildcard: null, captain: null } } },
         // role value: {provider, model} | null
   sources: {},                                   // {[sourceId]: {enabled:boolean, fateWeight:0..3}}; absent = default

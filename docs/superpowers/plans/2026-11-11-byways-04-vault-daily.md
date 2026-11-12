@@ -1064,7 +1064,7 @@ test('writes the data files for a date with the main recipe', async () => {
   const d = read('daily.json');
   assert.deepEqual([d.v, d.date, d.picks.map((p) => p.slot)], [1, '2026-11-11', ['game', 'web', 'wonder']]);
   assert.deepEqual(d.picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth.jpg']);
-  const s = new URL(net.calls.find((c) => /rows=1&/.test(c.url)).url).searchParams;
+  const s = new URL(net.calls.find((c) => /[?&]rows=1(&|$)/.test(c.url)).url).searchParams;
   assert.equal(s.get('q'), 'collection:(softwarelibrary_c64_games) AND mediatype:software AND downloads:[20 TO 3000] AND publicdate:[* TO 2026-11-11T00:00:00Z]');
   assert.equal(s.get('page'), '92');
   const vi = read('vault-index.json');
@@ -1259,4 +1259,88 @@ git commit -m "Add the live probe for CORS, framing, collections and endpoints"
 
 ---
 
-<!-- PLAN CONTINUES -->
+### Task 13: The probe workflow and the daily Pages schedule
+
+**Files:**
+- Create: `.github/workflows/byways-probe.yml`
+- Modify: `.github/workflows/pages.yml` (from Plan 01)
+- Test: `tests/unit/workflows.test.js`
+
+**Interfaces:**
+- Consumes: the `tools/data-job.js`, `tools/build.js --linkcheck` and `tools/probe-live.js` CLIs (Tasks 10–12).
+- Produces: a weekly and manual live probe with a job summary and an artifact, and a daily 00:07 UTC Pages build that runs the data job.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const wf = (n) => readFileSync(new URL('../../../../.github/workflows/' + n, import.meta.url), 'utf8');
+test('pages.yml runs the data job daily at 00:07 UTC after a link-checked build', () => {
+  const y = wf('pages.yml');
+  for (const s of ["- cron: '7 0 * * *'", 'workflow_dispatch', '--max-time 20', '--linkcheck linkcheck-prev.json',
+    'node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/']) assert.ok(y.includes(s), s);
+  assert.ok(y.indexOf('tools/data-job.js') > y.indexOf('--linkcheck linkcheck-prev.json'));
+});
+test('byways-probe.yml runs the probe weekly and on demand and keeps the report', () => {
+  const y = wf('byways-probe.yml');
+  for (const s of ['workflow_dispatch', "- cron: '41 5 * * 1'", 'runs-on: ubuntu-24.04', 'contents: read', 'actions/checkout@v7', 'actions/setup-node@v4',
+    'node tools/probe-live.js --out probe-report.md', 'actions/upload-artifact@v7', 'path: Apps/Byways/probe-report.md']) assert.ok(y.includes(s), s);
+});
+```
+
+- [ ] **Step 2: Run the test to see it fail**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: FAIL with "ENOENT" for `byways-probe.yml`, and the missing cron string for `pages.yml`.
+
+- [ ] **Step 3: Write `byways-probe.yml` and change `pages.yml`**
+
+`byways-probe.yml` (exact):
+
+```yaml
+name: Byways live probe
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '41 5 * * 1'
+permissions:
+  contents: read
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: Apps/Byways
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: node tools/probe-live.js --out probe-report.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: byways-probe-report
+          path: Apps/Byways/probe-report.md
+```
+
+In `pages.yml`:
+
+1. Add `schedule:` with `- cron: '7 0 * * *'` under `on:`, next to the existing push and `workflow_dispatch` triggers.
+2. In the build job, before the web build, add a step "Fetch the last link check" that runs `curl -fsS --max-time 20 -o linkcheck-prev.json https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/linkcheck.json || rm -f linkcheck-prev.json`.
+3. Add `--linkcheck linkcheck-prev.json` to the web build command.
+4. After the build, add a step "Daily data" that runs `node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`, before `_site/` is assembled.
+
+Keep the steps in `Apps/Byways/` like the rest of the job.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: PASS, 2 tests. Then run `npm test` and `npm run e2e`; expected: all pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add ../../.github/workflows/byways-probe.yml ../../.github/workflows/pages.yml tests/unit/workflows.test.js
+git commit -m "Add the weekly live probe and the daily data step"
+```
+
+After the first probe run, set each adapter's `tier` to match the report (§17.4). That is a follow-up change, not part of this plan.
