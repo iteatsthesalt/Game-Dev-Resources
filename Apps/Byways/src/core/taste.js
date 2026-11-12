@@ -33,6 +33,7 @@ function bump(weights, key, step) {
 /**
  * Apply one reaction to a taste. Pure: the input is never mutated. `extra` is `{tag}` for
  * `interest` and `lessTopic` (default: the find's first tag) and `{blockDomain: true}` for `broken`.
+ * Only `lessTopic` hides a tag (at -3). With no tag to act on, `interest` and `lessTopic` change nothing.
  * Returns the new taste and a `change` describing what moved, for `describeChange`.
  */
 export function applyReaction(taste, find, reaction, extra = {}) {
@@ -41,10 +42,6 @@ export function applyReaction(taste, find, reaction, extra = {}) {
 
   const moveTag = (tag, step) => {
     change.tagDeltas[tag] = (change.tagDeltas[tag] ?? 0) + bump(next.tags, tag, step);
-    if (next.tags[tag] <= HIDE_AT && !next.hiddenTags.includes(tag)) {
-      next.hiddenTags.push(tag);
-      change.hidden.push(tag);
-    }
   };
   const blockSite = () => {
     const domain = domainOf(find?.url ?? '');
@@ -62,14 +59,21 @@ export function applyReaction(taste, find, reaction, extra = {}) {
       if (find.source !== 'shared') change.sourceDelta = bump(next.sources, find.source, SOURCE_STEP[reaction]);
       break;
     case 'lessTopic': {
-      const tag = extra.tag ?? find.tags[0];
-      if (tag !== undefined) moveTag(tag, LESS_TOPIC_STEP);
+      const tag = extra.tag ?? find?.tags?.[0];
+      if (tag === undefined) return { taste: next, change };
+      moveTag(tag, LESS_TOPIC_STEP);
+      // Only "Less of this topic" hides a tag; other reactions stop at the -3 floor.
+      if (next.tags[tag] <= HIDE_AT && !next.hiddenTags.includes(tag)) {
+        next.hiddenTags.push(tag);
+        change.hidden.push(tag);
+      }
       break;
     }
     case 'neverSite':
       blockSite();
       break;
     case 'interest':
+      if (extra.tag === undefined) return { taste: next, change };
       moveTag(extra.tag, INTEREST_STEP);
       if (!next.interests.includes(extra.tag)) next.interests.push(extra.tag);
       break;

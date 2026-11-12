@@ -59,3 +59,36 @@ test('describeChange uses the tag labels', () => {
   assert.equal(describeChange(c({ tagDeltas: { oldweb: 1, ai: 1, retro: 1 } }), labelOf), 'More old web, AI and retro from now on.');
   assert.equal(describeChange(c({ hidden: ['oldweb'] }), labelOf), 'Old web is hidden now.');
 });
+test('repeated dislikes floor a tag at -3 without hiding it', () => {
+  let taste = DEFAULT_TASTE;
+  for (let i = 0; i < 8; i += 1) taste = applyReaction(taste, find, 'dislike').taste;
+  assert.equal(taste.tags.retro, -3); assert.deepEqual(taste.hiddenTags, []);
+  assert.deepEqual(applyReaction(taste, find, 'dislike').change.hidden, []);
+});
+test('weights clamp at -3 on the way down', () => {
+  const { taste, change } = applyReaction({ ...DEFAULT_TASTE, tags: { retro: -2.75 } }, find, 'dislike');
+  assert.equal(taste.tags.retro, -3); assert.equal(change.tagDeltas.retro, -0.25);
+});
+test('less of this topic defaults to the first tag of the find', () => {
+  const { taste, change } = applyReaction(DEFAULT_TASTE, find, 'lessTopic');
+  assert.deepEqual(taste.tags, { retro: -2 }); assert.deepEqual(change.tagDeltas, { retro: -2 }); assert.equal(taste.reactions, 1);
+});
+test('less of this topic with no tag to resolve changes nothing', () => {
+  const none = { tagDeltas: {}, sourceDelta: 0, hidden: [], blocked: [] };
+  for (const f of [null, { source: 'library', url: 'https://example.com/x' }]) {
+    const { taste, change } = applyReaction(DEFAULT_TASTE, f, 'lessTopic');
+    assert.deepEqual(taste, DEFAULT_TASTE); assert.deepEqual(change, none);
+  }
+});
+test('an interest with no tag changes nothing', () => {
+  const { taste, change } = applyReaction(DEFAULT_TASTE, null, 'interest');
+  assert.deepEqual(taste, DEFAULT_TASTE); assert.equal(taste.reactions, 0);
+  assert.deepEqual(change, { tagDeltas: {}, sourceDelta: 0, hidden: [], blocked: [] });
+});
+test('a taste that is not frozen is not mutated', () => {
+  const before = { ...structuredClone(DEFAULT_TASTE), tags: { retro: -2 } };
+  const copy = structuredClone(before);
+  applyReaction(before, find, 'lessTopic', { tag: 'retro' });
+  applyReaction(before, find, 'like');
+  assert.deepEqual(before, copy);
+});
