@@ -1053,7 +1053,7 @@ Task 10's `basics.spec.js` checks these rules in Chromium.
 
 `src/assets/icons/icon.svg`: a `viewBox="0 0 512 512"` rounded square filled `#1d4ed8`, with a white winding path stroke. No text and no external references.
 
-`tools/icons.js`: `renderIcons({svgPath, outDir})` launches `chromium` from `@playwright/test`. For each icon it opens a page with a `size × size` viewport and `deviceScaleFactor: 1`, sets content that shows the SVG as an `<img>` data URL, awaits `img.decode()`, and saves `page.screenshot({path, omitBackground: true})`. It returns the three paths. `icon-192.png` and `icon-512.png` show the SVG at full size on a transparent background. `maskable-512.png` has a full-bleed `#1d4ed8` background with the SVG drawn at 288 px in the centre: its half-diagonal is 204 px, inside the 204.8 px radius of the maskable safe zone. The CLI renders `src/assets/icons/icon.svg` into `src/assets/icons/` and prints each path.
+`tools/icons.js`: `renderIcons({svgPath, outDir})` launches `chromium` from `@playwright/test`. For each icon it opens a page with a `size × size` viewport and `deviceScaleFactor: 1`, sets content that shows the SVG as an `<img>` data URL, awaits `img.decode()`, and saves `page.screenshot({path, omitBackground: true})`. It returns the three paths. `icon-192.png` and `icon-512.png` show the SVG at full size on a transparent background. `maskable-512.png` has a full-bleed `#1d4ed8` background with the SVG drawn at 288 px in the centre: its half-diagonal is 204 px, inside the 204.8 px radius of the maskable safe zone. The CLI renders `src/assets/icons/icon.svg` into `src/assets/icons/`, both under the folder above `tools/`, and prints each path.
 
 Run: `node tools/icons.js`
 Expected: the three PNG paths are printed. Run it again only when `icon.svg` changes, and commit the PNGs. It is not part of `npm test`, because CI runs `npm test` before it installs Chromium.
@@ -1095,7 +1095,7 @@ git commit -m "Add the PWA shell, base styles, icons and the build with its chec
 
 - [ ] **Step 1: Write the failing server test** `tests/unit/serve.test.js`
 
-The file makes a temp root holding `index.html` (`home`), `sub/index.html` (`sub`) and `a.wasm`, and starts `createServer({ root, base: '/Game-Dev-Resources/byways/' }).listen(0)` in `before`. `get(path)` sends a raw `http.get({ port, path })`, so the client does not normalise `..`, and resolves `{status, type, location, body}`.
+The file makes a temp root holding `index.html` (`home`), `sub/index.html` (`sub`) and `a.wasm`, and starts `createServer({ root, base: '/Game-Dev-Resources/byways/' }).listen(0)` in `before` (closing it in `after`). `get(path)` sends a raw `http.get({ port, path })`, so the client does not normalise `..`, and resolves `{status, type, location, body}`.
 
 ```js
 test('serves the base, MIME types and folder indexes', async () => {

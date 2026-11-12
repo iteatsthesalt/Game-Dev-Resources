@@ -448,16 +448,77 @@ git commit -m "Add the Daily Fate seed, backup recipe and file loader"
 
 ---
 
-### Task 4: The `ia` and `vault` source adapters
+### Task 4: Generated data files: `dataUrl`, `readSnapshot` and placeholders
 
 **Files:**
-- Create: `src/core/sources/ia.js`, `src/core/sources/vault.js`, `tests/fixtures/http/ia/meta-collection.json`, `tests/fixtures/http/ia/meta-game.json`, `tests/fixtures/http/ia/count-250.json`, `tests/fixtures/http/ia/search-gems.json`, `tests/fixtures/http/ia/search-film.json`, `tests/fixtures/http/ia/vault-index.json`
-- Modify: `src/core/ia/client.js` (add `luceneEscape`), `src/core/sources/index.js` (register both)
+- Create: `tests/fixtures/http/pages/empty.json` (`{"v":1}`)
+- Modify: `src/ui/boot.js`, `src/core/sources/index.js`, `tools/build.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/data-files.test.js`
+
+**Interfaces:**
+- Consumes: `SHARE_BASE` (Plan 02 `share.js`); `build({target, outRoot, id})` (Plan 01); `createHttp`, `createCache`, `openStore(memoryBackend())`, `fakeClock`; `fakeFetch` (Task 1).
+- Produces: `dataUrlFor(platformName) → (file) => string` exported from `boot.js`, and `app.dataUrl = dataUrlFor(platform.name)`, the contract's `dataUrl` (listed under Plan 01, whose boot does not define it; if it exists when this runs, keep it and add only the test); the `pages` limiter (`app.http.register('pages', {perMinute: 30, concurrent: 2})`); `readSnapshot(ctx, file) → Promise<object|null>` from `sources/index.js`, used by every snapshot reader in this plan; `{"v":1}` placeholders for the five generated files in `dist/pwa/data/`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`DATA = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/'`. The `readSnapshot` test uses `clock = fakeClock(0)`, `net = fakeFetch([[/data\/itch\.json$/, () => ({ body: { v: 1, feeds: [] } })]], {clock})` and `ctx = {http: createHttp({transport: net, clock}), cache: createCache(await openStore(memoryBackend()), clock), clock, dataUrl: (f) => DATA + f}`.
+
+```js
+test('dataUrl is relative in the web app and the Pages URL elsewhere', () => {
+  assert.equal(dataUrlFor('pwa')('daily.json'), 'data/daily.json');
+  for (const p of ['extension', 'android']) assert.equal(dataUrlFor(p)('itch.json'), DATA + 'itch.json');
+});
+test('readSnapshot reads through dataUrl, caches for an hour and gives null on any error', async () => {
+  assert.deepEqual(await readSnapshot(ctx, 'itch.json'), { v: 1, feeds: [] });
+  await readSnapshot(ctx, 'itch.json');
+  assert.deepEqual(net.calls.map((c) => c.url), [DATA + 'itch.json']);
+  clock.advance(3600001); await readSnapshot(ctx, 'itch.json'); assert.equal(net.calls.length, 2);
+  assert.equal(await readSnapshot(ctx, 'neocities.json'), null);
+  assert.equal(await readSnapshot({ ...ctx, dataUrl: undefined }, 'itch.json'), null);
+});
+test('the pwa build ships {"v":1} placeholders for the generated data files', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'bw-')); await build({ target: 'pwa', outRoot: out, id: 't' });
+  for (const f of ['daily.json', 'itch.json', 'vault-index.json', 'webrings.json', 'neocities.json'])
+    assert.deepEqual(JSON.parse(readFileSync(join(out, 'dist/pwa/data', f), 'utf8')), { v: 1 }, f);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/data-files.test.js`
+Expected: FAIL with "The requested module '../../src/ui/boot.js' does not provide an export named 'dataUrlFor'".
+
+- [ ] **Step 3: Implement the four changes**
+
+- `boot.js`: `dataUrlFor(name)` gives `(file) => 'data/' + file` for `'pwa'` and `(file) => SHARE_BASE + 'data/' + file` otherwise. Set `app.dataUrl` and register `pages` with the other Plan 01 fields, before the engine is created.
+- `readSnapshot(ctx, file)`: `ctx.http.getJson(ctx.dataUrl(file), {source: 'pages'})`, cached in `ctx.cache` under `snap:<file>` for 3600000 ms. Any throw (a 404, bad JSON, a missing `ctx.dataUrl` or `ctx.cache`) gives `null`, and `null` is never cached. Readers treat a missing or wrongly typed field in a snapshot as empty.
+- `build.js`: the `pwa` target writes `{"v":1}` to `daily.json`, `itch.json`, `vault-index.json`, `webrings.json` and `neocities.json` under `dist/pwa/data/`, and the data job overwrites them on Pages. The extension and Android outputs get none, because they read Pages. Without the placeholders, every e2e page that reads a snapshot would log a 404, which Plan 01's `test` fixture reports through `pageProblems`.
+- `routes.js`: add `{match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\//, file: 'pages/empty.json'}`, so the extension and Android e2e runs read empty snapshots instead of making unmocked requests.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/data-files.test.js tests/unit/boot-data.test.js`
+Expected: PASS, 3 tests plus Plan 01's.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/boot.js src/core/sources/index.js tools/build.js tests/fixtures/routes.js tests/fixtures/http/pages tests/unit/data-files.test.js
+git commit -m "Read generated data files through dataUrl, with build placeholders"
+```
+
+---
+
+### Task 5: The `ia` and `vault` source adapters
+
+**Files:**
+- Create: `src/core/sources/ia.js`, `src/core/sources/vault.js`, `tests/fixtures/http/ia/meta-collection.json`, `tests/fixtures/http/ia/meta-game.json`, `tests/fixtures/http/ia/count-250.json`, `tests/fixtures/http/ia/search-gems.json`, `tests/fixtures/http/ia/search-film.json`, `tests/fixtures/http/ia/vault-index.json`, `tests/fixtures/http/ia/thumb.svg`
+- Modify: `src/core/ia/client.js` (add `luceneEscape`), `src/core/sources/index.js` (append both to `ADAPTERS`), `tests/unit/sources-index.test.js`, `tests/fixtures/routes.js`
 - Test: `tests/unit/sources-ia.test.js`
 
 **Interfaces:**
-- Consumes: `sharedIaClient`, `VAULT_COLLECTIONS`, `validateCollections`, `vaultFate`, `shelfGems`, `iaDocToFind` (Tasks 1–2); the adapter shape and `ctx`; `SOURCES`, `getSource`.
-- Produces: default-exported adapters `ia` and `vault`; `IA_COLLECTIONS: Array<{id, label, kind, safety}>` from `sources/ia.js`; `luceneEscape(text) → string` from `ia/client.js`. Both adapters read `ctx.data.embedBroken: Set<string>` and `ctx.data.loadSnapshot(name) → Promise<object|null>`, which Task 7 adds to `app.data`.
+- Consumes: `sharedIaClient`, `VAULT_COLLECTIONS`, `validateCollections`, `vaultFate`, `shelfGems`, `iaDocToFind` (Tasks 1–2); `readSnapshot` (Task 4); the adapter shape and `ctx = {http, rand, clock, cache, settings, secrets, data, platformName, caps, dataUrl}` (contract; Plan 02's engine builds it); `getSource`.
+- Produces: default-exported adapters `ia` and `vault`; `IA_COLLECTIONS: Array<{id, label, kind, safety}>` from `sources/ia.js`; `luceneEscape(text) → string` from `ia/client.js`. Both adapters drop finds whose id is in `ctx.data.embedBroken: Set<string>`, which Task 9 adds to `app.data`.
 
 `IA_COLLECTIONS` (in this order): `prelinger` "Prelinger Archives" video; `feature_films` "Feature Films" video, safety `mixed`; `georgeblood` "Great 78 Project" audio; `78rpm` "78 RPMs and Cylinder Recordings" audio; `oldtimeradio` "Old Time Radio" audio; `librivoxaudio` "LibriVox" audio; `etree` "Live Music Archive" audio; `computermagazines` "Computer Magazines" book. Safety is `mostly` unless stated.
 

@@ -792,7 +792,41 @@ test('a closed tab forgets its find', async () => {
   await bg.onTabRemoved(5);
   assert.equal('find:5' in ext.session, false);
 });
+
+test('the background data has the four files, the Pages snapshots and the broken-embed list', async () => {
+  const store = await openStore(memoryBackend());
+  await store.put('health', 'embed-broken:ia:x', { at: 1 });
+  const asked = []; const regs = [];
+  const http = { register: (id, r) => regs.push([id, r]), getJson: async (u, o) => { asked.push([u, o.source]); return { v: 1, collections: {} }; } };
+  const data = await loadBackgroundData({ fetchFn: async (u) => Response.json({ v: 1, from: u }), base: 'chrome-extension://test/', http, store });
+  assert.deepEqual([data.tags.from, data.library.from, data.vaultStarter.from, data.geocities.from],
+    ['tags.json', 'library.json', 'vault-starter.json', 'geocities-seeds.json'].map((f) => 'chrome-extension://test/data/' + f));
+  assert.deepEqual(await data.loadSnapshot('vault-index'), { v: 1, collections: {} });
+  await data.loadSnapshot('vault-index');                                  // remembered for the worker's life
+  assert.deepEqual(asked, [['https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/vault-index.json', 'pages']]);
+  assert.deepEqual(regs, [['pages', { perMinute: 30, concurrent: 2 }]]);
+  assert.deepEqual([...data.embedBroken], ['ia:x']);
+});
+
+test('wire connects every browser event to its handler', async () => {
+  const ext = eventsExt(); const got = [];
+  const names = ['stumble', 'onCommand', 'onMenuClick', 'onInstalled', 'checkAccess', 'onTabRemoved'];
+  const bg = Object.fromEntries(names.map((n) => [n, async () => { got.push(n); }]));
+  bg.onMessage = (msg) => (msg.type === 'ping' ? Promise.resolve('pong') : undefined);
+  wire(ext, bg);
+  ext.fns['action.onClicked'](tab); ext.fns['commands.onCommand']('open-panel', tab);
+  ext.fns['contextMenus.onClicked']({ menuItemId: 'more-like-page' }, tab); ext.fns['runtime.onInstalled']({ reason: 'install' });
+  ext.fns['runtime.onStartup'](); ext.fns['permissions.onAdded']({}); ext.fns['permissions.onRemoved']({}); ext.fns['tabs.onRemoved'](5);
+  assert.deepEqual(got, ['stumble', 'onCommand', 'onMenuClick', 'onInstalled', 'checkAccess', 'checkAccess', 'checkAccess', 'onTabRemoved']);
+  let reply;
+  assert.equal(ext.fns['runtime.onMessage']({ type: 'ping' }, {}, (r) => { reply = r; }), true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(reply, 'pong');
+  assert.equal(ext.fns['runtime.onMessage']({ type: 'other' }, {}, () => {}), false);
+});
 ```
+
+The test file also imports `EMPTY_REASONS` from `src/core/engine.js` and `openStore`, `memoryBackend` from `src/core/store/db.js`.
 
 - [ ] **Step 2: Run the tests and see them fail**
 
