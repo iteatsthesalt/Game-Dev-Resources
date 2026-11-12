@@ -999,38 +999,65 @@ test('Play twice mounts one frame, and leaving clears the watchdog', async ({ pa
 });
 test('a game with no emulator offers Open on archive.org and no frame', async ({ page }) => {
   await page.route(/metadata\/msdos_Whizz_1994\/metadata/, (r) => r.fulfill({ json: { result: { mediatype: 'software' } } }));
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await whizz().getByRole('button', { name: 'Play' }).click();
   await expect(whizz()).toContainText('This game has no player on the Archive.');
   await expect(whizz().getByRole('link', { name: 'Open on archive.org' })).toBeVisible();
   await expect(page.locator('iframe')).toHaveCount(0);
+});
+test.describe('when the Archive does not answer', () => {
+  test.use({ ignoreProblems: [/Failed to load resource/] });   // the 503 below is on purpose
+  test('an unreachable Archive shows a message instead of a frame', async ({ page }) => {   // Review Focus 1
+    await page.route(/metadata\/msdos_Whizz_1994\/metadata/, (r) => r.fulfill({ status: 503, body: '' }));
+    await gotoApp(page, '#/vault');
+    await whizz().getByRole('button', { name: 'Play' }).click();
+    await expect(whizz()).toContainText('The Internet Archive is not answering right now.');
+    await expect(page.locator('iframe')).toHaveCount(0);
+  });
+});
+test('Play works the same on a saved Archive find', async ({ page }) => {
+  await gotoApp(page, '#/vault');
+  await whizz().getByRole('button', { name: 'Save' }).click();
+  await page.goto('#/saved');
+  await page.getByRole('main').getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('iframe')).toHaveAttribute('src', 'https://archive.org/embed/msdos_Whizz_1994');
+});
+test('Play pauses a running lean-back', async ({ page }) => {   // runs once Plan 03's hands-free bar exists
+  await installFakeSpeech(page); await gotoApp(page, '#/stumble');
+  const start = page.locator('#handsfree').getByRole('button', { name: 'Start' });
+  test.skip(!(await start.count()), 'hands-free comes with Plan 03');
+  await start.click(); await page.goto('#/vault');
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('#handsfree').getByRole('button', { name: 'Play' })).toBeVisible();
 });
 ```
 
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault-play.spec.js`
-Expected: FAIL (no iframe after Play).
+Expected: FAIL: no iframe after Play (Plan 02's `play` still opens a tab).
 
-- [ ] **Step 3: Implement `mountPlayer` and the `play` action**
+- [ ] **Step 3: Implement `mountPlayer` and the `play` action in `card.js`**
 
-- If the slot already holds a player, return its handle. If `find.embedUrl` does not start with `https://archive.org/embed/`, return `null`.
-- For `kind: 'game'`, call `app.ia.metadata(find.meta.identifier)` (an error counts as `null`). With no `emulator`, show "This game has no player on the Archive." and an **Open on archive.org** link, and stop. Otherwise show `<platform> · <hint>`: `dosbox` → "MS-DOS" / "Click the game, then use the keyboard."; `ruffle*` → "Flash" / "Use the mouse."; `mame*` → "Arcade" / "Press 5 to add a coin and 1 to start."; anything else → the emulator value / "Click the game, then use the keyboard."
-- Mount `h('iframe', {src: find.embedUrl, allow: 'fullscreen; autoplay; gamepad', allowfullscreen: '', title: find.title + ', Internet Archive player'})` and a **Not working** button, then call `app.handsFree?.pause()`.
-- Start a 15000 ms `setTimeout`, cleared by the frame's `load` event. When the watchdog fires or **Not working** is pressed, show (once) "This one is not loading here." and an **Open on archive.org** link to `https://archive.org/details/<id>` (`target="_blank"`, `rel="noopener"`). Then `app.store.put('health', 'embed-broken:' + find.id, {at: Date.now()})`, add `find.id` to `app.data.embedBroken`, and `announce('Marked as not working on this device')`. **Not working** also removes the frame.
-- `unmount()` clears the timer and removes the frame. The view's `leave()` unmounts every player. Items whose id is in `app.data.embedBroken` show a badge "Not working here".
+- `mountPlayer(slot, find, app)` keeps the pending mount promise per slot (a `WeakMap`) from before its first `await`, and returns it to a second call, so pressing **Play** twice mounts one frame. If `find.embedUrl` is not `https://archive.org/embed/<id>`, it returns `null`.
+- It first calls `app.handsFree.pause()` when `app.handsFree?.state === 'active'` (Plan 03's rule), so lean-back stops while a game runs and resumes only on an explicit resume.
+- For `kind: 'game'`, it calls `app.ia.metadata(find.meta?.identifier ?? <id from embedUrl>)`. If that throws (the Archive is paused or down), it shows "The Internet Archive is not answering right now." and an **Open on archive.org** link, with no frame and no embed-broken mark. A `null` reply, or one with no `emulator`, shows "This game has no player on the Archive." and the link. Otherwise it shows `<platform> · <hint>`: `dosbox` → "MS-DOS" / "Click the game, then use the keyboard."; `ruffle*` → "Flash" / "Use the mouse."; `mame*` → "Arcade" / "Press 5 to add a coin and 1 to start."; anything else → the emulator value / "Click the game, then use the keyboard."
+- It mounts `h('iframe', {src: find.embedUrl, allow: 'fullscreen; autoplay; gamepad', allowfullscreen: '', title: find.title + ', Internet Archive player'})` and a **Not working** button.
+- It starts a 15000 ms `setTimeout`, cleared by the frame's `load` event. If the slot has left the document when it fires (the user left the view, or the card was replaced), it does nothing more. When the watchdog fires or **Not working** is pressed, it shows (once) "This one is not loading here." and an **Open on archive.org** link to `https://archive.org/details/<id>` (`target="_blank"`, `rel="noopener"`). Then `app.store.put('health', 'embed-broken:' + find.id, {at: Date.now()})`, add `find.id` to `app.data.embedBroken`, and `announce('Marked as not working on this device')`. **Not working** also removes the frame.
+- `makeActionHandler`'s `play` branch calls `mountPlayer(extra.slot, find, app)` in place of Plan 02's `openFind`, and `renderCard` passes the card's `div.player` as `extra.slot`.
+- `unmount()` clears the timer and removes the frame.
 - **Open on archive.org** uses the same `https://archive.org/details/<id>` URL everywhere.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault-play.spec.js tests/e2e/vault.spec.js`
-Expected: PASS, 12 tests.
+Expected: PASS, 15 tests; `Play pauses a running lean-back` reports as skipped until Plan 03 has run.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/vault.js tests/fixtures/http/ia/embed.html tests/e2e/vault-play.spec.js
-git commit -m "Add Vault Play with the watchdog and embed-broken marks"
+git add src/ui/components/card.js tests/fixtures/routes.js tests/fixtures/http/ia/embed.html tests/e2e/vault-play.spec.js
+git commit -m "Play Archive finds in place, with the watchdog and embed-broken marks"
 ```
 
 ---

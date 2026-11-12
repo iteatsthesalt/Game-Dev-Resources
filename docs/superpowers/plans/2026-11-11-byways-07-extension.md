@@ -946,6 +946,7 @@ Helpers in the same file:
 - `tabInfo(page)`: `page.evaluate(() => chrome.tabs.getCurrent().then((t) => ({ id: t.id, windowId: t.windowId })))`. Only call it while the page is an extension page.
 - `useSources(page, ids = ['library'])`: in an extension page, import `core/sources/index.js` (`SOURCES`), `core/store/db.js` (`openStore`, `idbBackend`) and `core/settings.js` (`saveSettings`) through `chrome.runtime.getURL`. Save `{sources: <every SOURCES id → {enabled: ids.includes(id), fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page. Plan 01's `boot()` waits for first run, so every test that opens a boot page calls this first.
 - `stumbleTab(page, tabId)`: `page.evaluate((id) => chrome.runtime.sendMessage({ type: 'stumble', tabId: id }), tabId)`. This runs the same `stumble(tab)` handler as the toolbar click.
+- `tell(sw, msg, session = null)`: in the service worker, `chrome.storage.session.set(session)` first when `session` is given, then `chrome.runtime.sendMessage(msg).catch(() => {})`. Pages never reply, and a send that gets no reply may reject. This is how the tests play the background's side of a message.
 - `grantMic(context, extId)`: opens `permission.html` (Task 7) with `extPage` and waits for its `close` event. `--use-fake-ui-for-media-stream` accepts the prompt.
 - `said(page)`: `page.evaluate(() => window.__announcements.map(([, text]) => text))`. Tests read live-region text from this log, because the Stumble view's `Now showing: <title>` can replace the text of `#live-polite` at any moment.
 

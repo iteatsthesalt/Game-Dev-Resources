@@ -2264,19 +2264,28 @@ test('axe finds no serious issues on Your taste', async ({ page }) => {
 });
 test('first run offers 25 interests and saves the picks', async ({ page }) => {
   await stageLibrary(page, small); await page.goto('./#/stumble');
-  const heading = page.getByRole('heading', { name: 'What are you into?' });
-  while (!(await heading.isVisible())) await page.getByRole('button', { name: 'Skip' }).click();
+  await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page.getByRole('heading', { name: 'What are you into?' })).toBeVisible(); await expectNoSeriousA11y(page);
   await expect(page.getByRole('checkbox')).toHaveCount(25);
   await page.getByRole('checkbox', { name: 'Space' }).check(); await page.getByRole('checkbox', { name: 'Retro' }).check();
   await page.getByRole('button', { name: 'Done' }).click(); await skipFirstRun(page);
   await page.goto('./#/settings/taste');
   await expect(page.getByRole('slider', { name: 'Space' })).toHaveValue('2');
   await expect(page.getByRole('slider', { name: 'Retro' })).toHaveValue('2');
+  await expect(page.getByRole('group', { name: 'Interests' }).getByRole('checkbox', { name: 'Space' })).toBeChecked();
 });
-test('Familiar ↔ Strange is saved', async ({ page }) => {
-  await open(page, small); await page.goto('./#/settings/taste');
-  await page.getByRole('slider', { name: 'Familiar ↔ Strange' }).fill('1');
-  await page.reload(); await expect(page.getByRole('slider', { name: 'Familiar ↔ Strange' })).toHaveValue('1');
+test('Familiar ↔ Strange on Stumble is the one in Your taste, and is saved', async ({ page }) => {
+  await open(page, small); await page.getByRole('slider', { name: 'Familiar ↔ Strange' }).fill('0.5');
+  await page.goto('./#/settings/taste'); const range = page.getByRole('slider', { name: 'Familiar ↔ Strange' });
+  await expect(range).toHaveValue('0.5'); await range.fill('1');
+  await page.reload(); await expect(range).toHaveValue('1');
+});
+test('every source has a weight', async ({ page }) => {
+  await open(page, small, '#/settings/taste');
+  const sources = page.getByRole('group', { name: 'Sources' });
+  await expect(sources.getByRole('slider', { name: 'Wikipedia' })).toHaveValue('0');
+  await sources.getByRole('slider', { name: 'Wikipedia' }).fill('-1.5');
+  await page.reload(); await expect(sources.getByRole('slider', { name: 'Wikipedia' })).toHaveValue('-1.5');
 });
 test('a blocked site can be unblocked', async ({ page }) => {
   await open(page, [small[0]]); await page.getByRole('button', { name: 'More actions' }).click();
@@ -2291,17 +2300,17 @@ test('a blocked site can be unblocked', async ({ page }) => {
 Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-taste.spec.js`
 Expected: FAIL: the heading `What are you into?` never shows.
 
-- [ ] **Step 3: Implement `settings/taste.js`**
+- [ ] **Step 3: Implement `settings/taste.js` and update Plan 01's two specs**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/settings-taste.spec.js`
-Expected: PASS, 4 tests.
+Run: `npm run e2e -- tests/e2e/settings-taste.spec.js tests/e2e/firstrun.spec.js tests/e2e/smoke.spec.js`, then `npm run e2e`
+Expected: PASS, 9 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/settings/taste.js src/ui/views/index.js tests/e2e/settings-taste.spec.js
+git add src/ui/views/settings/taste.js src/ui/views/index.js tests/e2e/settings-taste.spec.js tests/e2e/firstrun.spec.js tests/e2e/smoke.spec.js
 git commit -m "Add Your taste settings and the first-run interests step"
 ```
 
