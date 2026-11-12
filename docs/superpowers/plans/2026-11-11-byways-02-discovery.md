@@ -2011,10 +2011,11 @@ git commit -m "Add the card actions, the ⋯ menu and Undo"
 - Test: `tests/e2e/stumble-modes.spec.js`
 
 **Interfaces:**
-- Consumes: `app.search`, `app.saveSettings`, `app.getSettings`, `engine.next`, `engine.rabbit` (Task 21), `WIBY_LEAP_URL` (Task 18), `makeFind`, `announce`.
+- Consumes: `app.search`, `app.saveSettings`, `app.getSettings`, `engine.next`, `engine.taste`, `engine.setTaste`, `engine.rabbit` (Tasks 20–21), `WIBY_LEAP_URL` (Task 18), `makeFind`, `announce`.
 - Produces, in the Stumble view:
   - A `fieldset` with legend **Mode** and radios **Tuned**, **AI Search** and **Fate** (values `tuned`, `ai`, `fate`), checked from `settings.mode`. `setMode(mode)` checks the radio, saves `{mode}` and, for `ai`, focuses the search field. In `ai` mode with `settings.ai.provider` unset, `p.note` says `'No AI is set up yet, so search uses the free sources.'`
-  - A search form: label **Search**, an `input type="search"`, button **Search**. Submitting calls `app.search(text)`; with finds it shows the next result, otherwise it shows the `note` in `p.empty`. A `note` that comes with finds (Plan 05's cost line) is shown in `p.note`.
+  - While the mode is Tuned, the range **Familiar ↔ Strange** (0–1, step 0.05, §5.2 "a visible Familiar ↔ Strange control") bound to `taste.strangeness` through `engine.setTaste`; it is the same value as in Settings → Your taste (Task 27), and it is hidden in the other modes.
+  - The search form of the overview: a text field (`input type="search"`) labelled **Search for** and a button **Search**. Submitting calls `app.search(text)`; with finds it shows the next result, otherwise it shows the `note` in `p.empty`. A `note` that comes with finds (Plan 05's cost line) is shown in `p.note`. Plan 03's `/` key focuses this field.
   - While `engine.rabbit.trail()` is not empty: `nav[aria-label="Rabbit Hole"]` with an `ol` of trail titles and a **Climb out** button, which calls `climbOut()`, hides the trail, announces `'Back to Stumble.'` and shows the next find.
   - A **Wiby leap** button: `platform.openFind(makeFind({source: 'wiby', kind: 'site', title: 'Wiby leap', url: WIBY_LEAP_URL, safety: 'curated'}), 'tab')`. It fetches nothing and is never added to the seen-set.
 
@@ -2022,24 +2023,30 @@ git commit -m "Add the card actions, the ⋯ menu and Undo"
 
 ```js
 // same imports, `small` and `open` helper as stumble.spec.js
-test('Fate mode shows a pure random find and the mode survives a reload', async ({ page }) => {
+// (the Fate pull itself is pinned in Task 28, where the other Fate sources can be set to 0)
+test('the mode is saved and survives a reload', async ({ page }) => {
   await open(page, small); await page.getByRole('radio', { name: 'Fate' }).check();
-  await page.getByRole('button', { name: 'Next' }).click();
-  await expect(page.locator('article.card .why')).toHaveText('Fate · pure random · Starter library');
   await page.reload(); await expect(page.getByRole('radio', { name: 'Fate' })).toBeChecked();
 });
+test('Familiar ↔ Strange shows in Tuned mode and is saved', async ({ page }) => {
+  await open(page, small); const range = page.getByRole('slider', { name: 'Familiar ↔ Strange' });
+  await range.fill('1'); await page.reload(); await expect(range).toHaveValue('1');
+  await page.getByRole('radio', { name: 'Fate' }).check(); await expect(range).toBeHidden();
+});
 test('search finds a library entry, or says it found nothing', async ({ page }) => {
-  await open(page, small);
-  await page.getByRole('searchbox', { name: 'Search' }).fill('moth'); await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.locator('article.card h2')).toHaveText('Moth Atlas');
+  await open(page, small); const shown = await page.locator('article.card h2').textContent();
+  const target = small.find((e) => e.title !== shown);
+  const box = page.getByRole('searchbox', { name: 'Search for' }); const go = page.getByRole('button', { name: 'Search', exact: true });
+  await box.fill(target.title.split(' ')[0]); await go.click();
+  await expect(page.locator('article.card h2')).toHaveText(target.title);
   await expect(page.locator('article.card .why')).toHaveText('Tuned · search result · Starter library');
-  await page.getByRole('searchbox', { name: 'Search' }).fill('zzzz'); await page.getByRole('button', { name: 'Search' }).click();
-  await expect(page.locator('p.empty')).toHaveText('No results for "zzzz".');
+  await box.fill('zzzz'); await go.click();
+  await expect(page.locator('p.empty')).toHaveText('No new finds for "zzzz".');
 });
 test('AI Search without AI explains keyword search', async ({ page }) => {
   await open(page, small); await page.getByRole('radio', { name: 'AI Search' }).check();
   await expect(page.locator('p.note')).toHaveText('No AI is set up yet, so search uses the free sources.');
-  await expect(page.getByRole('searchbox', { name: 'Search' })).toBeFocused();
+  await expect(page.getByRole('searchbox', { name: 'Search for' })).toBeFocused();
 });
 test('More like this opens a Rabbit Hole and Climb out leaves it', async ({ page }) => {
   await open(page, small.slice(0, 2)); const first = await page.locator('article.card h2').textContent();
@@ -2048,6 +2055,11 @@ test('More like this opens a Rabbit Hole and Climb out leaves it', async ({ page
   await expect(trail.locator('li')).toHaveCount(2); await expect(trail.locator('li').first()).toHaveText(first);
   await page.getByRole('button', { name: 'Climb out' }).click();
   await expect(trail).toBeHidden(); await expect(page.locator('#live-polite')).toHaveText('Back to Stumble.');
+});
+test('More like this inside a hole digs deeper', async ({ page }) => {
+  await open(page, small.map((e) => ({ ...e, tags: ['toy'] })));
+  for (let i = 0; i < 2; i++) await page.getByRole('button', { name: 'More like this' }).click();
+  await expect(page.getByRole('navigation', { name: 'Rabbit Hole' }).locator('li')).toHaveCount(3);
 });
 test('Wiby leap opens wiby.me/surprise/ in a new tab', async ({ page }) => {
   await open(page, small);
@@ -2061,18 +2073,18 @@ test('Wiby leap opens wiby.me/surprise/ in a new tab', async ({ page }) => {
 Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/stumble-modes.spec.js`
 Expected: FAIL: no radio named `Fate`.
 
-- [ ] **Step 3: Add the mode switch, the search form, the trail and the Wiby leap button to `stumble.js`**
+- [ ] **Step 3: Add the mode switch, Familiar ↔ Strange, the search form, the trail and the Wiby leap button to `stumble.js`**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/stumble-modes.spec.js tests/e2e/stumble.spec.js`
-Expected: PASS.
+Run: `npm run e2e -- tests/e2e/stumble-modes.spec.js tests/e2e/stumble.spec.js`, then `npm run e2e`
+Expected: PASS, 12 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/ui/views/stumble.js tests/e2e/stumble-modes.spec.js
-git commit -m "Add modes, search, the Rabbit Hole trail and Wiby leap to Stumble"
+git commit -m "Add modes, Familiar to Strange, search, the Rabbit Hole trail and Wiby leap to Stumble"
 ```
 
 ### Task 25: Feed

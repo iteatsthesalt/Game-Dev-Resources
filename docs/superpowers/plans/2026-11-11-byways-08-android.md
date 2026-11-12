@@ -1650,20 +1650,20 @@ git commit -m "Add the Android update check, site setting, voice reasons and Tap
 
 Plan 09 copies this list into `CHECKLIST.md`. Fill it in by hand on a real phone before each release. These are the §20 items for Android that no test here can cover.
 
-- [ ] **First CI build:** AGP 9.3.2, `androidx.webkit` 1.18.0 and Gradle 9.7.1 resolve. If not, note the 1.17.x fallback that was used.
+- [ ] **First CI build:** AGP 9.3.2, `androidx.webkit` 1.18.0 and Gradle 9.7.1 resolve. If `webkit` did not, note the 1.17.x fallback that was used; AGP and Gradle have no fallback.
 - [ ] **Android voice, 13+:** after consent, launch starts listening with no touch. "next one", "go back" and "save it" work with the on-device recogniser, in a segmented session with no beeps. **Download offline voice** appears when the language is missing.
-- [ ] **Android voice, 24–32:** tap to talk works, and Settings says why it is not always on.
+- [ ] **Android voice, 24–32:** **Tap to talk** works, and Settings says why it is not always on. On Android 12, voice uses the on-device recogniser.
 - [ ] **No recogniser or no Google speech:** Settings says why, and keyboard, touch and headset buttons still work.
 - [ ] **Read-aloud:** native voices are listed, network voices are marked "online", and Stop stops mid-sentence.
-- [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off.
+- [ ] **Headset and media keys:** next, previous and play/pause work through the native media session while lean-back runs, with the screen on and off, on Android 7 and on 8 or later. If they do not reach Byways while only speech plays, set `MediaBridge.PLAY_SILENCE = true` and test again.
 - [ ] **Keep the screen on** during lean-back, and off again after Stop.
 - [ ] **Fullscreen for Archive embeds:** Play, then the embed's full-screen button fills the screen, and Back leaves full screen first.
-- [ ] **Site view:** **Back to Byways**, **Next** and **Open in browser** work. An `intent:` link opens outside. **Go straight to the site** follows lean-back.
-- [ ] **Predictive back:** Back closes panels, then leaves views, then closes the app. The back preview animation shows.
-- [ ] **Rotation and folding:** the current card stays, and speech does not restart.
-- [ ] **The Lab on its own origin:** a DOS and a console file run, saves export through **BywaysLabNative**, and the Lab cannot see the app's keys. The fallback is serving it from the same origin, with the passphrase lock recommended.
-- [ ] **OpenRouter PKCE in the Android WebView.** The fallback is pasting a key.
-- [ ] **Local network models:** an Ollama on another computer (`OLLAMA_HOST=0.0.0.0`, `https://appassets.androidplatform.net` in `OLLAMA_ORIGINS`) asks for approval once, then lists models.
-- [ ] **Share-in:** sharing a link from a browser and a Byways link from a chat app both work.
+- [ ] **Site view:** **Back to Byways**, **Next** and **Open in browser** work, and **Pause**/**Play** and **Stop** show while lean-back runs. An `intent:` link opens outside. **Go straight to the site** follows lean-back.
+- [ ] **Predictive back:** Back closes panels, then leaves views, then closes the app. The back preview animation shows on the main screen.
+- [ ] **Rotation, folding, dark mode and font size:** the current card stays, and speech does not restart. After the system kills Byways behind the file picker, it comes back to the app, not a blank screen.
+- [ ] **The Lab on its own origin:** a DOS and a console file run, saves and a PC state (**Download state**) export through **BywaysLabNative**, and the Lab cannot see the app's keys. The fallback is serving it from the same origin, with the passphrase lock recommended.
+- [ ] **Connect OpenRouter** opens the login view and comes back with a key. The fallback is pasting a key.
+- [ ] **Local network models:** an Ollama on another computer (`OLLAMA_HOST=0.0.0.0`, `https://appassets.androidplatform.net` in `OLLAMA_ORIGINS`) asks for approval once when the model is added, then lists models.
+- [ ] **Share-in:** sharing a link from a browser and a Byways link from a chat app both work, also when Byways was closed.
 - [ ] **Update:** with an older APK installed, **Download update** opens the newer release APK. A signed build installs over the last signed build.
 

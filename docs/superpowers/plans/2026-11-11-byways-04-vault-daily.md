@@ -619,28 +619,26 @@ git commit -m "Add the Archive and Vault source adapters"
 
 ---
 
-### Task 5: The `oldweb` and `itch` source adapters
+### Task 6: The `oldweb` source adapter
 
 **Files:**
-- Create: `src/core/sources/oldweb.js`, `src/core/sources/itch.js`, `tests/fixtures/http/ia/wayback-hit.json`, `tests/fixtures/http/ia/wayback-empty.json`, `tests/fixtures/http/itch/platform-web.xml`, `tests/fixtures/http/itch/itch.json`
-- Modify: `src/core/sources/index.js` (register both)
-- Test: `tests/unit/sources-oldweb-itch.test.js`
+- Create: `src/core/sources/oldweb.js`, `tests/fixtures/http/ia/wayback-hit.json`, `tests/fixtures/http/ia/wayback-empty.json`
+- Modify: `src/core/sources/index.js` (append to `ADAPTERS`), `tests/unit/sources-index.test.js`, `tests/fixtures/routes.js` (add `/^https:\/\/archive\.org\/wayback\/available\?/` → `ia/wayback-hit.json` at the top)
+- Test: `tests/unit/sources-oldweb.test.js`
 
 **Interfaces:**
-- Consumes: `sharedIaClient(...).wayback(url, timestamp)` (Task 1); `makeFind`, `toPlainText`, `domainOf`; `ctx.data.geocities`, `ctx.data.loadSnapshot` (Task 7).
-- Produces: default-exported adapters `oldweb` and `itch`; `ITCH_FEEDS: Array<{url, label}>` and `parseItchRss(xml) → Array<{url, title, description, imageUrl, author, published}>` from `sources/itch.js` (used by Tasks 11 and 12).
+- Consumes: `sharedIaClient(...).wayback(url, timestamp)` (Task 1); `makeFind`, `domainOf`; `ctx.data.geocities`.
+- Produces: the default-exported `oldweb` adapter.
 
-`ITCH_FEEDS` (in this order): `https://itch.io/games/free/platform-web.xml` "Free web games"; `https://itch.io/games/free/tag-game-jam.xml` "Free game jam games"; `https://itch.io/games/newest/tag-pico-8.xml` "New PICO-8 games".
-
-Fixtures: `wayback-hit.json` = the Task 1 hit body; `wayback-empty.json` = `{"url":"http://www.geocities.com/gone/","archived_snapshots":{}}`. `platform-web.xml` is an RSS 2.0 channel with three items: (1) `<title>Moss &amp; Mirrors</title>`, `<plainTitle>Moss &amp; Mirrors</plainTitle>`, `<link>https://mossdev.itch.io/moss-and-mirrors</link>`, `<pubDate>Tue, 10 Nov 2026 18:00:00 GMT</pubDate>`, `<imageurl>https://img.itch.zone/aW1n/315x250%23c/moss.png</imageurl>`, `<description><![CDATA[<p>A short puzzle walk &amp; more.</p>]]></description>`; (2) "Tiny Rocket" at `https://pixelpal.itch.io/tiny-rocket`, no `<imageurl>`, description `<![CDATA[<img src="https://img.itch.zone/cm9j/315x250%23c/rocket.png"/><p>Fly up.</p>]]>`; (3) "Elsewhere" with `<link>http://example.com/x</link>`. `itch.json` follows the contract shape with the first feed URL and items (1) and (2) as parsed.
+Fixtures: `wayback-hit.json` = the Task 1 hit body; `wayback-empty.json` = `{"url":"http://www.geocities.com/gone/","archived_snapshots":{}}`.
 
 - [ ] **Step 1: Write the failing tests**
 
-Same `ctx` as Task 4 (fresh for each test, `rand = () => 0` unless a test says otherwise), with `data.geocities = {v: 1, urls: ['http://www.geocities.com/Area51/1234/', 'http://www.geocities.com/Area51/5678/', 'http://www.geocities.com/Tokyo/1/']}` and `data.loadSnapshot = async (n) => (n === 'itch' ? ITCH_SNAPSHOT : null)`.
+Same `ctx` as Task 5 (fresh for each test, `rand = () => 0` unless a test says otherwise), with `data.geocities = {v: 1, urls: ['http://www.geocities.com/Area51/1234/', 'http://www.geocities.com/Area51/5678/', 'http://www.geocities.com/Tokyo/1/']}` and the route `/wayback\/available/` → `wayback-hit.json` unless a test says otherwise.
 
 ```js
 test('oldweb random resolves a seed through wayback with timestamp=2009', async () => {
-  // /wayback\/available/ → wayback-hit.json; rand = seq(0)
+  // rand = seq(0)
   const [f] = await oldweb.random(ctx);
   const u = new URL(net.calls[0].url);
   assert.deepEqual([u.searchParams.get('url'), u.searchParams.get('timestamp')], ['http://www.geocities.com/Area51/1234/', '2009']);
@@ -657,6 +655,59 @@ test('oldweb more stays in the same neighbourhood', async () => {
   await oldweb.more({ meta: { original: 'http://www.geocities.com/Area51/1234/' } }, ctx);
   assert.equal(new URL(net.calls[0].url).searchParams.get('url'), 'http://www.geocities.com/Area51/5678/');
 });
+test('oldweb search resolves up to 3 matching seeds and dates each from its snapshot', async () => {
+  // data.geocities.urls adds Area51/2/, Area51/3/ and Area51/4/; /wayback/ → a hit whose timestamp is '20110305000000'
+  const finds = await oldweb.search('AREA51', ctx);
+  assert.equal(net.calls.length, 3);
+  assert.equal(finds[0].description, 'A GeoCities page, as the Wayback Machine saved it in 2011.');
+});
+```
+
+Add the `TABLE` row `oldweb: ['open','none','mostly',60,false]` to `tests/unit/sources-index.test.js`, and remove `'oldweb'` from its `undefined` loop.
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/sources-oldweb.test.js tests/unit/sources-index.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/sources/oldweb.js'".
+
+- [ ] **Step 3: Implement the adapter and the registration**
+
+`oldweb`: `name: 'Old web (GeoCities)'`, `kinds: ['site']`, `tier: 'open'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: false`, `probeUrl: 'https://archive.org/wayback/available?url=geocities.com&timestamp=2009'`. `random`: one seed picked with `ctx.rand()`, one `wayback(seed, '2009')` call; `null` → `[]`. The title is the seed's host without `www.` plus its path without the trailing slash, and the description is `A GeoCities page, as the Wayback Machine saved it in <year>.`, with the year from the snapshot's `timestamp.slice(0, 4)` (Wayback returns the closest snapshot, which may not be from 2009). Set `tags: ['retro']`, `attribution: 'Internet Archive Wayback Machine'`, `meta: {original, timestamp}`, `why: ['Old web: GeoCities']`. `more(find)`: the seeds that share the first path segment with `find.meta.original` (not itself), picked with `ctx.rand()`; with none, plain `random`. `search(query)`: up to 3 seeds whose lowercased URL contains the lowercased query, resolved one by one, with misses dropped. Append the adapter to `ADAPTERS`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/sources-oldweb.test.js tests/unit/sources-index.test.js`
+Expected: PASS, 4 tests plus Plan 02's.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/oldweb.js src/core/sources/index.js tests/fixtures/http/ia/wayback-hit.json tests/fixtures/http/ia/wayback-empty.json tests/fixtures/routes.js tests/unit/sources-oldweb.test.js tests/unit/sources-index.test.js
+git commit -m "Add the old web source adapter"
+```
+
+---
+
+### Task 7: The `itch` source adapter and `parseItchRss`
+
+**Files:**
+- Create: `src/core/sources/itch.js`, `tests/fixtures/http/itch/platform-web.xml`, `tests/fixtures/http/itch/itch.json`
+- Modify: `src/core/sources/index.js` (append to `ADAPTERS`), `tests/unit/sources-index.test.js`, `tests/fixtures/routes.js` (add at the top: `/^https:\/\/itch\.io\/games\/.+\.xml$/` → `itch/platform-web.xml` with `content-type: application/rss+xml`, and `/^https:\/\/img\.itch\.zone\//` → `ia/thumb.svg` with `content-type: image/svg+xml`)
+- Test: `tests/unit/sources-itch.test.js`
+
+**Interfaces:**
+- Consumes: `readSnapshot` (Task 4); `makeFind`, `toPlainText`; `ctx.caps.privilegedFetch` (contract).
+- Produces: the default-exported `itch` adapter; `ITCH_FEEDS: Array<{url, label}>` and `parseItchRss(xml) → Array<{url, title, description, imageUrl, author, published}>` from `sources/itch.js` (used by Tasks 13 and 15).
+
+`ITCH_FEEDS` (in this order): `https://itch.io/games/free/platform-web.xml` "Free web games"; `https://itch.io/games/free/tag-game-jam.xml` "Free game jam games"; `https://itch.io/games/newest/tag-pico-8.xml` "New PICO-8 games".
+
+Fixtures: `platform-web.xml` is an RSS 2.0 channel with three items: (1) `<title>Moss &amp; Mirrors</title>`, `<plainTitle>Moss &amp; Mirrors</plainTitle>`, `<link>https://mossdev.itch.io/moss-and-mirrors</link>`, `<pubDate>Tue, 10 Nov 2026 18:00:00 GMT</pubDate>`, `<imageurl>https://img.itch.zone/aW1n/315x250%23c/moss.png</imageurl>`, `<description><![CDATA[<p>A short puzzle walk &amp; more.</p>]]></description>`; (2) "Tiny Rocket" at `https://pixelpal.itch.io/tiny-rocket`, no `<imageurl>`, description `<![CDATA[<img src="https://img.itch.zone/cm9j/315x250%23c/rocket.png"/><p>Fly up.</p>]]>`; (3) "Elsewhere" with `<link>http://example.com/x</link>`. `itch.json` follows the contract shape with the first feed URL and items (1) and (2) as parsed.
+
+- [ ] **Step 1: Write the failing tests**
+
+Same `ctx` as Task 5 (fresh for each test, `rand = () => 0`), with the route `/data\/itch\.json$/` → `itch/itch.json`.
+
+```js
 test('parseItchRss reads items and drops links outside itch.io', () => {
   const items = parseItchRss(readFixture('itch/platform-web.xml'));
   assert.equal(items.length, 2);

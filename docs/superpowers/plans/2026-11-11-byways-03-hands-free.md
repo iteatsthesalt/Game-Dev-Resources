@@ -1277,7 +1277,7 @@ git commit -m "Add the single-key map with a text-field guard"
 **Interfaces:**
 - Consumes: `createHandsFree`, `effectiveListenMode` (Tasks 4–5); `createListener` (Task 2); `createReader` (Task 3); `COMMANDS`, `commandPhrases` (Task 1); `installKeymap` (Task 8); `createWebVoice` (Task 6); `createWebMedia` (Task 7); `showResult` (`ui/views/stumble.js`); `announce` (`ui/a11y.js`); `h`, `clear` (`ui/dom.js`); `navigate`, `parseHash` (`ui/router.js`); `app.engine`, `app.search`, `app.platform`, `app.getSettings`, `app.clock`. Tests: `test`, `expect`, `stageLibrary` (`helpers/net.js`), `gotoApp` (`helpers/app.js`) and Plan 02's `tests/fixtures/http/library/small.json`.
 - Produces:
-  - `installHandsFreeUi(app) → void`. Boot calls it once, before first run. It creates the one controller for the app's life (`createHandsFree` with the `ui`, `prepare` and `dispatch` below, and `leanBack: app.platform.caps.leanBack !== false`) and sets `app.handsFree` to it. That object never changes identity, so a reference taken at boot (Plan 06's `connectLab`) stays valid, and `app.handsFree.start()` runs the whole Start routine with or without a click (Plans 07 and 08 call it directly).
+  - `installHandsFreeUi(app) → void`, called once by boot (wiring rules below). It creates the one controller for the app's life (`createHandsFree` with the `ui`, `prepare` and `dispatch` below, and `leanBack: app.platform.caps.leanBack !== false`) and sets `app.handsFree` to it. That object never changes identity, so a reference taken at boot (Plan 06's `connectLab`) stays valid, and `app.handsFree.start()` runs the whole Start routine with or without a click (Plans 07 and 08 call it directly).
   - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js`. `pwa.js` uses Plan 01's `win` parameter, never the globals: `voice: createWebVoice(win, {lang: 'en-US'})` and `media: createWebMedia(win.navigator, {silentAudio: SILENT_AUDIO_FALLBACK, createAudio: () => new win.Audio(), createObjectURL: (b) => win.URL.createObjectURL(b)})`.
   - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`: Plan 01's fake, unchanged except for these additions:
     - static `SpeechRecognition.available()` resolves the stored availability (no static methods when `available` is `null`); static `install()` resolves `true`, sets the stored availability to `'available'` and counts `window.__installs`;
@@ -1327,7 +1327,7 @@ Wiring rules:
 - `ui.setState('active')` calls `wakeLock.on()` and `media.setActive(true)`; any other state calls `off()` and `setActive(false)`.
 - `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find, result.why)` after rendering a find; the `open` and `play` actions call `app.handsFree?.pause()`, which says `Lean-back paused` when lean-back was on; the `read` action calls `app.handsFree.command('read')`.
 - `boot.js` imports `handsfree-ui.js` and calls `installHandsFreeUi(app)` once the engine exists and before `await runFirstRun(app)`.
-- `card-actions.spec.js` (Plan 02): hands-free now reads one sentence per utterance, with the card's reason as the main why reason, so the **Read it** assertion becomes `await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual(['Tiny Synth.', 'From example.com.', 'Make sounds with a tiny synth.', 'wildcard.']);`.
+- `card-actions.spec.js` (Plan 02) now hears one sentence per utterance, the last being the card's reason, so its **Read it** assertion becomes `await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual(['Tiny Synth.', 'From example.com.', 'Make sounds with a tiny synth.', 'wildcard.']);`.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
@@ -1405,8 +1405,7 @@ test('the countdown announcement is made once per find', async ({ page }) => {
   await page.clock.install();
   await start(page); await settle(page);
   await page.clock.runFor(15000);
-  expect(await announced(page, 'live-polite', 'Next find in 10 seconds')).toBe(1);
-  await page.keyboard.press('x');
+  await page.keyboard.press('x');                   // any key restarts the dwell, not the announcement
   await page.clock.runFor(15000);
   expect(await announced(page, 'live-polite', 'Next find in 10 seconds')).toBe(1);
   await expect(page.locator('#hf-countdown')).toHaveText('Next find in 5 s');

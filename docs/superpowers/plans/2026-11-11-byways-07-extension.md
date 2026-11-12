@@ -872,17 +872,21 @@ git commit -m "Add the extension background: toolbar Stumble, commands, menu, co
 - Modify: `tests/e2e/helpers/net.js`
 
 **Interfaces:**
-- Consumes: `boot(platform) → Promise<App>` (`ui/boot.js`); `createExtensionPlatform` (Task 3); bg message `stumble` (Task 4); `mockNet`, `unmocked` (`tests/e2e/helpers/net.js`); `SOURCES`, `openStore`, `idbBackend`, `saveSettings`.
-- Produces: `mockNet(target: Page|BrowserContext, {overrides?})` and `unmocked(target) → string[]`, now accepting a `BrowserContext`. Spec helpers `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `onlyLibrary(page) → Promise<void>` and `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, local to `extension.spec.js` and reused by Tasks 6 and 7.
+- Consumes: `boot(platform) → Promise<App>` (`ui/boot.js`); `createExtensionPlatform` (Task 3); bg message `stumble` (Task 4); Plan 01's `test`, `expect`, `mockNet`, `unmocked`, `pageProblems` and the `ignoreProblems` option (`tests/e2e/helpers/net.js`); `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`, Plans 01 and 03; it also records `window.__spoken` and `window.__announcements`); `SOURCES` (`core/sources/index.js`), `openStore`, `idbBackend` (`core/store/db.js`), `saveSettings(store, patch)` (`core/settings.js`); Plan 04's fixtures `daily/daily-2026-11-11.json`, `ia/vault-index.json`, `ia/thumb.svg`, `itch/itch.json` and `itch/platform-web.xml`, and its `routes.js` entries for the Daily backup (Wikipedia's featured feed and APOD); Plan 04's Daily view and Vault reading `app.dataUrl(file)`; Plan 06's Lab link and `licenses.json`.
+- Produces: `mockNet(target: Page|BrowserContext, {overrides?})`, `unmocked(target) → string[]` and `pageProblems(target, {ignore = []} = {}) → string[]`, now accepting a `BrowserContext`. Spec helpers local to `extension.spec.js` and reused by Tasks 6 and 7: `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `useSources(page, ids = ['library']) → Promise<void>`, `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, `grantMic(context, extId) → Promise<void>`, `said(page) → Promise<string[]>`, and the fixture's `EXT_ROUTES` list.
 
-- [ ] **Step 1: Let `mockNet` and `unmocked` take a `BrowserContext`**
+- [ ] **Step 1: Let `mockNet`, `unmocked` and `pageProblems` take a `BrowserContext`**
 
-Both `Page` and `BrowserContext` have `route()` and `on('request')`, so only the parameter name and JSDoc change. Requests whose URL starts with `chrome-extension://` are never routed or recorded. Run: `npm run e2e`. Expected: the existing web specs still pass.
+In `tests/e2e/helpers/net.js`, the three functions accept a `Page` or a `BrowserContext`. Both have `route()` and `on('request')`, so routing and recording do not change. The problem listeners do: a context has no `pageerror` event, so for a context `mockNet` adds `context.on('console', …)` (the same CSP filter) and `context.on('weberror', (e) => …)`, which pushes `pageerror: <e.error().message>` for an uncaught error in any of its pages. Only http(s) requests are routed, so `chrome-extension://` requests are never routed or recorded. Run: `npm run e2e`. Expected: the existing web specs still pass.
 
 - [ ] **Step 2: Write the pages**
 
-- `app.html` and `panel.html` copy `shells/pwa/index.html` (Plan 01): its `#app`, `#main`, `#live-polite`, `#live-assertive`, `#hf-bar` and `#toasts` ids and its stylesheet links. Two things change. The root is `<html lang="en" data-shell="extension" data-theme="system" data-motion="system" data-font="system">`, so `bootFromShell()` (which boots only `'pwa'`) does nothing. The one script is `<script type="module" src="panel.js"></script>`, with no manifest link and no service worker. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`. `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
-- Both carry `EXT_PAGE_CSP` (Task 2) as their CSP `<meta>`.
+- `app.html` and `panel.html` are `shells/pwa/index.html` (Plan 01) with exactly these changes. Everything else stays as it is: the skip link, `<header class="topbar">` with `<nav aria-label="Main">` and its links (Plan 06 appends the Lab link there), `#hf-bar`, `<main id="main"><div id="app"></div></main>`, `#toasts`, the two live regions and the `<noscript>`.
+  1. The root is `<html lang="en" data-shell="extension" data-theme="system" data-motion="system" data-font="system">`, so `bootFromShell()`, which boots only `'pwa'`, does nothing.
+  2. The CSP `<meta>` content is `EXT_PAGE_CSP` (Task 2).
+  3. There is no `<link rel="manifest">` and no service worker.
+  4. The one script is `<script type="module" src="panel.js"></script>`.
+  5. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`; `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
 - `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
 
 - [ ] **Step 3: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
