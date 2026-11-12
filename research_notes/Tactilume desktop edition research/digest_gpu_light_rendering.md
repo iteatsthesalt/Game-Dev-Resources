@@ -32,12 +32,7 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 - **WGSL atomics.** Atomics are banned in vertex shaders, work only in storage or workgroup memory, and T is u32 or i32. There are no float atomics and no texture atomics, so voxelization goes to storage buffers. Fragment shaders may use storage atomics, so quads can share the fixed-point buffer. [Verified: WGSL]
 - **Optional `atomic-vec2u-min-max`.** It adds 64-bit `atomicStoreMin`/`Max` on `atomic<vec2<u32>>` (storage only), with no 64-bit add, so it suits only opaque depth+colour packing. Chromium 156 (Electron 45) exposes it only at the experimental or unsafe safety level, and the measured adapter lacks it. [Verified: WGSL; CR156 DEC; Measured]
 - **Points are exactly 1 px:** "a single FragmentDestination ... within the pixel containing" the point, with no point size. [Verified: SPEC]
-- **Schütz compute rasterizer:**
-  - "10 to 100 times faster than GL_POINTS"; about 1B opaque points in about 8 ms on an RTX 3090.
-  - 64-bit depth+colour `atomicMin`; 10k-point batches, 128 threads, about 80 points per thread.
-  - 1.6 GB per 100M points plus 1 to 2 GB; Windows and NVIDIA only; MIT.
-
-  [Verified: CRAST README.md, LICENSE.md]
+- **Schütz compute rasterizer:** "10 to 100 times faster than GL_POINTS", about 1B opaque points in about 8 ms on an RTX 3090, using a 64-bit `atomicMin`. Windows and NVIDIA only; MIT. [Verified: CRAST]
 - **Contended WebGPU atomics:** 62B ops/s on an RTX 4090 and 20B on an M1 Max, to a single address (aggregated); MIT. [Verified: PW]
 - **Aras (August 2025):** compute about 5x faster than built-in points on 30+ GPUs. A search summary ties the 5x to 4M points in 5x5 px (the dense case), with no subgroup tricks. [Unverified]
 - **Earlier Schütz papers:** 144.7B points/s (2022); 5.3x to 10x over GL_POINTS (2019). (search summary)
@@ -55,19 +50,14 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 
 ## 3. Precision
 - **fp16 swamping.** 10,000 x 0.001 stops at exactly 4.0 (the true sum is 10). At 4.0 or above, +0.001 rounds to no change; in [2, 4) it rounds up to 0.00195. [Verified: recomputed with numpy float16]
-- **u32 fixed-point sums** are exact, order-independent and deterministic, and the WebGL2 edition may lose energy in dense regions. Design: S = 2^12 to 2^16 counts per unit, stochastic rounding, and a carry when `old > 0xFFFFFFFF - v` into a high-word buffer; resolve by multiplying by exposure/S, then clear. (Inference)
+- **u32 fixed-point sums** are exact and order-independent. Use 2^12 to 2^16 counts per unit, stochastic rounding, and carry into a high word when `old > 0xFFFFFFFF - v`. (Inference)
 - **Trail fade.** Use m = exp(-dt/tau). At 240 Hz, fades stall above tau of about 8.5 s (fp16), 0.53 s (R11/G11) and 0.27 s (B10), and rgba8unorm freezes almost at once. Use rgba16float with a blue-noise dither, or rgba32float for longer trails. [Verified: recomputed]
 
 ## 4. Effects (Inference and estimates)
-- **AA, blur and DOF.** A bilinear tent splat (4 atomics) conserves energy; motion blur divides energy by segment length; depth of field spreads energy over pi*r^2, with large blurs on quads or mip-splatting. Keep particles out of TAA, and make any temporal blend alpha = 1 - exp(-dt/tau).
-- **Bloom.** A pyramid (CoD AW 13-tap or dual-Kawase) is about 0.2 to 0.6 ms at 4K and 0.1 to 0.3 ms at 1440p (calc; no desktop timings found). luma.gl's WebGPU FFT bloom at 1080p uses a 1024x512 FFT, 48 MiB and 45 dispatches (search summary); a 4K FFT would be 1 to 3 ms. Plan a pyramid plus top-K starburst sprites, with an optional low-resolution FFT at 120 Hz.
-- **Light effects.**
-  - Floor light by mip splat: 0.1 to 0.3 ms.
-  - Mirrored re-splat reflections: about +25% of the splat cost.
-  - A 160x90x64 froxel volume (about 15 MB): 0.5 to 1.5 ms.
-  - 2D radiance cascades at 1/4 to 1/8 resolution: 1 to 2 ms on high-end GPUs.
-  - 3D cascades, voxel cone tracing and LPV are too costly for 240 Hz.
-- **Anchors** (search summary): Holographic RC 1.85 ms at 512^2 and 7.67 ms at 1024^2 (RTX 3080 Laptop); AC4 fog about 1.1 ms; SSR 1.7 to 4.15 ms at 1080p (GTX 1070).
+- **Splat-time effects.** Anti-aliasing, blur and depth of field are done at splat time: bilinear splats, energy divided by segment length, and energy over pi*r^2. Keep particles out of TAA, and make temporal blends alpha = 1 - exp(-dt/tau).
+- **Bloom.** A pyramid takes 0.2 to 0.6 ms at 4K (calc, untimed). luma.gl's FFT bloom at 1080p uses a 1024x512 FFT, 48 MiB and 45 dispatches (search summary). Plan a pyramid plus top-K starburst sprites.
+- **Light effects.** Floor light takes 0.1 to 0.3 ms; mirrored reflections about +25% of the splat cost; froxels 0.5 to 1.5 ms; 2D radiance cascades 1 to 2 ms on high-end GPUs. 3D GI does not fit 240 Hz.
+- **Anchors** (search summary): Holographic RC took 1.85 ms at 512^2 (RTX 3080 Laptop), and AC4 fog about 1.1 ms.
 
 ## 5. HDR output and tone mapping
 - **Tone-mapping modes.** `GPUCanvasToneMappingMode` is `"standard"` (default) or `"extended"`; extended keeps values in the screen's extended range, possibly above 1. The default `colorSpace` is `"srgb"`. In the spec's example, (1.035, -0.175, -0.140) on an `'srgb'` canvas becomes P3 (0.948, 0.106, 0.01). [Verified: SPEC]
@@ -83,64 +73,40 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
   [Verified: OCIO] Any peak from 100 to 10,000 nits [Unverified].
 - **GT7 tone mapping:** MIT, "Copyright (c) 2025 Polyphony Digital Inc."; the original download was not seen. [Verified: URP THIRD_PARTY_NOTICES.md]
 - **AgX** is Blender 4.0's default (search summary); its repository licences are unknown. [Unverified]
-- **Pipeline** (Inference):
-  1. Accumulate scene-linear, with 1.0 = SDR paper white.
-  2. Apply bloom, then exposure.
-  3. Apply the display transform: AgX, ACES 2.0 or GT7 for SDR; ACES 2.0 or GT7 with the calibrated peak and paper white for HDR.
-  4. Dither (±1 LSB TPDF), then encode.
-
-  Take peak and paper white from an HGIG-style calibration, and use OKLab/OKLCH for authoring only.
+- **Pipeline** (Inference): scene-linear (1.0 = paper white), then bloom, exposure, the display transform (ACES 2.0 or GT7 with the calibrated peak and paper white for HDR), dither and encode. Use OKLab only for authoring.
 
 ## 6. Photosensitive safety
 - **WCAG 2.3.1 passes** with no more than 3 general and/or 3 red flashes in any 1 s, or a concurrent flash area of no more than 0.006 sr (25% of any 10° field). [Verified: WCAG-T]
 - **General flash:** opposing changes of 10% or more of maximum relative luminance, with the darker state below 0.80. **Red flash (WCAG 2.2):** a transition to or from R/(R+G+B) of 0.8 or more, with a chromaticity change above 0.2 in CIE 1976 UCS. [Verified: WCAG-T]
 - **Exceptions and field size:** fine balanced patterns (squares under 0.1°) are exempt. A 10° field is about 341x256 px at 1024x768 (15 to 17 inch screen at 22 to 26 inches). [Verified: WCAG-T]
 - **HDR / non-sRGB:** test the highest-dynamic-range version. A flash is a change of 20 cd/m^2 or more with the darker state below 160 cd/m^2 (BT.1702); at 160 cd/m^2 or more, a Michelson contrast of 1/17 or more. [Verified: WCAG-U] The BT.1702-2 and -3 texts were not read [Unverified].
-- **IRIS** (BSD-3-Clause, © 2023 EA):
-  - Failures: more than 3 flashes/s; 2 to 3 flashes/s across 5 consecutive seconds (extended); patterns lasting 0.5 s or more.
-  - Transition triggers: ±0.1 luminance or ±20 red; the warning level is above 2 flashes (4 transitions) per second.
-  - Takes a video via `-v`; thresholds live in `config/appsettings.json`; not a certification.
-
-  [Verified: IRIS]
-- **Guard** (Inference, original design). Measure the final frame on a 1/32 grid, in nits for HDR, with time-based transition counting. Use a 10° window from screen size and viewing distance: about 450 px at 1440p on a 27-inch screen at 60 cm, stricter than Harding's 25% of frame. Enforce at 2 flashes/s with a low-pass gain map and red desaturation, in under 0.05 ms.
+- **IRIS** (BSD-3-Clause): it fails more than 3 flashes/s, 2 to 3 flashes/s over 5 s, and patterns lasting 0.5 s or more. Transitions trigger at ±0.1 luminance or ±20 red, and it warns above 2 flashes/s. It takes a video (`-v`) and is not a certification. [Verified: IRIS]
+- **Guard** (Inference): measure the final frame on a coarse grid, in nits for HDR. Use a 10° window from screen size (about 450 px at 1440p on a 27-inch screen at 60 cm). Enforce at 2 flashes/s with a gain map, in under 0.05 ms.
 
 ## 7. Budgets (estimates unless tagged)
 - **Frame and pixel budgets** (calc): 120 Hz 8.33 ms, 144 Hz 6.94 ms, 240 Hz 4.17 ms, 360 Hz 2.78 ms; 1440p 3.69 MP, 4K 8.29 MP.
 - **Bandwidth:** RTX 4090 1,008 GB/s and M1 Max 400 GB/s [Verified: PW]; RTX 5090 1,792, RTX 5070 672, RX 9070 XT 640 to 644.6 GB/s [Unverified].
 - **Particle traffic** (calc): 100M x 16 B is 1.6 GB per frame (384 GB/s at 240 Hz). A full-float simulation (about 64 B) at 240 Hz needs about 1.92 TB/s, more than an RTX 5090.
 - **Tiers** (Inference): RTX 5070 / RX 9070 XT, 10M to 30M particles at 240 Hz. RTX 5090, about 50M at 240 Hz or 100M at 120 Hz with 8 to 12 B state, which is 0.8 to 1.2 GB, above the measured 1 GiB adapter limit at the top end.
-- **4K mid-range 240 Hz budget** (Inference, ms):
-
-  | Item | ms |
-  |---|---|
-  | Simulation + splat, 15M | 1.5 to 2.5 |
-  | Resolve + trails | 0.3 |
-  | Bloom | 0.3 to 0.5 |
-  | Starbursts | 0.1 |
-  | Floor + reflection | 0.3 to 0.6 |
-  | Output + histogram + guard | 0.2 to 0.3 |
-  | Slack | 0.5 |
+- **4K mid-range 240 Hz budget** (Inference, ms): simulation + splat of 15M 1.5 to 2.5; resolve + trails 0.3; bloom 0.3 to 0.5; starbursts 0.1; floor + reflection 0.3 to 0.6; output and guard 0.2 to 0.3; slack 0.5.
 - **Structural limits:** buffer and dispatch limits also bound particle count (section 2). [Verified correction]
 - **Timestamps** are quantized by default (Dawn mask 0xFFFF0000 ns, about 65.5 µs). Only `--enable-webgpu-developer-features` (or the unsafe switch) turns this off, and the spec requires reduced precision. [Verified correction: DAWN Constants.h; CR156 DEC; PRIV]
 - **SwiftShader timing:** a 32 B/particle compute step plus a 1-px additive draw took about 22 ms for 20k and 131 ms for 300k particles. This is software only, not GPU evidence. [Measured]
 
 ## 8. Licences
 - **MIT** [Verified]: three.js (© 2010-2026), compute_rasterizer (© 2022 Markus Schütz), PWhiddy (© 2024), luma.gl (© 2020 vis.gl), TypeGPU (© 2025 Software Mansion), CustomToneMappingURP, GT7 tone mapping (© 2025 Polyphony Digital).
-- **MIT** [Cited]:
-  - RadianceCascadesPaper (a CC-BY-ND image may mean other terms for the paper).
-  - GPUPrefixSums, Shehata's tutorial, AMD GPUParticles11, PlayCanvas, bevy_hanabi.
-  - Bevy is MIT + Apache-2.0; wgpu and vello have an MIT file.
+- **MIT** [Cited]: RadianceCascadesPaper (a CC-BY-ND image may mean other terms for the paper), GPUPrefixSums, AMD GPUParticles11, PlayCanvas. Bevy is MIT + Apache-2.0.
 - **Apache-2.0:** Khronos ToneMapping [Verified: KHR]; ACES (aces-output, aces-core, aces-dev, now an Academy Software Foundation project), not Academy terms [Verified correction: ACES]; Babylon.js [Cited].
 - **BSD-3-Clause:** webgpu-samples, IRIS, FLIP. [Verified]
 - **Unknown** [Unverified]: EaryChow/AgX, sobotka/AgX, three-rc, FidelityFX SDK, jorgemagic SSR, AgXc, unitycoder AgX, Solis 2D, arcane-engine, m-schuetz/webgpu_pointcloud, Aras's test page, McGhee's gist.
 - **Obligations:** Apache-2.0 means keeping the licence and NOTICE and stating changes, including for LUTs or ports derived from the ACES CTL. (Inference)
 
 ## 9. Capture and test harness
-- **Architecture** (Inference): a `FrameTarget` abstraction writes the output into an owned COPY_SRC texture. The canvas is one sink, and capture uses a ring of 3 to 4 MAP_READ buffers. Use an injected deterministic clock, seeded RNG and recorded inputs.
+- **Architecture** (Inference): write the output into an owned COPY_SRC texture, with the canvas as one sink and a ring of 3 to 4 MAP_READ buffers for capture. Drive time from an injected deterministic clock.
 - **Readback rows:** `bytesPerRow` must be a multiple of 256 [Verified: COPIES]. three.js pads rows, sizes the buffer as height x bytesPerRow (which meets `mapAsync`'s 4-byte rule) and de-pads after `mapAsync` [Verified: THREE].
 - **Canvas copies:** canvas usage may include COPY_DST (only TRANSIENT_ATTACHMENT is rejected). Copies need copy-compatible formats (equal, or differing only in `-srgb`), and canvas formats are bgra8unorm, rgba8unorm and rgba16float. [Verified: SPEC; COPIES]
 - **Container:** canvas presentation fails, headless and under Xvfb, with "A valid external Instance reference no longer exists." for every flag set. Offscreen rendering, compute and readback work. [Measured]
-- **Readback traffic** (calc): 4K `rgba16float` is 66.4 MB per frame (4.0 GB/s at 60 fps), and 1440p is 29.5 MB (7.1 GB/s at 240 fps). Convert on the GPU (rgb10a2unorm or 10-bit YUV) for real-time recording, or record offline at a fixed dt.
+- **Readback traffic** (calc): 4K `rgba16float` is 66.4 MB per frame (4.0 GB/s at 60 fps), so pack on the GPU for real-time recording, or record offline at a fixed dt.
 - **Reproducibility** (Inference): u32 splats are bit-exact across runs, but floats are deterministic only per GPU, driver and browser build. Keep per-platform goldens, compare across platforms with FLIP (which has LDR-FLIP and HDR-FLIP [Verified: FLIP]), and run IRIS in CI.
 - **Performance gates** need real-GPU runners with unquantized timestamps. [Verified correction; Measured]
 
