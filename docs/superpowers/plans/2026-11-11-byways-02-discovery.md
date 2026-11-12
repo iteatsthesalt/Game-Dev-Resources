@@ -983,9 +983,9 @@ test('commons turns extmetadata HTML into plain text', async () => {
   const { ctx, calls } = await adapterCtx(); const out = await commons.search('map', ctx);
   assert.equal(out.length, 1);
   assert.equal(out[0].description, 'An old map.'); assert.equal(out[0].author, 'Ann');
-  assert.equal(out[0].attribution, 'Ann · CC BY 4.0 · Wikimedia Commons');
-  assert.equal(new URL(calls[0].url).searchParams.get('gsrnamespace'), '6');
-  assert.equal(commons.fate, false);
+  assert.equal(out[0].attribution, 'Ann · CC BY 4.0 · Wikimedia Commons'); assert.equal(out[0].safety, 'mixed');
+  assert.equal(new URL(calls[0].url).searchParams.get('gsrnamespace'), '6'); assert.equal(calls[0].headers['api-user-agent'], IDENT);
+  assert.equal(commons.fate, false); assert.equal(commons.safety, 'mixed');
 });
 ```
 
@@ -999,7 +999,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-wikimedia.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1020,9 +1020,9 @@ git commit -m "Add the Wikipedia and Commons adapters"
 - Produces: the `inat`, `openlibrary` and `apod` adapters.
   - iNat `random`: `GET https://api.inaturalist.org/v1/observations?photos=true&quality_grade=research&photo_license=cc0,cc-by,cc-by-sa&per_page=30&page=<1–100>`; `search(q)` adds `q=<q>` with `page=1`; `more(find)` uses `taxon_id=<find.meta.taxonId>`. Each result needs a photo whose `license_code` is `cc0`, `cc-by` or `cc-by-sa`. Find: id `inat:<id>`, `title = taxon.preferred_common_name || taxon.name`, `imageUrl` = that photo's `url` with `square` replaced by `large`, `url = uri`, `author = user.login`, `attribution = photo.attribution`, `licence` = the code upper-cased with spaces (`'CC BY'`, `'CC0'`), `description = '<taxon.name>, seen in <place_guess> on <observed_on>.'` (each clause left out when missing), `meta: {taxonId, published: observed_on}`, why `['iNaturalist']`.
   - Open Library `search(q)`: `GET https://openlibrary.org/search.json?q=<q>&fields=key,title,author_name,cover_i,first_publish_year&limit=10`. `random`: `GET https://openlibrary.org/subjects/<subject>.json?limit=12&offset=<0–199>` with `subject` from `['science_fiction','poetry','cooking','history','art','travel','puzzles','games','folklore','nature']`; `more(find)` uses `find.meta.subject` (or `[]`). Find: id `ol:<key>`, `url = 'https://openlibrary.org' + key`, `imageUrl = 'https://covers.openlibrary.org/b/id/<cover>-M.jpg'` only when there is a cover, `author` = first author, `description = '<author>, <year>'`, why `['Open Library']`.
-  - APOD `random`: `GET https://api.nasa.gov/planetary/apod?api_key=<key>&count=10&thumbs=true` with `key` = secret `src:apidatagov` or `DEMO_KEY`. With `DEMO_KEY` it keeps a counter in `ctx.cache` under `apod:count:<YYYY-MM-DD>` (24 h): at 45 or more it returns `[]` without a request, and an HTTP 429 sets it to 50 before rethrowing. Find: id `apod:<date>`, `url = 'https://apod.nasa.gov/apod/ap<YYMMDD>.html'`, `imageUrl = url` for images and `thumbnail_url` for videos (a video with neither is dropped), `kind 'image'|'video'`, `description = explanation`, `author` = trimmed `copyright`, `licence` = `'© <copyright>'` or `'Public domain (NASA)'`, `meta.published = date`, why `['NASA APOD']`. `search` and `more` return `[]`.
+  - APOD `random`: `GET https://api.nasa.gov/planetary/apod?api_key=<key>&count=10&thumbs=true` with `key` = secret `src:datagov` or `DEMO_KEY`. With `DEMO_KEY` it keeps a counter in `ctx.cache` under `apod:count:<YYYY-MM-DD>` (24 h): at 45 or more it returns `[]` without a request, and an HTTP 429 sets it to 50 before rethrowing. Find: id `apod:<date>`, `url = 'https://apod.nasa.gov/apod/ap<YYMMDD>.html'`, `kind 'image'|'video'`, `description = explanation`, `author` = trimmed `copyright`, `licence` = `'© <copyright>'` or `'Public domain (NASA)'`, `meta.published = date`, why `['NASA APOD']`. Only a public-domain item (no `copyright`) gets an image (§7.4): `imageUrl = url` for an image and `thumbnail_url` for a video. A copyrighted item keeps its credit and gets the generated image; a video with no `thumbnail_url` is dropped. `search` and `more` return `[]`.
 
-Fixtures: `inat/observations.json` with result 101 (`taxon {id 47219, name 'Apis mellifera', preferred_common_name 'Western Honey Bee'}`, `place_guess 'Oslo, Norway'`, `observed_on '2026-06-01'`, `user.login 'beefan'`, photo `https://static.inaturalist.org/photos/1/square.jpg`, `cc-by`, `attribution '(c) beefan, some rights reserved (CC BY)'`) and result 102 with `license_code null`. `openlibrary/search.json` with `/works/OL27448W` ('The Left Hand of Darkness', 'Ursula K. Le Guin', `cover_i 12345`, 1969) and `/works/OL1W` with no cover; `openlibrary/subject.json` with one work (`cover_id 777`). `apod/count.json`: `2025-03-14` image 'Pi Nebula' with `copyright ' Jane Sky '`; `2024-01-02` video with `thumbnail_url`; `2024-01-03` video without one.
+Fixtures, beyond the values the tests assert: iNat result 101 has photo `https://static.inaturalist.org/photos/1/square.jpg` with `license_code 'cc-by'`, and result 102 has `license_code null`; `openlibrary/search.json` holds a second work `/works/OL1W` with no cover; `apod/count.json` holds the image `2025-03-14` with `copyright ' Jane Sky '`, a public-domain video `2024-01-02` with `thumbnail_url 'https://apod.nasa.gov/apod/image/2401/thumb.jpg'`, and a video `2024-01-03` without one.
 
 - [ ] **Step 1: Write the failing test**
 

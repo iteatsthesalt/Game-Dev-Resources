@@ -984,42 +984,61 @@ git commit -m "Add native voice commands and the microphone consent screen"
 ### Task 9: Native read-aloud, media session, share and file save
 
 **Files:**
-- Create: `…/byways/TtsBridge.kt`, `…/byways/MediaBridge.kt`, `…/byways/ShareBridge.kt`, `…/byways/FilesBridge.kt`
+- Create: `…/byways/TtsChoice.kt`, `…/byways/TtsBridge.kt`, `…/byways/MediaBridge.kt`, `…/byways/ShareBridge.kt`, `…/byways/FilesBridge.kt`
 - Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt`
 
 **Interfaces:**
 - Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5).
-- Produces: `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
+- Produces: `object TtsChoice { data class VoiceInfo(val name: String, val lang: String, val local: Boolean); fun pick(voices: List<VoiceInfo>, voiceURI: String?, defaultName: String?): String? }` (pure); `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()` and `companion object { const val PLAY_SILENCE = false }`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
+
+```kotlin
+class TtsChoiceTest {
+  private val v = listOf(TtsChoice.VoiceInfo("en-us-x-net", "en-US", false), TtsChoice.VoiceInfo("de-de-x-loc", "de-DE", true),
+    TtsChoice.VoiceInfo("en-gb-x-loc", "en-GB", true))
+  @Test fun keepsTheChosenVoice() = assertEquals("en-us-x-net", TtsChoice.pick(v, "en-us-x-net", "en-gb-x-loc"))
+  @Test fun keepsALocalDefault() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-gb-x-loc"))
+  @Test fun swapsANetworkDefaultForALocalVoiceInItsLanguage() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-us-x-net"))
+  @Test fun aMissingChoiceFallsBackTheSameWay() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, "gone", "en-us-x-net"))
+  @Test fun noLocalVoiceKeepsTheDefault() = assertEquals("en-us-x-net", TtsChoice.pick(v.take(1), null, "en-us-x-net"))
+}
+```
 
 ```js
-test('speech, media, share and files use the native APIs', () => {
+test('read-aloud and the media session use the native APIs', () => {
   const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
-  for (const s of ['UtteranceProgressListener', 'isNetworkConnectionRequired', 'KEY_PARAM_VOLUME', 'setSpeechRate'])
+  for (const s of ['UtteranceProgressListener', 'isNetworkConnectionRequired', 'KEY_PARAM_VOLUME', 'setSpeechRate', 'TtsChoice.pick('])
     assert.ok(k('TtsBridge.kt').includes(s), s);
-  for (const s of ['MediaSession', 'onSkipToNext', 'onSkipToPrevious', 'ACTION_PLAY_PAUSE']) assert.ok(k('MediaBridge.kt').includes(s), s);
+  for (const s of ['MediaSession', 'onSkipToNext', 'onSkipToPrevious', 'ACTION_PLAY_PAUSE', 'FLAG_HANDLES_MEDIA_BUTTONS', 'PLAY_SILENCE'])
+    assert.ok(k('MediaBridge.kt').includes(s), s);
+  for (const s of ['"tts" to', '"media" to']) assert.ok(k('MainActivity.kt').includes(s), s);
+});
+test('share and file save use the native APIs', () => {
+  const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
   for (const s of ['Intent.ACTION_SEND', 'Intent.createChooser', '"text/plain"']) assert.ok(k('ShareBridge.kt').includes(s), s);
-  assert.ok(k('FilesBridge.kt').includes('CreateDocument'));
-  for (const s of ['"tts" to', '"media" to', '"share" to', '"files" to']) assert.ok(k('MainActivity.kt').includes(s), s);
+  for (const s of ['CreateDocument', 'createTempFile', '"append"']) assert.ok(k('FilesBridge.kt').includes(s), s);
+  for (const s of ['"share" to', '"files" to']) assert.ok(k('MainActivity.kt').includes(s), s);
 });
 ```
 
-- [ ] **Step 2: Run it to see it fail**
+- [ ] **Step 2: Run them to see them fail**
 
-Run: `node --test tests/unit/android-shell.test.js`
-Expected: FAIL with `ENOENT` on `TtsBridge.kt`.
+Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*TtsChoiceTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
+Expected: Node fails with `ENOENT` on `TtsBridge.kt`; Gradle fails with `Unresolved reference 'TtsChoice'`.
 
-- [ ] **Step 3: Implement `TtsBridge`**
+- [ ] **Step 3: Implement `TtsChoice` and `TtsBridge`**
 
+- `TtsChoice.pick` (§6.4, local voices first), first match wins: `voiceURI` names a listed voice → it; the default voice is listed and local → it; the first local voice whose language subtag (before `-`) matches the default voice's, or any local voice when the default is not listed → it; otherwise `defaultName`.
 - Create `TextToSpeech(ctx) { status -> … }` once. Requests that arrive before init finishes wait for it. Init failure replies `service-not-allowed`.
-- `speak {text, voiceURI, rate, volume}`: when `voiceURI` is set, `setVoice` to the voice with that `name`. `setSpeechRate(rate)`, a params `Bundle` with `KEY_PARAM_VOLUME = volume`, then `speak(text, QUEUE_ADD, params, <request id>)`. The `UtteranceProgressListener` `onDone`, `onError` and `onStop` for that id reply `true` on the main thread.
+- `speak {text, voiceURI, rate, volume}`: `setVoice` to the voice `TtsChoice.pick(<voices as VoiceInfo>, voiceURI, defaultVoice?.name)` names, when it is not the current one. `setSpeechRate(rate)`, a params `Bundle` with `KEY_PARAM_VOLUME = volume`, then `speak(text, QUEUE_ADD, params, <request id>)`. The `UtteranceProgressListener` `onDone`, `onError` and `onStop` for that id reply `true` on the main thread.
 - `cancel {}`: `stop()`, reply `true` to every pending `speak`, then reply `true`.
 - `voices {}`: `voices` sorted by name, as `{uri: name, name, lang: locale.toLanguageTag(), local: !isNetworkConnectionRequired}`.
 
 - [ ] **Step 4: Implement `MediaBridge`, `ShareBridge` and `FilesBridge`**
 
-- `MediaBridge`: one `android.media.session.MediaSession(ctx, "Byways")`. The callback's `onSkipToNext`, `onSkipToPrevious`, and both `onPlay` and `onPause`, emit `next`, `previous` and `playPause`. `setActive {on}` sets `isActive` and a `PlaybackState` with `ACTION_SKIP_TO_NEXT or ACTION_SKIP_TO_PREVIOUS or ACTION_PLAY_PAUSE or ACTION_PLAY or ACTION_PAUSE`, in `STATE_PLAYING` when on and `STATE_PAUSED` when off.
+- `MediaBridge`: one `android.media.session.MediaSession(ctx, "Byways")`. Below API 26 it also calls `setFlags(FLAG_HANDLES_MEDIA_BUTTONS or FLAG_HANDLES_TRANSPORT_CONTROLS)`, without which Android 7 sends it no headset buttons. The callback's `onSkipToNext`, `onSkipToPrevious`, and both `onPlay` and `onPause`, emit `next`, `previous` and `playPause`. `setActive {on}` sets `isActive` and a `PlaybackState` with `ACTION_SKIP_TO_NEXT or ACTION_SKIP_TO_PREVIOUS or ACTION_PLAY_PAUSE or ACTION_PLAY or ACTION_PAUSE`, in `STATE_PLAYING` when on and `STATE_PAUSED` when off. When `PLAY_SILENCE` is true, `setActive(true)` also plays a looping silent `AudioTrack` (`USAGE_MEDIA`) until `setActive(false)` or `release()`: from Android 8, media buttons go to the app that last played audio, and TTS audio plays in the engine's process. The real-device checklist decides whether to turn it on.
 - `ShareBridge.send {title, text, url}`: an `Intent.ACTION_SEND` of type `"text/plain"` whose `EXTRA_TEXT` is the non-null parts of `text` and `url` joined by a space, with `EXTRA_SUBJECT = title`. Start `Intent.createChooser(intent, "Share")` and reply `'shared'`.
 - `FilesBridge.save {name, mime, base64}`: a `CreateDocument("*/*")` subclass whose `createIntent` sets the intent type to the requested `mime`. A `null` result replies `'cancelled'`. Otherwise decode and write on a background thread, then reply `'saved'`. A second save while one is open replies `busy`.
 
