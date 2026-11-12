@@ -48,6 +48,9 @@ jobs:
       - run: npx playwright install --with-deps chromium
       # build, then the unit tests, then the renderer in headless Chromium on software WebGPU
       - run: npm test
+      # Electron 45 no longer downloads its binary at install time (no postinstall script);
+      # fetch it now, so the sandbox helper below exists (a no-op when it is already there)
+      - run: node node_modules/electron/install.js
       # Ubuntu 24.04 stops unprivileged programs from making user namespaces, which Chromium's
       # sandbox uses by default; its setuid helper is the sandbox's other way in, and needs to
       # belong to root. (The sandbox stays on: never --no-sandbox.)
