@@ -575,6 +575,30 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 These plans define their own runner, background and bridge protocols inside the plan. They use only the `Platform` shape above to talk to the shared UI.
 
+### Version numbers and Android signing (Plan 08 creates; Plan 09 uses)
+
+**Version numbers.** `shells/android/gradle.properties` holds `byways.versionName=<x.y.z>` and `byways.versionCode=<x*10000 + y*100 + z>`. `app/build.gradle.kts` reads both with `providers.gradleProperty(...)`. The versionName must equal `package.json` `version` and the `version` in both extension manifests.
+
+**Release signing.** `app/build.gradle.kts` sets up a release `signingConfig` only when `BYWAYS_KEYSTORE_PATH` is set. It reads that keystore file with `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`. The release workflow decodes the `KEYSTORE_BASE64` secret into a file and exports `BYWAYS_KEYSTORE_PATH`. Without it, only debug builds are signed.
+
+### Plan 09: release
+
+**`tools/check.js`**
+
+- Plan 09 adds `checkVersions(appRoot) → Promise<string[]>`. It returns problems when the version numbers above disagree. The `--check` build runs it.
+
+**`tools/gpl-sources.js`**
+
+- The CLI is `node tools/gpl-sources.js --out <dir>`.
+- It exports:
+  - `sourceTargets(versions, {readCorePackage}) → Target[]`;
+  - `fetchSources(targets, {fetch, outDir, writeFile}) → Promise<Result[]>`;
+  - `sourcesManifest(results) → string`, which writes `SOURCES.txt`;
+  - `parseRepoUrl(url) → string|null`;
+  - `codeloadUrl(repo, ref) → string`;
+  - `CORE_LICENCES`, which maps each core id to its licence name. Plan 06's Licenses screen may read it.
+- Each Release attaches source archives for every vendored emulator component and core, plus SeaBIOS at the ref v86 used.
+
 ## Data file shapes
 
 ```js

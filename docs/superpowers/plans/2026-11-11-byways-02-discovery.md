@@ -570,4 +570,188 @@ git add src/core/fate.js tests/unit/fate.test.js
 git commit -m "Add the Fate pull with weights and retries"
 ```
 
+### Task 7: Rabbit Hole
+
+**Files:**
+- Create: `src/core/rabbit.js`
+- Test: `tests/unit/rabbit.test.js`
+
+**Interfaces:**
+- Consumes: `tokenize(text)`, `normalizeUrl`, `makeFind`, the adapter shape (Task 5).
+- Produces:
+  - `similarLocal(find, candidates, k) → Find[]`: score = Jaccard overlap of tags + cosine similarity of TF-IDF vectors over `tokenize(title + ' ' + description)`, with `idf = ln((1 + N) / (1 + df)) + 1` over the candidates plus `find`. It leaves out candidates with the same normalised URL and candidates scoring 0, sorts by score (stable), and returns the top `k`.
+  - `createRabbitHole({sources, ctx, seenHas, pool}) → {start(find), next() → Promise<Find|null>, trail() → Find[], climbOut()}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async.
+  - `next()` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`. The first candidate that is not in the trail (by normalised URL) and not seen is pushed onto the trail and returned. A `more` call that throws counts as `[]`. An empty trail gives `null`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const F = (t, tags = [], d = '', source = 'library') => makeFind({ source, kind: 'site', title: t, description: d, tags, safety: 'curated', url: `https://${t.replace(/\W/g, '')}.example.com/` });
+const ad = (id, outs) => ({ id, more: async () => { const o = outs.shift() ?? []; if (o instanceof Error) throw o; return o; } });
+const never = async () => false;
+test('similarLocal ranks by shared tags and words', () => {
+  const me = F('Pixel Puzzle', ['retro', 'puzzle'], 'A tiny pixel puzzle game.');
+  const out = similarLocal(me, [F('Moth Atlas', ['nature'], 'Pictures of moths.'), F('Puzzle Box', ['puzzle'], 'Slide the pixel tiles.'), F('Pixel Puzzle', ['retro'])], 5);
+  assert.deepEqual(out.map(x => x.title), ['Puzzle Box']);
+  assert.equal(similarLocal(me, [F('A', ['puzzle']), F('B', ['puzzle']), F('C', ['retro'])], 2).length, 2);
+});
+test('next uses the source first, then Marginalia, then the local pool', async () => {
+  const start = F('Start', ['retro']);
+  const hole = createRabbitHole({ sources: [ad('library', [[F('A')], [], []]), ad('marginalia', [[F('M', [], '', 'marginalia')], []])], ctx: {}, seenHas: never, pool: () => [F('Local', ['retro'])] });
+  hole.start(start);
+  assert.equal((await hole.next()).title, 'A');
+  assert.equal((await hole.next()).title, 'M');
+  assert.equal((await hole.next()).title, 'Local');
+  assert.deepEqual(hole.trail().map(x => x.title), ['Start', 'A', 'M', 'Local']);
+});
+test('next skips trail and seen finds and survives a failing source', async () => {
+  const start = F('Start');
+  const hole = createRabbitHole({ sources: [ad('library', [new Error('down')]), ad('marginalia', [[F('Start'), F('Old'), F('B')]])], ctx: {}, seenHas: async (u) => u.includes('old.') });
+  hole.start(start); assert.equal((await hole.next()).title, 'B');
+});
+test('climbOut empties the trail', async () => {
+  const hole = createRabbitHole({ sources: [], ctx: {}, seenHas: never });
+  hole.start(F('Start')); hole.climbOut();
+  assert.deepEqual(hole.trail(), []); assert.equal(await hole.next(), null);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/rabbit.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `rabbit.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/rabbit.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/rabbit.js tests/unit/rabbit.test.js
+git commit -m "Add Rabbit Hole with source, Marginalia and local similarity"
+```
+
+### Task 8: Collections
+
+**Files:**
+- Create: `src/core/collections.js`
+- Test: `tests/unit/collections.test.js`
+
+**Interfaces:**
+- Consumes: `openStore`, `memoryBackend`, `fakeClock`, `makeFind`.
+- Produces: `createCollections(store, clock) → {list(), get(id), create(name), rename(id, name), remove(id), add(id, find) → Promise<boolean>, removeItem(id, findId), has(findId) → Promise<string[]>, getCurrent() → Promise<string>, setCurrent(id)}`. A record is `{id, name, created, items: [{find, added}]}` in the `collections` store. `list()` always includes `{id: 'saved', name: 'Saved'}` first, then the rest by `created`; keys starting with `@` are not collections. The current collection id lives under key `'@current'` and falls back to `'saved'` when unset or deleted.
+- Errors (exact): `create('  ')` throws `'Give the collection a name.'`; `remove('saved')` throws `'Saved cannot be deleted.'`
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const find = makeFind({ source: 'library', kind: 'site', title: 'Tiny Synth', url: 'https://example.com/', safety: 'curated' });
+const make = async () => createCollections(await openStore(memoryBackend()), fakeClock(Date.UTC(2026, 10, 11)));
+test('Saved exists from the start', async () => {
+  const c = await make(); const list = await c.list();
+  assert.deepEqual(list.map(x => [x.id, x.name]), [['saved', 'Saved']]);
+  assert.equal(await c.getCurrent(), 'saved'); assert.equal(await c.get('nope'), null);
+});
+test('create, rename, add, has and removeItem', async () => {
+  const c = await make(); const id = (await c.create('Games')).id;
+  await c.rename(id, 'Old games');
+  assert.equal(await c.add(id, find), true); assert.equal(await c.add(id, find), false);
+  await c.add('saved', find);
+  assert.deepEqual((await c.has(find.id)).sort(), [id, 'saved'].sort());
+  await c.removeItem(id, find.id); assert.deepEqual(await c.has(find.id), ['saved']);
+  assert.equal((await c.get(id)).name, 'Old games');
+});
+test('Saved cannot be deleted and the current collection falls back', async () => {
+  const c = await make(); const id = (await c.create('Games')).id;
+  await assert.rejects(c.remove('saved'), { message: 'Saved cannot be deleted.' });
+  await assert.rejects(c.create('  '), { message: 'Give the collection a name.' });
+  await c.setCurrent(id); assert.equal(await c.getCurrent(), id);
+  await c.remove(id); assert.equal(await c.getCurrent(), 'saved');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/collections.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `createCollections`**
+
+New ids are `'c-' + clock.now().toString(36) + '-' + <number of existing collections>`. `added` is `clock.now()`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/collections.test.js`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/collections.js tests/unit/collections.test.js
+git commit -m "Add collections with Saved as the default"
+```
+
+### Task 9: Share links
+
+**Files:**
+- Create: `src/core/share.js`
+- Test: `tests/unit/share.test.js`
+
+**Interfaces:**
+- Consumes: `makeFind`, `truncate`, `hash64` (test only).
+- Produces: `MAX_LINK_CHARS = 2000`; `SHARE_BASE = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/'`; `encodeShare(payload) → Promise<string>` (`base64url(deflate-raw(JSON))`, no `=` padding, no validation); `decodeShare(str) → Promise<payload>`, which throws `'This link is broken or not from Byways.'` unless the payload is `{v: 1, t: 'c'|'f'|'d', n: string, i: Array<[string, string, string]>}` with at most 500 items; `buildShareUrl(base, payload) → Promise<{url, tooLong}>` with `url = base + '#s=' + encoded` and `tooLong = url.length > MAX_LINK_CHARS`; `shareItem(find) → [find.source, find.url, truncate(find.title, 80)]`; `itemToFind([source, url, title]) → Find|null` (kind `'site'`, safety `'mostly'`, why `['Shared with you']`).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const payload = { v: 1, t: 'c', n: 'Weird toys', i: [['library', 'https://example.com/', 'Tiny Synth'], ['wikipedia', 'https://en.wikipedia.org/wiki/Ada_Lovelace', 'Ada Lovelace'], ['kagi', 'https://example.org/', 'example.org']] };
+test('share payloads round-trip', async () => {
+  const s = await encodeShare(payload);
+  assert.match(s, /^[A-Za-z0-9_-]+$/);
+  assert.deepEqual(await decodeShare(s), payload);
+});
+test('buildShareUrl uses the Pages base and flags long links', async () => {
+  const short = await buildShareUrl(SHARE_BASE, payload);
+  assert.ok(short.url.startsWith(SHARE_BASE + '#s=')); assert.equal(short.tooLong, false);
+  const i = Array.from({ length: 150 }, (_, n) => ['library', `https://s${n}.example.org/${hash64(String(n))}`, `Find ${hash64('t' + n)}`]);
+  assert.equal((await buildShareUrl(SHARE_BASE, { ...payload, i })).tooLong, true);
+});
+test('decodeShare rejects v2 and garbage', async () => {
+  const msg = { message: 'This link is broken or not from Byways.' };
+  await assert.rejects(decodeShare(await encodeShare({ ...payload, v: 2 })), msg);
+  await assert.rejects(decodeShare((await encodeShare(payload)).slice(0, -6)), msg);
+  await assert.rejects(decodeShare('%%%'), msg);
+  await assert.rejects(decodeShare(await encodeShare({ ...payload, i: [['library', 3, 'x']] })), msg);
+});
+test('itemToFind rebuilds a find and drops bad urls', () => {
+  assert.equal(itemToFind(['library', 'https://example.com/', 'Tiny Synth']).title, 'Tiny Synth');
+  assert.equal(itemToFind(['library', 'javascript:alert(1)', 'x']), null);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/share.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `share.js`**
+
+Use `new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))` and the matching `DecompressionStream`; base64url maps `+/` to `-_` and strips `=`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/share.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/share.js tests/unit/share.test.js
+git commit -m "Add the share-link codec with the 2,000 character limit"
+```
+
 <!-- PLAN CONTINUES -->

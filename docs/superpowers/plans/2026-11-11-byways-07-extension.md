@@ -312,4 +312,326 @@ git add tools/build.js tools/check.js tests/unit/ext-check.test.js
 git commit -m "Build the Chrome and Firefox extensions and check their manifests"
 ```
 
+### Task 3: Extension platform
+
+**Files:**
+- Create: `src/platform/extension.js`
+- Test: `tests/unit/ext-platform.test.js`
+
+**Interfaces:**
+- Consumes: `createWebVoice(win) → VoiceEngine` and `createNoVoice() → VoiceEngine` (`platform/web-voice.js`); `createWebTts(speechSynthesis) → Tts`; `createWebMedia(navigator)` and `createWebWakeLock(navigator, document)` (`platform/web-media.js`); the `Platform`, `VoiceEngine` and `SecretStore` shapes in `core/types.js`.
+- Produces (in `src/platform/extension.js`):
+  - `createExtensionPlatform({ext, win, surface: 'background'|'panel'|'tab'}) → Platform`
+  - `gateVoice(inner: VoiceEngine, {win, ext}) → VoiceEngine`
+  - `createExtSecrets(ext) → SecretStore`
+
+The tests use two fakes, written at the top of the test file:
+- `fakeExt()` returns `{calls, messages, local, session, storage, tabs, runtime}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`.
+- `fakeWin({mic = 'granted'})` returns `{calls, fetch, navigator, speechSynthesis}`. `fetch(url, init)` pushes `[url, init]` to `calls` and resolves `new Response('ok')`. `navigator.permissions.query({name})` resolves `{state: mic}`, or rejects when `mic === 'throws'`. `navigator.clipboard.writeText(t)` pushes `['copy', t]`. It has no `share` and no `document`.
+- `fakeVoice()` is a `VoiceEngine` whose `start` sets `started = true`, and whose `emit(event, data)` calls the `on` listeners.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const find = { id: 'url:1', source: 'library', kind: 'site', title: 'A small site', description: '', url: 'https://small.example/', tags: [], why: [], safety: 'curated' };
+
+test('the extension caps and name', () => {
+  const p = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'tab' });
+  assert.equal(p.name, 'extension');
+  assert.deepEqual(p.caps, { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false,
+    labHref: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/', framesArchive: true });
+});
+
+test('transport fetches without cookies and drops the privileged flag', async () => {
+  const win = fakeWin({});
+  const p = createExtensionPlatform({ ext: fakeExt(), win, surface: 'panel' });
+  await p.transport.fetch('https://api.example/x', { headers: { a: '1' }, privileged: true });
+  assert.deepEqual(win.calls, [['https://api.example/x', { headers: { a: '1' }, credentials: 'omit' }]]);
+});
+
+test('secrets live in storage.local under secret:', async () => {
+  const ext = fakeExt();
+  ext.local.needsAccess = true;
+  const s = createExtSecrets(ext);
+  await s.set('anthropic', 'k1');
+  assert.equal(ext.local['secret:anthropic'], 'k1');
+  assert.equal(await s.get('anthropic'), 'k1');
+  assert.deepEqual(await s.list(), ['anthropic']);
+  await s.delete('anthropic');
+  assert.equal(await s.get('anthropic'), null);
+});
+
+test("openFind 'current' loads the active tab and remembers the find", async () => {
+  const ext = fakeExt();
+  await createExtensionPlatform({ ext, win: fakeWin({}), surface: 'panel' }).openFind(find, 'current');
+  assert.deepEqual(ext.calls, [['tabs.update', 7, { url: 'https://small.example/' }]]);
+  assert.equal(ext.session['find:7'].find.id, 'url:1');
+});
+
+test("openFind 'tab' and 'inapp' open a new tab", async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'panel' });
+  await p.openFind(find, 'tab');
+  await p.openFind(find, 'inapp');
+  assert.deepEqual(ext.calls, [['tabs.create', { url: 'https://small.example/' }], ['tabs.create', { url: 'https://small.example/' }]]);
+});
+
+test('Open defaults to the current tab in the panel and a new tab in the Byways tab', async () => {
+  const a = fakeExt(); await createExtensionPlatform({ ext: a, win: fakeWin({}), surface: 'panel' }).openFind(find);
+  const b = fakeExt(); await createExtensionPlatform({ ext: b, win: fakeWin({}), surface: 'tab' }).openFind(find);
+  assert.equal(a.calls[0][0], 'tabs.update');
+  assert.equal(b.calls[0][0], 'tabs.create');
+});
+
+test('share copies the link when there is no share sheet', async () => {
+  const win = fakeWin({});
+  const r = await createExtensionPlatform({ ext: fakeExt(), win, surface: 'tab' }).share({ url: 'https://small.example/' });
+  assert.equal(r, 'copied');
+  assert.deepEqual(win.calls, [['copy', 'https://small.example/']]);
+});
+
+test('the background has no voice', async () => {
+  const p = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'background' });
+  assert.equal((await p.voice.probe({ allowCloud: false })).kind, 'none');
+});
+
+test('start asks for the mic page when the mic is not granted', async () => {
+  const ext = fakeExt(); const inner = fakeVoice(); const errors = [];
+  const v = gateVoice(inner, { win: fakeWin({ mic: 'prompt' }), ext });
+  v.on('error', (e) => errors.push(e));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, false);
+  assert.deepEqual(ext.messages, [{ type: 'openPermission' }]);
+  assert.deepEqual(errors, [{ code: 'not-allowed' }]);
+});
+
+test('start goes straight to the engine when the mic is granted', async () => {
+  const ext = fakeExt(); const inner = fakeVoice();
+  await gateVoice(inner, { win: fakeWin({ mic: 'granted' }), ext }).start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, true);
+  assert.deepEqual(ext.messages, []);
+});
+
+test('a failing permission query still tries the engine, and a not-allowed error asks for the mic page', async () => {
+  const ext = fakeExt(); const inner = fakeVoice(); const errors = [];
+  const v = gateVoice(inner, { win: fakeWin({ mic: 'throws' }), ext });
+  v.on('error', (e) => errors.push(e));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, true);
+  inner.emit('error', { code: 'not-allowed' });
+  assert.deepEqual(ext.messages, [{ type: 'openPermission' }]);
+  assert.deepEqual(errors, [{ code: 'not-allowed' }]);
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-platform.test.js`
+Expected: FAIL with `Cannot find module` for `src/platform/extension.js`.
+
+- [ ] **Step 3: Implement `src/platform/extension.js`**
+
+- `createExtSecrets(ext)`: keys are stored as `secret:<id>` in `ext.storage.local`. `get` returns `null` when the key is missing. `list` returns the ids with the prefix removed and ignores other keys.
+- `gateVoice(inner, {win, ext})`: `probe`, `install`, `stop` pass through. `on('result'|'state')` subscribe to `inner`. `on('error')` subscribes to the gate's own list, which receives every inner error. `start(opts)` queries `win.navigator.permissions.query({name: 'microphone'})`. On `'granted'`, or when the query rejects, it calls `inner.start(opts)`. Otherwise it sends `{type: 'openPermission'}` and emits `{code: 'not-allowed'}`. An inner `not-allowed` error also sends `{type: 'openPermission'}`.
+- `createExtensionPlatform({ext, win, surface})`:
+  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`.
+  - `voice`: `createNoVoice()` for `'background'`, else `gateVoice(createWebVoice(win), {win, ext})`.
+  - `tts`: for `'background'`, a silent `Tts` (`speak` resolves, `voices` resolves `[]`); else `createWebTts(win.speechSynthesis)`.
+  - `openFind(find, how)`: `how` defaults to `'current'` for `'panel'` and `'tab'` for the other surfaces. `'current'` queries `{active: true, currentWindow: true}`, calls `ext.tabs.update(tab.id, {url})`, then sets `storage.session['find:<id>'] = {find, branch: null, why: find.why}`. `'tab'` and `'inapp'` call `ext.tabs.create({url})`.
+  - `share(data)`: `win.navigator.share` when it exists (`'shared'`, or `'cancelled'` on `AbortError`). Otherwise it copies `data.url ?? data.text` and returns `'copied'`.
+  - `files.save(name, blob)` uses an `<a download>` with an object URL. `files.pick(accept, multiple)` uses a hidden `<input type=file>`. Both are only used on page surfaces.
+  - `media` and `wakeLock` come from `createWebMedia(win.navigator)` and `createWebWakeLock(win.navigator, win.document)` when `win.document` exists, and are no-ops otherwise.
+  - `secrets: createExtSecrets(ext)`, the `caps` above, and `persistStorage` resolves `true` (the manifest has `unlimitedStorage`).
+
+- [ ] **Step 4: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-platform.test.js`
+Expected: PASS, 11 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/extension.js tests/unit/ext-platform.test.js
+git commit -m "Add the extension platform with storage.local secrets and a mic gate"
+```
+
+### Task 4: Background handlers and wiring
+
+**Files:**
+- Create: `shells/extension/bg.js`
+- Test: `tests/unit/ext-bg.test.js`
+
+**Interfaces:**
+- Consumes: `buildExtension` (Task 2); `createExtensionPlatform` (Task 3); `openStore`, `idbBackend`; `loadSettings`; `createHttp`; `realClock`; `mulberry32`; `createEngine`; `makeFind`; `isHttpUrl`, `domainOf`. In `dist/<browser>/` these sit at `./core/…` and `./platform/…`, so `bg.js` imports them with those paths.
+- Produces: `createBackground({ext, getEngine: () => Promise<{engine: Engine, settings: Settings}>, resetEngine: () => void}) → Background`, exported from `bg.js`, where `Background` has:
+  - `stumble(tab) → Promise<{ok: true, find} | {ok: false, reason: string}>`
+  - `morePage(tab) → Promise<void>`, `onCommand(command, tab) → Promise<void>`, `onMenuClick(info, tab) → Promise<void>`
+  - `onMessage(msg, sender) → Promise<any> | undefined`
+  - `checkAccess() → Promise<boolean>`, `openPermission() → Promise<{tabId}>`, `onInstalled(details) → Promise<void>`, `onTabRemoved(tabId) → Promise<void>`
+
+The tests import `createBackground` from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
+
+Test fakes, written at the top of the test file:
+- `fakeExt({granted = true, sidebar = false})` is Task 3's fake plus: `tabs.get(id)` (resolves `tabsById[id]` or rejects `'No tab'`), `action.setBadgeText(o)` → `['badge', o]`, `action.setTitle(o)` → `['title', o]`, `sidePanel.open(o)` → `['sidePanel.open', o]` (or, with `sidebar: true`, no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`), `permissions.contains(q)` → `['contains', q]` and resolves `granted`, `contextMenus.removeAll()` → `['menus.removeAll']`, `contextMenus.create(o)` → `['menus.create', o]`, `runtime.getManifest()` → `{host_permissions: ['https://archive.org/*']}`. Every recorder pushes synchronously, before any `await`.
+- `fakeEngine(results)`: `next({mode})` records `mode` in `modes`, waits one macrotask, then returns `results.shift()` (throwing it if it is an `Error`). It tracks `maxInFlight`.
+- `bgWith(results, {settings = {mode: 'tuned'}, ...extOpts} = {})` returns `{bg, ext, engine, resets}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const f = (n) => ({ id: `url:${n}`, source: 'library', kind: 'site', title: `Find ${n}`, description: '', url: `https://s${n}.example/`, tags: [], why: [], safety: 'curated' });
+const tab = { id: 5, windowId: 2 };
+
+test('stumble loads the next find in the tab and remembers it', async () => {
+  const { bg, ext } = bgWith([{ find: f(1), branch: 'taste', why: ['w'] }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: true, find: f(1) });
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'tabs.update'), ['tabs.update', 5, { url: 'https://s1.example/' }]);
+  assert.deepEqual(ext.session['find:5'], { find: f(1), branch: 'taste', why: ['w'] });
+  assert.deepEqual(ext.messages.at(-1), { type: 'tabFind', tabId: 5, windowId: 2, find: f(1), branch: 'taste', why: ['w'] });
+});
+
+test('stumble uses tuned when the saved mode is ai, and passes fate through', async () => {
+  const a = bgWith([{ find: f(1), branch: 'taste', why: [] }], { settings: { mode: 'ai' } });
+  await a.bg.stumble(tab);
+  const b = bgWith([{ find: f(1), branch: 'taste', why: [] }], { settings: { mode: 'fate' } });
+  await b.bg.stumble(tab);
+  assert.deepEqual([a.engine.modes, b.engine.modes], [['tuned'], ['fate']]);
+});
+
+test('concurrent stumbles run one at a time and never repeat a find', async () => {      // Review Focus 2
+  const { bg, ext, engine } = bgWith([{ find: f(1), branch: 'taste', why: [] }, { find: f(2), branch: 'taste', why: [] }]);
+  const [a, b] = await Promise.all([bg.stumble(tab), bg.stumble(tab)]);
+  assert.notEqual(a.find.id, b.find.id);
+  assert.equal(engine.maxInFlight, 1);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'tabs.update').map((c) => c[2].url), ['https://s1.example/', 'https://s2.example/']);
+  assert.equal(ext.session['find:5'].find.id, 'url:2');
+});
+
+test('an empty pool sets the badge and title and does not navigate', async () => {       // Review Focus 3
+  const { bg, ext } = bgWith([{ empty: true, reason: 'Nothing new here' }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'Nothing new here' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge' || c[0] === 'title'),
+    [['badge', { tabId: 5, text: '0' }], ['title', { tabId: 5, title: 'Stumble: Nothing new here' }]]);
+});
+
+test('an engine error sets the badge and does not navigate', async () => {               // Review Focus 3
+  const { bg, ext } = bgWith([new Error('offline')]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'error' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge' || c[0] === 'title'),
+    [['badge', { tabId: 5, text: '!' }], ['title', { tabId: 5, title: 'Stumble: Byways could not reach its sources. Try again.' }]]);
+});
+
+test('more like this page opens the panel before anything else and stores a seed', async () => {
+  for (const sidebar of [false, true]) {
+    const { bg, ext } = bgWith([], { sidebar });
+    await bg.onMenuClick({ menuItemId: 'more-like-page' }, { ...tab, url: 'https://small.example/blog/', title: 'Small blog' });
+    assert.deepEqual(ext.calls[0], sidebar ? ['sidebarAction.open'] : ['sidePanel.open', { windowId: 2 }]);
+    assert.deepEqual([ext.session.pendingRabbit.source, ext.session.pendingRabbit.kind, ext.session.pendingRabbit.url],
+      ['marginalia', 'site', 'https://small.example/blog/']);
+    assert.deepEqual(ext.messages.at(-1), { type: 'rabbit' });
+  }
+});
+
+test('more like this page on a non-web tab stores a not-web marker', async () => {       // Review Focus 4
+  for (const url of ['chrome://newtab/', 'about:addons', 'file:///home/a.html', undefined]) {
+    const { bg, ext } = bgWith([]);
+    await bg.morePage({ ...tab, url });
+    assert.deepEqual(ext.calls[0], ['sidePanel.open', { windowId: 2 }]);
+    assert.deepEqual(ext.session.pendingRabbit, { error: 'not-web' });
+  }
+});
+
+test('checkAccess flags revoked hosts and clears when granted', async () => {            // Review Focus 5
+  const { bg, ext } = bgWith([], { granted: false });
+  assert.equal(await bg.checkAccess(), false);
+  assert.deepEqual(ext.calls[0], ['contains', { origins: ['https://archive.org/*'] }]);
+  assert.equal(ext.local.needsAccess, true);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { text: '!' }]);
+  assert.deepEqual(ext.messages.at(-1), { type: 'accessChanged', needsAccess: true });
+  ext.granted = true;                                     // the fake reads this on each contains()
+  assert.equal(await bg.checkAccess(), true);
+  assert.equal(ext.local.needsAccess, false);
+  assert.deepEqual(ext.calls.at(-1), ['badge', { text: '' }]);
+  assert.deepEqual(ext.messages.at(-1), { type: 'accessChanged', needsAccess: false });
+});
+
+test('onInstalled recreates the context menu, then checks access', async () => {
+  const { bg, ext } = bgWith([]);
+  await bg.onInstalled({ reason: 'install' });
+  assert.deepEqual(ext.calls.slice(0, 3), [['menus.removeAll'],
+    ['menus.create', { id: 'more-like-page', title: 'More like this page', contexts: ['page'] }], ['contains', { origins: ['https://archive.org/*'] }]]);
+});
+
+test('commands', async () => {
+  const { bg, ext } = bgWith([]);
+  await bg.onCommand('toggle-listening', tab);
+  await bg.onCommand('open-panel', tab);
+  assert.deepEqual(ext.messages, [{ type: 'toggleListening' }]);
+  assert.deepEqual(ext.calls, [['sidePanel.open', { windowId: 2 }]]);
+});
+
+test('openPermission opens one mic tab and focuses it the second time', async () => {
+  const { bg, ext } = bgWith([]);
+  assert.deepEqual(await bg.openPermission(), { tabId: 99 });             // tabs.create resolves {id: 99}
+  ext.tabsById[99] = { id: 99, windowId: 2 };
+  assert.deepEqual(await bg.openPermission(), { tabId: 99 });
+  assert.deepEqual(ext.calls.filter((c) => c[0].startsWith('tabs.')),
+    [['tabs.create', { url: 'chrome-extension://test/permission.html' }], ['tabs.update', 99, { active: true }]]);
+});
+
+test('messages', async () => {
+  const { bg, ext, resets } = bgWith([{ find: f(1), branch: 'taste', why: [] }]);
+  ext.tabsById[7] = { id: 7, windowId: 1 };
+  assert.equal((await bg.onMessage({ type: 'stumble', tabId: 7 }, {})).ok, true);
+  assert.deepEqual(await bg.onMessage({ type: 'stateChanged' }, {}), { ok: true });
+  assert.equal(resets.count, 1);
+  assert.deepEqual(await bg.onMessage({ type: 'checkAccess' }, {}), { needsAccess: false });
+  assert.equal(bg.onMessage({ type: 'tabFind' }, {}), undefined);
+});
+
+test('a closed tab forgets its find', async () => {
+  const { bg, ext } = bgWith([]);
+  ext.session['find:5'] = { find: f(1) };
+  await bg.onTabRemoved(5);
+  assert.equal('find:5' in ext.session, false);
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-bg.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `bg.js` in the build folder.
+
+- [ ] **Step 3: Implement `createBackground` in `shells/extension/bg.js`**
+
+- `stumble` chains each call on one promise, so calls run one at a time and a failure does not break the chain. Each run: `getEngine()`, then `engine.next({mode: settings.mode === 'ai' ? 'tuned' : settings.mode})`. On a find, in this order: `tabs.update(tab.id, {url})`, `setBadgeText({tabId, text: ''})` and `setTitle({tabId, title: 'Stumble'})`, set `storage.session['find:<id>'] = {find, branch, why}`, then send `tabFind`. On `{empty}`: badge `'0'` and title `'Stumble: <reason>'`. On a throw: badge `'!'` and title `'Stumble: Byways could not reach its sources. Try again.'`, and the reply reason is `'error'`. Badge and title calls come before any other call in those two paths.
+- `openPanel(tab)` (internal) runs **synchronously** and is never awaited: `ext.sidePanel.open({windowId: tab.windowId})` when `ext.sidePanel` exists, else `ext.sidebarAction.open()`. Both browsers only allow this inside the user-action handler, so `morePage` and `onCommand('open-panel')` call it before any `await`. Its promise gets a `.catch(() => {})`.
+- `morePage(tab)`: `openPanel(tab)`, then `pendingRabbit` = `makeFind({source: 'marginalia', kind: 'site', url: tab.url, title: tab.title || domainOf(tab.url)})` when `isHttpUrl(tab.url ?? '')`, else `{error: 'not-web'}`. Then send `{type: 'rabbit'}`.
+- `onMenuClick(info, tab)` runs `morePage` for `info.menuItemId === 'more-like-page'`. `onCommand`: `'open-panel'` → `openPanel`, `'toggle-listening'` → send `{type: 'toggleListening'}`, `'more-like-page'` → `morePage`. When Firefox gives no `tab`, `morePage` opens the sidebar first and then reads `tabs.query({active: true, currentWindow: true})`.
+- `checkAccess()`: `permissions.contains({origins: runtime.getManifest().host_permissions})`, then `storage.local.needsAccess = !ok`, badge `'!'` or `''` (no tabId), then send `accessChanged`.
+- `openPermission()`: if `storage.session.permissionTabId` names a tab that `tabs.get` finds, `tabs.update(id, {active: true})`; otherwise `tabs.create({url: runtime.getURL('permission.html')})` and store its id.
+- `onMessage`: `stumble` → `tabs.get(msg.tabId)` then `stumble`; `stateChanged` → `resetEngine()` and `{ok: true}`; `checkAccess` → `{needsAccess: !(await checkAccess())}`; `openPermission` → `openPermission()`; anything else → `undefined`.
+- `onInstalled`: `contextMenus.removeAll()`, `contextMenus.create({id: 'more-like-page', title: 'More like this page', contexts: ['page']})`, then `checkAccess()`. `onTabRemoved(id)` removes `find:<id>`.
+- Sending a message with no page open rejects, so every send ends in `.catch(() => {})`.
+
+- [ ] **Step 4: Add the engine loader and the wiring at the bottom of `bg.js`**
+
+- `getEngine()` opens one `openStore(idbBackend())` per worker life, calls `loadSettings(store)` each time, and rebuilds the engine when `JSON.stringify(settings)` differs from the cached one or after `resetEngine()`. A build fetches `ext.runtime.getURL('data/tags.json' | 'data/library.json' | 'data/vault-starter.json' | 'data/geocities-seeds.json')` into `data = {tags, library, vaultStarter, geocities}`. It uses `platform = createExtensionPlatform({ext, win: globalThis, surface: 'background'})`, `http = createHttp({transport: platform.transport, clock: realClock})`, and `createEngine({store, http, clock: realClock, rand: mulberry32(crypto.getRandomValues(new Uint32Array(1))[0]), data, platform, settings})`.
+- Wiring, only when `const ext = globalThis.browser ?? globalThis.chrome` has `runtime?.id`: all listeners are added at the top level, in the first turn. `action.onClicked` → `stumble`; `commands.onCommand`; `contextMenus.onClicked`; `runtime.onInstalled`; `runtime.onStartup` → `checkAccess`; `permissions.onAdded` and `onRemoved` → `checkAccess`; `tabs.onRemoved`. `runtime.onMessage` uses `(msg, sender, sendResponse)`. When `onMessage` returns a promise, it calls `sendResponse` with the result (or `{ok: false, reason: String(e)}`) and returns `true`. Otherwise it returns `false`.
+- No state lives in module globals except the engine cache and the stumble chain. Everything a page needs is in `storage.session` or `storage.local`.
+
+- [ ] **Step 5: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-bg.test.js`
+Expected: PASS, 13 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/extension/bg.js tests/unit/ext-bg.test.js
+git commit -m "Add the extension background: toolbar Stumble, commands, menu and access checks"
+```
+
 <!-- PLAN CONTINUES -->
