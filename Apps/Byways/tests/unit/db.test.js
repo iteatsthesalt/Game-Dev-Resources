@@ -31,6 +31,30 @@ test('idb data survives reopening', async () => {
   const n = 'p-' + Math.random(); await (await openStore(idbBackend(n))).put('keys', 'k', 'v');
   assert.equal(await (await openStore(idbBackend(n))).get('keys', 'k'), 'v');
 });
+test('idb writes reject when the transaction aborts after the request succeeds', async () => {
+  const s = await openStore(idbBackend('a-' + Math.random()));
+  await s.put('keys', 'k', 'old');
+  const proto = globalThis.IDBDatabase.prototype; const realTransaction = proto.transaction;
+  // Abort each write transaction as soon as its request succeeds, before it can commit.
+  proto.transaction = function (...args) {
+    const tx = realTransaction.apply(this, args); const realObjectStore = tx.objectStore.bind(tx);
+    tx.objectStore = name => {
+      const os = realObjectStore(name);
+      for (const m of ['put', 'delete', 'clear']) {
+        const real = os[m].bind(os);
+        os[m] = (...a) => { const req = real(...a); req.addEventListener('success', () => tx.abort()); return req; };
+      }
+      return os;
+    };
+    return tx;
+  };
+  try {
+    await assert.rejects(s.put('keys', 'k', 'new'));
+    await assert.rejects(s.delete('keys', 'k'));
+    await assert.rejects(s.clear('keys'));
+  } finally { proto.transaction = realTransaction; }
+  assert.equal(await s.get('keys', 'k'), 'old');
+});
 test('idbBackend rejects when IndexedDB is missing', async () => {
   const saved = globalThis.indexedDB; globalThis.indexedDB = undefined;
   try { await assert.rejects(openStore(idbBackend('x')), /IndexedDB is not available/); } finally { globalThis.indexedDB = saved; }

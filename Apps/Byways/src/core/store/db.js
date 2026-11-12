@@ -80,12 +80,23 @@ export function idbBackend(dbName = 'byways') {
   };
 }
 
-/** Run one request in its own transaction and resolve with its result. */
+/**
+ * Run one request in its own transaction. A read resolves with the request's result once it
+ * succeeds. A write resolves only when the transaction commits and rejects if it aborts or
+ * errors, so a commit failure (a quota error, an eviction) reaches the caller.
+ */
 function run(db, store, mode, action) {
   return new Promise((resolve, reject) => {
-    const req = action(db.transaction(store, mode).objectStore(store));
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    const tx = db.transaction(store, mode);
+    const req = action(tx.objectStore(store));
+    if (mode === 'readonly') {
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+      return;
+    }
+    tx.oncomplete = () => resolve(req.result);
+    tx.onabort = () => reject(tx.error || req.error);
+    tx.onerror = () => reject(tx.error || req.error);
   });
 }
 
