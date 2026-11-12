@@ -23,7 +23,7 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 ## Bottom line
 - **Compute splat for small particles, quads for large ones.** Splat particles of about 2 px or less in a compute shader, with u32 fixed-point `atomicAdd` and a resolve pass. Use instanced quads for large, soft or defocused sprites, chosen per particle by footprint. Additive light needs no sorting. (Inference)
 - **Request limits at device creation.** Desktop adapters offer far more than the spec defaults. [Verified correction: SPEC; DAWN; APPLE; Measured]
-- **sRGB-encode HDR output** on the default `'srgb'` canvas. Linear writes need `'srgb-linear'`: Chromium 157+, not in Electron 45. [Verified correction: HTML; CSSC4; CR156/CR157 RTE; EL45]
+- **sRGB-encode HDR output** on the default `'srgb'` canvas. Linear writes need `'srgb-linear'`: stable in Chromium 157+, only behind an experimental flag in Electron 45. [Verified correction: HTML; CSSC4; CR156/CR157 RTE; EL45]
 - **Guard flashes on the final frame** in absolute nits against WCAG 2.3.1 / BT.1702, and gate releases with IRIS on rendered video. The guard is an Inference. [Verified: WCAG-T; WCAG-U; IRIS]
 - **Render into owned textures**; the canvas is one sink, and `copyTextureToBuffer` captures. CI cannot present a canvas, but offscreen rendering works. [Verified: COPIES; Measured]
 - **Per-pass timing** needs unquantized timestamps on real GPUs. [Verified correction: DAWN Constants.h; CR156 DEC; Measured]
