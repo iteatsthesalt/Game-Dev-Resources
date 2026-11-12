@@ -986,13 +986,30 @@ git commit -m "Add native voice commands and the microphone consent screen"
 ### Task 9: Native read-aloud, media session, share and file save
 
 **Files:**
-- Create: `…/byways/TtsChoice.kt`, `…/byways/TtsBridge.kt`, `…/byways/MediaBridge.kt`, `…/byways/ShareBridge.kt`, `…/byways/FilesBridge.kt`
+- Create: `…/byways/TtsChoice.kt`, `…/byways/TtsBridge.kt`, `…/byways/HoldToTalk.kt`, `…/byways/MediaBridge.kt`, `…/byways/ShareBridge.kt`, `…/byways/FilesBridge.kt`
 - Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
-- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt`, `…/HoldToTalkTest.kt` (same folder)
 
 **Interfaces:**
-- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5).
-- Produces: `object TtsChoice { data class VoiceInfo(val name: String, val lang: String, val local: Boolean); fun pick(voices: List<VoiceInfo>, voiceURI: String?, defaultName: String?, lang: String?): String? }` (pure); `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()` and `companion object { const val PLAY_SILENCE = false }`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
+- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5); the `media` channel of the bridge table (`setActive {on}`, `holdToTalk {on}`; events `next`, `previous`, `playPause`, `talk {on}`), whose web side is Task 7's `platform.media` and Task 14's `attach`.
+- Produces:
+  - `object TtsChoice { data class VoiceInfo(val name: String, val lang: String, val local: Boolean); fun pick(voices: List<VoiceInfo>, voiceURI: String?, defaultName: String?, lang: String?): String? }` (pure);
+  - `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`;
+  - the pure press tracker for §6.3's "Hold **V** (or the headset button) to talk":
+
+```kotlin
+class HoldToTalk(private val holdMs: Long = HOLD_MS) {
+  companion object { const val HOLD_MS = 500L }
+  enum class Press { NONE, SHORT, HOLD_START, HOLD_END }
+  fun down(timeMs: Long): Press      // always NONE; a repeat while the key is down changes nothing
+  fun elapsed(timeMs: Long): Press   // HOLD_START once, when the key has been down for holdMs; otherwise NONE
+  fun up(timeMs: Long): Press        // HOLD_END after a HOLD_START; SHORT under holdMs; NONE for a stray release, or a long press no elapsed() reported
+}
+```
+
+  - `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()`, `fun onKey(event: KeyEvent): Boolean` (true when it consumed the event) and `companion object { const val PLAY_SILENCE = false }`;
+  - `class ShareBridge(activity: ComponentActivity) : ChannelHandler`;
+  - `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1007,6 +1024,20 @@ class TtsChoiceTest {
   @Test fun theRequestedLanguageWins() = assertEquals("de-de-x-loc", TtsChoice.pick(v, null, "en-gb-x-loc", "de-DE"))
   @Test fun noLocalVoiceKeepsTheDefault() = assertEquals("en-us-x-net", TtsChoice.pick(v.take(1), null, "en-us-x-net", null))
 }
+// HoldToTalkTest.kt (imports HoldToTalk.Press.*)
+class HoldToTalkTest {
+  private val h = HoldToTalk()
+  @Test fun aShortPressIsOnePress() { assertEquals(NONE, h.down(0)); assertEquals(SHORT, h.up(200)) }
+  @Test fun aHoldStartsTalkAtHalfASecondAndEndsOnRelease() {
+    h.down(1000); assertEquals(NONE, h.elapsed(1499)); assertEquals(HOLD_START, h.elapsed(1500)); assertEquals(NONE, h.elapsed(1800))
+    assertEquals(HOLD_END, h.up(2200))
+  }
+  @Test fun aLongPressThatNoTickReportedIsNothing() { h.down(0); assertEquals(NONE, h.up(900)) }
+  @Test fun repeatsAndStrayReleasesChangeNothing() {
+    assertEquals(NONE, h.up(5)); h.down(0); assertEquals(NONE, h.down(100)); assertEquals(SHORT, h.up(150)); assertEquals(NONE, h.up(160))
+  }
+  @Test fun theHoldIsHalfASecond() = assertEquals(500L, HoldToTalk.HOLD_MS)
+}
 ```
 
 ```js
@@ -1014,9 +1045,10 @@ test('read-aloud and the media session use the native APIs', () => {
   const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
   for (const s of ['UtteranceProgressListener', 'isNetworkConnectionRequired', 'KEY_PARAM_VOLUME', 'setSpeechRate', 'TtsChoice.pick('])
     assert.ok(k('TtsBridge.kt').includes(s), s);
-  for (const s of ['MediaSession', 'onSkipToNext', 'onSkipToPrevious', 'ACTION_PLAY_PAUSE', 'FLAG_HANDLES_MEDIA_BUTTONS', 'PLAY_SILENCE'])
+  for (const s of ['MediaSession', 'onSkipToNext', 'onSkipToPrevious', 'ACTION_PLAY_PAUSE', 'FLAG_HANDLES_MEDIA_BUTTONS', 'PLAY_SILENCE',
+    'HoldToTalk(', 'KEYCODE_HEADSETHOOK', 'KEYCODE_MEDIA_PLAY_PAUSE', '"talk"', '"holdToTalk"'])
     assert.ok(k('MediaBridge.kt').includes(s), s);
-  for (const s of ['"tts" to', '"media" to']) assert.ok(k('MainActivity.kt').includes(s), s);
+  for (const s of ['"tts" to', '"media" to', 'override fun dispatchKeyEvent(', 'media.onKey(']) assert.ok(k('MainActivity.kt').includes(s), s);
 });
 test('share and file save use the native APIs', () => {
   const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
@@ -1028,7 +1060,7 @@ test('share and file save use the native APIs', () => {
 
 - [ ] **Step 2: Run them to see them fail**
 
-Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*TtsChoiceTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
+Run: `node --test tests/unit/android-shell.test.js`, and `gradle -p shells/android testDebugUnitTest --tests '*TtsChoiceTest' --tests '*HoldToTalkTest'` where `ANDROID_HOME` is set (otherwise the red half of **CI checks**).
 Expected: Node fails with `ENOENT` on `TtsBridge.kt`; Gradle fails with `Unresolved reference 'TtsChoice'`.
 
 - [ ] **Step 3: Implement `TtsChoice` and `TtsBridge`**

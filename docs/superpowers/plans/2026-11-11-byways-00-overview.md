@@ -1071,7 +1071,7 @@ No environment variable sets the version. The release APK asset is named `byways
 
 - Every third-party string renders through `textContent`. Links and images must be `http(s)`. Only `https://archive.org/embed/<id>` is framed, and only after **Play**.
 - **Web app CSP (meta):** `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`.
-- **Lab pages** add `'wasm-unsafe-eval' blob:` to `script-src` and `blob:` to `worker-src`.
+- **Lab pages** add `'wasm-unsafe-eval' blob:` to `script-src` and `blob:` to `worker-src`, and replace `connect-src` with `'self' blob:` (no `https:` and no localhost); the exact per-page strings are in the Plan 06 section's Lab CSP list and in Plan 01's `expectedCsp(path)`.
 - **Extension CSP:** `"script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"`.
 - **Keys** are sent only to their own provider's host. They are never put in exports (unless the user chooses), share links or logs.
 - **Identification header:** `Byways/<version> (+https://github.com/iteatsthesalt/Game-Dev-Resources)` in `Api-User-Agent` (Wikimedia) and `AIC-User-Agent` (Art Institute). It never carries user details.
