@@ -25,7 +25,8 @@
 //                               stand in (an area of team 1 whose def's kind is 'zone') deals damage / 4; each area
 //                               of a voice with a tick above 0 strikes every dead body inside it with part = tick.
 //   Dmg.step(S)                 phase 5: every body's condition times (a seal holds every other one still), then
-//                               the dead's postures from their steering velocity, their turn rule (headings every
+//                               the dead's postures from their steering velocity against their top speed on dry
+//                               ground as it stands (their def's, less 8% a rider), their turn rule (headings every
 //                               0.1 s), Sounded and Coiled on the large dead, and a body going over at full swing.
 //                               Tolled-for that runs out ends the run 'died'.
 //   Dmg.inLee(S, sx, sy, body, reach) -> boolean
@@ -96,6 +97,7 @@
   const SWING_UP = 120, SWING_DOWN = 60;    // degrees off the last Blow that add one, or take one away
   const OVER = 4, OVER_KEEPER = 1, OVER_REACH = 1, OVER_HARM = 0.1, OVER_PLAYER = 2;   // going over
   const KEEPER_SHOVE = 0.25;     // keepers are shoved a quarter as far by a voice
+  const RIDER_SLOW = 0.08;       // each rider takes 8% off a body's top speed (clung; 22-enemies.js slows it so)
   const TOLL_BLOW = 1, TOLL_TICK = 0.25;    // seconds of Tolled-for a Blow or Swell, and a Drag tick, take
   const WARN_PER_HEED = 0.01, WARN_MOST = 1;
   const FLASH_FALL = 6;          // a body's flash fades in a sixth of a second
@@ -317,11 +319,18 @@
   }
   Dmg.record = record;
 
+  // A dead body's top speed on dry ground as it stands: its def's, less what its riders take off it. Its posture and
+  // its turn rule measure it against this, as the player's do (21-player.js).
+  function topOf(b) {
+    const n = b.condN[RIDERS];
+    return n > 0 ? b.speed * (1 - RIDER_SLOW * n) : b.speed;
+  }
+
   // The dead's turn rule, on the steps that record headings: a body above 30% of its top speed whose heading now
   // is more than 90 degrees from one of the last 0.5 s is Wrong-footed (0.5 s, keepers 0.25 s) unless it already
   // is. The record moves on whatever the speed, so a slow body's old headings age out.
   function footing(S, b) {
-    const top = b.speed, v2 = b.vx * b.vx + b.vy * b.vy, fast = top > 0 && v2 > FAST_SHARE * FAST_SHARE * top * top;
+    const top = topOf(b), v2 = b.vx * b.vx + b.vy * b.vy, fast = top > 0 && v2 > FAST_SHARE * FAST_SHARE * top * top;
     let h = NaN;
     if (fast) {
       h = atan2(b.vy, b.vx);
@@ -716,7 +725,7 @@
       if (!e.alive) continue;
       times(S, e);
       if (e.flash > 0) e.flash = e.flash > FLASH_FALL * DT ? e.flash - FLASH_FALL * DT : 0;
-      posture(e, e.speed, BRACE_DEAD, STRIDE_DEAD);
+      posture(e, topOf(e), BRACE_DEAD, STRIDE_DEAD);
       if (sample) footing(S, e);
       if (e.condT[SEALED] > 0 || !(e.life > 0)) continue;
       if (large(e) && p.alive) {

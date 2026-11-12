@@ -1,8 +1,8 @@
 // tests/sim/20-sim.test.js: the run state, the order of a step, commands, events and the debug scene (src/js/20-sim.js).
-// All but one of these tests run the kernel alone: kernel() loads only the files named in KERNEL, so the
+// All but two of these tests run the kernel alone: kernel() loads only the files named in KERNEL, so the
 // systems and the content that later packages add can neither disturb them nor be disturbed. Each call gives
 // a separate copy with its namespaces still open, which is how a test puts a stand-in system in place
-// (a Player.step, a Director.step). The one test on the whole build is marked as such.
+// (a Player.step, a Director.step). The two tests on the whole build are marked as such.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -234,6 +234,22 @@ test('every pooled object of a kind has the same fields, sealed, before and afte
   }
   assert.equal(Object.keys(S.player).join(), Sim.fields('player').join());
   assert.equal(Object.keys(S).length, STATE.length, 'and the run state itself gained no field');
+});
+
+test('the whole build: a vigil leaves every pooled object of a kind in one hidden layout of the engine', () => {
+  // A number field that began whole and took a fraction in play would move every object of its pool to a new
+  // layout, field by field: the code that reads the dead then meets a dozen layouts and boxes every number it
+  // reads, hundreds of kilobytes a step at the cap (Grid.near, World.pushOut, the steering of the dead).
+  require('v8').setFlagsFromString('--allow-natives-syntax');
+  const sameLayout = new Function('a', 'b', 'return %HaveSameMap(a, b);');
+  const sim = loadSim({ boot: true });
+  const S = sim.Sim.create(Object.assign({ zone: 'dial', seed: 4 }, sim.Player.classRun('change-ringer')));
+  for (let i = 0; i < 90 * 60 && S.phase === 'play'; i++) sim.Sim.step(S, sim.Bot.input(S, 'vigil'));
+  assert.ok(S.kills > 50, `the dead were laid: ${S.kills}`);
+  for (const name of ['enemies', 'shots', 'areas', 'pickups', 'minions']) {
+    const items = S[name].items, odd = items.filter((o) => !sameLayout(o, items[0])).length;
+    assert.equal(odd, 0, `${name}: ${odd} of ${items.length} objects in another layout than the first`);
+  }
 });
 
 test('a field that was not declared cannot be added to an entity', () => {

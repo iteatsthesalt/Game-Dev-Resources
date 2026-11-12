@@ -3,9 +3,10 @@
 //             Heed, the row of favours as it closes up, swaps and stands, the toll's ring in its last seconds, the
 //             quarter ticks and the toll's mark, the count as marks when the setting asks, the lychgate's marker,
 //             Tolled-for's grey screen and its time, the haul; and a run whose slots are missing, with no error
-//   layout    where it stands at a phone's two shapes and on a desktop: in the safe area, clear of the middle, of
-//             the touch controls (for both hands), sized by "Text and controls"; the buttons A and B through
-//             Input.button, and the disc that stands in for A where there are no touch buttons
+//   layout    where it stands at a phone's two shapes (and a small phone on its side) and on a desktop: in the safe
+//             area, clear of the middle, of the touch controls (for both hands), sized by "Text and controls"; the
+//             marker of a lychgate off screen, in any direction, under none of the touch controls; the buttons A and B
+//             through Input.button, and the disc that stands in for A where there are no touch buttons
 //   glyphs    the icon painter: a canvas for every recipe and a token for an unknown id, the cache, Glyphs.pick
 // A vigil of the Dial with the Change-ringer is used where the build has it; until then a debug scene, with the
 // slots the vigil's files will fill set by hand. Where the sim must stand still while the HUD is looked at, a test
@@ -245,6 +246,18 @@ const layout = async function () {
     const stick = { l: 0, t: innerHeight * 0.55, r: innerWidth * 0.5, b: innerHeight };
     T.check('nor the stick\'s lower half of its side', !meet(blockBox(), stick));
     T.check('the disc that stands in for button A is not drawn while the touch buttons are', st.disc.shown === false);
+    // a lychgate off screen in any direction: its marker lies under none of the touch controls, which stand above it
+    const R = Math.round(1.15 * parseFloat(getComputedStyle(document.documentElement).fontSize)) + 2, under = [];
+    for (let k = 0; k < 16; k++) {
+      const a = k * Math.PI / 8;
+      S.gate = { x: S.player.x + Math.cos(a) * 60, y: S.player.y + Math.sin(a) * 60, until: S.t + 20, far: false, ring: 0, strokes: 0 };
+      await frames(2);
+      const g = st.gate, m = { l: g.x - R, t: g.y - R, r: g.x + R, b: g.y + R };
+      const hit = ['.tc-a', '.tc-b', '.tc-pause', '.tc-base'].map((s) => root.querySelector(s)).filter((el) => el && !el.hidden && meet(m, box(el)));
+      if (!g.shown || g.onScreen || hit.length) under.push({ k, shown: g.shown, at: [g.x, g.y], under: hit.map((el) => el.getAttribute('class')) });
+    }
+    S.gate = null;
+    T.check('the marker of a lychgate off screen, in any of 16 directions, lies under none of the touch controls', under.length === 0, under);
     Settings.set('input.hand', 'left');
     await frames(3);
     const left = blockBox(), parts2 = ['.tc-a', '.tc-b', '.tc-pause'].map((s) => root.querySelector(s)).filter((el) => !el.hidden);
@@ -355,6 +368,7 @@ module.exports = [
   { name: 'hud: layout, phone 390x844', viewport: { width: 390, height: 844 }, mobile: true, query: 'view=2d', run: layout },
   { name: 'hud: layout, phone on its side 844x390, with a notch', viewport: { width: 844, height: 390 }, mobile: true, query: 'view=2d',
     safeArea: { top: 0, right: 47, bottom: 21, left: 47 }, run: layout },
+  { name: 'hud: layout, small phone on its side 568x320', viewport: { width: 568, height: 320 }, mobile: true, query: 'view=2d', run: layout },
   { name: 'hud: layout, desktop 960x540', viewport: { width: 960, height: 540 }, mobile: false, query: 'view=2d', run: layout },
   { name: 'hud: layout, desktop 1280x720 in the 3D view', viewport: { width: 1280, height: 720 }, mobile: false, query: '', run: layout },
   { name: 'hud: glyphs', viewport: { width: 640, height: 480 }, mobile: false, query: 'view=2d', run: glyphs },

@@ -5,7 +5,7 @@
 //   Game.boot()                   called once by 99-boot.js: makes the view on #view (?view=2d or ?view=gl asks
 //                                 for one), fits it to the window, opens the title and starts the frame loop
 //   Game.start(cfg) -> S | null   starts a vigil and closes every screen. A cfg {mode, zone, seed, char, account}
-//                                 that names a zone goes to Sim.create. Without a zone (there is none yet) the
+//                                 that names a zone goes to Sim.create. Without a zone (Game.start() alone) the
 //                                 run is Sim.debugScene(200, seed). Either way the seed is cfg.seed, else ?seed=,
 //                                 else random; a cfg without one is copied and given it, and the run's cfg
 //                                 (S.cfg.seed) tells which. null, and a toast, when the build has no simulation.

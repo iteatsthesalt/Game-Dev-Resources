@@ -342,7 +342,6 @@
       } else if (there && !tolled) {
         if (S.gate.ring === 0) { v.ringCoin = S.coin; v.ringFinds = S.haul.length; v.bankedCoin = 0; v.bankedFinds = 0; }
         S.gate.ring += DT;
-        v.rung = true;
         const due = Math.min(R.ringStrokes, floor(S.gate.ring / R.strokeSeconds + SLIVER));
         while (S.gate.strokes < due && S.phase === 'play') stroke(S, v, S.gate);
       } else if (S.gate.ring > 0) {
@@ -364,6 +363,7 @@
 
   function stroke(S, v, g) {
     const R = S.rules, k = ++g.strokes, last = k >= R.ringStrokes;
+    v.rung = true;                                 // a stroke rung at it: no lychgate passed, for Pass the Gate
     const wantCoin = last ? v.ringCoin : floor(v.ringCoin * k / R.ringStrokes + SLIVER);   // coin is banked whole
     let coin = wantCoin - v.bankedCoin;
     if (coin > S.coin) coin = S.coin;

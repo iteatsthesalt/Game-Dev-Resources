@@ -6,7 +6,9 @@
 // Public:
 //   Player.step(S, input)        phase 1. Moves the player at move-speed (less find-weight a find carried and 8% a
 //                                rider, 20% faster while Tolled-for; knockback kx, ky fades; World.pushOut); its
-//                                posture from the steering speed (Dmg.posture with brace-time and stride-share);
+//                                posture from the steering speed (Dmg.posture with brace-time and stride-share)
+//                                against its top speed on dry ground as it stands: move-speed less what the finds and
+//                                the riders take off it, so that under riders a player running flat out strides;
 //                                a heading record every 0.1 s; the class rule's step, then the turn rule (a turn of
 //                                more than turn-limit from a heading of the last 0.5 s, above 30% of top speed,
 //                                lays wrong-footed for 0.5 s, unless the class rule took the turn as its own act);
@@ -150,8 +152,8 @@
   }
 
   Player.turn = function (S, seconds) {
-    const p = S.player;
-    if (!fastNow(p, S.sheet.stats['move-speed'])) return 0;
+    const p = S.player, st = S.sheet.stats;
+    if (!fastNow(p, st['move-speed'] * laden(S, p, st))) return 0;
     return Dmg.turn(p, atan2(p.vy, p.vx), seconds, (S.step % Dmg.SAMPLE) / HZ);
   };
 
@@ -172,12 +174,20 @@
     }
   }
 
+  // What the finds carried and the riders leave of top speed (02-combat.md, sections 7 and 10: each "takes off top
+  // speed"), never under a fifth. Posture and the turn rule measure the player against move-speed times this, its top
+  // speed on dry ground as it stands, so a player running flat out under four riders still strides, and can shed
+  // them onto a large body. Only water slows a body against the unladen number; Tolled-for's 20% is not counted.
+  function laden(S, p, st) {
+    const pace = 1 - S.haul.length * st['find-weight'] / 100 - p.condN[RIDERS] * RIDER_SLOW;
+    return pace < LEAST_PACE ? LEAST_PACE : pace;
+  }
+
   function move(S, p, f, st) {
     let mx = +f.mx || 0, my = +f.my || 0;
     const l2 = mx * mx + my * my;
     if (l2 > 1) { const k = 1 / sqrt(l2); mx *= k; my *= k; }
-    let pace = 1 - S.haul.length * st['find-weight'] / 100 - p.condN[RIDERS] * RIDER_SLOW;
-    if (pace < LEAST_PACE) pace = LEAST_PACE;
+    let pace = laden(S, p, st);
     if (p.condT[REPRIEVE] > 0) pace *= TOLLED_PACE;
     const top = st['move-speed'] * pace;
     p.vx = mx * top;
@@ -205,9 +215,10 @@
   Player.step = function (S, input) {
     const p = S.player;
     if (!p.alive) return;
-    const f = input || Sim.NO_INPUT, st = S.sheet.stats, top = st['move-speed'];
+    const f = input || Sim.NO_INPUT, st = S.sheet.stats;
     timers(S, p);
     move(S, p, f, st);
+    const top = st['move-speed'] * laden(S, p, st);
     Dmg.posture(p, top, st['brace-time'], st['stride-share'] / 100);
     const fast = fastNow(p, top);
     if (S.step % Dmg.SAMPLE === 0) Dmg.record(p, fast ? atan2(p.vy, p.vx) : NaN);

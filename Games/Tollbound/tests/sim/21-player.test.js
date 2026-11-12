@@ -106,6 +106,17 @@ test('posture: still under 15% of top speed, Braced after brace-time, Striding a
   assert.equal(quick.player.pose, POSE.braced);
 });
 
+test('posture under riders: each takes 8% off top speed, and the player is measured against what is left, so flat out it strides', () => {
+  for (let riders = 1; riders <= 5; riders++) {
+    const S = plainRun(), p = S.player;
+    p.condN[CLUNG] = riders;
+    steps(S, 30, frame(1, 0));
+    assert.equal(p.pose, POSE.striding, `${riders} riders: running flat out (${(1 - riders * 0.08) * 100}% of 4.5 m/s) is Striding`);
+    steps(S, 30, frame(0.69, 0));
+    assert.equal(p.pose, POSE.moving, `${riders} riders: and 69% of what is left is not`);
+  }
+});
+
 // ---- the turn rule ----
 
 test('the turn rule: more than turn-limit within 0.5 s above 30% speed wrong-foots for 0.5 s, at once', () => {

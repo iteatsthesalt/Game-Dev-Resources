@@ -13,7 +13,7 @@
 //                            is told, the strokes left are told on its nearest neighbour and count double (the pool's
 //                            customs-33, clean). Hand.
 //   voice  'plumb'           place 3. ring at the mark, a Swell: every 3 s a weight falls on the place where you last
-//                            stood still for half a second, 2.5 m across the circle, filling 1 s; 10% more for each
+//                            stood still for half a second, a circle 2.5 m round it, filling 1 s; 10% more for each
 //                            second the mark has stayed put, to twice (the pool's thumbs-26, clean). Knee, as a voice
 //                            tagged still, so it works at half its harm until Knee reaches 10.
 //   attack 'tenor-stroke', 'tellers', 'plumb'   the shapes of the areas these voices leave (a Blow's ring, a told

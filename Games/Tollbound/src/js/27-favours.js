@@ -217,8 +217,12 @@
     for (let i = 0; i < row.nails.length; i++) {
       if (row.nails[i] > S.toll) continue;
       row.nails.splice(i, 1);
+      // the favours at places 1 and 2 as the nail drops: the first taken closes the row up and swaps its pairs, so
+      // the second is found by its id wherever that left it
+      const second = row.ids[1];
       taken(S, row, 0, p.x, p.y);
-      taken(S, row, 0, p.x, p.y);
+      const at = second === null ? -1 : row.ids.indexOf(second);
+      if (at >= 0) taken(S, row, at, p.x, p.y);
       return;
     }
     if (p.runLevel > row.levels) raise(S, row);

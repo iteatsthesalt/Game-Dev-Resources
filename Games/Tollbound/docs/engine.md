@@ -556,7 +556,7 @@ rate    = voice.rate x V(speed)
 
 **Drag ticks** (section 15.12). `Dmg.tick` runs every 15th step, four times a second: each of the dead whose edge is within 0.1 m of yours presses you for `s.damage x s.press / 4`; each rider on you deals its Drag / 4 (riders on a large dead do the same to it); each Drag zone you stand in (an attack of kind `zone`, or bad ground) its harm a second / 4; each of your Drag voices' zones its harm a second / 4 to every body inside, through the steps of 15.10.
 
-**Posture and the turn rule** (sections 1 and 4). A body's posture comes from its steering speed against its top speed on dry ground: under 15% it is still, and Braced once still for `brace-time` (the dead 0.4 s) until its speed reaches 15% or it is shoved 0.3 m or more; at 15% or more it is moving, and Striding once at `stride-share` (the dead 70%) or more for 0.25 s, until it falls below. A body faster than 30% of its top speed records its heading every 0.1 s; when its heading turns more than its turn limit (the dead 90°, the player `turn-limit`) from any heading of the last 0.5 s, it is Wrong-footed for 0.5 s (keepers 0.25 s) and takes 50% more from all harm (`wrong-foot` against the dead, `wrong-foot-taken` against you). The Change-ringer's pull never wrong-foots the player.
+**Posture and the turn rule** (sections 1 and 4). A body's posture comes from its steering speed against its top speed on dry ground as it stands, less what its riders (8% each) and the player's finds (`find-weight` each) take off it (water, when it comes, slows a body against the unladen number): under 15% it is still, and Braced once still for `brace-time` (the dead 0.4 s) until its speed reaches 15% or it is shoved 0.3 m or more; at 15% or more it is moving, and Striding once at `stride-share` (the dead 70%) or more for 0.25 s, until it falls below. A body faster than 30% of its top speed records its heading every 0.1 s; when its heading turns more than its turn limit (the dead 90°, the player `turn-limit`) from any heading of the last 0.5 s, it is Wrong-footed for 0.5 s (keepers 0.25 s) and takes 50% more from all harm (`wrong-foot` against the dead, `wrong-foot-taken` against you). The Change-ringer's pull never wrong-foots the player.
 
 **Conditions.** `Stats.AILMENTS` lists them, with what T, V and N hold; their rules are section 7 of `02-combat.md`. Every body's condition times run down in `Dmg.step`; while a body is sealed, no other condition on it expires, starts or ends. A condition a voice, knot, favour or class rule lays (`by: 'effect'`) is laid with `Dmg.lay`, which refuses a body the row spares (`small`, `large`, `elite`, `keeper`), one that cannot carry it (`on`), a sealed one and one still immune.
 
@@ -707,7 +707,7 @@ As built (the files' headers have the full contract): `AI` also exports `has`, `
 
 ### 25-boss.js (vigil). Owns: Boss
 
-`Boss.step(S)`, phase 7: the keeper in `S.boss` (the Director spawns it at the keeper's toll and sets `S.boss`): its phases by its life (the Half-muffled Keeper: a full Swell then its echo at 30% 2 s later on the same ground; from 60% the echo first and the full stroke 1.2 s later; from 25% three echoes laid, then their full strokes in reverse order). Its state lives in the keeper's own fields and in a slot of its own if it needs one. Events: `'phase'` (x, y the keeper; a = the phase entered; id = the keeper's id) and `'telegraph'` as above.
+`Boss.step(S)`, phase 7: the keeper in `S.boss` (the Director spawns it at the eighth toll, `keeperToll`, and sets `S.boss`): its phases by its life (the Half-muffled Keeper: a full Swell then its echo at 30% 2 s later on the same ground; from 60% the echo first and the full stroke 1.2 s later; from 25% three echoes laid, then their full strokes in reverse order). Its state lives in the keeper's own fields and in a slot of its own if it needs one. Events: `'phase'` (x, y the keeper; a = the phase entered; id = the keeper's id) and `'telegraph'` as above.
 
 ### 26-director.js (vigil). Owns: Director
 
@@ -748,8 +748,10 @@ Its slot: `Sim.state('row', ...)` = `{ids, raised, levels, shapes, until}`: the 
 Bot.input(S, policy) -> InputFrame       one reused frame a step. Policies: 'still' (does nothing), 'walk' (a slow
                                          circle), 'vigil' (plays the Change-ringer through the Dial: rocks to pull in
                                          crowds, keeps out of filling Swells, stands on wounds to mend, walks into
-                                         favours, rings down at a lychgate after the keeper or when life is low, and
-                                         runs for the far lychgate when Tolled-for)
+                                         favours, fights the keeper close while its life is half or more, rings down
+                                         at a lychgate once the keeper is laid or whenever its life is low, where few
+                                         of the dead stand at the lychgate or its time runs out, and runs for the far
+                                         lychgate when Tolled-for)
 Bot.choose(S, offer) -> index | Command  for an offer that pauses (none in Stage 1)
 ```
 

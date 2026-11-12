@@ -3,7 +3,9 @@
 // page must hold together: the dead rise and fall, Swells of the dead are drawn as areas of team 1 with their
 // warnings, the count is rung and lychgates open, the keeper comes at the eighth toll if the vigil lasts that long,
 // and when the vigil ends the results show. The page then plays the same seed again and must reach the same
-// checksum, so the systems of the vigil run in the page as they do in Node (tests/sim/28-vigil.test.js).
+// checksum, so the systems of the vigil run in the page as they do in Node (tests/sim/28-vigil.test.js). Last, of a
+// few vigils played to twelve minutes the scripted player must leave through a lychgate in one, ringing down, and the
+// results must say so.
 // The function play runs inside the page (see tests/run.js), so it uses only T, TB, its argument and the page.
 'use strict';
 
@@ -51,6 +53,21 @@ const play = async function (seed) {
   const again = Game.start(Object.assign({ zone: 'dial', seed: seed }, Player.classRun('change-ringer')));
   Game.sim(S.t, { bot: true, policy: 'vigil' });
   T.check('the same seed plays the same vigil again', Sim.hash(again) === sum && again.step === S.step, { first: sum, second: Sim.hash(again) });
+  // leaving through a lychgate, as the acceptance of Stage 1 asks: of a few vigils played to twelve minutes, the
+  // scripted player rings down in one at least, banking what it carried, and the results say so
+  let rung = null;
+  for (const s of [4, 2, 9, 10]) {
+    const R = Game.start(Object.assign({ zone: 'dial', seed: s }, Player.classRun('change-ringer')));
+    Game.sim(720, { bot: true, policy: 'vigil' });
+    if (R.result && R.result.outcome === 'left') { rung = R; break; }
+  }
+  T.check('in one of a few vigils the scripted player rings down at a lychgate and banks what it carried', !!rung && rung.bank.coin > 0 && rung.coin === 0,
+    rung && { seed: rung.cfg.seed, t: rung.t, banked: rung.bank.coin, keeper: rung.vigil.keeper });
+  if (rung) {
+    await T.until(() => Game.state === 'results' && UI.top() === 'results', 5000);
+    const shown = document.querySelector('#ui [data-outcome]');
+    T.check('and the results say that it rang down', !!shown && shown.dataset.outcome === 'left', shown && shown.dataset.outcome);
+  }
   Game.title();
   return T.done();
 };

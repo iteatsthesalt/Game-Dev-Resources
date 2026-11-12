@@ -206,6 +206,16 @@ test('Nail in the Candle gives nothing now, and at the second toll after it the 
   assert.equal(S.favours[front[0]], 1);
   assert.equal(S.favours[front[1]], 1);
   assert.deepEqual(plain(S.row.nails), []);
+  // whichever pairs of the row swap next: the first taken closes the row up and swaps it before the second is given
+  for (const turn of [0, 1]) {
+    const T = vigil(sim);
+    sim.Sim.step(T);
+    T.row.nails.push(T.toll);                       // a nail that drops now
+    T.row.turn = turn;
+    const pinned = plain(T.row.ids.slice(0, 2));
+    const given = steps(sim, T, 1, 'favour').map((e) => e.id);
+    assert.deepEqual(given, pinned, `with the pairs of turn ${turn} to swap next, the two pinned at the front are given`);
+  }
 });
 
 test('never a pause: a vigil of many run levels walks through every offer without S.phase leaving play', () => {

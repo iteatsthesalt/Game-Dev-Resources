@@ -206,13 +206,19 @@
   // make() gives a sealed object with every field of the table; reset(o) puts every field back to its default.
   // The first object is built with Object.defineProperty and the rest are copies of it, which keeps all of them
   // in the engine's fast layout whatever the number of fields (plain o[name] = v on a new object does not).
+  // A number field is made holding a fraction and only then given its default, so the engine keeps every number
+  // field as a double from the first. A field that began whole and took a fraction in play (x, t, stateT, ...)
+  // would give every object of the pool a new layout, one field at a time: the code that reads the dead would
+  // then meet a dozen layouts, and box every number it reads.
   function factory(kind) {
     const table = FIELDS[kind], names = Object.keys(table), defaults = names.map((name) => table[name]), n = names.length;
     const template = {}, desc = { value: null, writable: true, enumerable: true, configurable: true };
     for (let i = 0; i < n; i++) {
-      desc.value = typeof defaults[i] === 'function' ? null : defaults[i];
+      const d = defaults[i];
+      desc.value = typeof d === 'function' ? null : typeof d === 'number' ? 0.5 : d;
       Object.defineProperty(template, names[i], desc);
     }
+    for (let i = 0; i < n; i++) if (typeof defaults[i] === 'number') template[names[i]] = defaults[i];
     return {
       make: function () {
         const o = { ...template };

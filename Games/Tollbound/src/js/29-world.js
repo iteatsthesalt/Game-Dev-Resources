@@ -93,33 +93,43 @@
     return n;
   };
 
-  const near = [];               // scratch for pushOut
+  // Scratch for pushOut: the props found, and the place being pushed. The search runs on a probe of its own, the
+  // same shape as the grid's, so that Grid.near meets no shape of entity it would not meet anyway: code that meets
+  // more than four shapes of object boxes every number it reads, which is garbage in a loop over the dead.
+  const near = new Array(256).fill(null), at = { x: 0.5, y: 0.5, r: 0.5 };
 
   World.pushOut = function (S, ent) {
     const region = S.region;
     if (!region) return false;
     let moved = false;
+    at.x = ent.x;
+    at.y = ent.y;
+    at.r = ent.r > 0 ? ent.r : 0;
     for (let pass = 0; pass < 2; pass++) {        // a second pass, in case leaving one collider pushed it into another
-      const n = region.grid.near(ent, 0, near);
+      const n = region.grid.near(at, 0, near);
       let pushed = false;
       for (let i = 0; i < n; i++) {
         const p = near[i];
         if (!(p.r > 0)) continue;
-        const dx = ent.x - p.x, dy = ent.y - p.y, reach = ent.r + p.r, d2 = dx * dx + dy * dy;
+        const dx = at.x - p.x, dy = at.y - p.y, reach = at.r + p.r, d2 = dx * dx + dy * dy;
         if (d2 >= reach * reach) continue;
         const d = sqrt(d2);
-        if (d > 1e-9) { ent.x = p.x + dx / d * reach; ent.y = p.y + dy / d * reach; } else ent.x = p.x + reach;
+        if (d > 1e-9) { at.x = p.x + dx / d * reach; at.y = p.y + dy / d * reach; } else at.x = p.x + reach;
         pushed = true;
       }
       if (!pushed) break;
       moved = true;
     }
-    const dx = ent.x - region.x, dy = ent.y - region.y, most = region.radius - ent.r, d2 = dx * dx + dy * dy;
+    const dx = at.x - region.x, dy = at.y - region.y, most = region.radius - at.r, d2 = dx * dx + dy * dy;
     if (most > 0 && d2 > most * most) {
       const d = sqrt(d2);
-      ent.x = region.x + dx / d * most;
-      ent.y = region.y + dy / d * most;
+      at.x = region.x + dx / d * most;
+      at.y = region.y + dy / d * most;
       moved = true;
+    }
+    if (moved) {
+      ent.x = at.x;
+      ent.y = at.y;
     }
     return moved;
   };

@@ -255,6 +255,24 @@ test('riders: a hanger-on leaps on from 1.5 m; standing still lets another climb
   assert.ok(big.pace < big.speed + 1e-9, 'a body with riders is slower');
 });
 
+test('the whole build: however many riders, a player running flat out strides past a large body and sheds them all', () => {
+  // each rider takes 8% off top speed, and posture is measured against what is left (02-combat.md, sections 1 and
+  // 7): measured against the unladen speed, four riders would take Stride away and with it the one way to shed them
+  const sim = loadSim({ boot: true }), C = sim.Stats.RULE.riders;
+  for (let riders = 1; riders <= 5; riders++) {
+    const cfg = Object.assign({ zone: 'dial', seed: 2 }, sim.Player.classRun('change-ringer'), { voices: [] });
+    const S = sim.Sim.create(cfg), p = S.player;
+    p.condN[C] = riders;
+    p.condV[C] = 0.3;
+    const big = sim.Sim.spawnEnemy(S, 'dial.heavy', p.x + 6, p.y + 0.9, {});
+    big.speed = 0;
+    const flat = { mx: 1, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false };
+    for (let i = 0; i < 150; i++) sim.Sim.step(S, flat);
+    assert.equal(p.condN[C], 0, `${riders} riders: all left the player`);
+    assert.equal(big.condN[C], riders, `${riders} riders: and ride the large body`);
+  }
+});
+
 test('the capped separation spreads a crowd out, and the dead give way to a Braced player', () => {
   const sim = world(), S = run(sim);
   for (let k = 0; k < 40; k++) sim.Sim.spawnEnemy(S, 'test.walker', 8 + (k % 5) * 0.05, (k % 7) * 0.05);

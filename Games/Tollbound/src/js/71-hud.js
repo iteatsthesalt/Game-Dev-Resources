@@ -27,8 +27,9 @@
 // Settings it defines: hud.count, a switch, off: the count after each toll drawn as marks, for play without sound.
 // What it draws, from the run:
 //   the corner block, in the top corner on the stick's side (the touch pause button has the other). The bars are
-//   15 rem wide at most; the row and the count stand under them, or beside them on a screen wider than tall that
-//   has the room, so that on a phone on its side the block stays a strip along the top:
+//   15 rem wide at most; the row and the count stand under them, or beside them on a screen wider than tall (the
+//   bars narrowing to as little as 6 rem to make the room), so that on a phone on its side the block stays a strip
+//   along the top:
 //     the life bar      S.player.life in the class colour (the first colour of its palette, lifted towards bone if it
 //                       is too dark to read); after it the life lying in open wounds (S.wounds.life), a pale segment
 //                       for each, the newest first, greying as it nears its scar and lit along its top while it is
@@ -50,8 +51,9 @@
 //                     at the edge (the right for the first, then the bottom, then the left) and after a toll a mark at
 //                     the top: bright for the 8 s of 'after-quarter', faint until the next toll clears them
 //   the lychgate      the open S.gate: off screen, a marker at the edge towards it, its time left running down round
-//                     it; the far lychgate of Tolled-for lit (and, in a build whose scene does not light it, marked
-//                     over the gate itself while it is on screen)
+//                     it, slid along the edge clear of the corner block, of the touch controls shown (buttons A and B,
+//                     the pause button, the stick's home) and of the trade's disc; the far lychgate of Tolled-for lit
+//                     (and, in a build whose scene does not light it, marked over the gate itself while on screen)
 //   Tolled-for        while the player carries the row tolled-for, the screen grey: the scene greys the world itself
 //                     (68-scene.js, the view's post.grey, keeping what glows in colour, the far lychgate among it),
 //                     and only a build without that has this file lay a grey of its own under the HUD (a backdrop
@@ -120,7 +122,13 @@
     dx: 0, dy: 0, dr: 0, x0: 0, y0: 0, x1: 0, y1: 0, corner: 0, ringLen: 0, tick: 0, pointer: 0, keyFont: '',
   };
   let ringPath = null;
-  const dash = [0, 0], spot = { x: 0, y: 0 };
+  const dash = [0, 0], spot = { x: 0, y: 0 }, mark = { x: 0, y: 0 };
+  // the touch controls the lychgate's marker keeps clear of: buttons A and B, the pause button and the stick's home,
+  // as boxes in CSS px from the HUD's corner, read when the HUD lays itself out (the controls have laid themselves
+  // out by then), with the element whose hidden says whether each shows now
+  const KEEP_SEL = ['.tc-a', '.tc-b', '.tc-pause', '.tc-base'], keepEl = new Array(KEEP_SEL.length).fill(null);
+  const keepBox = new Float64Array(KEEP_SEL.length * 4);
+  let keepN = 0, touchSeen = false, keepStale = false;
 
   // ---- the run, as last read ----
 
@@ -197,6 +205,24 @@
     safe.r = max(0, lb.right - pb.right);
     safe.b = max(0, lb.bottom - pb.bottom);
     safe.l = max(0, pb.left - lb.left);
+    keepN = 0;
+    keepStale = false;
+    touchSeen = !!touchRoot && !touchRoot.hidden;
+    for (let i = 0; touchSeen && i < KEEP_SEL.length; i++) {
+      const el = touchRoot.querySelector(KEEP_SEL[i]);
+      if (el && el.tagName !== 'BUTTON' && touchRoot.classList.contains('is-held')) {
+        keepStale = true;                          // the thumb has the stick away from its home: read it once let go
+        continue;
+      }
+      const b = el ? el.getBoundingClientRect() : null;
+      if (!b || !(b.width > 0)) continue;
+      keepEl[keepN] = el.tagName === 'BUTTON' ? el : touchRoot;   // the stick's base shows whenever the controls do
+      keepBox[keepN * 4] = b.left - lb.left;
+      keepBox[keepN * 4 + 1] = b.top - lb.top;
+      keepBox[keepN * 4 + 2] = b.right - lb.left;
+      keepBox[keepN * 4 + 3] = b.bottom - lb.top;
+      keepN++;
+    }
     mirror = setting('input.hand', 'right') === 'left';
     still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     fpsRoom = Plat.query('fps') === '1' ? round(1.7 * rem) : 0;
@@ -214,6 +240,9 @@
     L.raise = max(4, round(0.34 * rem));
     L.bw = round(max(6 * rem, min(15 * rem, room)));
     const rowW = ROW * (L.icon + L.gap) - L.gap, apart = round(1.1 * rem);
+    // a screen wider than tall keeps the row beside the bars, narrowing them as far as 6 rem if it must: stacked, the
+    // block of a small phone on its side reaches down to the player's head
+    if (W > H && L.bw + apart + rowW > room && room - apart - rowW >= 6 * rem) L.bw = floor(room - apart - rowW);
     L.beside = W > H && L.bw + apart + rowW <= room;
     L.blockW = L.beside ? L.bw + apart + rowW : max(L.bw, rowW);
     L.bx = mirror ? W - edge.r - L.blockW : edge.l;
@@ -705,7 +734,65 @@
     if (now.tollMark) tick(cx, L.y0, 0, 1, now.tollBright);
   }
 
-  // The open lychgate: on screen only the far one is marked, over the gate; off screen a marker at the edge points at it.
+  // Where on the edge of the box [x0, x1] x [y0, y1] a marker at (x, y) goes so that a disc of reach round it clears
+  // the corner block, every touch control shown and the trade's disc: the edge is walked as one line, clockwise from
+  // the top left corner; each of those boxes closes the stretches of it where the marker would meet it, and the
+  // marker moves to the nearest point left open, or stays where it was when none is. Into mark.
+  const shut = new Float64Array(64);               // the closed stretches, [from, to] in pairs
+  function along(x, y, w, h, x0, x1, y0, y1) {     // the place on the edge nearest (x, y), as a length along it
+    const dt = abs(y - y0), dr = abs(x1 - x), db = abs(y1 - y), dl = abs(x - x0), m = min(dt, dr, db, dl);
+    if (m === dt) return clamp(x, x0, x1) - x0;
+    if (m === dr) return w + clamp(y, y0, y1) - y0;
+    if (m === db) return w + h + x1 - clamp(x, x0, x1);
+    return 2 * w + h + y1 - clamp(y, y0, y1);
+  }
+  function close(n, a, b) { shut[n] = a; shut[n + 1] = b; return n + 2; }
+  function open(s, n) {                            // is s in none of the n / 2 stretches closed?
+    for (let i = 0; i < n; i += 2) if (s > shut[i] && s < shut[i + 1]) return false;
+    return true;
+  }
+  function clearOf(x, y, reach, x0, x1, y0, y1) {
+    mark.x = x;
+    mark.y = y;
+    const w = x1 - x0, h = y1 - y0, P = 2 * (w + h);
+    if (!(w > 0 && h > 0)) return;
+    let n = 0;
+    for (let k = 0; k <= keepN + 1; k++) {
+      let l, t, r, b;
+      if (k < keepN) {
+        if (keepEl[k].hidden) continue;
+        l = keepBox[k * 4]; t = keepBox[k * 4 + 1]; r = keepBox[k * 4 + 2]; b = keepBox[k * 4 + 3];
+      } else if (k === keepN) {
+        if (!now.disc) continue;
+        l = L.dx - L.dr; t = L.dy - L.dr; r = L.dx + L.dr; b = L.dy + L.dr;
+      } else {
+        l = L.bx; t = L.by; r = L.bx + L.blockW; b = L.by + L.bh;
+      }
+      l -= reach; t -= reach; r += reach; b += reach;
+      const xa = max(l, x0), xb = min(r, x1), ya = max(t, y0), yb = min(b, y1);
+      if (n + 8 > shut.length) break;
+      if (t < y0 && b > y0 && xa < xb) n = close(n, xa - x0, xb - x0);                          // the top
+      if (l < x1 && r > x1 && ya < yb) n = close(n, w + ya - y0, w + yb - y0);                  // the right
+      if (t < y1 && b > y1 && xa < xb) n = close(n, w + h + x1 - xb, w + h + x1 - xa);          // the bottom
+      if (l < x0 && r > x0 && ya < yb) n = close(n, 2 * w + h + y1 - yb, 2 * w + h + y1 - ya);  // the left
+    }
+    const s0 = along(x, y, w, h, x0, x1, y0, y1);
+    if (open(s0, n)) return;
+    let best = -1, far = Infinity;
+    for (let i = 0; i < n; i++) {                    // each end of each stretch, just outside it
+      const s = Core.mod(i & 1 ? shut[i] + 0.5 : shut[i] - 0.5, P);
+      if (!open(s, n)) continue;
+      const d = abs(s - s0), around = min(d, P - d);
+      if (around < far) { far = around; best = s; }
+    }
+    if (best < 0) return;                            // the whole edge is taken: it stays where it was
+    if (best <= w) { mark.x = x0 + best; mark.y = y0; } else if (best <= w + h) { mark.x = x1; mark.y = y0 + best - w; } else if (best <= 2 * w + h) {
+      mark.x = x1 - (best - w - h); mark.y = y1;
+    } else { mark.x = x0; mark.y = y1 - (best - 2 * w - h); }
+  }
+
+  // The open lychgate: on screen only the far one is marked, over the gate; off screen a marker at the edge points at it,
+  // clear of the corner block and of the touch controls.
   function drawGate(S) {
     const g = S.gate, st = stats.gate;
     st.shown = false;
@@ -725,7 +812,9 @@
       const t = min(dx !== 0 ? abs((dx > 0 ? x1 - cx : x0 - cx) / dx) : Infinity, dy !== 0 ? abs((dy > 0 ? y1 - cy : y0 - cy) / dy) : Infinity);
       x = cx + dx * t;
       y = cy + dy * t;
-      if (x < L.bx + L.blockW + r && x > L.bx - r && y < L.by + L.bh + r) y = L.by + L.bh + r;   // clear of the corner block
+      clearOf(x, y, r + max(6, round(0.55 * rem)) + 4, x0, x1, y0, y1);   // clear of the block and of the controls
+      x = mark.x;
+      y = mark.y;
       a = Math.atan2(dy, dx);
     }
     if (now.far && !still) {                         // lit: a soft glow that breathes
@@ -936,6 +1025,9 @@
 
   function frame(S, alpha, dt) {
     if (!ctx) return;
+    // the touch controls came or went, or let the stick go home: where they stand is read again
+    const touchNow = !!touchRoot && !touchRoot.hidden;
+    if (touchNow !== touchSeen || (keepStale && !touchRoot.classList.contains('is-held'))) wantLayout = true;
     if (wantLayout) layout();
     if (!S || Game.state !== 'run') {
       if (stats.shown || run !== null) hide();

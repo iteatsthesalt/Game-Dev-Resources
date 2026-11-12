@@ -2655,7 +2655,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                               stand in (an area of team 1 whose def's kind is 'zone') deals damage / 4; each area
 //                               of a voice with a tick above 0 strikes every dead body inside it with part = tick.
 //   Dmg.step(S)                 phase 5: every body's condition times (a seal holds every other one still), then
-//                               the dead's postures from their steering velocity, their turn rule (headings every
+//                               the dead's postures from their steering velocity against their top speed on dry
+//                               ground as it stands (their def's, less 8% a rider), their turn rule (headings every
 //                               0.1 s), Sounded and Coiled on the large dead, and a body going over at full swing.
 //                               Tolled-for that runs out ends the run 'died'.
 //   Dmg.inLee(S, sx, sy, body, reach) -> boolean
@@ -2726,6 +2727,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   const SWING_UP = 120, SWING_DOWN = 60;    // degrees off the last Blow that add one, or take one away
   const OVER = 4, OVER_KEEPER = 1, OVER_REACH = 1, OVER_HARM = 0.1, OVER_PLAYER = 2;   // going over
   const KEEPER_SHOVE = 0.25;     // keepers are shoved a quarter as far by a voice
+  const RIDER_SLOW = 0.08;       // each rider takes 8% off a body's top speed (clung; 22-enemies.js slows it so)
   const TOLL_BLOW = 1, TOLL_TICK = 0.25;    // seconds of Tolled-for a Blow or Swell, and a Drag tick, take
   const WARN_PER_HEED = 0.01, WARN_MOST = 1;
   const FLASH_FALL = 6;          // a body's flash fades in a sixth of a second
@@ -2947,11 +2949,18 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   }
   Dmg.record = record;
 
+  // A dead body's top speed on dry ground as it stands: its def's, less what its riders take off it. Its posture and
+  // its turn rule measure it against this, as the player's do (21-player.js).
+  function topOf(b) {
+    const n = b.condN[RIDERS];
+    return n > 0 ? b.speed * (1 - RIDER_SLOW * n) : b.speed;
+  }
+
   // The dead's turn rule, on the steps that record headings: a body above 30% of its top speed whose heading now
   // is more than 90 degrees from one of the last 0.5 s is Wrong-footed (0.5 s, keepers 0.25 s) unless it already
   // is. The record moves on whatever the speed, so a slow body's old headings age out.
   function footing(S, b) {
-    const top = b.speed, v2 = b.vx * b.vx + b.vy * b.vy, fast = top > 0 && v2 > FAST_SHARE * FAST_SHARE * top * top;
+    const top = topOf(b), v2 = b.vx * b.vx + b.vy * b.vy, fast = top > 0 && v2 > FAST_SHARE * FAST_SHARE * top * top;
     let h = NaN;
     if (fast) {
       h = atan2(b.vy, b.vx);
@@ -3346,7 +3355,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       if (!e.alive) continue;
       times(S, e);
       if (e.flash > 0) e.flash = e.flash > FLASH_FALL * DT ? e.flash - FLASH_FALL * DT : 0;
-      posture(e, e.speed, BRACE_DEAD, STRIDE_DEAD);
+      posture(e, topOf(e), BRACE_DEAD, STRIDE_DEAD);
       if (sample) footing(S, e);
       if (e.condT[SEALED] > 0 || !(e.life > 0)) continue;
       if (large(e) && p.alive) {
@@ -3568,13 +3577,19 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   // make() gives a sealed object with every field of the table; reset(o) puts every field back to its default.
   // The first object is built with Object.defineProperty and the rest are copies of it, which keeps all of them
   // in the engine's fast layout whatever the number of fields (plain o[name] = v on a new object does not).
+  // A number field is made holding a fraction and only then given its default, so the engine keeps every number
+  // field as a double from the first. A field that began whole and took a fraction in play (x, t, stateT, ...)
+  // would give every object of the pool a new layout, one field at a time: the code that reads the dead would
+  // then meet a dozen layouts, and box every number it reads.
   function factory(kind) {
     const table = FIELDS[kind], names = Object.keys(table), defaults = names.map((name) => table[name]), n = names.length;
     const template = {}, desc = { value: null, writable: true, enumerable: true, configurable: true };
     for (let i = 0; i < n; i++) {
-      desc.value = typeof defaults[i] === 'function' ? null : defaults[i];
+      const d = defaults[i];
+      desc.value = typeof d === 'function' ? null : typeof d === 'number' ? 0.5 : d;
       Object.defineProperty(template, names[i], desc);
     }
+    for (let i = 0; i < n; i++) if (typeof defaults[i] === 'number') template[names[i]] = defaults[i];
     return {
       make: function () {
         const o = { ...template };
@@ -3985,7 +4000,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 // Public:
 //   Player.step(S, input)        phase 1. Moves the player at move-speed (less find-weight a find carried and 8% a
 //                                rider, 20% faster while Tolled-for; knockback kx, ky fades; World.pushOut); its
-//                                posture from the steering speed (Dmg.posture with brace-time and stride-share);
+//                                posture from the steering speed (Dmg.posture with brace-time and stride-share)
+//                                against its top speed on dry ground as it stands: move-speed less what the finds and
+//                                the riders take off it, so that under riders a player running flat out strides;
 //                                a heading record every 0.1 s; the class rule's step, then the turn rule (a turn of
 //                                more than turn-limit from a heading of the last 0.5 s, above 30% of top speed,
 //                                lays wrong-footed for 0.5 s, unless the class rule took the turn as its own act);
@@ -4129,8 +4146,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   }
 
   Player.turn = function (S, seconds) {
-    const p = S.player;
-    if (!fastNow(p, S.sheet.stats['move-speed'])) return 0;
+    const p = S.player, st = S.sheet.stats;
+    if (!fastNow(p, st['move-speed'] * laden(S, p, st))) return 0;
     return Dmg.turn(p, atan2(p.vy, p.vx), seconds, (S.step % Dmg.SAMPLE) / HZ);
   };
 
@@ -4151,12 +4168,20 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     }
   }
 
+  // What the finds carried and the riders leave of top speed (02-combat.md, sections 7 and 10: each "takes off top
+  // speed"), never under a fifth. Posture and the turn rule measure the player against move-speed times this, its top
+  // speed on dry ground as it stands, so a player running flat out under four riders still strides, and can shed
+  // them onto a large body. Only water slows a body against the unladen number; Tolled-for's 20% is not counted.
+  function laden(S, p, st) {
+    const pace = 1 - S.haul.length * st['find-weight'] / 100 - p.condN[RIDERS] * RIDER_SLOW;
+    return pace < LEAST_PACE ? LEAST_PACE : pace;
+  }
+
   function move(S, p, f, st) {
     let mx = +f.mx || 0, my = +f.my || 0;
     const l2 = mx * mx + my * my;
     if (l2 > 1) { const k = 1 / sqrt(l2); mx *= k; my *= k; }
-    let pace = 1 - S.haul.length * st['find-weight'] / 100 - p.condN[RIDERS] * RIDER_SLOW;
-    if (pace < LEAST_PACE) pace = LEAST_PACE;
+    let pace = laden(S, p, st);
     if (p.condT[REPRIEVE] > 0) pace *= TOLLED_PACE;
     const top = st['move-speed'] * pace;
     p.vx = mx * top;
@@ -4184,9 +4209,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   Player.step = function (S, input) {
     const p = S.player;
     if (!p.alive) return;
-    const f = input || Sim.NO_INPUT, st = S.sheet.stats, top = st['move-speed'];
+    const f = input || Sim.NO_INPUT, st = S.sheet.stats;
     timers(S, p);
     move(S, p, f, st);
+    const top = st['move-speed'] * laden(S, p, st);
     Dmg.posture(p, top, st['brace-time'], st['stride-share'] / 100);
     const fast = fastNow(p, top);
     if (S.step % Dmg.SAMPLE === 0) Dmg.record(p, fast ? atan2(p.vy, p.vx) : NaN);
@@ -6301,7 +6327,6 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       } else if (there && !tolled) {
         if (S.gate.ring === 0) { v.ringCoin = S.coin; v.ringFinds = S.haul.length; v.bankedCoin = 0; v.bankedFinds = 0; }
         S.gate.ring += DT;
-        v.rung = true;
         const due = Math.min(R.ringStrokes, floor(S.gate.ring / R.strokeSeconds + SLIVER));
         while (S.gate.strokes < due && S.phase === 'play') stroke(S, v, S.gate);
       } else if (S.gate.ring > 0) {
@@ -6323,6 +6348,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 
   function stroke(S, v, g) {
     const R = S.rules, k = ++g.strokes, last = k >= R.ringStrokes;
+    v.rung = true;                                 // a stroke rung at it: no lychgate passed, for Pass the Gate
     const wantCoin = last ? v.ringCoin : floor(v.ringCoin * k / R.ringStrokes + SLIVER);   // coin is banked whole
     let coin = wantCoin - v.bankedCoin;
     if (coin > S.coin) coin = S.coin;
@@ -6854,8 +6880,12 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     for (let i = 0; i < row.nails.length; i++) {
       if (row.nails[i] > S.toll) continue;
       row.nails.splice(i, 1);
+      // the favours at places 1 and 2 as the nail drops: the first taken closes the row up and swaps its pairs, so
+      // the second is found by its id wherever that left it
+      const second = row.ids[1];
       taken(S, row, 0, p.x, p.y);
-      taken(S, row, 0, p.x, p.y);
+      const at = second === null ? -1 : row.ids.indexOf(second);
+      if (at >= 0) taken(S, row, at, p.x, p.y);
       return;
     }
     if (p.runLevel > row.levels) raise(S, row);
@@ -6869,11 +6899,15 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //     'still'    does nothing
 //     'walk'     a slow circle, about 11 m across (0.6 of top speed, turning half a radian a second)
 //     'vigil'    plays the Change-ringer through the Dial. In order of need, each step: Tolled-for, it runs for the
-//                far lychgate; it steps out of a Swell of the dead about to land on it (only while it stands in one);
-//                it rings down at an open lychgate once the keeper is laid, or when its life is low after the keeper's
-//                coming, and otherwise keeps out of an open lychgate (standing in one would ring it down); it walks
-//                into the favour it likes best of those standing; unless Braced and well, it steps out of the arc of
-//                a large body near the end of a Blow's wind-up; then it fights:
+//                far lychgate; it steps out of a Swell of the dead about to land on it (only while it stands in one,
+//                never into an open lychgate, and, ringing down, only from Swells worth 60% of its life or more all
+//                told);
+//                it rings down at an open lychgate once the keeper is laid, or whenever its life is under 30% and it
+//                can reach the lychgate before it closes: at a lychgate where at most two of the dead stand within
+//                3 m (its voices fall silent stroke by stroke, so it clears the place first), or with less than 9 s
+//                left on it, and once begun it rings to the end; otherwise it keeps out of an open lychgate (standing
+//                in one would ring it down); it walks into the favour it likes best of those standing; unless Braced
+//                and well, it steps out of the arc of a large body near the end of a Blow's wind-up; then it fights:
 //                  shed   with riders on it, it strides close past the nearest large body (not the keeper), so that
 //                         they move onto it
 //                  hold   it stands: Braced, so the crowd's Blows land at half and every wound within reach mends; it
@@ -6885,17 +6919,19 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                         0.75 s (2.5 s in a thick crowd), then a stand again
 //                  break  out the thin way for 1 s when the crowd is too thick to stand in
 //                  kite   with nothing near, a round of the plaza 13 m out, until the dead come
-//                With the keeper up and few of the dead near, it goes to the keeper and fights it close, within the
-//                ring but not pressed against it. Whatever it does, it turns aside from the ground of a Swell about
-//                to land and from pressing against the keeper.
+//                With the keeper up, while its life is half or more (or whatever it is, with few of the dead near),
+//                it goes to the keeper and fights it close, within the ring but not pressed against it: there it rocks
+//                without a stand, every reversal a pull that rings on the keeper, and presses the trade, Set, whenever
+//                it is ready. Whatever it does, it turns aside from the ground of a Swell about to land and from
+//                pressing against the keeper.
 //   Bot.choose(S, offer) -> index            for an offer that pauses (none in Stage 1): the first option
 //
 // Its memory lives in S.bot = {frame, mode, modeT, flick, flickT, round, aim, set, why}: the frame it hands out, what
 // it is doing ('hold', 'rock', 'break', 'shed', 'kite') and for how long, the sign and age of the present flick, which
 // way round the plaza it walks (1 sunwise), the direction it last chose, whether it has pressed the trade for this
-// stand, and why it last moved (a word, for whoever studies it). It reads only the run (S.player, S.wounds, S.gate,
-// S.boss, S.vigil, S.areas, S.pickups, S.grid) and draws from no stream of the run, so it never changes what the run
-// itself would draw.
+// stand, and why it last moved (a word, for whoever studies it; 'ring' also tells it that it has begun to ring down).
+// It reads only the run (S.player, S.wounds, S.gate, S.boss, S.vigil, S.areas, S.pickups, S.grid) and draws from no
+// stream of the run, so it never changes what the run itself would draw.
 (function () {
   'use strict';
 
@@ -6907,6 +6943,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   const SET_TIME = 1.8, ROCK_BURST = 0.75, ROCK_MOST = 2.5, BREAK_TIME = 1, KITE_LEAST = 1.5, SEEK_AFTER = 5;   // seconds
   const RING = 2.6, CROWD_TOO_THICK = 9, PRESSED = 3, KEEPER_OFF = 0.6, KEEPER_NEAR = 1.6, SHED_FAR = 40, CLINGER_NEAR = 3.4;
   const RING_DOWN_LOW = 0.3, MEND_BELOW = 0.95, MEND_CLEAR = 4, MEND_REACH = 14, STEP_BACK = 4, OLD = 30;
+  const KEEPER_FIGHT = 0.5, GATE_PACE = 0.8;       // shares: of greatest life to fight the keeper on; of top speed to a lychgate
+  const RING_TAKES = 0.6;                          // ringing down, it stands under Swells worth less than this share of its life
+  const RING_WAIT = 9;                             // seconds left on a lychgate below which it rings down whatever the crowd
+  const GATE_CLEAR = 3, RING_FEW = 2;              // metres round a lychgate, and the most dead there, for it to be clear
   const SWELL_MARGIN = 0.6, SWELL_SOON = 1.1, DODGE_BELOW = 0.5;
   const LIKED = {                                   // what it prefers among the favours raised (unlisted: 1)
     'arval-bread': 9, 'laying-out': 9, 'bellmans-walk': 8, 'ringers-jug': 8, 'mourning-hatband': 7, 'crape-on-the-door': 7,
@@ -6940,25 +6980,33 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return k;
   }
 
-  // Is (x, y) inside a Swell of the dead that lands within soon seconds (grown by margin)?
-  function swellAt(S, x, y, margin, soon) {
-    const areas = S.areas, items = areas.items;
-    for (let i = 0; i < areas.n; i++) {
-      const a = items[i];
-      if (!a.alive || a.team !== 1 || a.def === null || a.def.type !== 'swell' || a.state === 2 || a.ttl > soon) continue;
-      const A = a.def, dx = x - a.x, dy = y - a.y;
-      if (A.shape === 'line') {
-        const c = cos(a.angle), s = sin(a.angle), along = dx * c + dy * s, across = -dx * s + dy * c;
-        if (along >= -margin && along <= a.len + margin && abs(across) <= a.r + margin) return a;
-        continue;
-      }
-      const reach = a.r + margin, d2 = dx * dx + dy * dy;
-      if (d2 > reach * reach) continue;
-      if ((A.shape === 'wedge' || A.shape === 'arc') && d2 > margin * margin &&
-        abs(Core.angleDiff(a.angle, atan2(dy, dx))) > A.angle / 2 + 0.25) continue;
-      return a;
+  // Is the area a a Swell of the dead that lands on (x, y) within soon seconds (its ground grown by margin)?
+  function lands(a, x, y, margin, soon) {
+    if (!a.alive || a.team !== 1 || a.def === null || a.def.type !== 'swell' || a.state === 2 || a.ttl > soon) return false;
+    const A = a.def, dx = x - a.x, dy = y - a.y;
+    if (A.shape === 'line') {
+      const c = cos(a.angle), s = sin(a.angle), along = dx * c + dy * s, across = -dx * s + dy * c;
+      return along >= -margin && along <= a.len + margin && abs(across) <= a.r + margin;
     }
+    const reach = a.r + margin, d2 = dx * dx + dy * dy;
+    if (d2 > reach * reach) return false;
+    return !((A.shape === 'wedge' || A.shape === 'arc') && d2 > margin * margin &&
+      abs(Core.angleDiff(a.angle, atan2(dy, dx))) > A.angle / 2 + 0.25);
+  }
+
+  // the first Swell of the dead that lands on (x, y) within soon seconds, or null
+  function swellAt(S, x, y, margin, soon) {
+    const items = S.areas.items;
+    for (let i = 0; i < S.areas.n; i++) if (lands(items[i], x, y, margin, soon)) return items[i];
     return null;
+  }
+
+  // the damage of every Swell of the dead that lands on (x, y) within soon seconds, all told
+  function swellHarm(S, x, y, margin, soon) {
+    const items = S.areas.items;
+    let sum = 0;
+    for (let i = 0; i < S.areas.n; i++) if (lands(items[i], x, y, margin, soon)) sum += items[i].damage;
+    return sum;
   }
 
   // the way out of the Swell a: away from its centre, or sideways out of a wedge or a lane
@@ -7051,18 +7099,36 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       steer(S, b, f, dir.x, dir.y, 1);
       return;
     }
-    // out of a Swell about to land
+    // out of a Swell about to land; but ringing down, it takes what it can live through rather than be driven out and
+    // ring all six strokes again: every Swell about to land on it, together (two can land a breath apart)
     const swell = swellAt(S, p.x, p.y, SWELL_MARGIN, SWELL_SOON);
-    if (swell !== null) {                          // only as long as it stands in it: then back to what it was doing
+    const ringing = gate !== null && !gate.far && gate.ring > 0 && b.why === 'ring';   // it chose to, the step before
+    if (swell !== null && !(ringing && swellHarm(S, p.x, p.y, SWELL_MARGIN, SWELL_SOON) < p.life * RING_TAKES)) {
       b.why = 'swell';
       escape(S, swell, dir);
+      if (gate !== null && !gate.far && !ringing) {   // and not into an open lychgate, which would ring it down
+        const r = S.rules.gateRadius + 0.6, gx = gate.x - p.x, gy = gate.y - p.y, ax = gx - dir.x * 1.2, ay = gy - dir.y * 1.2;
+        if (ax * ax + ay * ay < r * r) {
+          const x = dir.x;
+          if (dir.x * gy - dir.y * gx > 0) { dir.x = dir.y; dir.y = -x; } else { dir.x = -dir.y; dir.y = x; }
+        }
+      }
       f.mx = dir.x;
       f.my = dir.y;
       return;
     }
-    // ring down once the keeper is laid; before that only when life is low past the keeper's coming
+    // Ringing down: once the keeper is laid, or when life runs low, at a lychgate where few of the dead stand (its
+    // voices fall silent stroke by stroke, so it clears the place first), or with the lychgate's time running out;
+    // when low, only at one it can reach before it closes. Once begun, it rings to the end.
     const laid = S.vigil && S.vigil.keeper === 2;
-    if (gate && !gate.far && (laid || (life < RING_DOWN_LOW && S.toll >= S.rules.keeperToll))) {
+    let ring = false;
+    if (gate !== null && !gate.far) {
+      const clear = crowd(S, gate.x, gate.y, GATE_CLEAR) <= RING_FEW, late = gate.until - S.t < RING_WAIT;
+      if (ringing) ring = true;
+      else if (laid) ring = clear || late;
+      else ring = life < RING_DOWN_LOW && inTime(S, gate) && (clear || late);
+    }
+    if (ring) {
       b.why = 'ring';
       const d = toward(S, gate.x, gate.y, dir), r = S.rules.gateRadius;
       if (d > r * 0.5) steer(S, b, f, dir.x, dir.y, d > 2 ? 1 : 0.5);
@@ -7092,6 +7158,13 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     }
     b.why = b.mode;
     fight(S, b, f, life);
+  }
+
+  // whether the open lychgate g can be reached before it closes, at most of the player's top speed through the crowd
+  function inTime(S, g) {
+    if (g.ring > 0) return true;
+    const p = S.player, speed = (S.sheet ? S.sheet.stats['move-speed'] : 4.5) * GATE_PACE;
+    return S.t + Core.dist(p.x, p.y, g.x, g.y) / speed < g.until;
   }
 
   // a large body near the end of a Blow's wind-up with the player in reach of it: the way out, into out
@@ -7192,10 +7265,24 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       }
     }
     if (b.mode === 'shed') mode(b, 'hold');
-    // the keeper is fought close, within the ring: with few of the dead about, it goes to it
-    if (S.boss && S.boss.alive && close <= 1 && b.mode !== 'break' && b.mode !== 'rock') {
-      const d = toward(S, S.boss.x, S.boss.y, dir);
-      if (d > S.boss.r + KEEPER_NEAR) { b.why = 'keeper'; mode(b, 'hold'); steer(S, b, f, dir.x, dir.y, 0.8); b.modeT = 0; return; }
+    // the keeper is fought close, within the ring of its first voice: it goes to it while strong enough (or with few
+    // of the dead about), and there it rocks, every reversal a pull that rings on the keeper, setting the bell by the
+    // trade whenever it can; below its strength it keeps to the crowd and its wounds
+    const boss = S.boss && S.boss.alive ? S.boss : null;
+    if (boss && b.mode !== 'break' && (close <= 1 || life >= KEEPER_FIGHT)) {
+      const d = toward(S, boss.x, boss.y, dir);
+      if (d > boss.r + KEEPER_NEAR) {
+        if (b.mode !== 'rock') { b.why = 'keeper'; mode(b, 'hold'); steer(S, b, f, dir.x, dir.y, 0.8); b.modeT = 0; return; }
+      } else if (life >= KEEPER_FIGHT && thick < CROWD_TOO_THICK) {
+        if (b.mode !== 'rock') {
+          mode(b, 'rock');
+          b.aim = atan2(dir.y, dir.x) + PI / 2;     // across the line to the keeper: the rocking keeps its distance
+          b.flickT = FLICK >> 1;
+        }
+        b.modeT = 0;
+        b.why = 'keeper';
+        if (typeof p.tradeCd === 'number' && p.tradeCd <= 0 && !p.setBell) f.trade = true;
+      }
     }
     if (b.mode === 'break') {
       if (b.modeT < BREAK_TIME) { steer(S, b, f, cos(b.aim), sin(b.aim), 1); return; }
@@ -7358,33 +7445,43 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return n;
   };
 
-  const near = [];               // scratch for pushOut
+  // Scratch for pushOut: the props found, and the place being pushed. The search runs on a probe of its own, the
+  // same shape as the grid's, so that Grid.near meets no shape of entity it would not meet anyway: code that meets
+  // more than four shapes of object boxes every number it reads, which is garbage in a loop over the dead.
+  const near = new Array(256).fill(null), at = { x: 0.5, y: 0.5, r: 0.5 };
 
   World.pushOut = function (S, ent) {
     const region = S.region;
     if (!region) return false;
     let moved = false;
+    at.x = ent.x;
+    at.y = ent.y;
+    at.r = ent.r > 0 ? ent.r : 0;
     for (let pass = 0; pass < 2; pass++) {        // a second pass, in case leaving one collider pushed it into another
-      const n = region.grid.near(ent, 0, near);
+      const n = region.grid.near(at, 0, near);
       let pushed = false;
       for (let i = 0; i < n; i++) {
         const p = near[i];
         if (!(p.r > 0)) continue;
-        const dx = ent.x - p.x, dy = ent.y - p.y, reach = ent.r + p.r, d2 = dx * dx + dy * dy;
+        const dx = at.x - p.x, dy = at.y - p.y, reach = at.r + p.r, d2 = dx * dx + dy * dy;
         if (d2 >= reach * reach) continue;
         const d = sqrt(d2);
-        if (d > 1e-9) { ent.x = p.x + dx / d * reach; ent.y = p.y + dy / d * reach; } else ent.x = p.x + reach;
+        if (d > 1e-9) { at.x = p.x + dx / d * reach; at.y = p.y + dy / d * reach; } else at.x = p.x + reach;
         pushed = true;
       }
       if (!pushed) break;
       moved = true;
     }
-    const dx = ent.x - region.x, dy = ent.y - region.y, most = region.radius - ent.r, d2 = dx * dx + dy * dy;
+    const dx = at.x - region.x, dy = at.y - region.y, most = region.radius - at.r, d2 = dx * dx + dy * dy;
     if (most > 0 && d2 > most * most) {
       const d = sqrt(d2);
-      ent.x = region.x + dx / d * most;
-      ent.y = region.y + dy / d * most;
+      at.x = region.x + dx / d * most;
+      at.y = region.y + dy / d * most;
       moved = true;
+    }
+    if (moved) {
+      ent.x = at.x;
+      ent.y = at.y;
     }
     return moved;
   };
@@ -7558,7 +7655,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                            is told, the strokes left are told on its nearest neighbour and count double (the pool's
 //                            customs-33, clean). Hand.
 //   voice  'plumb'           place 3. ring at the mark, a Swell: every 3 s a weight falls on the place where you last
-//                            stood still for half a second, 2.5 m across the circle, filling 1 s; 10% more for each
+//                            stood still for half a second, a circle 2.5 m round it, filling 1 s; 10% more for each
 //                            second the mark has stayed put, to twice (the pool's thumbs-26, clean). Knee, as a voice
 //                            tagged still, so it works at half its harm until Knee reaches 10.
 //   attack 'tenor-stroke', 'tellers', 'plumb'   the shapes of the areas these voices leave (a Blow's ring, a told
@@ -19112,8 +19209,9 @@ void main() {
 // Settings it defines: hud.count, a switch, off: the count after each toll drawn as marks, for play without sound.
 // What it draws, from the run:
 //   the corner block, in the top corner on the stick's side (the touch pause button has the other). The bars are
-//   15 rem wide at most; the row and the count stand under them, or beside them on a screen wider than tall that
-//   has the room, so that on a phone on its side the block stays a strip along the top:
+//   15 rem wide at most; the row and the count stand under them, or beside them on a screen wider than tall (the
+//   bars narrowing to as little as 6 rem to make the room), so that on a phone on its side the block stays a strip
+//   along the top:
 //     the life bar      S.player.life in the class colour (the first colour of its palette, lifted towards bone if it
 //                       is too dark to read); after it the life lying in open wounds (S.wounds.life), a pale segment
 //                       for each, the newest first, greying as it nears its scar and lit along its top while it is
@@ -19135,8 +19233,9 @@ void main() {
 //                     at the edge (the right for the first, then the bottom, then the left) and after a toll a mark at
 //                     the top: bright for the 8 s of 'after-quarter', faint until the next toll clears them
 //   the lychgate      the open S.gate: off screen, a marker at the edge towards it, its time left running down round
-//                     it; the far lychgate of Tolled-for lit (and, in a build whose scene does not light it, marked
-//                     over the gate itself while it is on screen)
+//                     it, slid along the edge clear of the corner block, of the touch controls shown (buttons A and B,
+//                     the pause button, the stick's home) and of the trade's disc; the far lychgate of Tolled-for lit
+//                     (and, in a build whose scene does not light it, marked over the gate itself while on screen)
 //   Tolled-for        while the player carries the row tolled-for, the screen grey: the scene greys the world itself
 //                     (68-scene.js, the view's post.grey, keeping what glows in colour, the far lychgate among it),
 //                     and only a build without that has this file lay a grey of its own under the HUD (a backdrop
@@ -19205,7 +19304,13 @@ void main() {
     dx: 0, dy: 0, dr: 0, x0: 0, y0: 0, x1: 0, y1: 0, corner: 0, ringLen: 0, tick: 0, pointer: 0, keyFont: '',
   };
   let ringPath = null;
-  const dash = [0, 0], spot = { x: 0, y: 0 };
+  const dash = [0, 0], spot = { x: 0, y: 0 }, mark = { x: 0, y: 0 };
+  // the touch controls the lychgate's marker keeps clear of: buttons A and B, the pause button and the stick's home,
+  // as boxes in CSS px from the HUD's corner, read when the HUD lays itself out (the controls have laid themselves
+  // out by then), with the element whose hidden says whether each shows now
+  const KEEP_SEL = ['.tc-a', '.tc-b', '.tc-pause', '.tc-base'], keepEl = new Array(KEEP_SEL.length).fill(null);
+  const keepBox = new Float64Array(KEEP_SEL.length * 4);
+  let keepN = 0, touchSeen = false, keepStale = false;
 
   // ---- the run, as last read ----
 
@@ -19282,6 +19387,24 @@ void main() {
     safe.r = max(0, lb.right - pb.right);
     safe.b = max(0, lb.bottom - pb.bottom);
     safe.l = max(0, pb.left - lb.left);
+    keepN = 0;
+    keepStale = false;
+    touchSeen = !!touchRoot && !touchRoot.hidden;
+    for (let i = 0; touchSeen && i < KEEP_SEL.length; i++) {
+      const el = touchRoot.querySelector(KEEP_SEL[i]);
+      if (el && el.tagName !== 'BUTTON' && touchRoot.classList.contains('is-held')) {
+        keepStale = true;                          // the thumb has the stick away from its home: read it once let go
+        continue;
+      }
+      const b = el ? el.getBoundingClientRect() : null;
+      if (!b || !(b.width > 0)) continue;
+      keepEl[keepN] = el.tagName === 'BUTTON' ? el : touchRoot;   // the stick's base shows whenever the controls do
+      keepBox[keepN * 4] = b.left - lb.left;
+      keepBox[keepN * 4 + 1] = b.top - lb.top;
+      keepBox[keepN * 4 + 2] = b.right - lb.left;
+      keepBox[keepN * 4 + 3] = b.bottom - lb.top;
+      keepN++;
+    }
     mirror = setting('input.hand', 'right') === 'left';
     still = typeof window.matchMedia === 'function' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     fpsRoom = Plat.query('fps') === '1' ? round(1.7 * rem) : 0;
@@ -19299,6 +19422,9 @@ void main() {
     L.raise = max(4, round(0.34 * rem));
     L.bw = round(max(6 * rem, min(15 * rem, room)));
     const rowW = ROW * (L.icon + L.gap) - L.gap, apart = round(1.1 * rem);
+    // a screen wider than tall keeps the row beside the bars, narrowing them as far as 6 rem if it must: stacked, the
+    // block of a small phone on its side reaches down to the player's head
+    if (W > H && L.bw + apart + rowW > room && room - apart - rowW >= 6 * rem) L.bw = floor(room - apart - rowW);
     L.beside = W > H && L.bw + apart + rowW <= room;
     L.blockW = L.beside ? L.bw + apart + rowW : max(L.bw, rowW);
     L.bx = mirror ? W - edge.r - L.blockW : edge.l;
@@ -19790,7 +19916,65 @@ void main() {
     if (now.tollMark) tick(cx, L.y0, 0, 1, now.tollBright);
   }
 
-  // The open lychgate: on screen only the far one is marked, over the gate; off screen a marker at the edge points at it.
+  // Where on the edge of the box [x0, x1] x [y0, y1] a marker at (x, y) goes so that a disc of reach round it clears
+  // the corner block, every touch control shown and the trade's disc: the edge is walked as one line, clockwise from
+  // the top left corner; each of those boxes closes the stretches of it where the marker would meet it, and the
+  // marker moves to the nearest point left open, or stays where it was when none is. Into mark.
+  const shut = new Float64Array(64);               // the closed stretches, [from, to] in pairs
+  function along(x, y, w, h, x0, x1, y0, y1) {     // the place on the edge nearest (x, y), as a length along it
+    const dt = abs(y - y0), dr = abs(x1 - x), db = abs(y1 - y), dl = abs(x - x0), m = min(dt, dr, db, dl);
+    if (m === dt) return clamp(x, x0, x1) - x0;
+    if (m === dr) return w + clamp(y, y0, y1) - y0;
+    if (m === db) return w + h + x1 - clamp(x, x0, x1);
+    return 2 * w + h + y1 - clamp(y, y0, y1);
+  }
+  function close(n, a, b) { shut[n] = a; shut[n + 1] = b; return n + 2; }
+  function open(s, n) {                            // is s in none of the n / 2 stretches closed?
+    for (let i = 0; i < n; i += 2) if (s > shut[i] && s < shut[i + 1]) return false;
+    return true;
+  }
+  function clearOf(x, y, reach, x0, x1, y0, y1) {
+    mark.x = x;
+    mark.y = y;
+    const w = x1 - x0, h = y1 - y0, P = 2 * (w + h);
+    if (!(w > 0 && h > 0)) return;
+    let n = 0;
+    for (let k = 0; k <= keepN + 1; k++) {
+      let l, t, r, b;
+      if (k < keepN) {
+        if (keepEl[k].hidden) continue;
+        l = keepBox[k * 4]; t = keepBox[k * 4 + 1]; r = keepBox[k * 4 + 2]; b = keepBox[k * 4 + 3];
+      } else if (k === keepN) {
+        if (!now.disc) continue;
+        l = L.dx - L.dr; t = L.dy - L.dr; r = L.dx + L.dr; b = L.dy + L.dr;
+      } else {
+        l = L.bx; t = L.by; r = L.bx + L.blockW; b = L.by + L.bh;
+      }
+      l -= reach; t -= reach; r += reach; b += reach;
+      const xa = max(l, x0), xb = min(r, x1), ya = max(t, y0), yb = min(b, y1);
+      if (n + 8 > shut.length) break;
+      if (t < y0 && b > y0 && xa < xb) n = close(n, xa - x0, xb - x0);                          // the top
+      if (l < x1 && r > x1 && ya < yb) n = close(n, w + ya - y0, w + yb - y0);                  // the right
+      if (t < y1 && b > y1 && xa < xb) n = close(n, w + h + x1 - xb, w + h + x1 - xa);          // the bottom
+      if (l < x0 && r > x0 && ya < yb) n = close(n, 2 * w + h + y1 - yb, 2 * w + h + y1 - ya);  // the left
+    }
+    const s0 = along(x, y, w, h, x0, x1, y0, y1);
+    if (open(s0, n)) return;
+    let best = -1, far = Infinity;
+    for (let i = 0; i < n; i++) {                    // each end of each stretch, just outside it
+      const s = Core.mod(i & 1 ? shut[i] + 0.5 : shut[i] - 0.5, P);
+      if (!open(s, n)) continue;
+      const d = abs(s - s0), around = min(d, P - d);
+      if (around < far) { far = around; best = s; }
+    }
+    if (best < 0) return;                            // the whole edge is taken: it stays where it was
+    if (best <= w) { mark.x = x0 + best; mark.y = y0; } else if (best <= w + h) { mark.x = x1; mark.y = y0 + best - w; } else if (best <= 2 * w + h) {
+      mark.x = x1 - (best - w - h); mark.y = y1;
+    } else { mark.x = x0; mark.y = y1 - (best - 2 * w - h); }
+  }
+
+  // The open lychgate: on screen only the far one is marked, over the gate; off screen a marker at the edge points at it,
+  // clear of the corner block and of the touch controls.
   function drawGate(S) {
     const g = S.gate, st = stats.gate;
     st.shown = false;
@@ -19810,7 +19994,9 @@ void main() {
       const t = min(dx !== 0 ? abs((dx > 0 ? x1 - cx : x0 - cx) / dx) : Infinity, dy !== 0 ? abs((dy > 0 ? y1 - cy : y0 - cy) / dy) : Infinity);
       x = cx + dx * t;
       y = cy + dy * t;
-      if (x < L.bx + L.blockW + r && x > L.bx - r && y < L.by + L.bh + r) y = L.by + L.bh + r;   // clear of the corner block
+      clearOf(x, y, r + max(6, round(0.55 * rem)) + 4, x0, x1, y0, y1);   // clear of the block and of the controls
+      x = mark.x;
+      y = mark.y;
       a = Math.atan2(dy, dx);
     }
     if (now.far && !still) {                         // lit: a soft glow that breathes
@@ -20021,6 +20207,9 @@ void main() {
 
   function frame(S, alpha, dt) {
     if (!ctx) return;
+    // the touch controls came or went, or let the stick go home: where they stand is read again
+    const touchNow = !!touchRoot && !touchRoot.hidden;
+    if (touchNow !== touchSeen || (keepStale && !touchRoot.classList.contains('is-held'))) wantLayout = true;
     if (wantLayout) layout();
     if (!S || Game.state !== 'run') {
       if (stats.shown || run !== null) hide();
@@ -20261,7 +20450,7 @@ void main() {
 //   Game.boot()                   called once by 99-boot.js: makes the view on #view (?view=2d or ?view=gl asks
 //                                 for one), fits it to the window, opens the title and starts the frame loop
 //   Game.start(cfg) -> S | null   starts a vigil and closes every screen. A cfg {mode, zone, seed, char, account}
-//                                 that names a zone goes to Sim.create. Without a zone (there is none yet) the
+//                                 that names a zone goes to Sim.create. Without a zone (Game.start() alone) the
 //                                 run is Sim.debugScene(200, seed). Either way the seed is cfg.seed, else ?seed=,
 //                                 else random; a cfg without one is copied and given it, and the run's cfg
 //                                 (S.cfg.seed) tells which. null, and a toast, when the build has no simulation.

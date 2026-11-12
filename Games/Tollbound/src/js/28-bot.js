@@ -6,11 +6,15 @@
 //     'still'    does nothing
 //     'walk'     a slow circle, about 11 m across (0.6 of top speed, turning half a radian a second)
 //     'vigil'    plays the Change-ringer through the Dial. In order of need, each step: Tolled-for, it runs for the
-//                far lychgate; it steps out of a Swell of the dead about to land on it (only while it stands in one);
-//                it rings down at an open lychgate once the keeper is laid, or when its life is low after the keeper's
-//                coming, and otherwise keeps out of an open lychgate (standing in one would ring it down); it walks
-//                into the favour it likes best of those standing; unless Braced and well, it steps out of the arc of
-//                a large body near the end of a Blow's wind-up; then it fights:
+//                far lychgate; it steps out of a Swell of the dead about to land on it (only while it stands in one,
+//                never into an open lychgate, and, ringing down, only from Swells worth 60% of its life or more all
+//                told);
+//                it rings down at an open lychgate once the keeper is laid, or whenever its life is under 30% and it
+//                can reach the lychgate before it closes: at a lychgate where at most two of the dead stand within
+//                3 m (its voices fall silent stroke by stroke, so it clears the place first), or with less than 9 s
+//                left on it, and once begun it rings to the end; otherwise it keeps out of an open lychgate (standing
+//                in one would ring it down); it walks into the favour it likes best of those standing; unless Braced
+//                and well, it steps out of the arc of a large body near the end of a Blow's wind-up; then it fights:
 //                  shed   with riders on it, it strides close past the nearest large body (not the keeper), so that
 //                         they move onto it
 //                  hold   it stands: Braced, so the crowd's Blows land at half and every wound within reach mends; it
@@ -22,17 +26,19 @@
 //                         0.75 s (2.5 s in a thick crowd), then a stand again
 //                  break  out the thin way for 1 s when the crowd is too thick to stand in
 //                  kite   with nothing near, a round of the plaza 13 m out, until the dead come
-//                With the keeper up and few of the dead near, it goes to the keeper and fights it close, within the
-//                ring but not pressed against it. Whatever it does, it turns aside from the ground of a Swell about
-//                to land and from pressing against the keeper.
+//                With the keeper up, while its life is half or more (or whatever it is, with few of the dead near),
+//                it goes to the keeper and fights it close, within the ring but not pressed against it: there it rocks
+//                without a stand, every reversal a pull that rings on the keeper, and presses the trade, Set, whenever
+//                it is ready. Whatever it does, it turns aside from the ground of a Swell about to land and from
+//                pressing against the keeper.
 //   Bot.choose(S, offer) -> index            for an offer that pauses (none in Stage 1): the first option
 //
 // Its memory lives in S.bot = {frame, mode, modeT, flick, flickT, round, aim, set, why}: the frame it hands out, what
 // it is doing ('hold', 'rock', 'break', 'shed', 'kite') and for how long, the sign and age of the present flick, which
 // way round the plaza it walks (1 sunwise), the direction it last chose, whether it has pressed the trade for this
-// stand, and why it last moved (a word, for whoever studies it). It reads only the run (S.player, S.wounds, S.gate,
-// S.boss, S.vigil, S.areas, S.pickups, S.grid) and draws from no stream of the run, so it never changes what the run
-// itself would draw.
+// stand, and why it last moved (a word, for whoever studies it; 'ring' also tells it that it has begun to ring down).
+// It reads only the run (S.player, S.wounds, S.gate, S.boss, S.vigil, S.areas, S.pickups, S.grid) and draws from no
+// stream of the run, so it never changes what the run itself would draw.
 (function () {
   'use strict';
 
@@ -44,6 +50,10 @@
   const SET_TIME = 1.8, ROCK_BURST = 0.75, ROCK_MOST = 2.5, BREAK_TIME = 1, KITE_LEAST = 1.5, SEEK_AFTER = 5;   // seconds
   const RING = 2.6, CROWD_TOO_THICK = 9, PRESSED = 3, KEEPER_OFF = 0.6, KEEPER_NEAR = 1.6, SHED_FAR = 40, CLINGER_NEAR = 3.4;
   const RING_DOWN_LOW = 0.3, MEND_BELOW = 0.95, MEND_CLEAR = 4, MEND_REACH = 14, STEP_BACK = 4, OLD = 30;
+  const KEEPER_FIGHT = 0.5, GATE_PACE = 0.8;       // shares: of greatest life to fight the keeper on; of top speed to a lychgate
+  const RING_TAKES = 0.6;                          // ringing down, it stands under Swells worth less than this share of its life
+  const RING_WAIT = 9;                             // seconds left on a lychgate below which it rings down whatever the crowd
+  const GATE_CLEAR = 3, RING_FEW = 2;              // metres round a lychgate, and the most dead there, for it to be clear
   const SWELL_MARGIN = 0.6, SWELL_SOON = 1.1, DODGE_BELOW = 0.5;
   const LIKED = {                                   // what it prefers among the favours raised (unlisted: 1)
     'arval-bread': 9, 'laying-out': 9, 'bellmans-walk': 8, 'ringers-jug': 8, 'mourning-hatband': 7, 'crape-on-the-door': 7,
@@ -77,25 +87,33 @@
     return k;
   }
 
-  // Is (x, y) inside a Swell of the dead that lands within soon seconds (grown by margin)?
-  function swellAt(S, x, y, margin, soon) {
-    const areas = S.areas, items = areas.items;
-    for (let i = 0; i < areas.n; i++) {
-      const a = items[i];
-      if (!a.alive || a.team !== 1 || a.def === null || a.def.type !== 'swell' || a.state === 2 || a.ttl > soon) continue;
-      const A = a.def, dx = x - a.x, dy = y - a.y;
-      if (A.shape === 'line') {
-        const c = cos(a.angle), s = sin(a.angle), along = dx * c + dy * s, across = -dx * s + dy * c;
-        if (along >= -margin && along <= a.len + margin && abs(across) <= a.r + margin) return a;
-        continue;
-      }
-      const reach = a.r + margin, d2 = dx * dx + dy * dy;
-      if (d2 > reach * reach) continue;
-      if ((A.shape === 'wedge' || A.shape === 'arc') && d2 > margin * margin &&
-        abs(Core.angleDiff(a.angle, atan2(dy, dx))) > A.angle / 2 + 0.25) continue;
-      return a;
+  // Is the area a a Swell of the dead that lands on (x, y) within soon seconds (its ground grown by margin)?
+  function lands(a, x, y, margin, soon) {
+    if (!a.alive || a.team !== 1 || a.def === null || a.def.type !== 'swell' || a.state === 2 || a.ttl > soon) return false;
+    const A = a.def, dx = x - a.x, dy = y - a.y;
+    if (A.shape === 'line') {
+      const c = cos(a.angle), s = sin(a.angle), along = dx * c + dy * s, across = -dx * s + dy * c;
+      return along >= -margin && along <= a.len + margin && abs(across) <= a.r + margin;
     }
+    const reach = a.r + margin, d2 = dx * dx + dy * dy;
+    if (d2 > reach * reach) return false;
+    return !((A.shape === 'wedge' || A.shape === 'arc') && d2 > margin * margin &&
+      abs(Core.angleDiff(a.angle, atan2(dy, dx))) > A.angle / 2 + 0.25);
+  }
+
+  // the first Swell of the dead that lands on (x, y) within soon seconds, or null
+  function swellAt(S, x, y, margin, soon) {
+    const items = S.areas.items;
+    for (let i = 0; i < S.areas.n; i++) if (lands(items[i], x, y, margin, soon)) return items[i];
     return null;
+  }
+
+  // the damage of every Swell of the dead that lands on (x, y) within soon seconds, all told
+  function swellHarm(S, x, y, margin, soon) {
+    const items = S.areas.items;
+    let sum = 0;
+    for (let i = 0; i < S.areas.n; i++) if (lands(items[i], x, y, margin, soon)) sum += items[i].damage;
+    return sum;
   }
 
   // the way out of the Swell a: away from its centre, or sideways out of a wedge or a lane
@@ -188,18 +206,36 @@
       steer(S, b, f, dir.x, dir.y, 1);
       return;
     }
-    // out of a Swell about to land
+    // out of a Swell about to land; but ringing down, it takes what it can live through rather than be driven out and
+    // ring all six strokes again: every Swell about to land on it, together (two can land a breath apart)
     const swell = swellAt(S, p.x, p.y, SWELL_MARGIN, SWELL_SOON);
-    if (swell !== null) {                          // only as long as it stands in it: then back to what it was doing
+    const ringing = gate !== null && !gate.far && gate.ring > 0 && b.why === 'ring';   // it chose to, the step before
+    if (swell !== null && !(ringing && swellHarm(S, p.x, p.y, SWELL_MARGIN, SWELL_SOON) < p.life * RING_TAKES)) {
       b.why = 'swell';
       escape(S, swell, dir);
+      if (gate !== null && !gate.far && !ringing) {   // and not into an open lychgate, which would ring it down
+        const r = S.rules.gateRadius + 0.6, gx = gate.x - p.x, gy = gate.y - p.y, ax = gx - dir.x * 1.2, ay = gy - dir.y * 1.2;
+        if (ax * ax + ay * ay < r * r) {
+          const x = dir.x;
+          if (dir.x * gy - dir.y * gx > 0) { dir.x = dir.y; dir.y = -x; } else { dir.x = -dir.y; dir.y = x; }
+        }
+      }
       f.mx = dir.x;
       f.my = dir.y;
       return;
     }
-    // ring down once the keeper is laid; before that only when life is low past the keeper's coming
+    // Ringing down: once the keeper is laid, or when life runs low, at a lychgate where few of the dead stand (its
+    // voices fall silent stroke by stroke, so it clears the place first), or with the lychgate's time running out;
+    // when low, only at one it can reach before it closes. Once begun, it rings to the end.
     const laid = S.vigil && S.vigil.keeper === 2;
-    if (gate && !gate.far && (laid || (life < RING_DOWN_LOW && S.toll >= S.rules.keeperToll))) {
+    let ring = false;
+    if (gate !== null && !gate.far) {
+      const clear = crowd(S, gate.x, gate.y, GATE_CLEAR) <= RING_FEW, late = gate.until - S.t < RING_WAIT;
+      if (ringing) ring = true;
+      else if (laid) ring = clear || late;
+      else ring = life < RING_DOWN_LOW && inTime(S, gate) && (clear || late);
+    }
+    if (ring) {
       b.why = 'ring';
       const d = toward(S, gate.x, gate.y, dir), r = S.rules.gateRadius;
       if (d > r * 0.5) steer(S, b, f, dir.x, dir.y, d > 2 ? 1 : 0.5);
@@ -229,6 +265,13 @@
     }
     b.why = b.mode;
     fight(S, b, f, life);
+  }
+
+  // whether the open lychgate g can be reached before it closes, at most of the player's top speed through the crowd
+  function inTime(S, g) {
+    if (g.ring > 0) return true;
+    const p = S.player, speed = (S.sheet ? S.sheet.stats['move-speed'] : 4.5) * GATE_PACE;
+    return S.t + Core.dist(p.x, p.y, g.x, g.y) / speed < g.until;
   }
 
   // a large body near the end of a Blow's wind-up with the player in reach of it: the way out, into out
@@ -329,10 +372,24 @@
       }
     }
     if (b.mode === 'shed') mode(b, 'hold');
-    // the keeper is fought close, within the ring: with few of the dead about, it goes to it
-    if (S.boss && S.boss.alive && close <= 1 && b.mode !== 'break' && b.mode !== 'rock') {
-      const d = toward(S, S.boss.x, S.boss.y, dir);
-      if (d > S.boss.r + KEEPER_NEAR) { b.why = 'keeper'; mode(b, 'hold'); steer(S, b, f, dir.x, dir.y, 0.8); b.modeT = 0; return; }
+    // the keeper is fought close, within the ring of its first voice: it goes to it while strong enough (or with few
+    // of the dead about), and there it rocks, every reversal a pull that rings on the keeper, setting the bell by the
+    // trade whenever it can; below its strength it keeps to the crowd and its wounds
+    const boss = S.boss && S.boss.alive ? S.boss : null;
+    if (boss && b.mode !== 'break' && (close <= 1 || life >= KEEPER_FIGHT)) {
+      const d = toward(S, boss.x, boss.y, dir);
+      if (d > boss.r + KEEPER_NEAR) {
+        if (b.mode !== 'rock') { b.why = 'keeper'; mode(b, 'hold'); steer(S, b, f, dir.x, dir.y, 0.8); b.modeT = 0; return; }
+      } else if (life >= KEEPER_FIGHT && thick < CROWD_TOO_THICK) {
+        if (b.mode !== 'rock') {
+          mode(b, 'rock');
+          b.aim = atan2(dir.y, dir.x) + PI / 2;     // across the line to the keeper: the rocking keeps its distance
+          b.flickT = FLICK >> 1;
+        }
+        b.modeT = 0;
+        b.why = 'keeper';
+        if (typeof p.tradeCd === 'number' && p.tradeCd <= 0 && !p.setBell) f.trade = true;
+      }
     }
     if (b.mode === 'break') {
       if (b.modeT < BREAK_TIME) { steer(S, b, f, cos(b.aim), sin(b.aim), 1); return; }

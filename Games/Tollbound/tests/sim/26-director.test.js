@@ -369,6 +369,25 @@ test('turned favours: Muffle the Toll, Pass the Gate, Coins on Your Own Eyes, Ri
   w.life = 0;
   const drop = steps(sim, S, 1, 'drop').find((d) => d.a === 0);
   assert.ok(Math.abs(drop.b - 2 * 1.08) < 1e-9, 'embers 8% more');
+  // stood in for half a second and left before its first stroke, a lychgate still closes unrung; one with a stroke rung
+  // at it does not
+  const passOne = (seconds) => {
+    const elite = sim.Sim.spawnEnemy(S, 'test.walker', S.player.x + 6, S.player.y, { rank: 1 });
+    sim.Sim.step(S);
+    elite.life = 0;
+    sim.Sim.step(S);
+    const back = [S.player.x, S.player.y];
+    S.player.x = S.gate.x; S.player.y = S.gate.y;
+    const strokes = steps(sim, S, Math.round(seconds * 60), 'stroke').length;
+    [S.player.x, S.player.y] = back;
+    steps(sim, S, 26 * 60);
+    assert.equal(S.gate, null);
+    return strokes;
+  };
+  assert.equal(passOne(0.5), 0);
+  assert.equal(S.vigil.passed, 2, 'left before its first stroke: passed');
+  assert.equal(passOne(1.2), 1);
+  assert.equal(S.vigil.passed, 2, 'a stroke rung at it: not passed');
   // Coins on Your Own Eyes: a lychgate at every toll, 20 m off, for a rising fare; the first fare unpaid ends it
   S = vigil(sim);
   steps(sim, S, 1);
