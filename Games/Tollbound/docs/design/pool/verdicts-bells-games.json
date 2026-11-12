@@ -1,0 +1,461 @@
+{
+ "lens": "games",
+ "verdicts": [
+  {
+   "id": "bells-01",
+   "seen": 1,
+   "where": "Path of Exile's Ignite and Bleed (a share of every hit is taken again over a few seconds), the Endurance/Health split in Pillars of Eternity and Eclipse 8 permanent damage in Risk of Rain 2 (heavy hits shave greatest health for the run), and Path of Exile's size threshold for a savage hit. No game known where crowding, water or cloth decides which of the two a hit becomes.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-02",
+   "seen": 1,
+   "where": "Ragnarok Online's weapon-versus-size table and StarCraft: Brood War's concussive and explosive damage against small, medium and large units; World of Warships' overpenetration bands for a shell mismatched to its target. The matched band that spreads harm to same-size neighbours is in none of them.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-03",
+   "seen": 1,
+   "where": "Golden Sun, where the mix of Djinn elements set on a character names its class; Tyrogue in Pokemon, which evolves by whether Attack is above, below or equal to Defence; alignment-restricted gear in Knights of the Old Republic; plain attribute requirements in Diablo II and Path of Exile.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-04",
+   "seen": 1,
+   "where": "Left-right cross-ups in fighting games and Fiora's Vitals in League of Legends (the next hit must come from another side), stagger gauges that end in a launch as in Final Fantasy XIII, and thrown bodies that harm what they pass (Earth Spirit's Boulder Smash in Dota 2, bumps in Into the Breach). A meter that only alternation builds and that never decays is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-05",
+   "seen": 1,
+   "where": "Knockback and shuffle in Darkest Dungeon, which send a front-rank enemy to the back by swapping it past those behind so it cannot use its front-rank attacks; Terror in Diablo II and other fear effects that send one enemy away for a known time. The stepwise walk out and the mirrored walk back are in neither.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-06",
+   "seen": 2,
+   "where": "Archero's core rule, also the Soldier in Brotato: the character attacks only when the thumb lifts and it stands still, and players stutter-step to fire. Clocked is that rule switched on inside a zone and made one cast per stop.",
+   "mutation": "Make the player the clapper instead of making the stop the trigger: inside the ring a sigil speaks only when the character's body bumps the tongueless bell or another heavy body, once per touch, so casting is bought by walking into things. Keep the +50% and the 3% crack on each forced cast."
+  },
+  {
+   "id": "bells-07",
+   "seen": 1,
+   "where": "Encore in Pokemon (the victim is forced to repeat its last move), Weak in Slay the Spire and blind effects for the feeble blow, and Spell Echo in Path of Exile for a repeat on the same spot. A debuff that makes exactly every second blow a faint copy of the one before is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-08",
+   "seen": 1,
+   "where": "Echo Sabre in Dota 2, which turns a steady attack into two quick blows and a gap, and burst-fire guns such as Dahl weapons in Borderlands; roll-to-cleanse blights in Monster Hunter for the stand-still cure. As a debuff that keeps the average rate it is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-09",
+   "seen": 1,
+   "where": "The Poison Mushroom in Super Smash Bros. and Reduce in Dungeons & Dragons (smaller, lighter, flung farther, hitting weaker), stacking armour shred such as The Black Cleaver in League of Legends, and Slay the Spire curses that last the run and are removed at a merchant for gold.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-10",
+   "seen": 1,
+   "where": "Charge inputs in fighting games (hold back, then forward), the stick waggle that charges a mini-turbo in Mario Kart 64 and the dash in Katamari Damacy, and Archero's stop-to-shoot for attacks driven by the movement thumb. Reversal of the movement stick as a class's attack trigger is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-11",
+   "seen": 1,
+   "where": "Hammerfight and Brutal.io (a weapon swung on a tether by moving in circles), Io's Tether in Dota 2 (a line between two points that affects what crosses it), Mario's Fire Bar, loop-closing in Pokemon Ranger and Qix, and ring walls such as Disruptor's Kinetic Field.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-12",
+   "seen": 1,
+   "where": "Focus mode in Touhou and the laser in DoDonPachi, where moving slowly and the shape of the shot are tied together; Brotato items keyed to standing still or moving. Depth of stick push choosing among five sizes of one weapon is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-13",
+   "seen": 1,
+   "where": "Beat-locked attacks in Crypt of the NecroDancer and Hi-Fi Rush, Jhin in League of Legends (fixed cadence, heavy fourth shot), and Clock Lancet and Pentagram in Vampire Survivors (clock-ordered and very slow weapons). A class whose weapon is slaved to the run's own difficulty clock is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-14",
+   "seen": 1,
+   "where": "Noita wands without shuffle, which cast their spells in a fixed order, and the deck queue in One Step From Eden; combo chains that pay for following the previous hit, as in Final Fantasy XIV. Two live calls that permute the order are not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-15",
+   "seen": 1,
+   "where": "Sensors wired to traps in Evil Genius and tripwire-to-dispenser builds in Minecraft (a crossing here fires something there), the trailing tail of Snake and Tron, and Shadow Pinion in Vampire Survivors (a trail weapon that changes when the player stops).",
+   "mutation": ""
+  },
+  {
+   "id": "bells-16",
+   "seen": 2,
+   "where": "Unleash in Path of Exile (a spell stores up to three extra repeats while it is not cast and lets them all go at once), charge shots from R-Type and Mega Man, stand-still bonuses in Brotato, and Focus Punch in Pokemon for a charge lost to a hit.",
+   "mutation": "Store weight, not seconds: while set, every body that comes within 2 m leans on the stay and adds its Weight to the store, the release is scaled by the weight leaning at the moment of the step, and the stay breaks when the leaning total passes a shown limit. The player judges how much crowd to let pile on, not how long to hold a charge."
+  },
+  {
+   "id": "bells-17",
+   "seen": 1,
+   "where": "The Eye boss blind in Balatro (no hand type may be repeated this round) and its Obelisk joker, the stale-trick penalty in Tony Hawk's Pro Skater, and the style meter in Devil May Cry. Tracking the permutations of automatic casts is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-18",
+   "seen": 1,
+   "where": "Search Snake in Mega Man 3 and the ground-hugging missiles of Gradius (shots that crawl along surfaces), Wall Creep enemies in The Binding of Isaac, and wall-slam positioning in Hades. As a rule on every skill, switched on by standing near masonry, it is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-19",
+   "seen": 1,
+   "where": "Corpse-fuelled summons of the Diablo necromancer and Shadow Fiend's Necromastery in Dota 2, Mirage Archer and ancestral totems in Path of Exile (a stand-in that repeats your blows), and uncollected materials banked for the next wave in Brotato. Withheld drops paid back when the summon breaks is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-20",
+   "seen": 1,
+   "where": "The Great Sword in Monster Hunter (hold the charge past its third level and it weakens), cooking a grenade too long, Rumble's overheat lockout in League of Legends, and ordinary stored charges. A bust deadline set by the run's own clock is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-21",
+   "seen": 2,
+   "where": "Snuffing the torch in Darkest Dungeon (a live choice of more loot and harder hits on both sides, costly to undo), calling the next wave early for a bonus in Kingdom Rush, and run-long dials such as Curse in Vampire Survivors and Heat in Hades.",
+   "mutation": "Make the alarm a place rather than a rate: while backward, every enemy in the district goes to the rope's far end instead of to the player, each second still costing a second of toll clock, and on turning forward the whole gathered crowd comes for the player at once. The price is the clock and the pile-up, not a more-danger-for-more-loot dial."
+  },
+  {
+   "id": "bells-22",
+   "seen": 1,
+   "where": "Expanding pulse rings left at their origin, as in Frost Nova in Diablo and the pulse weapons of survivor games. No game known that tunes ring speed against walking speed so that the bunching ahead is the point.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-23",
+   "seen": 1,
+   "where": "Darius's Decimate in League of Legends (outer ring strong, inside weak), point-blank and donut blasts paired in Final Fantasy XIV fights, and the minimum range of the Siege Tank in StarCraft. One player skill with two live bands and a dead middle is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-24",
+   "seen": 0,
+   "where": "Distant only: Convention of Elements in Diablo III (a power window that rotates on a fixed timer) and lining up two cooldowns in World of Warcraft. No game known where the phase between two pulse rates is the damage multiplier.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-25",
+   "seen": 1,
+   "where": "Mario's Fire Bar (a pivoted row of harm with gaps), Technology Zero in The Binding of Isaac and Io's Tether in Dota 2 (harm strung between two points), and safe spots inside boss patterns.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-26",
+   "seen": 1,
+   "where": "Synchronoise in Pokemon (strikes only bodies sharing the user's type), the Colour Bomb in Candy Crush and the Hypercube in Bejeweled (every piece of one kind), and Extinction in Magic: The Gathering. Automatic choice of the majority kind, steered by herding, is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-27",
+   "seen": 1,
+   "where": "Dark Seer's Vacuum in Dota 2 and Graviton Surge in Overwatch (pull to a point), and the Vacuum pickup in Vampire Survivors. Sorting drops and bodies onto a figure of lines is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-28",
+   "seen": 1,
+   "where": "Sivir's Boomerang Blade and Ahri's Orb of Deception in League of Legends (out and back down a lane, hitting twice), Runetracer in Vampire Survivors, and Camille's Hookshot, which works only on terrain. A skill that aims itself at the nearest wall is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-29",
+   "seen": 1,
+   "where": "Donut-shaped blasts in Final Fantasy XIV, Bone Prison in Diablo II, and Disruptor's Kinetic Field followed by Static Storm in Dota 2 (a ring wall, then harm inside it).",
+   "mutation": ""
+  },
+  {
+   "id": "bells-30",
+   "seen": 2,
+   "where": "The pipe bomb in Left 4 Dead and the L.U.R.E. in Deep Rock Galactic (the horde follows the lure, not the player), Attract in Diablo II (the lure is one of the crowd), and Mirage's decoy in Apex Legends (a lure that runs off in a straight line).",
+   "mutation": "Do not lead the flock away; reshape it: the belled body keeps hunting the player as before, but every ordinary body within 6 m falls into single file behind it, each walking in the footsteps of the one ahead, for 8 s. The player gets a column to rake with lane skills and steers its head by their own movement, which no decoy does."
+  },
+  {
+   "id": "bells-31",
+   "seen": 1,
+   "where": "Earthquake's aftershock and Spell Echo in Path of Exile, Luden's Echo in League of Legends, and Cosmic Clones in Super Mario Galaxy 2 (your own past replayed behind you). A capped trail of fading repeats of every hit, left on the ground, is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-32",
+   "seen": 2,
+   "where": "The Spell Echo and Unleash supports in Path of Exile: the spell is cast about twice as often, the repeat goes to the same place, and with Unleash the repeat is weaker.",
+   "mutation": "Send the echo to the other side: every second cast lands at the point directly opposite the last landing, mirrored through the player, at 30% and with no condition. The modifier then pays when the player stands between two packs and is no longer a weaker repeat on the same ground."
+  },
+  {
+   "id": "bells-33",
+   "seen": 2,
+   "where": "The Bomberman blast: four lanes on the map's axes that stop at walls and miss everything on the diagonals. Loki's Horns in The Binding of Isaac puts that cross on whatever the character fires.",
+   "mutation": "Hang the lanes on the district's bell tower instead of the compass: the cross always has one arm pointing at the tower, so it turns as the player circles the landmark. Lining the horde up then means choosing where to stand relative to the tower, which a fixed cross never asks."
+  },
+  {
+   "id": "bells-34",
+   "seen": 1,
+   "where": "Functions slotted into one another in Transistor (one skill lends its shape to another), the Siege Tank in StarCraft and Bastion in Overwatch (a different weapon when planted), and Shadow Pinion in Vampire Survivors (one behaviour moving, another on stopping).",
+   "mutation": ""
+  },
+  {
+   "id": "bells-35",
+   "seen": 2,
+   "where": "Decelerating Shot in Noita (any projectile slows to a stop and hangs as a hazard), Anti-Gravity and Pop! in The Binding of Isaac, Arc Warden's Spark Wraith in Dota 2, and the trap and mine supports in Path of Exile.",
+   "mutation": "Let weight, not first touch, tip it: a stood projectile ignores any body lighter than the sigil's own weight class, each light body that passes sets it rocking for +20% harm, and only a body heavy enough brings it over. The fence becomes a filter that saves itself for the big one instead of a row of proximity mines."
+  },
+  {
+   "id": "bells-36",
+   "seen": 1,
+   "where": "Laurel in Vampire Survivors and Safer Spaces in Risk of Rain 2 (a guard that returns on a timer), and every-fourth counters such as Jhin's fourth shot. Paying for the guard with a missing cast on a readable count is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-37",
+   "seen": 2,
+   "where": "Twitch's Contaminate and Kalista's Rend in League of Legends (hits are counted on each body and cashed on command, more per stack, on everything in range), Explosive Arrow in Path of Exile, and Oracle's False Promise in Dota 2 for harm held back and landed later.",
+   "mutation": "Tell the counts as a running tally rather than body by body: on standing still the counts are read out smallest first, 0.1 s apart, each count rolling into the next body's, so the last body told takes the sum. The player decides who is told last by whom they have struck most, which a stack-and-detonate skill does not offer."
+  },
+  {
+   "id": "bells-38",
+   "seen": 1,
+   "where": "Fixed cast order on a Noita wand, one-two-three combo chains in Final Fantasy XIV (each step stronger for following the last), and reserved auras in Path of Exile.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-39",
+   "seen": 1,
+   "where": "Trade-off keystones and reservations in Path of Exile (Petrified Blood, Unwavering Stance, Chaos Inoculation), and Eclipse 8 in Risk of Rain 2 for hits that shave greatest health.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-40",
+   "seen": 1,
+   "where": "Experience gems left lying for a Vacuum in Vampire Survivors, the Piggy Bank's interest in Brotato, and interest on unspent gold in Teamfight Tactics. A kept state that buries experience where it fell and pays by tolls is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-41",
+   "seen": 1,
+   "where": "Back Shot in Thunder Force and the tail gun in Gradius, Mom's Eye and The Wiz in The Binding of Isaac (shots sent backward or off-axis), and the fixed directions of Knife, Axe and Whip in Vampire Survivors.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-42",
+   "seen": 1,
+   "where": "Eviolite in Pokemon (a large bonus for as long as the holder stays unevolved), and Stencil Joker in Balatro and empty-socket uniques in Path of Exile (pay for what is left unfilled).",
+   "mutation": ""
+  },
+  {
+   "id": "bells-43",
+   "seen": 2,
+   "where": "Soy Milk in The Binding of Isaac and the many faster-but-weaker items in Brotato: fire more often, hit softer, stack it as far as you dare. Over-enhancement cliffs in MapleStory for a step that ruins the thing and is still offered.",
+   "mutation": "Cut the note, not the numbers: a cut leaves interval and harm alone and only moves the sigil one weight class lighter, changing which bodies it rings true on, and the fourth cut takes it off the bottom of the scale so it rings true on nothing. The choice becomes which size of enemy each skill is tuned for, with the same one-way ruin."
+  },
+  {
+   "id": "bells-44",
+   "seen": 1,
+   "where": "Events that delay the rebel fleet in FTL, time stops such as the Orologion in Vampire Survivors, and the difficulty clock of Risk of Rain. Moving one step onto the next toll rather than removing it is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-45",
+   "seen": 1,
+   "where": "Amputating a limb in RimWorld to stop an infection, trauma in Blades in the Dark (take a permanent scar and the stress track clears), and Omamori in Slay the Spire for immunity to curses bought ahead.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-46",
+   "seen": 1,
+   "where": "Speed Swap and Power Swap in Pokemon (two creatures exchange a stat), and moving a spell between a fast and a slow wand in Noita. Exchanging the timers of two owned skills as a run pick is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-47",
+   "seen": 1,
+   "where": "The Dancing Zombie and its backup dancers in Plants vs. Zombies (a leader with a formation in tow), Elites leading Grunts in Halo (kill the leader and the pack loses its head), and the head-led chain in Centipede.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-48",
+   "seen": 1,
+   "where": "Silence-aura enemies and the Suppressor elite affix in Diablo IV (a bubble that changes how you must fight), Riki's Smoke Screen in Dota 2, and Archero's stop-to-shoot rule, which is what the ring imposes.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-49",
+   "seen": 1,
+   "where": "Flood infection forms in Halo and the Infector in Dead Space (a small hopping thing racing to a body to make a worse enemy; kill it on the way), two Templar merging into an Archon in StarCraft, and slimes merging into a King Slime in Dragon Quest.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-50",
+   "seen": 1,
+   "where": "Bonewheel skeletons in Dark Souls and Flame Wheels in Hades, a kicked Koopa shell in Super Mario (straight lines, turning only at walls), and knockback that slows whatever is shot head-on in Nuclear Throne. Five speed steps set by the side the hit comes from is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-51",
+   "seen": 2,
+   "where": "Doom-adding cultists in Arkham Horror: The Card Game (Acolyte, Wizard of the Order: they keep away, do not attack, and push the agenda clock each round until hunted down), Avatar facilities in XCOM 2, and the fleeing scout in FTL.",
+   "mutation": "Let the stolen time be held, not lost: each knock moves 2 s from the toll clock into the Rattler's plank, shown as a growing tally, and killing it gives those seconds back doubled. The player chooses between running it down at once and letting it fill to push the next toll later, which a plain doom-ticker never allows."
+  },
+  {
+   "id": "bells-52",
+   "seen": 1,
+   "where": "The advancing rank of Space Invaders, council bosses where only one member can be hurt at a time (the Spirit Kings in World of Warcraft), and shell-game enemies hidden among copies. A weak point that walks a line of bodies to the end and back is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-53",
+   "seen": 1,
+   "where": "The battering ram in Age of Empires II (a carried shell that shrugs off light fast hits and wants heavy ones), Lead and Ceramic bloons in Bloons TD, and the Zombie Bobsled Team and Parasol Zombie in Plants vs. Zombies.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-54",
+   "seen": 1,
+   "where": "Mirror Move and Bide in Pokemon (return the last move used on it, or the harm stored), the Bomb in Final Fantasy, which swells with each hit until it goes off, and Rubick's Spell Steal in Dota 2.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-55",
+   "seen": 1,
+   "where": "Numbered-order mechanics in Final Fantasy XIV such as Limit Cut (attacks resolve in a displayed sequence), and cutting a tail in Dark Souls or Monster Hunter to remove one of the boss's attacks for the rest of the fight.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-56",
+   "seen": 1,
+   "where": "Hiding behind the Comets from Behemoth's Ecliptic Meteor in Monster Hunter: World, behind Garuda's pillars in Final Fantasy XIV and behind ice tombs at Sindragosa in World of Warcraft; Level 5 Death and Tonberry's Karma in Final Fantasy for attacks keyed to the character's own numbers.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-57",
+   "seen": 2,
+   "where": "Grobbulus in World of Warcraft's Naxxramas and the Shaper's vortex pools in Path of Exile: a lasting hazard is laid where the player stands, for the whole fight, so the fight is about where to drop them and how much floor is left. Also Ghom's gas clouds in Diablo III.",
+   "mutation": "Make the grooves cut sound rather than skin: crossing costs nothing, but no stroke, the keeper's or the player's, carries across a groove, so each cut splits the floor into concentric bands that can only be fought within. The player's standing distance then decides which band the keeper ends in and whether there is room to share it with him."
+  },
+  {
+   "id": "bells-58",
+   "seen": 1,
+   "where": "Explosive barrels, the arena traps of Hades and one-use environmental traps in Monster Hunter (hazards either side can set off, some spent after use).",
+   "mutation": ""
+  },
+  {
+   "id": "bells-59",
+   "seen": 1,
+   "where": "Arrow traps in Spelunky and the pressure plates of Sen's Fortress in Dark Souls (enemies trip them too), and sensors wired to distant traps in Evil Genius.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-60",
+   "seen": 1,
+   "where": "The act map of Slay the Spire (one step per row to a neighbouring node), one-pick-per-tier talent rows in World of Warcraft, and the Sphere Grid of Final Fantasy X. Printed weaving lines to intercept are not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-61",
+   "seen": 1,
+   "where": "The Ninja trait in Teamfight Tactics (on at exactly one or exactly four, off between), the Golden Order tools in Elden Ring that want Faith and Intelligence matched, and The Wise Oak in Path of Exile, which pays for balanced resistances.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-62",
+   "seen": 1,
+   "where": "The Stat Matrix in Kingdom Hearts Re:coded (chips on a completed link between two processors count double), closed features in Carcassonne and doubled loops in Tantrix, and finished constellations in Grim Dawn.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-63",
+   "seen": 1,
+   "where": "Forging Potential in Last Epoch (a visible budget that every craft eats), ability-stone faceting in Lost Ark, and the bust in blackjack for going one past the mark. A one-way cut toward an exact target on each line, with no rarity tiers, is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-64",
+   "seen": 1,
+   "where": "Baba Is You (rules are words that can be taken away), host and augment cards in Magic: The Gathering's Unstable (trigger and effect as separate halves), the Orb of Annulment in Path of Exile (crafting by removal), and conditional affixes in Diablo-style games.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-65",
+   "seen": 2,
+   "where": "Breeding in Pokemon: each stat comes from one parent's value in that place, a held Power item fixes one chosen stat, and the egg must be walked before it can be used. Also Recombinators in Path of Exile, and the alchemy pot in Dragon Quest VIII, which makes the player wait.",
+   "mutation": "Choose inheritance by pour order instead of rolling it: the first parent poured gives the low lines and the last the high, so the player decides every line. Let cooling tune rather than gate: the item is wearable at once, and each toll the account hears before it is first worn brings its sharpest line one step toward true."
+  },
+  {
+   "id": "bells-66",
+   "seen": 1,
+   "where": "Stacking neutral camps in Dota 2 (let the camp grow for a bigger payout, then clear it), Delirium and Essence monsters in Path of Exile, and the Dead Adventurer in Slay the Spire.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-67",
+   "seen": 1,
+   "where": "The payload in Team Fortress 2 and Overwatch (an advance that halts while bodies contest it), Pipe Mania and Unrailed! (stay just ahead of an advancing flow), and Escort Duty in Deep Rock Galactic.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-68",
+   "seen": 1,
+   "where": "Warlock's Fatal Bonds in Dota 2 (harm to one linked body is shared to the rest), Synchronoise in Pokemon, and mission mutators in Deep Rock Galactic.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-69",
+   "seen": 2,
+   "where": "The Antimagic Field of Dungeons & Dragons and the dead-magic zones of Baldur's Gate II: no power works for anyone inside, and a caster dragged in is reduced to its fists. Disruption Web in StarCraft and the bubble shield in Halo also bind both sides alike.",
+   "mutation": "Let sound pass over the band instead of dying in it: a sigil cast toward the band skips it and lands beyond its far edge, its reach lengthened by the band's width, and bodies inside can be neither hit nor hit back except by bare touch. The band becomes a moat the player's skills leap, not a two-sided antimagic field."
+  },
+  {
+   "id": "bells-70",
+   "seen": 1,
+   "where": "Link Skills and Legion in MapleStory (every character gives the account one grant fixed by its class), the lineage of Rogue Legacy, and Fame from dead characters in Realm of the Mad God. A graded set that needs short lives as its small pieces is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-71",
+   "seen": 2,
+   "where": "Fame in Realm of the Mad God (paid only at death, a base amount times bonuses for deeds done in that life), prestige currency in idle games (reset, multiplied by overall progress), and legacies chosen from a dead captain in Sunless Sea.",
+   "mutation": "Drop the banked currency: the strokes of the telling are the letters the dead character's inscription may use, level times voiced bells, spent at once on words earned in that life and never carried over. A short life affords one short word and a long life a full clause, so the payout is an epitaph to compose rather than points to save."
+  },
+  {
+   "id": "bells-72",
+   "seen": 1,
+   "where": "Time-loop games such as Majora's Mask and Deathloop (the same arrivals replay, so the player learns and then profits), the fixed spawn script of Devil Daggers, and call-and-response in Rhythm Heaven.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-73",
+   "seen": 1,
+   "where": "Extraction countdowns in Hunt: Showdown and Escape from Tarkov, handing in loot piece by piece under threat in Sea of Thieves, and the interruptible Recall of League of Legends. Paying for each banked share with a silenced skill is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-74",
+   "seen": 1,
+   "where": "The card row of Through the Ages and the centre row of Ascension, the next-piece queue of Tetris, and locking shop items in Brotato. A row that weaves by alternating neighbour swaps is not known.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-75",
+   "seen": 1,
+   "where": "Pontiff Sulyvahn in Dark Souls III, whose phantom strikes just before he does, Grand Magistrix Elisande in World of Warcraft, whose echoes replay attacks on the same ground, and order-memory mechanics in Final Fantasy XIV.",
+   "mutation": ""
+  },
+  {
+   "id": "bells-76",
+   "seen": 1,
+   "where": "Choosing island order in Into the Breach (later islands scale up) and stage order in Mega Man, the clan-pair completion grid of Monster Train, and Dark Thirst in Hades for paying variety. A rule that each run must be one neighbour swap from the last is not known.",
+   "mutation": ""
+  }
+ ]
+}

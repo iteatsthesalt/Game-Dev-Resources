@@ -25,6 +25,10 @@
 //     grid.query(x, y, r, out) -> n   writes into out[0 .. n) every indexed item whose centre is within
 //                                     r + item.r of (x, y), and returns n. out is the caller's array; what it
 //                                     held beyond n is left as it was, so use the returned count, not out.length.
+//     grid.near(body, margin, out) -> n   the same for a body: every indexed item whose centre is within
+//                                     body.r + margin + item.r of (body.x, body.y), by where the body is now.
+//                                     The body itself is among them if it is indexed. Prefer this in a loop
+//                                     over entities: it hands no numbers across a call (see the note at query).
 //
 // What a query returns is exact, not a list of candidates to test again: every item in reach is there, once,
 // and nothing else is. "In reach" goes by the place and the radius an item had at the last rebuild: an item
@@ -114,6 +118,7 @@
     this.pr = null;
     this.big = null;             // indices of the items wider than a cell
     this.bigN = 0;
+    this.probe = { x: 0.5, y: 0.5, r: 0.5 };       // the point of a query, as a body (see query below)
   }
 
   function bucketOf(cx, cy, mask) { return (imul(cx, 73856093) ^ imul(cy, 19349663)) & mask; }
@@ -159,11 +164,23 @@
     this.reach = reach;
   };
 
+  // query is kept this small on purpose. A number handed to a function that the engine does not inline is boxed,
+  // which is garbage in a loop over hundreds of entities; a function this small is inlined, and the search
+  // itself takes the point as an object. For the same reason near() takes the body, not its coordinates.
   Grid.prototype.query = function (x, y, r, out) {
+    const probe = this.probe;
+    probe.x = x;
+    probe.y = y;
+    probe.r = r;
+    return this.near(probe, 0, out);
+  };
+
+  Grid.prototype.near = function (body, margin, out) {
     if (this.items === null) return 0;
     if (this.pool.moves !== this.stamp) this.rebuild(this.pool);   // a compact moved the items: the index is redone
     const items = this.items, first = this.first, next = this.next, cellX = this.cx, cellY = this.cy, mask = this.mask;
     const px = this.px, py = this.py, pr = this.pr;
+    const x = body.x, y = body.y, r = (body.r > 0 ? body.r : 0) + margin;
     const inv = 1 / this.cell, far = r + this.reach;
     const x0 = floor((x - far) * inv), x1 = floor((x + far) * inv), y0 = floor((y - far) * inv), y1 = floor((y + far) * inv);
     let k = 0;

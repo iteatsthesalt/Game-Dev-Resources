@@ -2,9 +2,18 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadSim } = require('./loader.js');
+const vm = require('vm');
+const modules = require('../../tools/modules.js');
 
-const { Core } = loadSim();
+// Pools and grids need the core and nothing else: the two files are run in a context of their own.
+function kernel() {
+  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
+  context.console = console;
+  for (const file of ['00-core.js', '02-pool-grid.js']) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
+  return new vm.Script('({ Core })').runInContext(context);
+}
+
+const { Core } = kernel();
 const make = () => ({ alive: false, x: 0, y: 0, r: 0.4, tag: 0 });
 // The tags of the objects in use. Array.from, because an array that comes out of the simulation belongs to
 // another context and deepEqual would call it different from one made here.
@@ -154,6 +163,29 @@ test('a query returns exactly the items in reach, each once', () => {
     sameSet(out, grid.query(x, y, r, out), brute(pool.items, pool.n, x, y, r), `query ${q} at ${x}, ${y}, r ${r}`);
   }
   for (const o of pool.items.slice(0, 40)) assert.ok(out.slice(0, grid.query(o.x, o.y, 0, out)).includes(o), 'right on top of an item');
+});
+
+test('near finds what is within a margin of a body, the body itself among it', () => {
+  const rng = new Core.RNG(17), out = [];
+  const pool = crowd(rng, 400, 20, (i) => (i % 53 === 0 ? rng.range(2, 4) : rng.range(0.2, 0.9)));
+  const grid = new Core.Grid(2);
+  grid.rebuild(pool);
+  for (let i = 0; i < pool.n; i++) {
+    const body = pool.items[i], margin = i % 3 === 0 ? 0 : rng.range(0, 3);
+    const n = grid.near(body, margin, out);
+    sameSet(out, n, brute(pool.items, pool.n, body.x, body.y, body.r + margin), `around item ${i}`);
+    assert.ok(out.slice(0, n).includes(body), 'an indexed body is near itself');
+    assert.equal(n, grid.query(body.x, body.y, body.r + margin, out), 'near and query agree');
+  }
+  // a body that is not in the grid at all, and one that has moved since the rebuild: it is where it is now
+  const stranger = { x: 3, y: -2, r: 0.7 };
+  sameSet(out, grid.near(stranger, 1, out), brute(pool.items, pool.n, 3, -2, 1.7), 'a stranger');
+  const mover = pool.items[5], then = { x: mover.x, y: mover.y };
+  mover.x += 6;
+  const n = grid.near(mover, 0.5, out);
+  sameSet(out, n, brute(pool.items.map((o) => (o === mover ? Object.assign({}, o, then, { now: o }) : o)), pool.n, mover.x, mover.y, mover.r + 0.5)
+    .map((o) => o.now || o), 'a body that moved asks from where it is now; the others are where they stood');
+  assert.equal(grid.near({ x: 0, y: 0 }, 0, out), grid.query(0, 0, 0, out), 'a body without a radius is a point');
 });
 
 test('the edge of reach counts as in reach', () => {

@@ -34,8 +34,11 @@
 //   S.phase                      'play' | 'offer' | 'ended'
 //   S.player                     see "Entities"
 //   S.mods, S.sheet              the modifier list of the last rebuild and the Sheet made from it (Stats.sheet)
-//   S.skills                     [{inst, sheet, cd, t, n, target, a0..a3}]: a sigil instance, its SkillSheet,
-//                                and room for the archetype's state (cd: seconds until the next cast)
+//   S.skills                     [{inst, sheet, cd, t, n, target, a0..a3}]: one slot for each place of the loadout
+//                                (cfg.sigils, or the character's loadout), in its order: a sigil instance, its
+//                                SkillSheet, and room for the archetype's state (cd: seconds until the next
+//                                cast). An empty place has inst and sheet null. Every rebuild follows the
+//                                loadout: a slot whose sigil changed starts afresh, and no slot ever moves.
 //   S.enemies, S.shots, S.areas, S.pickups, S.minions      Core.Pool
 //   S.grid                       Core.Grid over S.enemies, rebuilt in every step (see the order below): it knows
 //                                the enemies as they stood then, so not the ones spawned later in the step
@@ -52,6 +55,7 @@
 //   S.debug                      null | the state of Sim.debugScene
 //
 // The order of a step, set here and nowhere else. Other namespaces are called only if they exist.
+//    0  the event queue is emptied, and px, py of the player and of every entity take its x, y
 //    1  Player.step(S, input)
 //    2  Director.step(S)
 //    3  S.grid.rebuild(S.enemies)
@@ -68,29 +72,40 @@
 //    9  Player.pickups(S)
 //   10  Sim.rebuild(S), if S.dirty
 //   11  Offers.step(S)
-//   12  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event
+//   12  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event (just before it, what was made in
+//       this step gets its px, py)
 // A step that began in 'play' runs to its end even if the run ends or an offer opens on the way.
 // In a debug scene (S.debug) steps 2, 4 and 6 are replaced by the scene's own rule: every enemy circles the
 // spot where the player began. Without Player.step, the move vector of the input walks the player.
 //
+// Sheets. Sim.rebuild(S) gathers the modifiers: Char.mods(cfg.char, S, cfg.account) if the run has a character
+// and that function exists, else cfg.mods; then whatever each Sim.source adds (chimes, buffs). Stats.sheet gets
+// them with level (the character's, else cfg.level, else 1), weapon (cfg.weapon, else Char.weapon(char) if
+// there is such a function, else none), vows (how many the character has active), chimes (the stacks in
+// S.chimes) and conds (S.player.conds). Then S.skills is made to follow the loadout and every slot gets its
+// SkillSheet. Whoever changes a modifier, the loadout or S.player.conds sets S.dirty; the rebuild comes at
+// step 10, or at once after a command.
+//
 // Entities. Every pooled object has one fixed set of fields and is sealed, so a field that was not declared
 // cannot be added by mistake. pool.alloc() gives one with every field at its default, alive = true and a new uid.
 // A file that needs another field declares it while it loads: Sim.field('enemy', 'chargeT', 0). The default is
-// a number, a boolean, a string or null. Kinds: enemy, minion, shot, area, pickup, player, skill.
-//   all pooled    alive, uid, x, y, vx, vy, r (radius), face (radians), t (seconds; free for its system),
-//                 state, stateT (free), a0, a1, a2, a3 (free numbers)
+// a number, a boolean, a string or null. Kinds: enemy, minion, shot, area, pickup, player, skill. (Only files
+// numbered above 20 can do so: this one has not run yet when the earlier ones load.)
+//   all pooled    alive, uid, x, y, px, py (where it stood before the last step: draw between the two; a thing
+//                 made in that step has its own place there), vx, vy, r (radius), face (radians),
+//                 t (seconds; free for its system), state, stateT (free), a0, a1, a2, a3 (free numbers)
 //   enemy, minion def, defHash, level, life, lifeMax, damage, speed, cd0..cd3 (attack cooldowns), kx, ky
 //                 (knockback speed), tx, ty (a point it heads for), target (a uid), flash,
 //                 condT, condV, condN: Float64Array(Stats.COND_MAX) indexed by Stats.AILMENT[id]: seconds left,
 //                 strength, and a spare number (stacks, build-up)
 //   enemy only    rank, xp, traits (4 slots of trait defs or null), traitN
-//   minion only   skill (index into S.skills, -1 none), ttl
+//   minion only   skill (index into S.skills, -1 none), ttl (free: this file removes a minion by its life alone)
 //   shot          def (the enemy Attack it came from, or null), team (0 the player's, 1 the enemies'), owner (uid;
 //                 0 the player), skill, ttl, damage, dist, pierce, chain, fork, tx, ty, target,
 //                 hits: Int32Array(8) of uids hit lately, hitN: how many were written
 //   area          def, team, owner, skill, ttl, damage, tick, angle, len, target
 //   pickup        kind, value, ttl, item
-//   player        alive, uid (0), x, y, vx, vy, r, face, aimX, aimY, life, hush, hushWait, dodgeT, dodgeCd, invuln,
+//   player        alive, uid (0), x, y, px, py, vx, vy, r, face, aimX, aimY, life, hush, hushWait, dodgeT, dodgeCd, invuln,
 //                 draughts, draughtFill, runLevel, runXp, kx, ky, state, stateT, conds (a mask, Stats.condMask),
 //                 evade, hurtT, killT, flash, condT, condV, condN, a0..a3
 // Entities are reused: keep a uid, never the object, from one step to the next (S.boss is the one exception,
@@ -115,8 +130,8 @@
   const NEEDED = ['tollSeconds', 'gridCell', 'playerRadius'];      // the constants this file itself cannot do without
   const CAPS = ['enemies', 'shots', 'areas', 'pickups', 'minions', 'events'];
   const LIFE = 'lifeMax', HUSH = 'hushMax', DRAUGHTS = 'draughtCharges';   // the stats this file reads by name
-  const OFFER_COMMANDS = { pick: true, banish: true, reroll: true, skip: true };
-  const NONE = Object.freeze({});
+  const COMMANDS = { pick: true, banish: true, reroll: true, skip: true, leave: true, allocate: true, equip: true };
+  const NONE = Object.freeze({}), NO_SIGILS = Object.freeze([]);
   const NO_INPUT = Object.freeze({ mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false });
 
   Sim.COMMON = COMMON; Sim.ELITE = ELITE; Sim.MINIBOSS = MINIBOSS; Sim.BOSS = BOSS;
@@ -126,7 +141,9 @@
   // A table gives each field its default. A function as default makes an array that belongs to the one entity.
 
   const conds = () => new Float64Array(Stats.COND_MAX), uids = () => new Int32Array(8), slots = () => [null, null, null, null];
-  const BASE = { alive: false, uid: 0, x: 0, y: 0, vx: 0, vy: 0, r: 0, face: 0, t: 0, state: 0, stateT: 0, a0: 0, a1: 0, a2: 0, a3: 0 };
+  const BASE = {
+    alive: false, uid: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 0, face: 0, t: 0, state: 0, stateT: 0, a0: 0, a1: 0, a2: 0, a3: 0,
+  };
   const BODY = {
     def: null, defHash: 0, level: 1, life: 0, lifeMax: 0, damage: 0, speed: 0, cd0: 0, cd1: 0, cd2: 0, cd3: 0, kx: 0, ky: 0,
     tx: 0, ty: 0, target: 0, flash: 0, condT: conds, condV: conds, condN: conds,
@@ -141,7 +158,7 @@
     area: Object.assign({}, BASE, { def: null, team: 0, owner: 0, skill: -1, ttl: 0, damage: 0, tick: 0, angle: 0, len: 0, target: 0 }),
     pickup: Object.assign({}, BASE, { kind: 0, value: 0, ttl: 0, item: null }),
     player: {
-      alive: false, uid: 0, x: 0, y: 0, vx: 0, vy: 0, r: 0, face: 0, aimX: 1, aimY: 0, life: 0, hush: 0, hushWait: 0, dodgeT: 0,
+      alive: false, uid: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 0, face: 0, aimX: 1, aimY: 0, life: 0, hush: 0, hushWait: 0, dodgeT: 0,
       dodgeCd: 0, invuln: 0, draughts: 0, draughtFill: 0, runLevel: 0, runXp: 0, kx: 0, ky: 0, state: 0, stateT: 0, conds: 0,
       evade: 0, hurtT: 0, killT: 0, flash: 0, condT: conds, condV: conds, condN: conds, a0: 0, a1: 0, a2: 0, a3: 0,
     },
@@ -219,19 +236,24 @@
     Object.assign(rules, zone.rules, cfg.rules);
     for (const name of NEEDED) Core.assert(rules[name] > 0, 'Sim.create: the run needs the constant ' + name + ', above 0');
     for (const name of CAPS) Core.assert(rules.caps && rules.caps[name] > 0, 'Sim.create: the run needs the constant caps.' + name + ', above 0');
-    return rules;
+    return { ...rules };         // a copy made in one go: an object that had a key deleted is slow to read from
   }
 
-  // The sigils a run starts with: cfg.sigils, or what the character has in its loadout.
-  function loadout(cfg) {
-    if (cfg.sigils) return cfg.sigils;
-    const char = cfg.char, list = [];
-    if (!char || !char.loadout || !char.sigils) return list;
-    for (let i = 0; i < char.loadout.length; i++) {
-      const inst = char.loadout[i] === null ? undefined : char.sigils.find((s) => s.uid === char.loadout[i]);
-      if (inst !== undefined) list.push(inst);
+  // Makes S.skills follow the loadout: cfg.sigils as it stands, or the sigils the character's loadout names.
+  // Slot i is place i of the loadout whatever happens, so a shot can keep the index of the skill that made it;
+  // a place with no sigil has inst null. A slot whose sigil changed starts afresh, the others keep their state.
+  function syncSkills(S) {
+    const cfg = S.cfg, char = cfg.char, places = cfg.sigils || (char && char.loadout && char.sigils ? char.loadout : NO_SIGILS);
+    const skills = S.skills, F = factories().skill;
+    while (skills.length < places.length) skills.push(F.make());
+    skills.length = places.length;
+    for (let i = 0; i < places.length; i++) {
+      let inst = places[i] === undefined ? null : places[i];
+      if (inst !== null && typeof inst !== 'object') inst = (char && char.sigils && char.sigils.find((s) => s.uid === places[i])) || null;   // a uid
+      if (skills[i].inst === inst) continue;
+      F.reset(skills[i]);
+      skills[i].inst = inst;
     }
-    return list;
   }
 
   Sim.create = function (cfg) {
@@ -262,17 +284,15 @@
     S.region = World.region(S.rng.world.u32(), zone);
     S.props = S.region.props;
 
-    const p = S.player, sigils = loadout(cfg);
+    const p = S.player;
     p.alive = true;
-    p.x = S.region.x;
-    p.y = S.region.y;
+    p.x = p.px = S.region.x;
+    p.y = p.py = S.region.y;
     p.r = rules.playerRadius;
-    for (let i = 0; i < sigils.length; i++) {
-      const skill = F.skill.make();
-      skill.inst = sigils[i];
-      S.skills.push(skill);
+    for (let i = 0; i < states.length; i++) {
+      Core.assert(!(states[i].name in S), 'Sim.state: the run state has a field "' + states[i].name + '" already');
+      S[states[i].name] = states[i].make(S);
     }
-    for (let i = 0; i < states.length; i++) S[states[i].name] = states[i].make(S);
 
     const stats = Sim.rebuild(S).stats;
     p.life = stats[LIFE];
@@ -296,7 +316,11 @@
       chimes,
       conds: p.conds,
     });
-    for (let i = 0; i < S.skills.length; i++) S.skills[i].sheet = Stats.skillSheet(mods, S.skills[i].inst, S.sheet);
+    syncSkills(S);
+    for (let i = 0; i < S.skills.length; i++) {
+      const skill = S.skills[i];
+      skill.sheet = skill.inst === null ? null : Stats.skillSheet(mods, skill.inst, S.sheet);
+    }
     if (p.life > S.sheet.stats[LIFE]) p.life = S.sheet.stats[LIFE];
     if (p.hush > S.sheet.stats[HUSH]) p.hush = S.sheet.stats[HUSH];
     S.dirty = false;
@@ -336,8 +360,8 @@
     const rank = o.rank === undefined ? (boss ? BOSS : COMMON) : o.rank, mult = curves.rank ? curves.rank[rank] : undefined;
     e.def = def;
     e.defHash = Core.hashStr(def.id);
-    e.x = x;
-    e.y = y;
+    e.x = e.px = x;
+    e.y = e.py = y;
     e.r = def.radius * (mult ? mult.size : 1);
     e.face = Math.atan2(S.player.y - y, S.player.x - x);
     e.level = level;
@@ -360,6 +384,23 @@
       if (o.alive && (o.ttl -= DT) <= SLIVER) o.alive = false;
     }
     pool.compact();
+  }
+
+  // px, py: where a thing stood before the step, for drawing between two steps. hold(pool, -1) notes it for
+  // everything; hold(pool, uid) only for what is newer than that uid, which has no earlier place than its own.
+  function hold(pool, newerThan) {
+    const items = pool.items;
+    for (let i = 0; i < pool.n; i++) {
+      const o = items[i];
+      if (o.uid > newerThan) { o.px = o.x; o.py = o.y; }
+    }
+  }
+  function holdAll(S, newerThan) {
+    hold(S.enemies, newerThan);
+    hold(S.minions, newerThan);
+    hold(S.shots, newerThan);
+    hold(S.areas, newerThan);
+    hold(S.pickups, newerThan);
   }
 
   function deaths(S) {
@@ -387,9 +428,12 @@
 
   Sim.step = function (S, input) {
     if (S.phase !== 'play') return false;
-    const frame = input || NO_INPUT, debug = S.debug !== null;
+    const frame = input || NO_INPUT, debug = S.debug !== null, before = S.uid, p = S.player;
     S.eventCount = 0;
     S.eventStart = 0;
+    p.px = p.x;
+    p.py = p.y;
+    holdAll(S, -1);
     if (typeof Player.step === 'function') Player.step(S, frame);
     else if (debug) debugWalk(S, frame);
     if (!debug && typeof Director.step === 'function') Director.step(S);
@@ -403,12 +447,13 @@
     if (typeof Player.pickups === 'function') Player.pickups(S);
     if (S.dirty) Sim.rebuild(S);
     if (typeof Offers.step === 'function') Offers.step(S);
+    holdAll(S, before);
     S.step++;
     S.t = S.step / HZ;
     if (S.step >= S.tollAt) {
       S.toll++;
       S.tollAt += S.tollSteps;
-      Sim.emit(S, 'toll', S.player.x, S.player.y, S.toll, 0, null);
+      Sim.emit(S, 'toll', p.x, p.y, S.toll, 0, null);
     }
     return true;
   };
@@ -419,27 +464,27 @@
     const type = cmd ? cmd.type : undefined, char = S.cfg.char || null;
     let done = false;
     if (S.phase === 'ended') return false;
-    if (OFFER_COMMANDS[type] === true) {
-      S.eventCount = S.eventStart = 0;
-      if (typeof Offers.resolve === 'function') done = Offers.resolve(S, cmd) !== false;
-      else if (S.phase === 'offer' && (type === 'pick' || type === 'skip')) {
-        // without an offer system the two only close the offer, so that a run can go on
-        S.offer = S.offerQueue.length > 0 ? S.offerQueue.shift() : null;
-        if (S.offer === null) S.phase = 'play';
-        done = true;
-      }
-    } else if (type === 'leave') {
-      S.eventCount = S.eventStart = 0;
-      Sim.end(S, 'left');
-      return true;
-    } else if (type === 'allocate' || type === 'equip') {
-      S.eventCount = S.eventStart = 0;
-      if (char !== null && type === 'allocate' && typeof Char.allocate === 'function') done = Char.allocate(char, cmd.id, cmd.choice) !== false;
-      if (char !== null && type === 'equip' && typeof Char.equip === 'function') done = Char.equip(char, cmd.uid, cmd.slot) !== false;
-      if (done) S.dirty = true;
-    } else {
+    if (COMMANDS[type] !== true) {
       console.warn('Sim.command: unknown command ' + JSON.stringify(cmd));
       return false;
+    }
+    S.eventCount = S.eventStart = 0;             // like a step, a command starts with an empty queue
+    if (type === 'leave') {
+      Sim.end(S, 'left');
+      done = true;
+    } else if (type === 'allocate') {
+      if (char !== null && typeof Char.allocate === 'function') done = Char.allocate(char, cmd.id, cmd.choice) !== false;
+      S.dirty = S.dirty || done;
+    } else if (type === 'equip') {
+      if (char !== null && typeof Char.equip === 'function') done = Char.equip(char, cmd.uid, cmd.slot) !== false;
+      S.dirty = S.dirty || done;
+    } else if (typeof Offers.resolve === 'function') {
+      done = Offers.resolve(S, cmd) !== false;
+    } else if (S.phase === 'offer' && (type === 'pick' || type === 'skip')) {
+      // without an offer system the two only close the offer, so that a run can go on
+      S.offer = S.offerQueue.length > 0 ? S.offerQueue.shift() : null;
+      if (S.offer === null) S.phase = 'play';
+      done = true;
     }
     if (S.dirty && S.phase !== 'ended') Sim.rebuild(S);
     return done;
@@ -469,7 +514,7 @@
   // ---- checksum ----
   // Positions count to the millimetre and amounts to the thousandth, so the last bits of a sum do not matter.
 
-  // kind: 0 enemy, 1 minion, 2 something with a ttl
+  // kind: 0 enemy, 1 minion, 2 shot or area, 3 pickup
   function hashPool(h, pool, kind) {
     const items = pool.items;
     let live = 0;
@@ -479,8 +524,9 @@
       live++;
       h = hashMix(hashMix(hashMix(h, o.uid), round(o.x * 1000)), round(o.y * 1000));
       h = hashMix(h, o.state);
-      if (kind === 2) h = hashMix(h, round(o.ttl * 1000));
+      if (kind >= 2) h = hashMix(h, round(o.ttl * 1000));
       else h = hashMix(hashMix(hashMix(h, round(o.life * 1000)), o.defHash), kind === 0 ? o.level * 4 + o.rank : o.level);
+      if (kind === 3) h = hashMix(hashMix(h, o.kind), round(o.value * 1000));
     }
     return hashMix(h, live);
   }
@@ -494,11 +540,12 @@
     h = hashMix(hashMix(hashMix(h, round(p.x * 1000)), round(p.y * 1000)), p.alive);
     h = hashMix(hashMix(hashMix(h, round(p.life * 1000)), round(p.hush * 1000)), p.draughts);
     h = hashMix(hashMix(h, p.runLevel), round(p.runXp * 1000));
+    for (let i = 0; i < S.skills.length; i++) h = hashMix(h, round(S.skills[i].cd * 1000));
     h = hashPool(h, S.enemies, 0);
     h = hashPool(h, S.minions, 1);
     h = hashPool(h, S.shots, 2);
     h = hashPool(h, S.areas, 2);
-    return hashPool(h, S.pickups, 2);
+    return hashPool(h, S.pickups, 3);
   };
 
   // ---- the debug scene ----

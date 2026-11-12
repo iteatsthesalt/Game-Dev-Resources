@@ -75,7 +75,7 @@
     if (!region) return false;
     let moved = false;
     for (let pass = 0; pass < 2; pass++) {        // a second pass, in case leaving one collider pushed it into another
-      const n = region.grid.query(ent.x, ent.y, ent.r, near);
+      const n = region.grid.near(ent, 0, near);
       let pushed = false;
       for (let i = 0; i < n; i++) {
         const p = near[i];

@@ -1,18 +1,32 @@
 // tests/sim/20-sim.test.js: the run state, the order of a step, commands, events and the debug scene (src/js/20-sim.js).
-// Tests that put a stand-in system in place (a Player.step, a Director.step) load a simulation of their own:
-// loadSim() gives a separate copy each time, and without {boot: true} its namespaces are still open.
+// All but one of these tests run the kernel alone: kernel() loads only the files named in KERNEL, so the
+// systems and the content that later packages add can neither disturb them nor be disturbed. Each call gives
+// a separate copy with its namespaces still open, which is how a test puts a stand-in system in place
+// (a Player.step, a Director.step). The one test on the whole build is marked as such.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const vm = require('vm');
+const modules = require('../../tools/modules.js');
 const { loadSim, plain } = require('./loader.js');
 
-const base = loadSim();                  // shared by the tests that add nothing to the simulation
+const KERNEL = ['00-core.js', '01-defs.js', '02-pool-grid.js', '10-stats.js', '20-sim.js', '29-world.js', '30-modes-curves.js'];
+function kernel() {
+  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
+  context.console = console;
+  for (const file of KERNEL) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
+  return new vm.Script(`({ ${modules.namespaces('00-core.js').join(', ')} })`).runInContext(context);
+}
+
+const base = kernel();                   // shared by the tests that add nothing to the simulation
 const { Core, Sim, Stats, Defs } = base;
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 const run = (S, steps, input) => { for (let i = 0; i < steps; i++) Sim.step(S, input); return S; };
 const live = (pool) => Array.from(pool.items.slice(0, pool.n));      // the entities in use, as an array of this context
 const events = (S) => Array.from({ length: S.eventCount }, (unused, i) => plain(S.events[(S.eventStart + i) % S.events.length]));
 const idle = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+// What a player has with no modifiers at all. The numbers are provisional, so the tests only ever add to them.
+const BASE = { life: Stats.stat('lifeMax').base, hush: Stats.stat('hushMax').base, draughts: Stats.stat('draughtCharges').base };
 const STATE = ['cfg', 'mode', 'zone', 'rules', 'curves', 'rng', 'step', 't', 'toll', 'tollAt', 'tollSteps', 'threat', 'phase', 'player', 'mods',
   'sheet', 'skills', 'enemies', 'shots', 'areas', 'pickups', 'minions', 'grid', 'region', 'props', 'gate', 'boss', 'offer', 'offerQueue', 'chimes',
   'buffs', 'events', 'eventCount', 'eventStart', 'eventsDropped', 'haul', 'gold', 'echoes', 'kills', 'counters', 'dirty', 'result', 'uid', 'debug'];
@@ -53,11 +67,11 @@ test('the rules of a run are the constants, overruled by the zone and by the cfg
     [120, 8, 4, 2, 3, 1, 16]);
   assert.equal(main.tollSeconds, 75, 'the definition itself is untouched');
   // a zone's own toll numbers and its rules come before the constants
-  const sim = loadSim();
-  sim.Defs.add('zone', Object.assign({}, plain(sim.Defs.get('zone', 'debug')), { id: 'quick', tollSeconds: 30, keeperToll: 5, rules: { spawnRadius: 12 } }));
-  const quick = sim.Sim.create({ zone: 'quick', seed: 1 });
+  const sim = kernel();
+  sim.Defs.add('zone', Object.assign({}, plain(sim.Defs.get('zone', 'debug')), { id: 'test.quick', tollSeconds: 30, keeperToll: 5, rules: { spawnRadius: 12 } }));
+  const quick = sim.Sim.create({ zone: 'test.quick', seed: 1 });
   assert.deepEqual([quick.rules.tollSeconds, quick.rules.keeperToll, quick.rules.gateEvery, quick.rules.spawnRadius, quick.tollSteps], [30, 5, 3, 12, 1800]);
-  assert.equal(sim.Sim.create({ zone: 'quick', seed: 1, rules: { tollSeconds: 10 } }).rules.tollSeconds, 10, 'the cfg has the last word');
+  assert.equal(sim.Sim.create({ zone: 'test.quick', seed: 1, rules: { tollSeconds: 10 } }).rules.tollSeconds, 10, 'the cfg has the last word');
   assert.throws(() => Sim.create({ zone: 'debug', seed: 1, rules: { gridCell: 0 } }), /needs the constant gridCell/);
   assert.throws(() => Sim.create({ zone: 'debug', seed: 1, rules: { caps: { enemies: 5 } } }), /needs the constant caps\.shots/);
 });
@@ -89,8 +103,8 @@ test('the player starts at the middle of the region with what the sheet gives', 
   const S = Sim.create({ zone: 'debug', seed: 5, mods: [{ stat: 'lifeMax', op: 'flat', value: 40 }, { stat: 'hushMax', op: 'flat', value: 25 }, { stat: 'draughtCharges', op: 'flat', value: 1 }] });
   const p = S.player;
   assert.deepEqual([p.alive, p.uid, p.x, p.y, p.r, p.aimX, p.aimY], [true, 0, S.region.x, S.region.y, 0.4, 1, 0]);
-  assert.deepEqual([p.life, p.hush, p.draughts], [100, 25, 4]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level], [100, 1]);
+  assert.deepEqual([p.life, p.hush, p.draughts], [BASE.life + 40, BASE.hush + 25, BASE.draughts + 1]);
+  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level], [BASE.life + 40, 1]);
   assert.deepEqual(Object.keys(p), plain(Sim.fields('player')));
   assert.ok(p.condT instanceof Float64Array === false && ArrayBuffer.isView(p.condT) && p.condT.length === Stats.COND_MAX);
   assert.ok(Object.isSealed(p));
@@ -118,6 +132,25 @@ test('the same seed gives the same checksum after 600 steps, another seed anothe
   assert.equal(Sim.hash(Sim.debugScene(50, 'bells')), Sim.hash(Sim.debugScene(50, 'bells')));
 });
 
+test('the whole build: with every system that exists, the same seed still gives the same checksum', () => {
+  // loadSim() runs every module below 50, whoever wrote it, and finalizes and seals as the page does. A system
+  // that reads a clock, keeps state between runs, or draws from anything but the run's streams shows here.
+  const walk = (i) => ({ mx: Math.sin(i / 30), my: Math.cos(i / 47), ax: 1, ay: 0, aim: false, dodge: i % 97 === 0, draught: i % 211 === 0 });
+  const play = (sim, seed) => {
+    const S = sim.Sim.debugScene(150, seed);
+    for (let i = 0; i < 600; i++) {
+      if (S.phase === 'offer') sim.Sim.command(S, { type: 'pick', index: 0 });
+      sim.Sim.step(S, walk(i));
+    }
+    return sim.Sim.hash(S);
+  };
+  const one = loadSim({ boot: true }), other = loadSim({ boot: true });
+  const first = play(one, 77);
+  assert.equal(play(other, 77), first, 'two copies of the simulation agree');
+  assert.equal(play(one, 77), first, 'a second run in the same copy agrees with the first: nothing leaks from run to run');
+  assert.notEqual(play(one, 78), first);
+});
+
 test('the checksum takes in the step, the streams, the player and every live entity', () => {
   const fresh = () => Sim.debugScene(30, 7), h0 = Sim.hash(fresh());
   const changed = (change) => { const S = fresh(); change(S); return Sim.hash(S) !== h0; };
@@ -137,10 +170,24 @@ test('the checksum takes in the step, the streams, the player and every live ent
   assert.ok(changed((S) => { S.enemies.items[3].rank = 1; }));
   assert.ok(changed((S) => { S.enemies.kill(S.enemies.items[3]); }));
   assert.ok(changed((S) => { Sim.spawnEnemy(S, 'debug.husk', 1, 1); }));
-  assert.ok(changed((S) => { const shot = S.shots.alloc(); shot.ttl = 1; }));
-  assert.ok(changed((S) => { const pickup = S.pickups.alloc(); pickup.ttl = 9; pickup.x = 2; }));
-  assert.ok(changed((S) => { const minion = S.minions.alloc(); minion.life = 5; }));
-  assert.ok(changed((S) => { const area = S.areas.alloc(); area.ttl = 2; }));
+  // every pool counts: two runs that made the same things differ as soon as one of those things does
+  const twin = (pool, change) => {
+    const A = fresh(), B = fresh(), a = A[pool].alloc(), b = B[pool].alloc();
+    for (const o of [a, b]) for (const field of ['ttl', 'life']) if (field in o) o[field] = 5;
+    assert.equal(Sim.hash(A), Sim.hash(B), `${pool}: alike so far`);
+    change(b);
+    return Sim.hash(A) !== Sim.hash(B);
+  };
+  for (const pool of ['enemies', 'minions', 'shots', 'areas', 'pickups']) {
+    assert.ok(twin(pool, (o) => { o.x += 0.5; }), `${pool}: where a thing is`);
+    assert.ok(twin(pool, (o) => { o.state = 2; }), `${pool}: its state`);
+    assert.ok(twin(pool, (o) => { o.alive = false; }), `${pool}: whether it is there at all`);
+  }
+  for (const pool of ['enemies', 'minions']) assert.ok(twin(pool, (o) => { o.life = 4; }), `${pool}: life`);
+  for (const pool of ['shots', 'areas', 'pickups']) assert.ok(twin(pool, (o) => { o.ttl = 4; }), `${pool}: time left`);
+  assert.ok(twin('pickups', (o) => { o.value = 6; }), 'what a pickup is worth');
+  assert.ok(twin('pickups', (o) => { o.kind = 1; }), 'and what kind it is');
+  assert.ok(changed((S) => { S.shots.alloc().ttl = 1; }), 'one more shot');
   // positions count to the millimetre: a tenth of one is noise
   const still = (dx) => { const S = fresh(); S.enemies.items[5].x = 5 + dx; return Sim.hash(S); };
   assert.equal(still(0.0001), still(0.0002));
@@ -220,8 +267,39 @@ test('alloc gives a clean entity with a new uid, however it was left', () => {
   assert.equal(S.enemies.alloc(), null, 'a full pool gives null');
 });
 
+test('px and py hold where a thing stood one step ago, for drawing between two steps', () => {
+  const sim = kernel(), S = sim.Sim.debugScene(40, 6), walk = { mx: 0.6, my: 0.8, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+  assert.ok(live(S.enemies).every((e) => e.px === e.x && e.py === e.y), 'a new enemy has no earlier place than its own');
+  assert.deepEqual([S.player.px, S.player.py], [S.player.x, S.player.y]);
+  for (let step = 0; step < 5; step++) {
+    const was = live(S.enemies).map((e) => [e, e.x, e.y]), player = [S.player.x, S.player.y];
+    sim.Sim.step(S, walk);
+    for (const [e, x, y] of was) assert.deepEqual([e.px, e.py], [x, y]);
+    assert.ok(was.every(([e, x, y]) => e.x !== x || e.y !== y), 'and every husk has moved on');
+    assert.deepEqual([S.player.px, S.player.py], player);
+    assert.notDeepEqual([S.player.x, S.player.y], player);
+  }
+  // what a system makes during a step starts with its own place; from the next step on it has a past
+  let shot = null, late = null;
+  sim.Skills.step = (run) => {
+    if (shot === null) { shot = run.shots.alloc(); shot.x = 3; shot.y = 4; shot.ttl = 9; } else shot.x += 0.5;
+  };
+  sim.Offers.step = (run) => { if (late === null) { late = run.pickups.alloc(); late.x = -2; late.ttl = 9; } };
+  sim.Sim.step(S, walk);
+  assert.deepEqual([shot.px, shot.py, shot.x], [3, 4, 3]);
+  assert.deepEqual([late.px, late.x], [-2, -2], 'even what the last system of the step made');
+  sim.Sim.step(S, walk);
+  assert.deepEqual([shot.px, shot.x], [3, 3.5]);
+  sim.Sim.step(S, walk);
+  assert.deepEqual([shot.px, shot.x], [3.5, 4]);
+  S.phase = 'offer';
+  shot.x = 50;
+  sim.Sim.step(S, walk);
+  assert.equal(shot.px, 3.5, 'a step that does not run notes nothing');
+});
+
 test('Sim.field gives every entity of a kind one more field, declared before the first run', () => {
-  const sim = loadSim();
+  const sim = kernel();
   sim.Sim.field('enemy', 'chargeT', 0);
   sim.Sim.field('enemy', 'mood', 'calm');
   sim.Sim.field('shot', 'bounces', 2);
@@ -250,7 +328,7 @@ test('Sim.field gives every entity of a kind one more field, declared before the
 });
 
 test('Sim.state gives every run a slot of its own, and Sim.source adds modifiers to every rebuild', () => {
-  const sim = loadSim(), order = [];
+  const sim = kernel(), order = [];
   sim.Sim.state('director', (S) => { order.push('director'); return { budget: S.rules.spawnRadius, seen: S.player.alive && S.enemies.cap }; });
   sim.Sim.state('offers', () => { order.push('offers'); return { queue: [] }; });
   assert.throws(() => sim.Sim.state('offers', () => 0), /two slots named "offers"/);
@@ -263,15 +341,18 @@ test('Sim.state gives every run a slot of its own, and Sim.source adds modifiers
   assert.deepEqual(order, ['director', 'offers', 'director', 'offers'], 'in the order they were declared, once for each run');
   assert.deepEqual(plain(A.director), { budget: 26, seen: 600 }, 'the pools and the player are there when a slot is made');
   assert.notEqual(A.offers, B.offers);
-  assert.equal(A.sheet.stats.lifeMax, 65);
+  assert.equal(A.sheet.stats.lifeMax, BASE.life + 5);
   A.chimes.sturdy = 3;
   A.buffs.push({ id: 'vigour', mods: [{ stat: 'lifeMax', op: 'inc', value: 100 }] });
   A.dirty = true;
   sim.Sim.step(A, idle);
-  assert.equal(A.sheet.stats.lifeMax, 190, '(60 + 5 + 30) * 2');
+  assert.equal(A.sheet.stats.lifeMax, (BASE.life + 5 + 30) * 2, 'the base, 5 from the cfg and 30 from the chimes, doubled by the buff');
   assert.equal(A.sheet.primaries.chimes, 3, 'the stacks of chimes are what a per modifier counts');
   assert.equal(A.mods.length, 3);
-  assert.equal(B.sheet.stats.lifeMax, 60);
+  assert.equal(B.sheet.stats.lifeMax, BASE.life);
+  const clash = kernel();
+  clash.Sim.state('player', () => 0);
+  assert.throws(() => clash.Sim.create({ zone: 'debug', seed: 1 }), /the run state has a field "player" already/);
 });
 
 // ---- events ----
@@ -349,7 +430,7 @@ test('a step does nothing while an offer is open or after the end', () => {
 // ---- the order of a step ----
 
 function withSystems() {
-  const sim = loadSim(), calls = [];
+  const sim = kernel(), calls = [];
   sim.Player.step = (S, input) => { calls.push('Player.step'); sim.seen.input = input; };
   sim.Director.step = () => { calls.push('Director.step'); };
   sim.Enemies.step = () => { calls.push('Enemies.step'); };
@@ -401,8 +482,8 @@ test('what this file does itself sits at fixed places between the systems', () =
   assert.equal(note.inGridAtEnemies, 1, 'and before the enemies move');
   assert.equal(note.aliveAtTick, true, 'the dead are removed only after damage over time');
   assert.deepEqual(note.onKill, [true, true, 0, 1, 1], 'Director.onKill gets the enemy while it is still there, the kill already counted and told');
-  assert.deepEqual(note.atPickups, [0, false, true, 60], 'pickups come after the deaths and before the sheet is rebuilt');
-  assert.deepEqual(note.atOffers, [false, 100, 14], 'offers see the new sheet, and the clock has not moved yet');
+  assert.deepEqual(note.atPickups, [0, false, true, BASE.life], 'pickups come after the deaths and before the sheet is rebuilt');
+  assert.deepEqual(note.atOffers, [false, BASE.life + 40, 14], 'offers see the new sheet, and the clock has not moved yet');
   assert.equal(S.step, 15);
 });
 
@@ -505,18 +586,18 @@ test('spawnEnemy fills an enemy from its def, the level curves and the rank', ()
 });
 
 test('spawnEnemy takes the zone\'s level, traits, and bosses from their own registry', () => {
-  const sim = loadSim(), husk = plain(sim.Defs.get('enemy', 'debug.husk'));
-  sim.Defs.add('zone', Object.assign({}, plain(sim.Defs.get('zone', 'debug')), { id: 'deep', level: 12 }));
-  sim.Defs.add('boss', Object.assign({}, husk, { id: 'debug.keeper', name: 'Keeper', life: 5000, radius: 1.5, arena: { radius: 15 }, phases: [] }));
-  sim.Defs.add('trait', { id: 'swift', name: 'Swift' });
-  sim.Defs.add('trait', { id: 'vast', name: 'Vast' });
-  assert.deepEqual(plain(sim.Defs.finalize()), []);
-  const S = sim.Sim.create({ zone: 'deep', seed: 1, rules: { caps: { enemies: 3, shots: 1, areas: 1, pickups: 1, minions: 1, events: 8 } } });
-  const e = sim.Sim.spawnEnemy(S, 'debug.husk', 1, 1, { traits: ['swift', 'vast'] });
+  const sim = kernel(), husk = plain(sim.Defs.get('enemy', 'debug.husk'));
+  sim.Defs.add('zone', Object.assign({}, plain(sim.Defs.get('zone', 'debug')), { id: 'test.deep', level: 12 }));
+  sim.Defs.add('boss', Object.assign({}, husk, { id: 'test.keeper', name: 'Keeper', life: 5000, radius: 1.5, arena: { radius: 15 }, phases: [] }));
+  sim.Defs.add('trait', { id: 'test.swift', name: 'Swift' });
+  sim.Defs.add('trait', { id: 'test.vast', name: 'Vast' });
+  assert.deepEqual(plain(sim.Defs.finalize()), [], 'what this test added is valid');
+  const S = sim.Sim.create({ zone: 'test.deep', seed: 1, rules: { caps: { enemies: 3, shots: 1, areas: 1, pickups: 1, minions: 1, events: 8 } } });
+  const e = sim.Sim.spawnEnemy(S, 'debug.husk', 1, 1, { traits: ['test.swift', 'test.vast'] });
   assert.equal(e.level, 12, 'the zone\'s level unless told otherwise');
-  assert.deepEqual([e.traitN, e.traits[0].id, e.traits[1].id, e.traits[2], e.traits.length], [2, 'swift', 'vast', null, 4]);
-  const boss = sim.Sim.spawnEnemy(S, 'debug.keeper', 0, 5);
-  assert.deepEqual([boss.def.id, boss.rank, boss.r], ['debug.keeper', 3, 1.5], 'a boss is rank 3 and keeps its own size');
+  assert.deepEqual([e.traitN, e.traits[0].id, e.traits[1].id, e.traits[2], e.traits.length], [2, 'test.swift', 'test.vast', null, 4]);
+  const boss = sim.Sim.spawnEnemy(S, 'test.keeper', 0, 5);
+  assert.deepEqual([boss.def.id, boss.rank, boss.r], ['test.keeper', 3, 1.5], 'a boss is rank 3 and keeps its own size');
   near(boss.life, 5000 * sim.Defs.get('curves', 'main').enemyLife[11]);
   assert.throws(() => sim.Sim.spawnEnemy(S, 'debug.husk', 0, 0, { traits: ['slow'] }), /there is no trait "slow"/);
   S.enemies.clear();
@@ -528,12 +609,12 @@ test('spawnEnemy takes the zone\'s level, traits, and bosses from their own regi
 // ---- sheets ----
 
 test('the sheets are rebuilt when the run is marked dirty', () => {
-  const sim = loadSim();
+  const sim = kernel();
   sim.Defs.add('sigil', {
-    id: 'spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell', 'projectile', 'fire'], weapon: null,
+    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell', 'projectile', 'fire'], weapon: null,
     archetype: 'projectile', target: 'nearest', rate: 2, damage: { fire: [10, 20] }, weaponPct: 0, eff: 1, crit: 5, params: { speed: 12 }, mods: [], fx: {},
   });
-  const mods = [{ stat: 'damage', op: 'inc', value: 50, tags: ['fire'] }], inst = { uid: 1, id: 'spark', level: 1, sockets: 2, bindings: [null, null] };
+  const mods = [{ stat: 'damage', op: 'inc', value: 50, tags: ['fire'] }], inst = { uid: 1, id: 'test.spark', level: 1, sockets: 2, bindings: [null, null] };
   const S = sim.Sim.create({ zone: 'debug', seed: 1, mods, sigils: [inst], level: 9 });
   const fire = sim.Stats.TYPE.fire;
   assert.equal(S.skills.length, 1);
@@ -549,8 +630,8 @@ test('the sheets are rebuilt when the run is marked dirty', () => {
   sim.Sim.step(S, idle);
   assert.equal(S.dirty, false);
   assert.ok(S.sheet !== sheet && S.skills[0].sheet !== skillSheet);
-  assert.deepEqual([S.skills[0].sheet.min[fire], S.sheet.stats.lifeMax], [30, 30]);
-  assert.equal(S.player.life, 30, 'life never stays above its new most');
+  assert.deepEqual([S.skills[0].sheet.min[fire], S.sheet.stats.lifeMax], [30, BASE.life / 2]);
+  assert.equal(S.player.life, BASE.life / 2, 'life never stays above its new most');
   assert.equal(S.mods.length, 3);
   S.player.conds = sim.Stats.condMask(['lowLife']);
   mods.push({ stat: 'armour', op: 'flat', value: 9, cond: 'lowLife' });
@@ -558,14 +639,48 @@ test('the sheets are rebuilt when the run is marked dirty', () => {
   assert.equal(S.sheet.stats.armour, 9, 'the player\'s conditions go into the sheet');
 });
 
-test('a run with a character asks Char.mods, and commands reach the character', () => {
-  const sim = loadSim(), asked = [];
+test('S.skills follows the loadout through a run, and no slot ever moves', () => {
+  const sim = kernel();
   sim.Defs.add('sigil', {
-    id: 'spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell'], weapon: null, archetype: 'burst', target: 'nearest',
+    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell'], weapon: null, archetype: 'burst', target: 'nearest',
+    rate: { a: 1, b: 20, curve: 'lin' }, damage: {}, weaponPct: 0, eff: 0, crit: 0, params: {}, mods: [], fx: {},
+  });
+  const inst = (uid, level) => ({ uid, id: 'test.spark', level, sockets: 2, bindings: [null, null] });
+  const a = inst(1, 1), b = inst(2, 2), c = inst(3, 3), sigils = [a, null, b];
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, sigils }), skills = S.skills;
+  const now = () => Array.from(S.skills, (k) => [k.inst === null ? null : k.inst.uid, k.sheet === null ? null : k.sheet.rate, k.cd]);
+  assert.deepEqual(now(), [[1, 1, 0], [null, null, 0], [2, 2, 0]]);
+  const before = sim.Sim.hash(S);
+  skills[0].cd = 0.7;                                  // state an archetype would keep
+  assert.notEqual(sim.Sim.hash(S), before, 'the checksum takes in the cooldowns');
+  skills[2].cd = 0.3;
+  skills[2].a1 = 5;
+  sigils[0] = c;                                       // one sigil swapped, one place filled, one more place opened
+  sigils[1] = a;
+  sigils.push(null);
+  S.dirty = true;
+  sim.Sim.step(S, idle);
+  assert.equal(S.skills, skills, 'the same list as before');
+  assert.deepEqual(now(), [[3, 3, 0], [1, 1, 0], [2, 2, 0.3], [null, null, 0]], 'a slot whose sigil changed starts afresh');
+  assert.equal(skills[2].a1, 5, 'and one that kept its sigil keeps its state');
+  b.level = 9;                                         // the same sigil, levelled: the slot stays, its sheet is new
+  S.dirty = true;
+  sim.Sim.step(S, idle);
+  assert.deepEqual(now()[2], [2, 9, 0.3]);
+  sigils.length = 1;
+  sim.Sim.rebuild(S);
+  assert.deepEqual(now(), [[3, 3, 0]]);
+  assert.equal(sim.Sim.create({ zone: 'debug', seed: 1 }).skills.length, 0, 'no loadout, no slots');
+});
+
+test('a run with a character asks Char.mods, and commands reach the character', () => {
+  const sim = kernel(), asked = [];
+  sim.Defs.add('sigil', {
+    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell'], weapon: null, archetype: 'burst', target: 'nearest',
     rate: 1, damage: {}, weaponPct: 0, eff: 0, crit: 0, params: {}, mods: [], fx: {},
   });
   const char = {
-    level: 14, tree: [], activeVows: ['a', 'b'], sigils: [{ uid: 7, id: 'spark', level: 2, bindings: [] }, { uid: 8, id: 'spark', level: 5, bindings: [] }],
+    level: 14, tree: [], activeVows: ['a', 'b'], sigils: [{ uid: 7, id: 'test.spark', level: 2, bindings: [] }, { uid: 8, id: 'test.spark', level: 5, bindings: [] }],
     loadout: [8, null, 7, null, 99, null],
   };
   const account = { gold: 3 };
@@ -575,11 +690,13 @@ test('a run with a character asks Char.mods, and commands reach the character', 
   sim.Char.equip = (c, uid, slot) => uid !== 0;
   const S = sim.Sim.create({ zone: 'debug', seed: 1, char, account, mods: [{ stat: 'lifeMax', op: 'flat', value: 999 }] });
   assert.deepEqual(asked, [[true, 'number', true]]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level, S.sheet.primaries.vows, S.sheet.weapon.family], [60, 14, 2, 'staff'], 'cfg.mods is for runs without a character');
-  assert.deepEqual(Array.from(S.skills, (k) => k.inst.uid), [8, 7], 'the loadout, in its order, without the empty and the unknown slots');
+  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level, S.sheet.primaries.vows, S.sheet.weapon.family], [BASE.life, 14, 2, 'staff'], 'cfg.mods is for runs without a character');
+  assert.deepEqual(Array.from(S.skills, (k) => (k.inst === null ? null : k.inst.uid)), [8, null, 7, null, null, null],
+    'one slot for each place of the loadout; a place that is empty, or names a sigil the character lacks, has none');
+  assert.deepEqual(Array.from(S.skills, (k) => (k.sheet === null ? null : k.sheet.level)), [5, null, 2, null, null, null]);
   assert.equal(sim.Sim.command(S, { type: 'allocate', id: 'n1', choice: 'str' }), true);
   assert.deepEqual(plain(char.tree), [{ id: 'n1', choice: 'str' }]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.dirty], [70, false], 'a command that changed the character rebuilds the sheets at once');
+  assert.deepEqual([S.sheet.stats.lifeMax, S.dirty], [BASE.life + 10, false], 'a command that changed the character rebuilds the sheets at once');
   assert.equal(sim.Sim.command(S, { type: 'equip', uid: 0, slot: 'weapon' }), false);
   assert.equal(sim.Sim.command(S, { type: 'equip', uid: 4, slot: 'weapon' }), true);
   // without a character, or without the Char functions, those commands do nothing
@@ -606,18 +723,18 @@ test('offer commands go to Offers.resolve; without it, pick and skip close the o
   assert.deepEqual([S.offer, S.phase], [null, 'play']);
   assert.equal(Sim.step(S, idle), true);
 
-  const sim = loadSim(), got = [];
+  const sim = kernel(), got = [];
   sim.Offers.resolve = (run, cmd) => { got.push(cmd.type); run.phase = 'play'; run.dirty = cmd.type === 'pick'; return cmd.type !== 'banish'; };
   const T = sim.Sim.create({ zone: 'debug', seed: 1, mods: [] });
   T.phase = 'offer';
   T.cfg.mods.push({ stat: 'lifeMax', op: 'flat', value: 5 });
   assert.equal(sim.Sim.command(T, { type: 'banish', index: 0 }), false, 'what the resolver refuses is not done');
-  assert.equal(T.sheet.stats.lifeMax, 60);
+  assert.equal(T.sheet.stats.lifeMax, BASE.life);
   assert.equal(sim.Sim.command(T, { type: 'pick', index: 2 }), true);
   assert.equal(sim.Sim.command(T, { type: 'reroll' }), true);
   assert.equal(sim.Sim.command(T, { type: 'skip' }), true);
   assert.deepEqual(got, ['banish', 'pick', 'reroll', 'skip']);
-  assert.deepEqual([T.sheet.stats.lifeMax, T.dirty], [65, false], 'a pick that marked the run dirty has the sheets rebuilt before it returns');
+  assert.deepEqual([T.sheet.stats.lifeMax, T.dirty], [BASE.life + 5, false], 'a pick that marked the run dirty has the sheets rebuilt before it returns');
 });
 
 test('leave ends the run; an unknown command is warned about and ignored', () => {
@@ -675,7 +792,7 @@ test('the debug scene puts n husks in rings round the player', () => {
   assert.deepEqual(plain(S.debug), { x: 0, y: 0 });
   const rings = new Map();
   for (const e of S.enemies.items) {
-    assert.deepEqual([e.alive, e.def.id, e.level, e.rank, e.life], [true, 'debug.husk', 1, 0, 20]);
+    assert.deepEqual([e.alive, e.def.id, e.level, e.rank, e.life], [true, 'debug.husk', 1, 0, e.def.life]);
     assert.ok(Math.abs(Math.hypot(e.x, e.y) - e.a0) <= 0.35 + 1e-9, 'a husk starts within its drift of its ring');
     rings.set(e.a0, (rings.get(e.a0) || 0) + 1);
   }

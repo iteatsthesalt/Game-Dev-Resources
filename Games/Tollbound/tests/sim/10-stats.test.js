@@ -3,9 +3,20 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { loadSim, plain } = require('./loader.js');
+const vm = require('vm');
+const modules = require('../../tools/modules.js');
+const { plain } = require('./loader.js');
 
-const { Stats } = loadSim();
+// The stat rules need only the core, the registries and the tables. Running just those three files gives
+// registries with nothing in them, so the sigils of these tests never meet the ids of the game's own content.
+function kernel() {
+  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
+  context.console = console;
+  for (const file of ['00-core.js', '01-defs.js', '10-stats.js']) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
+  return new vm.Script('({ Core, Defs, Stats })').runInContext(context);
+}
+
+const { Stats } = kernel();
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);
 const nearAll = (list, expected, eps) => { assert.equal(list.length, expected.length); expected.forEach((v, i) => near(list[i], v, eps)); };
 const mod = (stat, op, value, more) => Object.assign({ stat, op, value }, more);
@@ -305,7 +316,7 @@ test('a sheet bakes in the player\'s conditions, the damage taken per type, and 
 // ---- a sigil's sheet ----
 
 function withSigils() {
-  const sim = loadSim(), sigil = (id, more) => sim.Defs.add('sigil', Object.assign({
+  const sim = kernel(), sigil = (id, more) => sim.Defs.add('sigil', Object.assign({
     id, name: id, text: '', icon: null, attr: 'str', tier: 1, tags: [], weapon: null, archetype: 'burst', target: 'nearest', rate: 1,
     damage: {}, weaponPct: 0, eff: 1, crit: 0, params: {}, mods: [], fx: {},
   }, more));
@@ -427,19 +438,24 @@ test('a sigil\'s sheet, worked by hand: an attack with a weapon, a binding and a
 
 test('gained damage comes from the first bases only, and each pair of types is its own', () => {
   const St = withSigils(), T = St.TYPE;
-  const weapon = { family: 'sword', damage: { physical: [100, 100] }, aps: 1, crit: 0 };
+  const weapon = { family: 'sword', damage: { physical: [100, 100], fire: [10, 10] }, aps: 1, crit: 0 };
   const mods = [
-    mod('gainAsExtra.fire', 'flat', 50, { from: 'physical' }),       // fire = 50% of physical
-    mod('gainAsExtra.cold', 'flat', 100, { from: 'fire' }),          // cold = 100% of the FIRST fire base, which is 0
+    mod('gainAsExtra.fire', 'flat', 50, { from: 'physical' }),       // fire gains 50% of physical
+    mod('gainAsExtra.cold', 'flat', 100, { from: 'fire' }),          // cold gains 100% of the FIRST fire base
     mod('gainAsExtra.void', 'flat', 10, { from: 'physical' }),
     mod('gainAsExtra.void', 'flat', 15, { from: 'physical' }),       // two gains of one pair add up: 25%
-    mod('gainAsExtra.physical', 'flat', 100, { from: 'fire' }),      // nothing: the first fire base is 0
+    mod('gainAsExtra.physical', 'flat', 100, { from: 'fire' }),      // and back: physical gains 100% of the first fire base
+    mod('gainAsExtra.lightning', 'flat', 100, { from: 'cold' }),     // nothing: there is no cold to begin with
   ];
   const ss = St.skillSheet(mods, { id: 'punch', level: 1, bindings: [] }, St.sheet(mods, { weapon }));
-  // physical first base: own [2, 4] + weapon [100, 100] * 100% = [102, 104]
-  nearAll(ss.baseMin, [102, 51, 0, 0, 25.5]);
-  nearAll(ss.baseMax, [104, 52, 0, 0, 26]);
-  assert.equal(ss.baseMin[T.cold], 0, 'gained fire is not gained again as cold');
+  // First bases: physical own [2, 4] + weapon [100, 100] = [102, 104]; fire [10, 10] from the weapon.
+  //   physical: + 100% of fire [10, 10]       -> [112, 114]
+  //   fire:     + 50% of physical [51, 52]    -> [61, 62]
+  //   cold:     100% of the first fire base   -> [10, 10], not the [61, 62] that fire has grown to
+  //   void:     25% of physical               -> [25.5, 26]
+  nearAll(ss.baseMin, [112, 61, 10, 0, 25.5]);
+  nearAll(ss.baseMax, [114, 62, 10, 0, 26]);
+  assert.equal(ss.baseMin[T.lightning], 0, 'gained cold is not gained again as lightning');
 });
 
 test('an attack without its weapon, a sigil that needs no weapon, and bare hands', () => {

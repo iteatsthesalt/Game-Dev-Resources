@@ -8,9 +8,19 @@ const vm = require('vm');
 const modules = require('../../tools/modules.js');
 const { loadSim, plain } = require('./loader.js');
 
-const KINDS =['sigil', 'binding', 'vow', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy', 'boss', 'zone',
+const KINDS = ['sigil', 'binding', 'vow', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy', 'boss', 'zone',
   'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'chime', 'deed', 'mode', 'curves', 'constants', 'trait', 'chartMod'];
 const mod = (stat, op, value, more) => Object.assign({ stat, op, value }, more);
+
+// Runs only the files named, in a context of their own: registries with nothing in them, whatever content the
+// game ships. Most tests here use kernel(), so they keep passing as content arrives and never meet its ids.
+function bare(files) {
+  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
+  context.console = console;
+  for (const file of files) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
+  return new vm.Script('({ Core, Defs, Stats })').runInContext(context);
+}
+const kernel = () => bare(['00-core.js', '01-defs.js', '10-stats.js']);
 
 function sample() {
   const attack = (id, more) => Object.assign({
@@ -30,7 +40,6 @@ function sample() {
     ],
   });
   return [
-    // the shipped debug enemy names this puppet; once any puppet exists, this one has to
     ['puppet', {
       id: 'debug.husk', rig: 'biped', scale: 1,
       parts: [
@@ -100,7 +109,7 @@ function sample() {
         { toll: 4, kind: 'miniboss', boss: 'keeper' },
         { toll: 5, kind: 'shrine' },
       ],
-      boss: 'keeper', rules: { tollSeconds: 60 }, unlock: null, next: 'debug',
+      boss: 'keeper', rules: { tollSeconds: 60 }, unlock: null, next: 'ossuary',
     }],
     ['base', {
       id: 'old-blade', name: 'Old Blade', slot: 'weapon', family: 'sword', tags: ['weapon', 'sword'], level: 1, req: { level: 1, str: 8 },
@@ -136,16 +145,16 @@ function sample() {
       levelOffer: 'node', runLevelOffer: 'chime', eliteOffer: 'reward', bossOffer: 'reward', shrineOffer: 'chime', haul: 'none',
       calling: { afterBoss: 1, pointsPerBoss: 2 }, respec: 'last3', death: 'permanent', score: { kill: 1 },
     }],
-    ['curves', { id: 'alt', levels: 5, enemyLife: [1, 2, 3, 4, 5] }],
-    ['constants', { id: 'alt', anything: 1, nested: { fine: true } }],
+    ['curves', { id: 'main', levels: 5, enemyLife: [1, 2, 3, 4, 5], charXp: [10, 20, 30, 40, 50] }],
+    ['constants', { id: 'main', anything: 1, nested: { fine: true } }],
     ['chartMod', { id: 'flooded', name: 'Flooded', text: 'Everything is slower.', mods: [mod('moveSpeed', 'more', -10)] }],
   ];
 }
 
-// Loads a fresh simulation, adds the sample (after change(pick, defs) had its way with it), and returns what
+// Takes empty registries, adds the sample (after change(pick, defs, sim) had its way with it), and returns what
 // finalize says. pick(kind, id?) is the first sample definition of a kind, or the one with that id.
 function problems(change) {
-  const sim = loadSim(), defs = sample();
+  const sim = kernel(), defs = sample();
   const pick = (kind, id) => defs.find(([k, d]) => k === kind && (id === undefined || d.id === id))[1];
   if (change) change(pick, defs, sim);
   for (const [kind, def] of defs) sim.Defs.add(kind, def);
@@ -160,14 +169,14 @@ const expectOne = (change, pattern) => {
 // ---- the registries ----
 
 test('the kinds are the ones the engine notes list', () => {
-  const { Defs } = loadSim();
+  const { Defs } = kernel();
   assert.deepEqual(plain(Defs.KINDS), KINDS);
   assert.deepEqual(Object.keys(Defs.SCHEMA), KINDS);
-  for (const kind of KINDS) assert.ok(Array.isArray(Defs.all(kind)), `Defs.all('${kind}') works with or without entries`);
+  for (const kind of KINDS) assert.deepEqual(plain(Defs.all(kind)), [], `Defs.all('${kind}') works with no entries`);
 });
 
 test('add, get, has and all', () => {
-  const { Defs } = loadSim();
+  const { Defs } = kernel();
   const a = { id: 'ash' }, b = { id: 'brine' };
   assert.equal(Defs.add('trait', a), a, 'add returns the definition');
   Defs.add('trait', b);
@@ -183,7 +192,7 @@ test('add, get, has and all', () => {
 });
 
 test('add refuses what it can see at a glance', () => {
-  const { Defs } = loadSim();
+  const { Defs } = kernel();
   Defs.add('trait', { id: 'ash' });
   assert.throws(() => Defs.add('trait', { id: 'ash' }), /two trait definitions with the id "ash"/);
   assert.throws(() => Defs.add('spell', { id: 'x' }), /"spell" is not a kind of definition/);
@@ -198,24 +207,47 @@ test('add refuses what it can see at a glance', () => {
 
 // ---- what ships, and the sample ----
 
-test('the definitions that ship are valid, with most kinds still empty', () => {
+test('every definition the game ships is valid', () => {
+  // all content of src/js, whoever wrote it: a fault in any file of 30 to 49 shows here, by kind, id and field
   const { Defs } = loadSim();
-  const shipped = KINDS.filter((kind) => Defs.all(kind).length > 0);
   assert.deepEqual(plain(Defs.finalize()), []);
-  assert.ok(shipped.includes('mode') && shipped.includes('curves') && shipped.includes('constants') && shipped.includes('zone') && shipped.includes('enemy'));
   assert.ok(Defs.has('mode', 'watch') && Defs.has('mode', 'gauntlet') && Defs.has('zone', 'debug') && Defs.has('enemy', 'debug.husk'));
   assert.equal(Defs.get('enemy', 'debug.husk').puppet, 'debug.husk');
-  assert.equal(Defs.all('puppet').length, 0, 'its puppet is not there yet, and a link into an empty kind is not held against it');
+});
+
+test('the curves, the constants, the modes and the debug zone that ship', () => {
+  const { Defs } = loadSim({ boot: true });
+  const curves = Defs.get('curves', 'main');
+  assert.equal(curves.levels, 70);
+  for (const name of ['enemyLife', 'enemyDamage', 'enemyXp', 'accuracy', 'charXp', 'gauntletXp', 'runXp']) {
+    assert.equal(curves[name].length, 70, `${name} has a number for each level`);
+    assert.ok(curves[name].every((v) => Number.isFinite(v) && v > 0), name);
+    for (let i = 1; i < 70; i++) assert.ok(curves[name][i] > curves[name][i - 1], `${name} rises from level ${i} to ${i + 1}`);
+  }
+  assert.deepEqual([curves.enemyLife[0], curves.enemyDamage[0], curves.enemyXp[0]], [1, 1, 1], 'at level 1 an enemy has its def\'s own numbers');
+  assert.deepEqual(plain(curves.rank[0]), { life: 1, damage: 1, xp: 1, size: 1 });
+  assert.deepEqual(plain(curves.rank[3]), { life: 1, damage: 1, xp: 1, size: 1 }, 'a boss def carries its own numbers');
+  assert.equal(curves.rank.length, 4);
+  assert.ok(curves.rank[1].life > 1 && curves.rank[2].life > curves.rank[1].life);
+  assert.deepEqual(plain(Defs.get('constants', 'main')), {
+    id: 'main', spawnRadius: 26, despawnRadius: 34, tollSeconds: 75, keeperToll: 8, gateEvery: 3, gateOpenSeconds: 25, gateHoldSeconds: 3,
+    caps: { enemies: 600, shots: 500, areas: 120, pickups: 400, minions: 40, events: 2048 }, gridCell: 2, playerRadius: 0.4,
+  });
+  const watch = Defs.get('mode', 'watch'), gauntlet = Defs.get('mode', 'gauntlet');
+  assert.deepEqual([watch.persistent, watch.route, watch.runLevelOffer, watch.levelOffer, watch.haul, watch.death], [true, 'zone', 'chime', 'none', 'gate', 'permanent']);
+  assert.deepEqual(plain(watch.calling), { levels: [15, 30, 45, 55] });
+  assert.deepEqual([gauntlet.persistent, gauntlet.route, gauntlet.runLevelOffer, gauntlet.levelOffer, gauntlet.haul, gauntlet.death],
+    [false, 'gauntlet', 'none', 'node', 'none', 'permanent']);
+  assert.deepEqual(plain(gauntlet.calling), { afterBoss: 1, pointsPerBoss: 2 });
+  for (const mode of [watch, gauntlet]) assert.ok(Array.isArray(curves[mode.xpCurve]) && mode.levelCap <= curves[mode.xpCurve].length, `${mode.id}: its xp curve reaches its level cap`);
+  const zone = Defs.get('zone', 'debug'), husk = Defs.get('enemy', 'debug.husk');
+  assert.deepEqual([zone.kind, zone.boss, zone.props.length, zone.timeline.length, zone.events.length], ['debug', null, 0, 0, 0]);
+  assert.ok(zone.region.radius > Defs.get('constants', 'main').despawnRadius, 'the ground is wider than the ring enemies despawn at');
+  assert.deepEqual([husk.puppet, husk.attacks.length, husk.radius > 0, husk.life > 0], ['debug.husk', 0, true, true]);
 });
 
 test('registries with no definitions at all finalize, and so do definitions without the stat tables', () => {
-  // only the files named are run, so there is no content, and in the second case no Stats either
-  const bare = (files) => {
-    const context = vm.createContext({ console });
-    for (const file of files) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-    return new vm.Script('({ Core, Defs, Stats })').runInContext(context);
-  };
-  const empty = bare(['00-core.js', '01-defs.js', '10-stats.js']);
+  const empty = kernel();
   for (const kind of KINDS) assert.equal(empty.Defs.all(kind).length, 0);
   assert.deepEqual(plain(empty.Defs.finalize()), []);
   assert.deepEqual(plain(empty.Defs.finalize()), [], 'and a second finalize says the same');
@@ -233,7 +265,7 @@ test('one valid definition of every kind passes', () => {
 });
 
 test('finalize freezes every definition all the way down, and closes the registries', () => {
-  const sim = loadSim(), defs = sample();
+  const sim = kernel(), defs = sample();
   for (const [kind, def] of defs) sim.Defs.add(kind, def);
   const ember = sim.Defs.get('sigil', 'ember');
   ember.tier = 2;                                      // still open before finalize
@@ -251,7 +283,7 @@ test('finalize freezes every definition all the way down, and closes the registr
 });
 
 test('definitions with faults are frozen too, and every fault is told', () => {
-  const sim = loadSim();
+  const sim = kernel();
   const bad = sim.Defs.add('trait', { id: 'Bad Id', mods: 'none' });
   const errors = Array.from(sim.Defs.finalize());
   assert.equal(errors.length, 3);
@@ -262,7 +294,7 @@ test('definitions with faults are frozen too, and every fault is told', () => {
 // ---- the schema as data ----
 
 test('the schema is plain data that names only kinds, shapes and word lists that exist', () => {
-  const { Defs } = loadSim();
+  const { Defs } = kernel();
   assert.deepEqual(JSON.parse(JSON.stringify(Defs.SCHEMA)), plain(Defs.SCHEMA), 'it survives JSON');
   const types = new Set(['string', 'number', 'int', 'bool', 'any', 'id', 'hex', 'scaled', 'array', 'map', 'object', 'shape', 'union', 'stat', 'tag',
     'cond', 'dtype', 'family', 'primary', 'counted', 'ailment']);
@@ -308,6 +340,8 @@ test('a missing field, a wrong type, a word off the list, a field that is not in
   expectOne((pick) => { pick('sigil').name = 5; }, /^sigil ember: name must be text, not 5$/);
   expectOne((pick) => { pick('sigil').target = 'weakest'; }, /^sigil ember: target "weakest" is not one of nearest, densest, random, farthest, aim, self$/);
   expectOne((pick) => { pick('sigil').cooldown = 2; }, /^sigil ember: cooldown is not a field of this shape$/);
+  expectOne((pick) => { pick('sigil').constructor = 2; }, /^sigil ember: constructor is not a field of this shape$/);
+  expectOne((pick) => { pick('puppet').parts[0].color = 'toString'; }, /^puppet debug\.husk: parts\[0\]\.color "toString" is not in its palette$/);
   expectOne((pick) => { pick('sigil').weapon = 'bow'; }, /^sigil ember: weapon must be a list, not "bow"$/);
   expectOne((pick) => { pick('sigil').tags = null; }, /^sigil ember: tags is null$/);
   expectOne((pick) => { pick('enemy').aiParams = [1]; }, /^enemy rotter: aiParams must be an object, not \[1\]$/);
@@ -413,6 +447,9 @@ test('what a spec cannot say about a modifier: pairs, gains and ranges', () => {
   expectOne((pick) => { pick('unique').mods[0].min = 30; }, /^unique tollkeeper: mods\[0\]\.min is above max$/);
   expectOne((pick) => { pick('unique').mods[0].max = [1, 2]; }, /^unique tollkeeper: mods\[0\]\.max must be a pair exactly when min is one$/);
   expectOne((pick) => { pick('base').implicit[0].min = [1, 2]; pick('base').implicit[0].max = [2, 3]; }, /^base old-blade: implicit\[0\]\.min is a pair, but critChance is a single number$/);
+  expectOne((pick) => { pick('unique').mods.push({ stat: 'gainAsExtra.fire', op: 'flat', min: 5, max: 10 }); }, /^unique tollkeeper: mods\[1\]\.from is missing: gainAsExtra\.fire/);
+  assert.deepEqual(problems((pick) => { pick('unique').mods.push({ stat: 'gainAsExtra.fire', op: 'flat', min: 5, max: 10, from: 'physical' }); }), [],
+    'a rolled modifier may be a gain as well');
   expectOne((pick) => { delete pick('unique').mods[0].max; }, /^unique tollkeeper: mods\[0\]\.max is missing$/);
   expectOne((pick) => { pick('unique').mods[0].value = 5; }, /^unique tollkeeper: mods\[0\]\.value is not a field of this shape$/);
 });
@@ -499,7 +536,21 @@ test('extend adds a field to a kind, or replaces its spec', () => {
   expectOne((pick, defs, sim) => { sim.Defs.extend('sigil', { charges: { type: 'int', min: 1 } }); }, /^sigil ember: charges is missing$/);
   expectOne((pick, defs, sim) => { sim.Defs.extend('sigil', { charges: { type: 'int', min: 1 } }); pick('sigil').charges = 0; },
     /^sigil ember: charges must be at least 1, not 0$/);
-  const { Defs } = loadSim();
+  // an attack written inside an enemy follows the kind attack, and a boss follows the kind enemy
+  assert.deepEqual(problems((pick, defs, sim) => {
+    sim.Defs.extend('attack', { windup: { type: 'number', min: 0, required: false }, lunge: { type: 'number' } });
+    sim.Defs.extend('enemy', { loot: { type: 'any', required: false }, weight: { type: 'number', required: false } });
+    delete pick('attack').windup;
+    pick('attack').lunge = 1;
+    delete pick('enemy').attacks[1].windup;
+    pick('enemy').attacks[1].lunge = 3;
+    pick('boss').attacks[0].lunge = 0;
+    delete pick('boss').loot;
+    pick('boss').weight = 9;
+  }), []);
+  expectOne((pick, defs, sim) => { sim.Defs.extend('enemy', { weight: { type: 'number', required: false } }); pick('boss').weight = 'heavy'; },
+    /^boss keeper: weight must be a number, not "heavy"$/);
+  const { Defs } = kernel();
   assert.throws(() => Defs.extend('spell', {}), /not a kind of definition/);
   assert.throws(() => Defs.extend('sigil', { charges: 'int' }), /needs a type/);
 });

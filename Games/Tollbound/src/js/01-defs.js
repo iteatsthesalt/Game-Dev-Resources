@@ -15,7 +15,10 @@
 //   Defs.ENUMS                       {name: [word]}: the closed word lists the specs use (ai, archetype, rig, ...)
 //   Defs.allow(name, word, ...)      adds words to one of Defs.ENUMS. A registry of behaviour (AI.register and
 //                                    the like) calls it so that content may name what it has registered.
-//   Defs.extend(kind, fields)        adds or replaces field specs of a kind: {name: spec}. Both only before finalize.
+//   Defs.extend(kind, fields)        adds or replaces field specs of a kind: {name: spec}; a spec is required unless
+//                                    it says required: false. What is given to 'attack' also holds for attacks
+//                                    written inside an enemy, and what is given to 'enemy' for bosses.
+//                                    allow and extend work only before finalize.
 //   Defs.finalize() -> [string]      checks every definition and then freezes all of them, the registries and
 //                                    the schema. [] means valid. Each string reads "kind id: field problem".
 //
@@ -155,7 +158,7 @@
       per: opt(obj({ stat: row('counted'), div: num, cap: opt(at(0)) })), from: opt(row('dtype')), local: opt(bool),
     } },
     ModRange: { open: false, fields: {
-      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), local: opt(bool),
+      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), from: opt(row('dtype')), local: opt(bool),
       min: either(num, list(num, 2)), max: either(num, list(num, 2)),
     } },
     Trigger: { open: false, fields: { on: one('triggerOn'), chance: at(0), cooldown: at(0) } },
@@ -276,6 +279,9 @@
       const spec = fields[name];
       Core.assert(spec !== null && typeof spec === 'object' && typeof spec.type === 'string', 'Defs.extend: the spec of ' + kind + '.' + name + ' needs a type');
       SCHEMA[kind].fields[name] = Object.assign({ required: true }, spec);
+      // an attack written inside an enemy is an attack, and a boss is an enemy: they follow
+      if (kind === 'attack') SHAPES.Attack.fields[name] = SCHEMA[kind].fields[name];
+      if (kind === 'enemy') SCHEMA.boss.fields[name] = SCHEMA[kind].fields[name];
     }
   };
 
@@ -283,6 +289,7 @@
   // Everything below runs once, at boot. say(path, problem) collects; path is the field inside the definition.
 
   const isPlain = (v) => { const p = Object.getPrototypeOf(v); return p === null || Object.getPrototypeOf(p) === null; };
+  const own = Object.prototype.hasOwnProperty;       // own.call(object, key): a key such as "constructor" is not there by birth
   const join = (path, key) => (path === '' ? key : path + '.' + key);
   function show(v) {
     if (v === undefined) return 'undefined';
@@ -332,7 +339,7 @@
       else if (fields[name].required !== false) say(join(path, name), 'is missing');
     }
     if (open) return;
-    for (const name of Object.keys(v)) if (fields[name] === undefined) say(join(path, name), 'is not a field of this shape');
+    for (const name of Object.keys(v)) if (!own.call(fields, name)) say(join(path, name), 'is not a field of this shape');
   }
 
   function check(v, spec, path, say) {
@@ -413,7 +420,7 @@
     if (Array.isArray(value) && !stat.range) say(where, 'is a pair, but ' + m.stat + ' is a single number');
     if (ranged && Array.isArray(m.min) !== Array.isArray(m.max)) say(join(path, 'max'), 'must be a pair exactly when min is one');
     if (ranged && typeof m.min === 'number' && typeof m.max === 'number' && m.min > m.max) say(join(path, 'min'), 'is above max');
-    if (stat.from && m.from === undefined && !ranged) say(join(path, 'from'), 'is missing: ' + m.stat + ' is gained from another damage type');
+    if (stat.from && m.from === undefined) say(join(path, 'from'), 'is missing: ' + m.stat + ' is gained from another damage type');
     if (!stat.from && m.from !== undefined) say(join(path, 'from'), 'belongs only on a stat gained from another damage type, not on ' + m.stat);
     if (stat.from && m.from === stat.type) say(join(path, 'from'), 'is the type the damage is gained as');
     if (m.per !== undefined && !(m.per.div > 0)) say(join(path, 'per.div'), 'must be above 0');
@@ -468,7 +475,7 @@
       if (again !== undefined) say('parts', 'has two parts with the key "' + again + '"');
       def.parts.forEach((p, i) => {
         if (p.parent !== undefined && (p.parent === p.key || !keys.includes(p.parent))) say('parts[' + i + '].parent', '"' + p.parent + '" is not the key of another of its parts');
-        if (def.palette[p.color] === undefined) say('parts[' + i + '].color', '"' + p.color + '" is not in its palette');
+        if (!own.call(def.palette, p.color)) say('parts[' + i + '].color', '"' + p.color + '" is not in its palette');
       });
     },
     mode: function (def, say) {
