@@ -554,14 +554,18 @@ Plan for a user revoking `ACCESS_LOCAL_NETWORK` in Settings: catch the failure a
   - The NsdManager docs say "communicate with that specific device".
   - Android's guide says the picker lets the user "select a single device for the app to access", and that "Connections to IP addresses obtained this way don't require the ACCESS_LOCAL_NETWORK permission". [Verified: https://developer.android.com/privacy-and-security/local-network-permission]
   - Both point to an address-level grant that covers any port and protocol. Still check UDP on a second port on the device.
-- **WebView and LNA**: whether Android WebView enforces Chromium LNA, and which address space it assigns to a page intercepted by WebViewAssetLoader. Unverified. If it is "public", page-initiated LAN requests could be blocked, which is another reason to network in Kotlin.
+- **WebView and LNA**: partly answered.
+  - BCD records no LNA in Android WebView: no `local-network-access`, `local-network` or `loopback-network` permission, no `targetAddressSpace`, and no LNA on WebSocket or WebTransport.
+  - Separately, under Android 17, "Traffic originating from Android Webviews" inherits the host app's local network permission state.
+  [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/Permissions.json; https://github.com/mdn/browser-compat-data/blob/main/api/WebSocket.json; https://github.com/mdn/browser-compat-data/blob/main/api/_globals/fetch.json; https://developer.android.com/privacy-and-security/local-network-permission]
+  - Which address space WebView assigns to a page intercepted by WebViewAssetLoader is still unverified. It would matter only if WebView adopts LNA, and networking in Kotlin avoids the question.
 - Bridge latency (renderer → app process IPC) was not measured.
 - **Unverified** (prior knowledge; Maven Central rate-limited the source check):
   - OkHttp enforces cleartext policy for `ws://`;
-  - Android 9+ disables cleartext by default;
+  - Android 9+ disables cleartext by default. Now checked and corrected: apps that target API 28 (Android 9) or higher default to no cleartext, and instant apps always do, so the default follows the target SDK, not the device's Android version. [Verified correction: https://dl.google.com/android/repository/source-37.2_r01.zip (`android/security/net/config/NetworkSecurityConfig.java`)]
   - network_security_config domain rules can't express IP ranges;
-  - `MulticastLock.acquire()` needs `CHANGE_WIFI_MULTICAST_STATE`;
-  - `VibrationAttributes` touch usage respects the touch-feedback setting;
+  - `MulticastLock.acquire()` needs `CHANGE_WIFI_MULTICAST_STATE`. The platform labels that permission "allow Wi-Fi Multicast reception" (`platform-37.2_r02.zip`, `data/res/values/strings.xml`), but the client-side `WifiManager` source shows no check, so where it is enforced is still unverified. [Unverified]
+  - `VibrationAttributes` touch usage respects the touch-feedback setting. The javadoc says only that typical haptic feedback "should be classed as touch feedback". [Unverified]
   - which AEAD ciphers `javax.crypto` offers at API 26.
 
 ---
