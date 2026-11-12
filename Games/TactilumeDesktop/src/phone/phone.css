@@ -137,6 +137,9 @@ body:not([data-state="playing"]) #pad {
   text-overflow: ellipsis;
 }
 .label { display: block; font-size: 14px; font-weight: 400; color: var(--muted); }
+/* The words are the box's flex children, which the box's own text-overflow never reaches: each
+   keeps to the box's width and ends in an ellipsis rather than being cut off at both sides. */
+.value > span { display: block; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 button {
   min-height: 56px;
@@ -178,6 +181,9 @@ body:not([data-state="playing"]) #fullscreen { display: none; }
   .row { flex-wrap: wrap; }
   /* the side column can be 180 px, two buttons a row: the same smaller type keeps labels whole */
   .row > button { flex: 1 1 45%; font-size: 15px; padding: 6px 4px; }
+  /* the arrows narrow to a fingertip, so the behaviour's name between them reads whole: at 180 px
+     the 64 px arrows left 36 px, less than the word "Behaviour" */
+  .behaviour .step { flex: 0 0 44px; padding: 6px 0; }
   .note { font-size: 14px; }
 }
 

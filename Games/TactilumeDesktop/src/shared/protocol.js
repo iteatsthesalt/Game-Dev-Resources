@@ -19,7 +19,9 @@
 export const PROTOCOL = 1;
 export const LIMITS = Object.freeze({ maxTouches: 10, maxMessageBytes: 4096, maxName: 24, maxRate: 240 /* msgs/s */ });
 export const ACTIONS = Object.freeze(['behaviour', 'palette', 'preset', 'surprise', 'pulse', 'clear']);
-export const REJECT_REASONS = Object.freeze(['token', 'full', 'closed', 'version', 'bad']);
+// 'removed': the host removed this phone from the Phone panel (link-server kick). A page that
+// does not know it reads it as 'bad', which also stops it knocking again.
+export const REJECT_REASONS = Object.freeze(['token', 'full', 'closed', 'version', 'bad', 'removed']);
 
 export const MAX_SEQ = 2 ** 31 - 1;
 const MAX_TOKEN = 64;

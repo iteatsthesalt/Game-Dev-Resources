@@ -111,10 +111,11 @@ export function fakeGamepads(page, count = 1) {
       window.dispatchEvent(e);
     };
     window.__tlPads = {
-      // state: { axes?: [lx, ly, rx, ry], buttons?: { a: true, rt: 0.8, ... } }
-      set(index, { axes, buttons } = {}) {
+      // state: { axes?: [lx, ly, rx, ry], buttons?: { a: true, rt: 0.8, ... }, mapping?: '' | 'standard' }
+      set(index, { axes, buttons, mapping } = {}) {
         const p = pads[index];
         if (axes) p.axes = axes.map(Number);
+        if (typeof mapping === 'string') p.mapping = mapping;
         for (const [name, v] of Object.entries(buttons || {})) {
           const value = typeof v === 'number' ? v : v ? 1 : 0;
           p.buttons[names.indexOf(name)] = { pressed: value > 0.1, touched: value > 0, value };

@@ -10,11 +10,13 @@ const screenToWorld = (px, py) => ({ x: ((px / W) * 2 - 1) * (W / H), y: 1 - (py
 const near = (a, b, eps = 1e-6) => Math.abs(a - b) <= eps;
 const settle = () => new Promise((resolve) => setImmediate(resolve));
 
-function fakes({ withStore = true, settings = null, failSend = '' } = {}) {
+function fakes({ withStore = true, settings = null, failSend = '', info = null } = {}) {
   const listeners = new Set();
   const sent = [];
   const bridge = {
     link: {
+      // what main's link:info answers; a renderer that starts again rebuilds its phones from it
+      ...(info ? { info: () => (typeof info === 'function' ? info() : Promise.resolve(info)) } : {}),
       onEvent(fn) { listeners.add(fn); return () => listeners.delete(fn); },
       send(player, msg) {
         sent.push({ player, msg });
@@ -34,7 +36,8 @@ function fakes({ withStore = true, settings = null, failSend = '' } = {}) {
     added: [], removed: [], poles: new Map(),
     addPlayer({ kind, name, key }) {
       for (const p of players.values()) if (p.key === key) return { ...p };
-      const p = { id: nextId++, kind, name, key, color: colors[(nextId - 2) % colors.length] };
+      const i = (nextId - 1) % colors.length;
+      const p = { id: nextId++, kind, name, key, color: colors[i], colorName: ['orange', 'sky blue', 'bluish green'][i] };
       players.set(p.id, p);
       hub.added.push(p);
       for (const fn of hubListeners) fn([...players.values()]);
@@ -53,6 +56,7 @@ function fakes({ withStore = true, settings = null, failSend = '' } = {}) {
 
   const engine = { released: [], screenToWorld, release(x, y, power, heldFor) { engine.released.push({ x, y, power, heldFor }); } };
   const calls = [];
+  const toasts = []; // what the big screen was told
   const actions = {
     pulse: (x, y, power, color) => calls.push(['pulse', x, y, power, color]),
     nextBehaviour: (dir) => { calls.push(['nextBehaviour', dir]); return dir > 0 ? 'whirl' : 'well'; },
@@ -60,6 +64,7 @@ function fakes({ withStore = true, settings = null, failSend = '' } = {}) {
     nextPreset: (dir) => calls.push(['nextPreset', dir]),
     surprise: () => calls.push(['surprise']),
     clear: () => calls.push(['clear']),
+    toast: (text) => toasts.push(text),
   };
 
   const storeListeners = new Set();
@@ -74,7 +79,7 @@ function fakes({ withStore = true, settings = null, failSend = '' } = {}) {
   } : null;
 
   const phones = createPhones({ bridge, hub, engine, actions, store, getSettings: settings ? () => settings : null });
-  return { phones, emit, sent, hub, engine, calls, store, listeners, storeListeners, hubListeners };
+  return { phones, emit, sent, hub, engine, calls, toasts, store, listeners, storeListeners, hubListeners };
 }
 
 const polesOf = (f, hubId = 1) => f.hub.poles.get(hubId) || [];
@@ -122,18 +127,43 @@ describe('joining and leaving', () => {
     assert.deepEqual(f.hub.removed, [1]);
   });
 
-  test('a phone that comes back before its light faded carries on as the same player', () => {
+  // A join carries only the slot, and the link gives a new phone the lowest free one, so a
+  // join while the last phone in that slot still fades out may be another phone altogether.
+  // It gets a player of its own, named as it asked, and hears the colour it is drawn in; the
+  // light the last one left keeps fading.
+  test('a phone that takes a slot whose last phone is still fading out is a player of its own', async () => {
     const f = fakes();
-    f.emit({ type: 'join', player: 1 });
+    f.emit({ type: 'join', player: 1, name: 'Alice' });
     f.emit(touchEvent(1, [[0, 0.5, 0.5]]));
+    f.phones.update(1 / 60);
     f.emit({ type: 'leave', player: 1 });
-    f.emit({ type: 'join', player: 1 });
-    f.phones.update(1);
-    assert.deepEqual(f.hub.removed, []);
-    assert.equal(f.hub.added.length, 1);
+    f.phones.update(0.05);
+    await settle();
+    f.sent.length = 0;
+    f.emit({ type: 'join', player: 1, name: 'Bob' });
+    await settle();
+    assert.deepEqual(f.hub.players().map((p) => p.name), ['Bob'], 'Alice\'s player has gone');
+    const told = f.sent.filter((s) => s.player === 1 && s.msg.t === 'state' && /^#[0-9a-f]{6}$/.test(s.msg.color || ''));
+    assert.equal(told.length, 1, 'Bob hears his colour');
+    f.phones.update(1 / 60);
+    const hubId = f.hub.players()[0].id;
+    assert.equal(polesOf(f, hubId).filter((p) => !p.held).length, 1, 'Alice\'s light still fades');
     f.emit(touchEvent(1, [[0, 0.2, 0.2]]));
     f.phones.update(1 / 60);
-    assert.equal(polesOf(f).filter((p) => p.held).length, 1);
+    assert.equal(polesOf(f, hubId).filter((p) => p.held).length, 1, 'Bob plays');
+    f.phones.update(1);
+    assert.equal(polesOf(f, hubId).length, 1, 'the faded light is gone, Bob\'s finger stays');
+  });
+
+  test('a join for a phone already playing only tells it its colour again', async () => {
+    const f = fakes();
+    f.emit({ type: 'join', player: 2, name: 'Ana' });
+    await settle();
+    f.sent.length = 0;
+    f.emit({ type: 'join', player: 2, name: 'Ana' });
+    await settle();
+    assert.equal(f.hub.added.length, 1);
+    assert.equal(f.sent.filter((s) => s.player === 2 && s.msg.t === 'state' && s.msg.color).length, 1);
   });
 
   test('events for a player that never joined, and malformed events, are ignored', () => {
@@ -399,5 +429,68 @@ describe('helpers', () => {
     assert.equal(toHex([1, 0.5, 0]), '#ff8000');
     assert.equal(toHex([2, -1, 0.0039]), '#ff0001');
     assert.equal(toHex(null), '#ffffff');
+  });
+});
+
+describe('telling the big screen', () => {
+  const toasts = (f) => f.toasts;
+
+  test('a phone that joins is announced with its number, name and colour', () => {
+    const f = fakes();
+    f.emit({ type: 'join', player: 2, name: 'Ana' });
+    f.emit({ type: 'join', player: 3, name: '' });
+    const [ana, third] = f.hub.players();
+    assert.deepEqual(toasts(f), [
+      `Phone 2 (Ana) is playing, in ${ana.colorName}`,
+      `Phone 3 is playing, in ${third.colorName}`,
+    ]);
+  });
+
+  test('and so is a phone that leaves, once', () => {
+    const f = fakes();
+    f.emit({ type: 'join', player: 2, name: 'Ana' });
+    f.emit({ type: 'leave', player: 2 });
+    f.phones.update(1 / 60);
+    assert.deepEqual(toasts(f).slice(1), ['Phone 2 (Ana) left']);
+    f.phones.update(1);
+    assert.equal(toasts(f).length, 2, 'said once');
+  });
+});
+
+describe('a renderer that starts again', () => {
+  // After a renderer crash (main reloads the page) or View > Reload, the link still holds
+  // every phone but sends no join again: the phones must come back from link.info().
+  test('picks up the phones the link still holds, and their touches play', async () => {
+    const f = fakes({ info: { running: true, phones: [{ player: 1, name: 'Ana', since: 1 }, { player: 4, name: '', since: 2 }] } });
+    await settle();
+    await settle();
+    assert.deepEqual(f.hub.players().map((p) => [p.name, p.key]), [['Ana', 'phone1'], ['Phone 4', 'phone4']]);
+    assert.ok(f.sent.some((s) => s.player === 4 && s.msg.t === 'state' && s.msg.color), 'each phone hears its colour again');
+    assert.deepEqual(f.toasts, [], 'no news: they were playing all along');
+    f.emit(touchEvent(1, [[0, 0.5, 0.5]]));
+    f.phones.update(1 / 60);
+    assert.equal(polesOf(f, f.hub.players()[0].id).length, 1);
+    assert.equal(f.calls.filter((c) => c[0] === 'pulse').length, 1);
+  });
+
+  test('a phone that left, or joined, before the answer came is not undone by it', async () => {
+    let answer;
+    const f = fakes({ info: () => new Promise((resolve) => { answer = resolve; }) });
+    f.emit({ type: 'join', player: 1, name: 'Ana' });
+    f.emit({ type: 'leave', player: 2 });
+    f.phones.update(1);
+    answer({ running: true, phones: [{ player: 1, name: 'Ana', since: 1 }, { player: 2, name: 'Old', since: 1 }] });
+    await settle();
+    await settle();
+    assert.deepEqual(f.hub.players().map((p) => p.name), ['Ana']);
+    assert.equal(f.hub.added.length, 1);
+  });
+
+  test('a link that cannot answer leaves the phones to their join events', async () => {
+    const f = fakes({ info: () => Promise.reject(new Error('no link')) });
+    await settle();
+    assert.equal(f.hub.players().length, 0);
+    f.emit({ type: 'join', player: 1 });
+    assert.equal(f.hub.players().length, 1);
   });
 });

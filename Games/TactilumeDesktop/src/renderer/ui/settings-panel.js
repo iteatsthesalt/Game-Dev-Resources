@@ -1,6 +1,6 @@
 // The settings panel: how much light (measured for this computer, or chosen by hand), HDR,
-// the flash guard and the other ways the light behaves, forcing WebGPU, what the GPU is, and
-// the keys. See CONTRACTS.md, "renderer/ui/ui.js".
+// the flash guard and the other ways the light behaves, forcing WebGPU, what the GPU is and
+// which requirement tier it meets, and the keys. See CONTRACTS.md, "renderer/ui/ui.js".
 //
 // Where each setting lives: the flash guard, calm mode, autoplay and control size are the
 // mobile edition's shared settings (store.settings); the particle count, HDR, team colours
@@ -10,6 +10,7 @@ import { h, countText } from './dom.js';
 import { button, switchField, segmentedField, selectField, notice, section } from './controls.js';
 import { createPanel } from './panel.js';
 import { KEY_LIST, PAD_LIST } from './keys.js';
+import { requirementTier } from './tier.js';
 
 const STATS_MS = 1000;            // the GPU facts are read again this often while the panel is open
 // counts offered when choosing by hand; only those the GPU can hold are shown
@@ -19,7 +20,7 @@ const SIZES = [{ value: 1, label: 'Standard' }, { value: 1.25, label: 'Large' },
 const dl = (rows, className) => h('dl', { class: className }, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', { text: v })]));
 const kbd = (text) => text.split(/\s{2,}/).map((part, i) => [i ? ' ' : null, h('kbd', { text: part })]);
 
-export function createSettingsPanel({ store, desktop, bridge, engine, actions, particlesFixed, toast, onClose }) {
+export function createSettingsPanel({ store, desktop, bridge, engine, actions, particlesFixed, refreshHz = () => 60, toast, onClose }) {
   const panel = createPanel({ name: 'settings', eyebrow: 'Tactilume', title: 'Settings', onClose });
 
   // ---- light ---------------------------------------------------------------------------
@@ -172,6 +173,7 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
       ['Picture', c.presenting ? 'On screen' : 'Offscreen only'],
       ['Output', c.hdr ? 'HDR' : 'SDR'],
       ['Particles', `${countText(st.particles)} of at most ${countText(c.maxParticles)}`],
+      ['Tier', tierText()],
       ['Frame time', Number.isFinite(st.frameMs) && st.frameMs > 0 ? `${st.frameMs.toFixed(1)} ms` : '–'],
     );
     const status = gpuInfo?.featureStatus?.webgpu;
@@ -180,6 +182,16 @@ export function createSettingsPanel({ store, desktop, bridge, engine, actions, p
     if (device?.driverVersion) rows.push(['Driver', `${device.driverVendor ? `${device.driverVendor} ` : ''}${device.driverVersion}`]);
     drawFacts(rows);
     showReadout();
+  }
+
+  // The requirement tier of docs/design.md this computer meets, from the count it measured
+  // (not the count drawn now, which the governor and a count chosen by hand move).
+  function tierText() {
+    const measured = desktop.get().particles;
+    const hz = Number(refreshHz()) || 60;
+    const tier = requirementTier({ particles: measured, refreshHz: hz });
+    if (!tier) return 'Not measured yet. Measure again finds it.';
+    return `${tier.text}. Measured: ${countText(measured)} particles at ${Math.round(hz)} Hz.`;
   }
 
   // This runs every second while the panel is open, and the frame time changes each time. Only

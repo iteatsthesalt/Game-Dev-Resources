@@ -13,7 +13,8 @@
 //   ready        true once app.ready() was called
 //   systemAudio  what audio.systemSupport() answers (change it to try the other paths)
 //   fullscreen   what app.setFullscreen() was last asked for (headless browsers may refuse it)
-//   rotations    how many times the code was changed
+//   rotations    how many times the code was changed (a kick changes it too)
+//   kicks        every player link.kick() removed
 //   linkRunning  false makes link.info() report a link that could not start
 
 const DEFAULT_SETTINGS = Object.freeze({ linkPort: 47615, allowNewPhones: true, forceWebGPU: false, fullscreen: false, bounds: null });
@@ -56,6 +57,7 @@ function createShim() {
     systemAudio: { supported: false, how: 'none' },
     fullscreen: false,
     rotations: 0,
+    kicks: [],
     linkRunning: true,
     // Delivered at once, as a copy: like IPC, a listener can never change the caller's object.
     emit(event) {
@@ -102,6 +104,19 @@ function createShim() {
         token = makeToken();
         state.rotations++;
         return info();
+      },
+      // as main's link:kick: the phone leaves, the code changes, and the answer says whether
+      // there was such a phone
+      kick(player) {
+        if (!Number.isInteger(player) || player < 1 || player > 8) return refuse('link:kick takes a player number, 1 to 8');
+        const kicked = phones.has(player);
+        if (kicked) {
+          state.kicks.push(player);
+          token = makeToken();
+          state.rotations++;
+          state.emit({ type: 'leave', player });
+        }
+        return Promise.resolve({ ...info(), kicked });
       },
       send(player, msg) {
         if (!Number.isInteger(player) || player < 1 || player > 8) return refuse('link:send takes a player number, 1 to 8');

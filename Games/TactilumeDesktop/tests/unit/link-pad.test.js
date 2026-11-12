@@ -104,12 +104,53 @@ describe('intensityOf', () => {
 });
 
 describe('createSlots', () => {
-  test('the lowest free id, given back when lifted, and none past the count', () => {
+  test('at most `count` fingers at once, and none past the count', () => {
     const s = createSlots(3);
-    assert.deepEqual([s.take(), s.take(), s.take(), s.take()], [0, 1, 2, -1]);
-    s.give(1);
+    const ids = [s.take(), s.take(), s.take()];
+    assert.equal(new Set(ids).size, 3);
+    assert.equal(s.take(), -1);
+    s.give(ids[1]);
     assert.equal(s.size, 2);
-    assert.equal(s.take(), 1);
+    assert.notEqual(s.take(), -1);
+    assert.equal(s.take(), -1);
+  });
+
+  // A finger that lifts and another that lands before the next frame goes out must not share
+  // an id, or the computer sees one finger jump across the pad (no release, no new ring).
+  test('a lifted finger\'s id is not handed straight to the next finger', () => {
+    const s = createSlots(10);
+    const a = s.take();
+    s.give(a);
+    const b = s.take();
+    assert.notEqual(b, a, 'the next finger gets a fresh id');
+    // quick taps, one finger at a time: no id comes back within a long run of them
+    const seen = [];
+    for (let i = 0; i < 200; i++) {
+      const id = s.take();
+      seen.push(id);
+      s.give(id);
+    }
+    assert.ok(seen.every((id, i) => i === 0 || id !== seen[i - 1]), 'never the id just freed');
+    assert.equal(new Set(seen.slice(0, 200)).size, 200, 'two hundred taps, two hundred ids');
+  });
+
+  test('ids stay within the protocol\'s 0..255, wrapping round', () => {
+    const s = createSlots(2);
+    for (let i = 0; i < 600; i++) {
+      const id = s.take();
+      assert.ok(Number.isInteger(id) && id >= 0 && id <= 255, String(id));
+      s.give(id);
+    }
+  });
+
+  test('a finger still down keeps its id, and the wrap skips it', () => {
+    const s = createSlots(10);
+    const held = s.take();
+    for (let i = 0; i < 300; i++) {
+      const id = s.take();
+      assert.notEqual(id, held);
+      s.give(id);
+    }
   });
 });
 
@@ -119,5 +160,12 @@ describe('REFUSALS', () => {
       assert.ok(REFUSALS[why] && REFUSALS[why].text.length > 20, why);
     }
     assert.deepEqual(Object.keys(REFUSALS).filter((k) => REFUSALS[k].retry).sort(), ['closed', 'full']);
+  });
+
+  test('a phone removed from the Phone panel is told so, and does not knock again', () => {
+    assert.ok(REJECT_REASONS.includes('removed'));
+    assert.match(REFUSALS.removed.text, /removed/i);
+    assert.equal(REFUSALS.removed.retry, false);
+    assert.equal(REFUSALS.removed.action, 'none');
   });
 });

@@ -5,11 +5,14 @@ light show drawn by a WebGPU particle engine, and you play it in three ways:
 
 - **Phones on the same network.** The app shows a QR code. A phone that scans it becomes a
   touch pad, with no app to install and no internet needed. Several phones can play at once,
-  each in its own colour.
-- **Gamepads.** Each pad is a player. The sticks steer two points of light, the triggers set
-  their strength, and the buttons change the behaviour, colours and scene. Clicking a stick
-  holds its light down without the trigger, for anyone who cannot keep a trigger pulled;
-  click it again to let go. Settings > Gamepad lists every button.
+  each in its own colour. The big screen says when a phone joins or leaves, and the Phone
+  panel can remove one phone for good (it asks first, and the code changes).
+- **Gamepads.** Each pad is a player, from its first press of any button; a pad plugged in
+  but not yet playing is asked to press one. The sticks steer two points of light, the
+  triggers set their strength, and the buttons change the behaviour, colours and scene.
+  Clicking a stick holds its light down without the trigger, for anyone who cannot keep a
+  trigger pulled; click it again to let go. Settings > Gamepad lists every button. Settings
+  also names the requirement tier from [docs/design.md](docs/design.md) this computer meets.
 - **Sound.** The light can move with a microphone, with what the computer is playing, or with
   a music file.
 
@@ -85,10 +88,13 @@ Things M1 does not do yet, or that the tests cannot reach. Each is safe to leave
   `shader-f16` but its shaders do not use it or subgroups yet; the particle passes use
   256-wide workgroups everywhere, and eye adaptation runs on one 64-thread workgroup. The
   engine is correct without these; they only make it faster.
-- **A plugged-in gamepad is not prompted to join.** A pad joins at its first button press, and
-  the first-run hint says so, but the overlay does not yet use `gamepads.pads()` to show
-  "Gamepad 2: press any button to join", nor warn that a pad without the standard mapping
-  may have its buttons in other places.
+- **Each speck is shaded once per corner.** The draw pass works out a speck's colour, size and
+  sparkle in the vertex shader, so it runs four times for each particle (once per corner of
+  its quad), where the mobile edition ran once per point. Working it out once, in a compute
+  pass that writes a small record per particle, would cut the dominant pass's vertex work by
+  about three quarters, at the cost of 8 or more bytes per particle of GPU memory. It is left
+  for a milestone that can measure it on the reference GPU: the software adapter here cannot
+  show whether it pays, and calibration already sets the count from what the full renderer costs.
 - **The HDR highlight limit has no automated test.** The composite keeps a saturated colour's
   largest channel at the HDR peak (so pure blue no longer runs to 14 times it), but HDR
   output cannot be read back headless; it was checked against the formula only.
@@ -98,11 +104,6 @@ Things M1 does not do yet, or that the tests cannot reach. Each is safe to leave
 - **No Dependabot for the workflow's actions.** They are pinned to commit SHAs; nothing bumps
   them yet. A `github-actions` entry in the repository's `.github/dependabot.yml` would, but
   that file covers every project in the repository, so it is left to its owner.
-- **Settings shows no tier.** The Settings panel shows the GPU and the particle count, but not
-  the requirement tier from `docs/design.md`.
-- **One phone cannot be removed.** The link server can drop a single phone for good
-  (`kick(player)`), but there is no IPC call or button for it yet. "New code" removes the
-  way back in for everyone not yet joined.
 - **System audio on Linux** comes only from monitor inputs (PipeWire or PulseAudio), listed
   among the inputs in the Sound panel; Electron has no loopback capture there.
 - **Fast light looks dotted on slow machines.** Trails build up frame by frame, so a speck

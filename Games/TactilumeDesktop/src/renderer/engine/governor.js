@@ -28,7 +28,7 @@ const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 
 export function createGovernor({ min = 1, max = Infinity, start = min, refreshHz = 60 } = {}) {
   const lo = Math.max(1, Math.round(finite(min) ? min : 1));
-  const hi = Math.max(lo, finite(max) ? Math.floor(max) : Infinity);
+  let hi = Math.max(lo, finite(max) ? Math.floor(max) : Infinity);
   let particles = Math.min(Math.max(Math.round(finite(start) ? start : lo), lo), hi);
   const hz = Math.min(Math.max(finite(refreshHz) ? refreshHz : 60, 20), 500);
   const budget = 1000 / hz;
@@ -41,6 +41,17 @@ export function createGovernor({ min = 1, max = Infinity, start = min, refreshHz
   return {
     get particles() { return particles; },
     get refreshHz() { return hz; },
+
+    // The engine drew `n` when asked for more: its GPU ran out of memory, which lowers the
+    // engine's limit for good. The governor's count and ceiling come down to it, so it does
+    // not climb on above what is drawn, and its next step down is a real one.
+    clamp(n) {
+      if (!finite(n) || n < 0) return;
+      const at = Math.max(lo, Math.floor(n));
+      if (at >= particles) return;
+      particles = at;
+      hi = Math.max(lo, at);
+    },
 
     // frameMs: how long the last frame took; now: a clock in ms; skipped: the engine did not
     // draw this frame because the GPU was behind. → the new particle count, or null.

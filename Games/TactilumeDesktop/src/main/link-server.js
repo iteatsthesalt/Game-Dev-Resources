@@ -327,8 +327,11 @@ export function createLinkServer({
       phones.set(player, { conn, name: msg.name, since: now() });
       log(`link: player ${player} joined from ${conn.remote}`);
     }
+    // A phone taking over its own connection is no new join, so the renderer will not tell it
+    // its colour again: it is welcomed in the colour the renderer last sent it.
+    const entry = phones.get(player);
     sendTo(conn.ws, welcome({
-      player, color: SLOT_COLORS[player - 1], name: phones.get(player).name, ...latest,
+      player, color: entry.color || SLOT_COLORS[player - 1], name: entry.name, ...latest,
       behaviours: BEHAVIOURS.map(({ key, name }) => ({ key, name })),
       palettes: PALETTES.map(({ key, name }) => ({ key, name })),
     }));
@@ -484,7 +487,8 @@ export function createLinkServer({
       if (p.conn.session) sessions.delete(p.conn.session);
       p.conn.session = '';
       token = newToken(randomBytes);
-      refuse(p.conn, 'token');
+      // the page says it was removed (not that its code is old), and does not knock again
+      refuse(p.conn, 'removed');
       return true;
     },
     send(player, msg) {
@@ -492,6 +496,9 @@ export function createLinkServer({
       const out = outgoing(msg);
       if (!p || !out) return false;
       remember(out);
+      // the colour the renderer really draws this phone in, for its welcome if it reconnects
+      // (the entry, and so the colour, goes when the phone leaves)
+      if (out.t === 'state' && out.color) p.color = out.color;
       return sendTo(p.conn.ws, out);
     },
     broadcast(msg) {

@@ -23,7 +23,7 @@ describe('constants', () => {
     assert.equal(PROTOCOL, 1);
     assert.deepEqual({ ...LIMITS }, { maxTouches: 10, maxMessageBytes: 4096, maxName: 24, maxRate: 240 });
     assert.deepEqual([...ACTIONS], ['behaviour', 'palette', 'preset', 'surprise', 'pulse', 'clear']);
-    assert.deepEqual([...REJECT_REASONS], ['token', 'full', 'closed', 'version', 'bad']);
+    assert.deepEqual([...REJECT_REASONS], ['token', 'full', 'closed', 'version', 'bad', 'removed']);
     assert.ok(Object.isFrozen(LIMITS) && Object.isFrozen(ACTIONS));
   });
 });
@@ -181,7 +181,7 @@ describe('builders, desktop → phone', () => {
     const msg = welcome({ player: 2, color: '#56b4e9', name: 'A', behaviour: 'well', palette: 'ember', behaviours: [{ key: 'well', name: 'Well', blurb: 'x' }], palettes: [{ key: 'ember', name: 'Ember', stops: [] }] });
     assert.deepEqual(msg, { t: 'welcome', v: 1, player: 2, color: '#56b4e9', name: 'A', behaviour: 'well', palette: 'ember', behaviours: [{ key: 'well', name: 'Well' }], palettes: [{ key: 'ember', name: 'Ember' }] });
   });
-  test('reject keeps the five reasons and turns anything else into "bad"', () => {
+  test('reject keeps the six reasons and turns anything else into "bad"', () => {
     for (const why of REJECT_REASONS) assert.deepEqual(reject(why), { t: 'reject', why });
     assert.deepEqual(reject('because'), { t: 'reject', why: 'bad' });
     assert.deepEqual(reject(), { t: 'reject', why: 'bad' });
@@ -224,6 +224,9 @@ describe('parseDesktopMessage (the phone page reading the desktop)', () => {
   });
   test('a reject with an unknown reason reads as "bad"', () => {
     assert.deepEqual(okMsg(desktop({ t: 'reject', why: 'weird' })), { t: 'reject', why: 'bad' });
+  });
+  test('a phone removed from the Phone panel reads its own reason', () => {
+    assert.deepEqual(okMsg(desktop({ t: 'reject', why: 'removed' })), { t: 'reject', why: 'removed' });
   });
   test('a state with a malformed part is "field"', () => {
     for (const bad of [{ behaviour: 5 }, { palette: '<x>' }, { players: -1 }, { players: 1.5 }, { color: '#fff' }]) {

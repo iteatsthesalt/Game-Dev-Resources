@@ -49,6 +49,12 @@ const GONE_GRACE = 5;           // s an unplugged pad keeps its player
 const IDLE_LEAVE = 60;          // s without a touch before a pad steps out
 const ACTIVE_STICK = 0.25;      // a stick moved past this counts as being played
 const RUMBLE_GAP = 0.05;        // s: at most one effect per pad this often
+// Telling a trigger reported as an axis from a stick, on pads without the standard mapping
+const FAR_AXIS = 0.9;           // an axis past this is far over
+const CENTRE_AXIS = 0.2;        // and inside this, in the middle
+const AXIS_STILL = 0.05;        // it rests while it moves less than this from where it settled
+const TRIGGER_REST = 4;         // s resting far over: a trigger
+const STICK_REST = 0.5;         // s resting in the middle: a stick
 // [ms, strong motor, weak motor]: short accents, kept to the player who caused them
 const RUMBLE = Object.freeze({
   join: [40, 0.2, 0.4],
@@ -194,20 +200,49 @@ export function createGamepads({ engine, hub, actions, getSettings = () => ({}),
         cursors: { left: newCursor('left', r.index), right: newCursor('right', r.index) },
         fading: [],
         // A pad without the standard mapping may report a trigger as an axis that rests at -1
-        // or 1. An axis resting that far over when the pad joins is not a stick: it is ignored.
+        // or 1. Such an axis is not a stick, and is ignored (see learnAxes).
         ignoreAxis: [],
+        axisRest: [],
       };
       pads.set(key, pad);
     }
     pad.raw = raw;
+    pad.standard = r.standard;
     pad.gone = 0;
     return { pad, r };
+  }
+
+  // Which axes of a pad without the standard mapping are sticks. The join press gives a first
+  // guess (an axis far over then is taken for a trigger), and play corrects it: an axis that
+  // rests far over, quite still, for TRIGGER_REST seconds is a trigger (some read 0 until
+  // first used, then rest at -1, and would pin a cursor to the edge for good), and an axis
+  // that rests in the middle for STICK_REST seconds is a stick (one tilted during the join
+  // press). The wait is long enough that a stick held into an edge while playing stays a stick.
+  function learnAxes(pad, r, step) {
+    if (pad.standard) {
+      pad.ignoreAxis = [];
+      return;
+    }
+    r.axes.forEach((v, i) => {
+      const zone = Math.abs(v) > FAR_AXIS ? 'far' : Math.abs(v) < CENTRE_AXIS ? 'centre' : '';
+      const rest = pad.axisRest[i] || (pad.axisRest[i] = { zone: '', at: v, for: 0 });
+      if (zone !== rest.zone || Math.abs(v - rest.at) > AXIS_STILL) {
+        rest.zone = zone;
+        rest.at = v;
+        rest.for = 0;
+        return;
+      }
+      rest.for += step;
+      if (zone === 'far' && rest.for >= TRIGGER_REST) pad.ignoreAxis[i] = true;
+      else if (zone === 'centre' && rest.for >= STICK_REST) pad.ignoreAxis[i] = false;
+    });
   }
 
   function join(pad, r) {
     pad.player = hub.addPlayer({ kind: 'gamepad', name: `Gamepad ${pad.index + 1}`, key: `gamepad:${pad.key}` });
     pad.idle = 0;
     pad.ignoreAxis = r.standard ? [] : r.axes.map((v) => Math.abs(v) > 0.5);
+    pad.axisRest = [];
     say(`Gamepad ${pad.index + 1} is playing, in ${pad.player.colorName || 'its colour'}`);
     rumble(pad, 'join');
   }
@@ -334,6 +369,7 @@ export function createGamepads({ engine, hub, actions, getSettings = () => ({}),
   function play(pad, r, step, s) {
     const dz = within(s.padDeadzone, 0.05, 0.4, DEADZONE);
     const k = within(s.padCurve, 1, 3, CURVE);
+    learnAxes(pad, r, step);
     const axis = (i, v) => (pad.ignoreAxis[i] ? 0 : v);
     const b = r.buttons;
     const pressedNow = (name) => b[name].pressed && !pad.prev[name];

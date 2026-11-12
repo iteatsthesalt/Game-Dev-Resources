@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld('tactilume', {
     info: () => invoke('link:info'),
     setAllowNew: (on) => invoke('link:allowNew', on),
     rotateToken: () => invoke('link:rotate'),
+    kick: (player) => invoke('link:kick', player),
     send: (player, msg) => invoke('link:send', player, msg),
     // → a function that stops listening
     onEvent(fn) {

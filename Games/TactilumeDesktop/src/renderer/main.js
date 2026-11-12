@@ -330,6 +330,7 @@ async function boot() {
   ui = createUI({
     root: document.getElementById('ui'), store, actions, bridge, engine, audio, hub, desktop,
     gamepads, cursorCanvas: document.getElementById('cursors'), test: TEST, particlesFixed: forcedParticles > 0,
+    refreshHz: () => refreshHz,
   });
   Object.assign(hook, { hub, audio, ui, actions, gamepads, phones, pointer });
 
@@ -410,7 +411,14 @@ async function boot() {
 
     if (governor) {
       const next = governor.update(interval, now, engine.stats.skipped > skippedBefore);
-      if (next) engine.setQuality({ particles: next });
+      if (next) {
+        // The engine may draw fewer than asked (a GPU that ran out of memory lowers its limit);
+        // the governor hears what it really draws, so its count does not drift above it.
+        const asked = governor;
+        engine.setQuality({ particles: next })
+          .then(() => { if (governor === asked && engine.stats.particles < next) asked.clamp(engine.stats.particles); })
+          .catch(() => {});
+      }
     }
     ui.update(dt);
 

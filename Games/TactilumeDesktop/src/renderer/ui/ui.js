@@ -8,8 +8,9 @@
 // the controls until H again; a faint button in the corner stays as the way back for a
 // mouse or a screen reader.
 //
-// Beyond CONTRACTS.md: createUI also takes gamepads (for the cursor rings), cursorCanvas,
-// test and particlesFixed, and the object it returns also has open(name), close(), panel
+// Beyond CONTRACTS.md: createUI also takes gamepads (for the cursor rings and the prompt to
+// pads that have not joined), cursorCanvas, test, particlesFixed and refreshHz() (the display's
+// rate, for the requirement tier in Settings), and the object it returns also has open(name), close(), panel
 // (the open panel's name, or null), update(dt) (each frame), measuring(on), showIntro(),
 // syncFullscreen(on), hidden, idle and cursors (what the last frame's rings were).
 import { BEHAVIOUR_KEYS } from '../../../../Tactilume/src/js/core/behaviours.js';
@@ -40,7 +41,7 @@ function keyOwner(t) {
   return null;
 }
 
-export function createUI({ root, store, actions, bridge, engine, audio, hub, desktop, gamepads = null, cursorCanvas = null, test = false, particlesFixed = false }) {
+export function createUI({ root, store, actions, bridge, engine, audio, hub, desktop, gamepads = null, cursorCanvas = null, test = false, particlesFixed = false, refreshHz = () => 60 }) {
   root.replaceChildren();
   root.classList.add('tl-root');
   const cleanups = [];
@@ -67,21 +68,22 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
   // ---- panels ---------------------------------------------------------------------------------
   const phone = createPhonePanel({ bridge, hub, toast, onClose: () => close() });
   const sound = createSoundPanel({ audio, bridge, toast, onClose: () => close() });
-  const settings = createSettingsPanel({ store, desktop, bridge, engine, actions, particlesFixed, toast, onClose: () => close() });
+  const settings = createSettingsPanel({ store, desktop, bridge, engine, actions, particlesFixed, refreshHz, toast, onClose: () => close() });
   const panels = { phone, sound, settings };
   let current = null;             // the open panel's name
   let opener = null;              // what had the focus before it opened
 
   // ---- the corner -----------------------------------------------------------------------------
   const chip = (label, iconName, props) => h('button', { type: 'button', class: 'tl-chip', ...props }, icon(iconName), h('span', { class: 'tl-chip-text', text: label }));
+  // `key`: the shortcut, or none (an empty aria-keyshortcuts names no key, so it is left off)
   const panelChip = (name, label, iconName, key) => chip(label, iconName, {
-    'aria-expanded': 'false', 'aria-controls': `tl-panel-${name}`, 'aria-keyshortcuts': key, title: key ? `${label} (${key})` : label,
+    'aria-expanded': 'false', 'aria-controls': `tl-panel-${name}`, 'aria-keyshortcuts': key || undefined, title: key ? `${label} (${key})` : label,
     onclick: () => (current === name ? close() : open(name)),
   });
   const chips = {
     phone: panelChip('phone', 'Phone', 'phone', 'P'),
     sound: panelChip('sound', 'Sound', 'sound', 'S'),
-    settings: panelChip('settings', 'Settings', 'settings', ''),
+    settings: panelChip('settings', 'Settings', 'settings'),
   };
   const fullChip = chip('Full screen', 'fullscreen', { 'aria-pressed': 'false', 'aria-keyshortcuts': 'F', title: 'Full screen (F)', onclick: () => actions.toggleFullscreen() });
   const corner = h('nav', { class: 'tl-corner', 'aria-label': 'Tactilume controls' }, chips.phone, chips.sound, chips.settings, fullChip);
@@ -90,11 +92,14 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
 
   // ---- the first-run hint, and the card while the light is tuned ---------------------------------
   const keyLine = (key, text) => h('li', {}, h('kbd', { text: key }), h('span', { text }));
+  // A gamepad joins at its first press of any button (gamepad.js), so it is shown as a
+  // gamepad, not as a key on the keyboard
+  const padLine = (text) => h('li', { class: 'tl-intro-pad' }, h('span', { class: 'tl-intro-icon' }, icon('gamepad')), h('span', { text }));
   const intro = h('div', { class: 'tl-intro', role: 'note', 'aria-live': 'polite', hidden: true },
     h('p', { class: 'tl-intro-title', text: 'Drag across the light to play' }),
     h('ul', { class: 'tl-intro-keys' },
       keyLine('P', 'Play with phones: scan the code'),
-      keyLine('A', 'On a gamepad, to join in'),
+      padLine('Play with a gamepad: press any button to join in'),
       keyLine('S', 'Move the light with sound'),
       keyLine('H', 'Hide the controls'),
       keyLine('F', 'Full screen')),
@@ -105,8 +110,12 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
     h('p', { class: 'tl-measure-text', text: 'This takes about ten seconds, once for each graphics card.' }),
     h('div', { class: 'tl-progress', 'aria-hidden': 'true' }, h('span')));
   const dropZone = h('div', { class: 'tl-drop', hidden: true, 'aria-hidden': 'true' }, icon('music'), h('p', { text: 'Drop a music file to play it' }));
+  // Gamepads that are plugged in but have not joined: a pad joins at its first button press,
+  // which nobody guesses without being told.
+  const padList = h('ul', { class: 'tl-pads-list' });
+  const padBox = h('div', { class: 'tl-pads', role: 'status', 'aria-live': 'polite', hidden: true }, padList);
 
-  root.append(corner, showButton, phone.panel.el, sound.panel.el, settings.panel.el, toasts, intro, measureCard, dropZone);
+  root.append(corner, showButton, phone.panel.el, sound.panel.el, settings.panel.el, toasts, intro, measureCard, dropZone, padBox);
 
   // ---- opening and closing ----------------------------------------------------------------------
   function open(name) {
@@ -161,7 +170,8 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
     corner.inert = hidden;
     showButton.hidden = !hidden;
     if (hidden) {
-      if (!hiddenToldOnce) toast('Controls hidden. Press H to show them again.');
+      // Start on a gamepad hides them too, and a player on the sofa may have no keyboard
+      if (!hiddenToldOnce) toast('Controls hidden. Press H, or Start on a gamepad, to show them again.');
       hiddenToldOnce = true;
     } else if (fromShow) {
       // brought back with the keyboard: carry on from the first corner button
@@ -317,6 +327,24 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
   // ---- gamepad cursors ------------------------------------------------------------------------
   const cursorLayer = cursorCanvas ? createCursorLayer(cursorCanvas, { hub, gamepads, engine, scale: () => scale }) : null;
 
+  // ---- gamepads waiting to join ----------------------------------------------------------------
+  // Redrawn only when the pads waiting change. A pad newly waiting wakes the controls, so the
+  // prompt shows; it fades with them when nobody does anything.
+  let shownPads = [];
+  function showPads() {
+    let list = [];
+    try { list = typeof gamepads?.pads === 'function' ? gamepads.pads() : []; } catch { list = []; }
+    const waiting = list.filter((p) => p && !p.joined).map((p) => `${p.pad}:${p.standard ? 's' : 'o'}`);
+    if (waiting.join() === shownPads.join()) return;
+    const fresh = waiting.some((w) => !shownPads.includes(w));
+    shownPads = waiting;
+    padList.replaceChildren(...list.filter((p) => p && !p.joined).map((p) => h('li', { class: 'tl-pad-prompt' },
+      icon('gamepad'),
+      h('span', { text: `Gamepad ${p.pad}: press any button to join.${p.standard ? '' : ' Its buttons may be in other places than the Gamepad list in Settings shows.'}` }))));
+    padBox.hidden = waiting.length === 0;
+    if (fresh) wake();
+  }
+
   return {
     // hides or shows the controls; toasts still appear while they are hidden
     toggle() { setHidden(!hidden); },
@@ -335,6 +363,7 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
     // each frame, from the frame loop
     update(dt) {
       cursorLayer?.update();
+      showPads();
       if (current === 'sound') sound.update(dt);
     },
     measuring(on) {

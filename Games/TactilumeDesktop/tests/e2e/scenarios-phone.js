@@ -286,6 +286,53 @@ export default [
   },
 
   {
+    // The Phone panel says to type the address into the phone's browser. Typed into the tab
+    // that was turned away for an old code, only the #k= part changes: the page does not
+    // load again, so it must notice the new code by itself.
+    name: 'phone page: a new code typed into the same tab joins, and a phone removed from the panel is told so',
+    timeout: 60000,
+    async run(_page, h) {
+      const checks = [];
+      const events = [];
+      const server = createLinkServer({ port: await freePort(), host: '127.0.0.1', staticDir: path.join(DIST, 'phone'), onEvent: (e) => events.push(e) });
+      const info = await server.start();
+      const origin = `http://127.0.0.1:${info.port}`;
+      const phone = await h.context.browser().newContext({ viewport: { width: 390, height: 780 }, isMobile: true, hasTouch: true });
+      await phone.route('**/*', (route) => (route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort()));
+      const errors = [];
+      phone.on('page', (p) => p.on('pageerror', (e) => errors.push(e.message)));
+      try {
+        const p = await phone.newPage();
+        await p.goto(`${origin}/#k=${'B'.repeat(22)}`);
+        const stale = await poll(() => p.textContent('#status-text'), (t) => /out of date/i.test(t), { timeout: 5000 });
+        checks.push(h.check('an old code is turned away', /out of date/i.test(stale), stale));
+
+        await p.evaluate((token) => { window.__samePage = true; location.hash = `k=${token}`; }, info.token);
+        const joined = await h.until(p, () => window.TACTILUME_PHONE?.joined === true, undefined, 8000);
+        const after = await p.evaluate(() => ({ same: window.__samePage === true, status: document.getElementById('status-text').textContent, player: window.TACTILUME_PHONE.player }));
+        checks.push(h.check('the new code in the same tab joins, with no reload', joined && after.same && /Player 1/.test(after.status) && events.some((e) => e.type === 'join'), after));
+
+        // removed from the Phone panel: the page says so, and stays out
+        const kicked = server.kick(after.player);
+        const said = await poll(() => p.evaluate(() => ({
+          status: document.getElementById('status-text').textContent,
+          state: document.body.dataset.state,
+          retry: !document.getElementById('retry-box').hidden,
+        })), (s) => /removed/i.test(s.status), { timeout: 5000 });
+        checks.push(h.check('a phone removed from the Phone panel is told so in words', kicked && /removed/i.test(said.status) && said.state === 'stopped' && !said.retry, said));
+        const joins = events.filter((e) => e.type === 'join').length;
+        await h.wait(1500);
+        checks.push(h.check('and does not knock again by itself', events.filter((e) => e.type === 'join').length === joins && server.info().phones.length === 0, server.info().phones));
+        checks.push(h.check('the controller page reports no errors', errors.length === 0, errors));
+      } finally {
+        await phone.close().catch(() => {});
+        await server.stop().catch(() => {});
+      }
+      return checks;
+    },
+  },
+
+  {
     // The help text is what a first-time player reads before joining, so it must not be faded
     // with the sleeping pad; and on the smallest phones every button label must fit whole.
     name: 'phone page: small phones show every label whole, and the help reads clearly before joining',
@@ -295,7 +342,7 @@ export default [
       const info = await server.start();
       const origin = `http://127.0.0.1:${info.port}`;
       try {
-        for (const [width, height] of [[320, 568], [568, 320]]) {
+        for (const [width, height] of [[320, 568], [568, 320], [667, 375]]) {
           const phone = await h.context.browser().newContext({ viewport: { width, height }, deviceScaleFactor: 2, isMobile: true, hasTouch: true });
           await phone.route('**/*', (route) => (route.request().url().startsWith(`${origin}/`) ? route.continue() : route.abort()));
           const p = await phone.newPage();
@@ -320,6 +367,29 @@ export default [
             .filter((b) => b.getClientRects().length && b.scrollWidth > b.clientWidth)
             .map((b) => `${b.textContent.trim()} (${b.scrollWidth} > ${b.clientWidth})`));
           checks.push(h.check(`${width}x${height}: every button label fits whole`, cut.length === 0, cut));
+
+          // The behaviour's name between its arrows, for every behaviour: whole, inside its box.
+          // (On a phone on its side the box was narrower than "Behaviour", and the words were
+          // cut off on both sides with no sign of it.)
+          const player = await q.evaluate(() => window.TACTILUME_PHONE.player);
+          const names = [];
+          for (const key of ['auto', 'well', 'whirl', 'burst', 'halo', 'current', 'weave', 'chime', 'storm', 'lattice', 'nova', 'murmur', 'fountain']) {
+            server.send(player, state({ behaviour: key }));
+            await h.until(q, (k) => document.getElementById('behaviour-name').textContent.toLowerCase() === k, key, 3000);
+            names.push(await q.evaluate(() => {
+              const box = document.querySelector('.behaviour .value');
+              const b = box.getBoundingClientRect();
+              const steps = [...document.querySelectorAll('.behaviour .step')].map((s) => s.getBoundingClientRect().width);
+              const words = [...box.querySelectorAll('span')].map((s) => {
+                const r = s.getBoundingClientRect();
+                return { text: s.textContent, whole: s.scrollWidth <= s.clientWidth + 0.5, inside: r.left >= b.left - 0.5 && r.right <= b.right + 0.5, w: r.width };
+              });
+              return { box: b.width, steps, words };
+            }));
+          }
+          const clipped = names.flatMap((n) => n.words.filter((w) => !w.whole || !w.inside).map((w) => `${w.text} (${Math.round(w.w)} in ${Math.round(n.box)})`));
+          checks.push(h.check(`${width}x${height}: the behaviour and its label show whole between the arrows`, clipped.length === 0, clipped));
+          checks.push(h.check(`${width}x${height}: the arrows are still easy to press`, names.every((n) => n.steps.every((w) => w >= 44)), names[0]?.steps));
           await phone.close();
         }
       } finally {

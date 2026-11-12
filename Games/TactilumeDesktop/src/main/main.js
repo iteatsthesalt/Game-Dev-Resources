@@ -107,6 +107,13 @@ function start() {
     return withQr(link.setAllowNew(on));
   });
   handle('link:rotate', 0, () => withQr(link.rotateToken()));
+  // Removes one phone for good (the Phone panel asks first). It changes the code too, so the
+  // answer carries the new QR code. Only the app's own page may ask (handle checks).
+  handle('link:kick', 1, (player) => {
+    if (!Number.isInteger(player) || player < 1 || player > 8) throw new TypeError('link:kick takes a player number, 1 to 8');
+    const kicked = link.kick(player);
+    return { ...withQr(link.info()), kicked };
+  });
   handle('link:send', 2, (player, msg) => {
     if (!Number.isInteger(player) || player < 1 || player > 8) throw new TypeError('link:send takes a player number, 1 to 8');
     if (!isPlainObject(msg)) throw new TypeError('link:send takes a message object');

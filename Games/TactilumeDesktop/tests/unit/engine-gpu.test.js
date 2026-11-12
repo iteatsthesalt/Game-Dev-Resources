@@ -3,7 +3,7 @@
 // that casts touches onto the plane.
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { workgroupGrid, wantedLimits } from '../../src/renderer/engine/gpu.js';
+import { workgroupGrid, wantedLimits, particleCapacity, limitAfterNoMemory } from '../../src/renderer/engine/gpu.js';
 import { swapRedBlue } from '../../src/renderer/engine/capture.js';
 import { createCamera, DIST } from '../../src/renderer/engine/camera.js';
 
@@ -28,13 +28,80 @@ describe('workgroupGrid', () => {
       assert.ok(x * y * 256 >= count, `${count} covered`);
       assert.ok((x * (y - 1)) * 256 < count, `${count}: no row wholly past the end`);
     }
-    assert.deepEqual(workgroupGrid(20e6), [65535, 2]);
+  });
+
+  // Rows filled to 65,535 left most of the last row idle: 20M particles dispatched 131,070
+  // workgroups for 78,125, and 16.8M nearly twice what they needed. Spread evenly, the spare
+  // workgroups are fewer than the rows.
+  test('the workgroups are spread evenly over the rows, so almost none are idle', () => {
+    for (const count of [16800256, 20e6, 33554432, 67108863, 65535 * 256 + 1]) {
+      const [x, y] = workgroupGrid(count);
+      const needed = Math.ceil(count / 256);
+      assert.ok(x * y - needed < y, `${count}: ${x} x ${y} for ${needed}`);
+    }
+    assert.deepEqual(workgroupGrid(20e6), [39063, 2]);
   });
 
   test('a narrower row (as tests force) still covers every particle', () => {
     assert.deepEqual(workgroupGrid(20000, 256, 5), [5, 16]);
     assert.ok(5 * 16 * 256 >= 20000);
     assert.deepEqual(workgroupGrid(1000, 64, 1), [1, 16]);
+    const [x, y] = workgroupGrid(20000, 256, 7);
+    assert.ok(x <= 7 && x * y * 256 >= 20000 && x * y - Math.ceil(20000 / 256) < y, `${x} x ${y}`);
+  });
+});
+
+describe('particleCapacity: how big the particle buffer is made', () => {
+  const STEP = 65536;
+  test('the first buffer is just big enough, in steps of 65,536', () => {
+    assert.equal(particleCapacity(20000, 0, Infinity), STEP);
+    assert.equal(particleCapacity(1e6, 0, Infinity), 1048576);
+  });
+
+  // Each 10% step up from the governor used to reallocate and copy the whole buffer, with
+  // old and new both alive for a moment.
+  test('growing during play leaves room, so the governor\'s next steps up need no new buffer', () => {
+    const first = particleCapacity(20e6, 0, Infinity);
+    const grown = particleCapacity(20e6 * 1.1, first, Infinity);
+    assert.ok(grown >= first * 1.5 - STEP, `${grown}`);
+    let n = 20e6 * 1.1;
+    let reallocations = 0;
+    let cap = grown;
+    for (let i = 0; i < 4; i++) {
+      n *= 1.1;
+      const next = particleCapacity(n, cap, Infinity);
+      if (next !== cap) reallocations++;
+      cap = next;
+    }
+    assert.ok(reallocations <= 1, `${reallocations} reallocations for four more steps up`);
+  });
+
+  test('never past the limit, and a count that still fits changes nothing', () => {
+    assert.equal(particleCapacity(30e6, 20.05e6, 25e6), 25e6);
+    assert.equal(particleCapacity(15e6, 20e6, Infinity), 20e6);
+  });
+
+  test('a count that falls to half or less gives the memory back', () => {
+    assert.equal(particleCapacity(4e6, 20e6, Infinity), Math.ceil(4e6 / STEP) * STEP);
+    assert.equal(particleCapacity(1000, 4 * STEP, Infinity), 4 * STEP, 'small buffers are kept');
+  });
+});
+
+describe('limitAfterNoMemory: what a failed growth teaches', () => {
+  const STEP = 65536;
+  // The old buffer and the new one are both alive while the particles are copied, so a
+  // growth can fail where the larger buffer alone would fit. The limit used to stay at the
+  // old capacity for good.
+  test('the next try is between what is there and what failed, not pinned to what is there', () => {
+    const cap = 20 * 1048576;
+    const failed = 30 * 1048576;
+    const limit = limitAfterNoMemory(cap, failed);
+    assert.ok(limit > cap && limit < failed && limit % STEP === 0, String(limit));
+  });
+
+  test('it gives up on growing once the gap is a single step', () => {
+    assert.equal(limitAfterNoMemory(10 * STEP, 11 * STEP), 10 * STEP);
+    assert.equal(limitAfterNoMemory(0, STEP), STEP, 'the smallest buffer is the floor');
   });
 });
 

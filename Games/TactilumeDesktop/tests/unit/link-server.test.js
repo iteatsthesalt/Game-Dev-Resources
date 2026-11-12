@@ -527,6 +527,28 @@ describe('WebSocket: coming back as the same phone', () => {
     assert.equal(touchesOf(events)[2].player, old.welcome.player);
   });
 
+  // The renderer tells a phone the colour it really draws it in once, when it joins. A phone
+  // that takes over its own old connection (its Wi-Fi blinked) is no new join, so the renderer
+  // says nothing: the welcome itself must carry that colour, not the slot's first guess.
+  test('a phone that takes over its old connection is welcomed in the colour it was last told', async () => {
+    const { server, port, token, events } = await start();
+    const old = await join(port, token, { id: ID_A });
+    assert.equal(old.welcome.color, '#e69f00', 'slot 1\'s first guess');
+    assert.equal(server.send(1, state({ color: '#56B4E9', players: 2 })), true);
+    await waitFor(() => old.messages.some((m) => m.t === 'state'), 'the state');
+    const fresh = await join(port, token, { id: ID_A });
+    await old.closing();
+    assert.equal(fresh.welcome.player, 1);
+    assert.equal(fresh.welcome.color, '#56b4e9', 'the colour the hub draws it in');
+    assert.deepEqual(events.map((e) => e.type), ['join'], 'still no second join');
+    // a new phone in a freed slot starts from the slot's guess again
+    fresh.ws.close();
+    await waitFor(() => leaves(events).length === 1, 'the leave');
+    const other = await join(port, token, { id: ID_B });
+    assert.equal(other.welcome.player, 1);
+    assert.equal(other.welcome.color, '#e69f00');
+  });
+
   test('a phone that left may come back as itself while allowNew is off; a new one may not', async () => {
     const { server, port, token, events } = await start();
     await join(port, token, { id: ID_B }); // player 1
@@ -582,7 +604,7 @@ describe('WebSocket: coming back as the same phone', () => {
     const { server, port, token, events } = await start();
     const c = await join(port, token, { id: ID_A });
     assert.equal(server.kick(c.welcome.player), true);
-    assert.equal((await c.next('reject')).why, 'token');
+    assert.equal((await c.next('reject')).why, 'removed', 'the page can say it was removed, not that its code is old');
     assert.equal((await c.closing()).code, 1008);
     await waitFor(() => leaves(events).length === 1, 'the leave');
     assert.notEqual(server.info().token, token);

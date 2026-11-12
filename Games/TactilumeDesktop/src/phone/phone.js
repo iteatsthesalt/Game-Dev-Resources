@@ -40,7 +40,9 @@ const behaviourName = $('behaviour-name');
 const paletteName = $('palette-name');
 const actButtons = [...document.querySelectorAll('[data-act]')];
 
-const token = readToken(location.hash);
+// The code can change while the page is open: an address typed into the same tab changes
+// only its #k= part, which is no new load (see the hashchange listener below).
+let token = readToken(location.hash);
 const sessionId = loadSessionId();
 const canVibrate = typeof navigator.vibrate === 'function';
 // What the phone says it can do, for hello. Only a hint: some browsers report fewer touch
@@ -289,6 +291,27 @@ function reconnectNow() {
 retryButton.addEventListener('click', () => {
   if (retryButton.dataset.action === 'reload') location.reload();
   else { stopped = false; reconnectNow(); }
+});
+
+// A new address in the same tab: the Phone panel tells people to type it into the phone's
+// browser, and a tab turned away for an old code would otherwise keep saying so. A phone
+// that is playing keeps playing (it comes back by its session id, not the code); any other
+// starts again with the new code, whatever the computer said about the old one.
+window.addEventListener('hashchange', () => {
+  const next = readToken(location.hash);
+  if (!next || next === token) return;
+  token = next;
+  if (joined) return;
+  const old = ws;
+  ws = null;
+  if (old) {
+    old.onopen = old.onmessage = old.onclose = null;
+    try { old.close(); } catch { /* already closing */ }
+  }
+  stopped = false;
+  refusal = '';
+  attempt = 0;
+  connect();
 });
 
 // ---- the pad ------------------------------------------------------------------------------

@@ -331,6 +331,9 @@ html.tl-idle #stage { cursor: none; }
 .tl-btn--primary:hover:not(:disabled) { background: #fff; }
 .tl-btn--quiet { background: transparent; border-color: transparent; color: var(--text-2); padding: 0 var(--sp-3); }
 .tl-btn--quiet:hover:not(:disabled) { background: var(--fill-2); color: var(--text); }
+/* a step that cannot be undone, such as removing a phone for good */
+.tl-btn--danger { background: var(--danger-soft); color: var(--danger-text); border-color: var(--danger-text); }
+.tl-btn--danger:hover:not(:disabled) { background: rgba(210, 60, 60, 0.32); }
 
 /* ---- the phone panel --------------------------------------------------------------------------- */
 
@@ -365,6 +368,12 @@ html.tl-idle #stage { cursor: none; }
 }
 .tl-player-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
 .tl-player-kind { flex: none; font-size: var(--fs-xs); color: var(--text-2); }
+.tl-player .tl-btn--quiet { flex: none; min-height: var(--tap); }
+/* asking before a phone is removed for good */
+.tl-player-asking { list-style: none; padding: 0 0 var(--sp-3); }
+.tl-player-confirm { padding: var(--sp-3); border-radius: var(--r-s); background: var(--danger-soft); }
+.tl-player-confirm p { margin: 0 0 var(--sp-3); font-size: var(--fs-s); color: var(--text); }
+.tl-player-confirm-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .tl-tips { margin: var(--sp-2) 0 0; padding-left: calc(20 * var(--u)); font-size: var(--fs-s); color: var(--text-2); }
 .tl-tips li + li { margin-top: var(--sp-2); }
 
@@ -477,6 +486,30 @@ html.tl-idle #stage { cursor: none; }
 /* each row is a grid of its own (display: contents would drop the list from screen readers) */
 .tl-intro-keys li { display: grid; grid-template-columns: calc(40 * var(--u)) 1fr; align-items: center; gap: var(--sp-3); }
 .tl-intro-keys kbd { justify-self: start; }
+/* the gamepad's row shows a gamepad, not a key: any of its buttons joins */
+.tl-intro-icon { justify-self: start; display: inline-flex; color: var(--text); }
+.tl-intro-icon .tl-icon { width: calc(28 * var(--u)); height: calc(28 * var(--u)); }
+
+/* ---- gamepads waiting to join ----------------------------------------------------------------- */
+
+.tl-pads {
+  position: absolute; z-index: 4; pointer-events: none;
+  left: var(--sp-4); right: var(--sp-4); bottom: var(--edge);
+  display: flex; justify-content: center;
+  transition: opacity var(--t-slow) var(--ease);
+}
+#ui.is-idle .tl-pads { opacity: 0; }
+#ui.is-panel-open .tl-pads { right: calc(var(--side-w) + 2 * var(--gap)); }
+.tl-pads-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; align-items: center; gap: var(--sp-2); }
+.tl-pad-prompt {
+  display: flex; align-items: center; gap: var(--sp-3); max-width: min(100%, calc(560 * var(--u)));
+  padding: calc(10 * var(--u)) var(--sp-5); border-radius: var(--r-m);
+  background: var(--glass); border: 1px solid var(--line-2);
+  -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s);
+  box-shadow: var(--shadow-s), var(--shine);
+  font-size: var(--fs-s); font-weight: 500; line-height: 1.35;
+}
+.tl-pad-prompt .tl-icon { flex: none; color: var(--accent); }
 
 /* ---- tuning the light to this computer ------------------------------------------------------------- */
 
@@ -540,9 +573,9 @@ html.tl-idle #stage { cursor: none; }
 
 @media (forced-colors: active) {
   .tl-panel, .tl-toast, .tl-chip, .tl-show, .tl-card, .tl-btn, .tl-icon-btn, .tl-source, .tl-seg, .tl-select, .tl-url,
-  .tl-intro, .tl-measure, .tl-notice { border: 1px solid CanvasText !important; }
+  .tl-intro, .tl-measure, .tl-notice, .tl-pad-prompt, .tl-player-confirm { border: 1px solid CanvasText !important; }
   /* system colours keep their see-through alpha here, so surfaces must be solid */
-  .tl-panel, .tl-toast, .tl-chip, .tl-show, .tl-intro, .tl-measure, .tl-drop { background: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .tl-panel, .tl-toast, .tl-chip, .tl-show, .tl-intro, .tl-measure, .tl-drop, .tl-pad-prompt { background: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
   .tl-panel-glass, .tl-chip::after, .tl-source::after { display: none; }
   .tl-seg-opt:has(.tl-seg-input:checked), .tl-source[aria-pressed='true'], .tl-chip[aria-expanded='true'], .tl-chip[aria-pressed='true'] { outline: 2px solid Highlight; outline-offset: -2px; }
   .tl-player-dot, .tl-qr-box { forced-color-adjust: none; }

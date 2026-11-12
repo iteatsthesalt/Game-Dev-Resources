@@ -89,6 +89,10 @@ export function createPhones({ bridge, hub, engine, actions, store = null, getSe
     Promise.resolve().then(() => bridge.link.send(player, msg)).catch(() => {});
   };
   const broadcast = (msg) => { for (const phone of phones.values()) if (!phone.leaving) send(phone.player, msg); };
+  const say = (text) => {
+    try { if (typeof actions.toast === 'function') actions.toast(text); } catch { /* the toast is news, not play */ }
+  };
+  const heard = new Set(); // players a join or leave has come for since this renderer started
 
   function sceneState() {
     const scene = store?.scene;
@@ -103,26 +107,52 @@ export function createPhones({ bridge, hub, engine, actions, store = null, getSe
     send(phone.player, haptic(...TOUCH_BUZZ));
   }
 
-  function join(e) {
+  // The phone learns the colour it is really drawn in, and what is playing.
+  const tellColour = (phone) => send(phone.player, state({ ...sceneState(), players: hub.players().length, color: toHex(phone.color) }));
+
+  // "Phone 2 (Ana)", or "Phone 2" when it gave no name
+  const phoneName = (phone) => (phone.name && phone.name !== `Phone ${phone.player}` ? `Phone ${phone.player} (${phone.name})` : `Phone ${phone.player}`);
+
+  // `quiet`: a phone the renderer picks up again after it started over, which was playing
+  // all along, so there is no news for the big screen.
+  function join(e, { quiet = false } = {}) {
+    heard.add(e.player);
     const existing = phones.get(e.player);
-    if (existing) {
-      // back before its light had faded: it carries on as the same player
-      existing.leaving = false;
+    if (existing && !existing.leaving) {
+      // a join for a phone already playing (the renderer picked it up from the link a moment
+      // before): it only hears its colour again
+      tellColour(existing);
       return;
     }
-    const p = hub.addPlayer({ kind: 'phone', name: e.name || `Phone ${e.player}`, key: `phone${e.player}` });
-    const phone = { player: e.player, hubId: p.id, color: p.color, live: new Map(), fading: [], leaving: false, lastBuzz: -Infinity };
+    // A join carries only the slot, and the link gives a new phone the lowest free one: while
+    // the last phone in this slot fades out, this may be another phone altogether, so it gets
+    // a player of its own, with its own name, and hears its colour. The light the last one
+    // left goes on fading under the newcomer.
+    if (existing) {
+      phones.delete(e.player);
+      hub.removePlayer(existing.hubId);
+    }
+    const name = e.name || `Phone ${e.player}`;
+    const p = hub.addPlayer({ kind: 'phone', name, key: `phone${e.player}` });
+    const phone = {
+      player: e.player, name, hubId: p.id, color: p.color, colorName: p.colorName || '',
+      live: new Map(), fading: existing ? existing.fading : [], leaving: false, lastBuzz: -Infinity,
+    };
     phones.set(e.player, phone);
-    // The phone learns the colour it is really drawn in, and what is playing.
-    send(e.player, state({ ...sceneState(), players: hub.players().length, color: toHex(p.color) }));
+    tellColour(phone);
+    // The host who just showed the code sees that it worked, as for a gamepad: the Phone
+    // panel's list may be below the fold.
+    if (!quiet) say(`${phoneName(phone)} is playing, in ${phone.colorName || 'its colour'}`);
   }
 
   function leave(e) {
+    heard.add(e.player);
     const phone = phones.get(e.player);
     if (!phone || phone.leaving) return;
     for (const [id, rec] of [...phone.live]) lift(phone, id, rec, null);
     // the player goes once its light has faded (see update)
     phone.leaving = true;
+    say(`${phoneName(phone)} left`);
   }
 
   // A sample's time in ms, on the clock its touch started with: the phone's (touch.ms) when
@@ -242,6 +272,23 @@ export function createPhones({ bridge, hub, engine, actions, store = null, getSe
   });
   const offPlayers = hub.on?.('players', (list) => broadcast(state({ players: Array.isArray(list) ? list.length : 0 })));
 
+  // A renderer that starts over (main reloads the page after a crash, or View > Reload)
+  // finds the link still holding its phones, which joined before it was listening and will
+  // never join again: they are picked up from the link's own list. A phone that joined or
+  // left meanwhile is left to those events, which are newer than the list.
+  let disposed = false;
+  let asked = null;
+  try { asked = typeof bridge.link.info === 'function' ? bridge.link.info() : null; } catch { asked = null; }
+  Promise.resolve(asked)
+    .then((info) => {
+      if (disposed || !Array.isArray(info?.phones)) return;
+      for (const p of info.phones) {
+        if (!Number.isInteger(p?.player) || p.player < 1 || p.player > 8 || heard.has(p.player)) continue;
+        join({ player: p.player, name: typeof p.name === 'string' ? p.name : '' }, { quiet: true });
+      }
+    })
+    .catch(() => { /* no link: the phones arrive by their join events */ });
+
   return {
     update(dt) {
       const step = isNumber(dt) && dt > 0 ? dt : 0;
@@ -285,6 +332,7 @@ export function createPhones({ bridge, hub, engine, actions, store = null, getSe
       }
     },
     dispose() {
+      disposed = true;
       offLink?.();
       offScene?.();
       offPlayers?.();

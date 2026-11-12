@@ -20,6 +20,32 @@ function run(gov, ms, seconds, from = 0) {
 
 const HZ60 = 1000 / 60;
 
+describe('createGovernor: told what the engine really drew', () => {
+  // The engine may draw fewer than asked: a GPU that ran out of memory lowers its limit for
+  // good. A governor that kept counting from its own number would climb on above the engine's,
+  // and its next few steps down would change nothing on screen.
+  test('clamp(n) lowers its count and its ceiling to what the engine can draw', () => {
+    const gov = createGovernor({ min: 1000, max: 67e6, start: 20e6, refreshHz: 60 });
+    gov.clamp(20.05e6);
+    assert.equal(gov.particles, 20e6, 'a count it already meets is left alone');
+    gov.clamp(18e6);
+    assert.equal(gov.particles, 18e6);
+    const up = run(gov, HZ60, 60);
+    assert.ok(up.changes.every((c) => c.particles <= 18e6), JSON.stringify(up.changes));
+    // the first step down after slow frames is a real step below what is drawn
+    const down = run(gov, 40, 1, up.now);
+    assert.ok(down.changes.length >= 1 && down.changes[0].particles < 18e6, JSON.stringify(down.changes));
+  });
+
+  test('clamp ignores nonsense and never goes below min', () => {
+    const gov = createGovernor({ min: 1000, max: 1e6, start: 5e5 });
+    for (const bad of [NaN, -1, undefined, 'x']) gov.clamp(bad);
+    assert.equal(gov.particles, 5e5);
+    gov.clamp(10);
+    assert.equal(gov.particles, 1000);
+  });
+});
+
 describe('createGovernor', () => {
   test('starts at the start count, kept within min and max', () => {
     assert.equal(createGovernor({ min: 100, max: 1000, start: 500 }).particles, 500);

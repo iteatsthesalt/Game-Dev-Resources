@@ -4,7 +4,7 @@
 
 // For the Keys list in Settings: [what to press, what it does].
 export const KEY_LIST = Object.freeze([
-  ['F', 'Full screen on or off'],
+  ['F  F11', 'Full screen on or off'],
   ['H', 'Hide or show the controls'],
   ['P', 'The phone panel'],
   ['S', 'The sound panel'],

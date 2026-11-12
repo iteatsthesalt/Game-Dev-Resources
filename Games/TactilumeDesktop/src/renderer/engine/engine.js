@@ -19,9 +19,11 @@ import { PALETTES, paletteIndex, bakeLUT } from '../../../../Tactilume/src/js/co
 import { behaviourByKey } from '../../../../Tactilume/src/js/core/behaviours.js';
 import { FORMS, COLOR_BY, DEFAULT_SCENE } from '../../../../Tactilume/src/js/core/scene.js';
 import { clamp, approach } from '../../../../Tactilume/src/js/core/util.js';
-import { requestDevice, workgroupGrid } from './gpu.js';
+import { requestDevice, workgroupGrid, particleCapacity, limitAfterNoMemory } from './gpu.js';
 import { readTexture, readBuffer } from './capture.js';
 import { createCamera } from './camera.js';
+import { speckLight } from './light.js';
+import { createShaderClock } from './clock.js';
 import { createTouch, srgbToLinear } from './touch.js';
 import { FRAME, LEVEL, EXPOSURE, LOOK, createUniforms } from './layout.js';
 import COMMON from './shaders/common.wgsl';
@@ -38,7 +40,6 @@ const BYTES_PER_PARTICLE = 32;
 const GROUP_SIZE = 256;                // the simulation's workgroup size (sim.wgsl)
 const BATCH = 64;                      // particles per instance of the speck draw (draw.wgsl)
 const PARTICLE_STEP = 65536;           // the particle buffer grows and shrinks in steps of 2 MiB
-const REF_COUNT = 262144;              // the count the mobile edition's energy is tuned around
 const LIGHT_FORMAT = 'rgba16float';    // the light, the bloom chain and the team field
 const TEAM_SIZE = [128, 72];           // texels of the team colour field
 const TEAM_EXTENT = 1.2;               // it reaches this far, in world units (a little past the screen)
@@ -55,7 +56,6 @@ const PRESENT_BROKEN = /external Instance reference no longer exists/i;
 
 const finite = (x) => typeof x === 'number' && Number.isFinite(x);
 const num = (x, fallback) => (finite(x) ? x : fallback);
-const roundUp = (n, k) => Math.ceil(n / k) * k;
 
 export async function createEngine(canvas, { particles = 20000, maxParticles = 0, hdr = 'auto', present = true, onLost } = {}) {
   let gpu = await requestDevice();      // throws Error('webgpu')
@@ -85,7 +85,8 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
   const frameU = createUniforms(FRAME);
   const exposureU = createUniforms(EXPOSURE);
   const lookU = createUniforms(LOOK);
-  let simTime = 0;
+  const shaderClock = createShaderClock(); // the time the shaders see (clock.js)
+  let lastForm = null;
   let camTime = 0;
   let frameNo = 0;
   let lastOrbit = 0;
@@ -383,10 +384,13 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     r.init = r.init ? { first: Math.min(r.init.first, first), end: Math.max(r.init.end, end) } : { first, end };
   }
 
-  // Makes the particle buffer fit `n` particles: bigger when the count grows (the particles
-  // already there are kept, the new ones start in the resting shape), smaller when it has
-  // fallen to half, so memory follows the count. A buffer the GPU has no memory for lowers
-  // the limit instead. Only the buffer's own allocation is waited for.
+  // Makes the particle buffer fit `n` particles: bigger when the count grows, with room to
+  // spare so the governor's next steps up need no new buffer (the particles already there are
+  // kept, the new ones start in the resting shape), smaller when it has fallen to half, so
+  // memory follows the count (gpu.js, particleCapacity). A buffer the GPU has no memory for
+  // lowers the limit instead, halfway at a time (limitAfterNoMemory): the old buffer is alive
+  // while the new one is made, so the larger one alone may still fit. Only the buffer's own
+  // allocation is waited for.
   let resizing = Promise.resolve();
   function resizeLater() {
     resizing = resizing.then(() => resizeParticles(count)).catch((e) => console.error(e));
@@ -396,10 +400,8 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
   async function resizeParticles(n) {
     const r = res;
     if (!r) return;
-    const need = Math.min(roundUp(Math.max(n, 1), PARTICLE_STEP), particleLimit());
-    const grow = need > r.capacity;
-    const shrink = r.capacity > 4 * PARTICLE_STEP && need <= r.capacity / 2;
-    if (!grow && !shrink) return;
+    const need = particleCapacity(n, r.capacity, particleLimit(), PARTICLE_STEP);
+    if (need === r.capacity) return;
     const { device } = r;
     device.pushErrorScope('out-of-memory');
     const buffer = device.createBuffer({
@@ -414,8 +416,8 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
       // not even the smallest buffer: this GPU cannot run the engine, and the classic one
       // (which needs far less) takes over, as when there is no WebGPU at all
       if (r.capacity === 0 && need <= PARTICLE_STEP) throw new Error('webgpu');
-      // what is there already fits; ask for no more than half of what failed
-      knownLimit = Math.max(r.capacity, Math.floor(need / 2 / PARTICLE_STEP) * PARTICLE_STEP, Math.min(need, PARTICLE_STEP));
+      // what is there already fits; next time ask for no more than halfway to what failed
+      knownLimit = limitAfterNoMemory(r.capacity, need, PARTICLE_STEP);
       count = Math.min(count, particleLimit());
       console.warn(`Tactilume: not enough GPU memory for ${need} particles; using at most ${particleLimit()}`);
       if (r.capacity < Math.min(count, particleLimit())) await resizeParticles(count);
@@ -499,7 +501,6 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     const dt = Math.min(clamp(num(f.dt, 0), 0, MAX_STEP) + owed, MAX_STEP);
     owed = 0;
     const sdt = dt * num(scene.speed, 1);
-    simTime += sdt;
     camTime += dt * (0.5 + num(scene.speed, 1) * 0.5);
     frameNo = (frameNo + 1) >>> 0;
     followHdr(settings.hdr);
@@ -536,24 +537,17 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     const g = f.gravity || { x: 0, y: -1, z: 0 };
     const gs = num(scene.gravity, 0) * 2.2;
 
-    // the light per particle (the mobile edition's energy normalisation): each speck carries
-    // energy * size^2, spread over the pixels it covers, and energy = k * pixels / (count *
-    // size^2) keeps the frame's mean near k whatever the count and resolution; more particles
-    // still add a little richness, bigger specks a little light, and long trails are evened out
-    const pxScale = H / 1000;
-    const basePx = Math.max(0.6, 1.45 * pxScale);
+    // the light per particle, the most one speck may add, and how fast the trails fade
+    // (light.js: the mobile edition's energy normalisation, for a half-float light)
     const size = num(scene.size, 1);
-    const trails = num(scene.trails, 0.5);
-    const tau = 0.04 + trails * trails * 1.35;
-    const keep = trails > 0.005 ? Math.min(Math.exp(-dt / tau), 0.994) : 0;
-    const trailNorm = Math.pow(1 - keep, 0.8);
-    const energy = 0.055 * (W * H) / (N * basePx * basePx) * Math.pow(N / REF_COUNT, 0.3) / Math.max(size, 0.25)
-      * trailNorm * (1 + level * 0.6);
-    // Mobile capped each speck at 24000 / N so the whole frame could never overflow a half
-    // float. At desktop counts and widths that cap falls below a resting speck's light and
-    // would dim hot and cold light alike, so here a speck may reach twice a resting speck's
-    // light (about what mobile allows on a phone), and the ceiling pass guards the overflow.
-    const energyCap = Math.max(24000 / N, energy * 2);
+    const { keep, energy, energyCap, pxScale, basePx } = speckLight({
+      width: W, height: H, count: N, size, trails: num(scene.trails, 0.5), dt, level,
+    });
+
+    // the shaders' own clock, which starts again at a scene change after an hour (clock.js)
+    const form = scene.form;
+    const shaderTime = shaderClock.advance(sdt, form !== lastForm);
+    lastForm = form;
 
     const U = frameU;
     U.set('viewProj', cam.viewProj);
@@ -562,7 +556,7 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     U.set('invRes', [1 / W, 1 / H]);
     U.set('teamScale', [0.5 / ((W / H) * TEAM_EXTENT), 0.5 / TEAM_EXTENT]);
     U.set('dt', sdt);
-    U.set('time', simTime);
+    U.set('time', shaderTime);
     U.set('strength', num(scene.strength, 1) * (1 + bass * 0.7));
     U.set('drag', num(scene.drag, 0.35));
     U.set('flow', num(scene.flow, 0.3));
@@ -615,7 +609,7 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     lookU.set('grain', num(scene.grain, 0.25));
     lookU.set('aberration', num(scene.aberration, 0.2));
     lookU.set('saturation', SATURATION);
-    lookU.set('time', simTime);
+    lookU.set('time', shaderClock.grain);
     lookU.set('hdrPeak', HDR_PEAK);
 
     const { device } = r;

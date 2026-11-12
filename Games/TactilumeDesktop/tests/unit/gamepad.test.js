@@ -587,6 +587,52 @@ describe('plugging and unplugging', () => {
     assert.ok(cursorOf(r, 'left').x > l0, 'axis 0 is still the left stick');
   });
 
+  // Some triggers read 0 until first used, then rest at -1. Seen only at the join press, such
+  // an axis looks like a centred stick, and would drag the cursor into the edge for good.
+  test('an axis that comes to rest far over after the pad joined is learned to be a trigger', () => {
+    const pad = fakePad(0, { mapping: '', axes: [0, 0, 0, 0, 0, 0] });
+    const r = rig({ pads: [pad] });
+    r.join(pad);
+    setPad(pad, { axes: [0, 0, -1, 0, 0, 0] }); // the trigger is touched once, and rests at -1
+    r.step(60 * 5);
+    // Learned, the resting trigger is not someone playing: the pad goes idle (so its rings
+    // fade, and it steps out after a minute) instead of looking busy for ever.
+    r.step(60 * 2);
+    assert.ok(cursorOf(r, 'right').idle >= 1.5, `the pad is resting: idle ${cursorOf(r, 'right').idle}`);
+    r.step(60 * 60);
+    assert.equal(r.hub.players().length, 0, 'and steps out after a minute untouched');
+    r.join(pad);
+    // the left stick still works
+    setPad(pad, { axes: [1, 0, -1, 0, 0, 0] });
+    const l0 = cursorOf(r, 'left').x;
+    r.step(10);
+    assert.ok(cursorOf(r, 'left').x > l0);
+  });
+
+  test('a stick tilted during the join press is a stick again once it is let go', () => {
+    const pad = fakePad(0, { mapping: '', axes: [0, 0, 0.9, 0, 0, -1] });
+    const r = rig({ pads: [pad] });
+    r.join(pad);
+    setPad(pad, { axes: [0, 0, 0, 0, 0, -1] }); // let go: it rests in the middle
+    r.step(60);
+    setPad(pad, { axes: [0, 0, 1, 0, 0, -1] });
+    const x0 = cursorOf(r, 'right').x;
+    r.step(20);
+    assert.ok(cursorOf(r, 'right').x > x0 + 0.05, 'axis 2 steers the right cursor');
+  });
+
+  test('a stick pushed hard against the edge for a while is still a stick', () => {
+    const pad = fakePad(0, { mapping: '', axes: [0, 0, 0, 0, 0, -1] });
+    const r = rig({ pads: [pad] });
+    r.join(pad);
+    setPad(pad, { axes: [0, 0, -1, 0, 0, -1] });
+    r.step(60 * 2); // two seconds into the left edge
+    setPad(pad, { axes: [0, 0, 1, 0, 0, -1] }); // and straight back the other way
+    const x0 = cursorOf(r, 'right').x;
+    r.step(20);
+    assert.ok(cursorOf(r, 'right').x > x0 + 0.05, `it turns back at once: ${x0} → ${cursorOf(r, 'right').x}`);
+  });
+
   test('dispose removes the players and stops any rumble', () => {
     const r = rig();
     r.join();

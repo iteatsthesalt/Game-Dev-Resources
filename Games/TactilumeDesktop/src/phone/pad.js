@@ -60,14 +60,25 @@ export function intensityOf({ pointerType, pressure, width, height }) {
   return 0.5;
 }
 
-// Touch ids on the wire are small numbers: each new finger takes the lowest free one, and a
-// lifted finger gives its number back.
-export function createSlots(count = 10) {
+// Touch ids on the wire, 0..`space`-1, with at most `count` fingers down at once. Each new
+// finger takes the next id round, not the lowest free one: a finger that lifts and another
+// that lands before the next frame goes out (one animation frame, or longer while the network
+// is behind) would otherwise share an id, and the computer would see one finger jump across
+// the pad, with no release where it lifted and no ring where the new one landed. Going round
+// 256 ids, an id comes back only after 255 other fingers.
+export function createSlots(count = 10, space = 256) {
   const used = new Set();
+  let next = 0;
   return {
     take() {
-      for (let id = 0; id < count; id++) {
-        if (!used.has(id)) { used.add(id); return id; }
+      if (used.size >= count) return -1;
+      for (let i = 0; i < space; i++) {
+        const id = (next + i) % space;
+        if (!used.has(id)) {
+          used.add(id);
+          next = (id + 1) % space;
+          return id;
+        }
       }
       return -1;
     },
@@ -84,4 +95,5 @@ export const REFUSALS = Object.freeze({
   bad: { retry: false, action: 'reload', text: 'The computer did not understand this phone. Reload the page to try again.' },
   full: { retry: true, action: 'retry', text: 'Eight phones are playing already. You will join when one leaves.' },
   closed: { retry: true, action: 'retry', text: 'The computer is not letting new phones join right now. Waiting…' },
+  removed: { retry: false, action: 'none', text: 'This phone was removed from the game on the computer. To play again, scan the new code there.' },
 });
