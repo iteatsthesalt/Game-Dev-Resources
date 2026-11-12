@@ -1054,10 +1054,12 @@ test('apod uses DEMO_KEY and maps images and videos', async () => {
   assert.equal(u.searchParams.get('api_key'), 'DEMO_KEY'); assert.equal(u.searchParams.get('count'), '10'); assert.equal(u.searchParams.get('thumbs'), 'true');
   assert.equal(out.length, 2);
   assert.equal(out[0].url, 'https://apod.nasa.gov/apod/ap250314.html'); assert.equal(out[0].licence, '© Jane Sky');
+  assert.equal(out[0].author, 'Jane Sky'); assert.equal(out[0].imageUrl, undefined);
   assert.equal(out[1].kind, 'video'); assert.equal(out[1].licence, 'Public domain (NASA)');
+  assert.equal(out[1].imageUrl, 'https://apod.nasa.gov/apod/image/2401/thumb.jpg');
 });
 test('apod uses your api.data.gov key and stops near the DEMO_KEY limit', async () => {
-  const keyed = await adapterCtx({ secrets: { 'src:apidatagov': 'MYKEY' } }); await apod.random(keyed.ctx);
+  const keyed = await adapterCtx({ secrets: { 'src:datagov': 'MYKEY' } }); await apod.random(keyed.ctx);
   assert.equal(new URL(keyed.calls[0].url).searchParams.get('api_key'), 'MYKEY');
   const demo = await adapterCtx(); await demo.ctx.cache.set('apod:count:2026-11-11', 45, 864e5);
   assert.deepEqual(await apod.random(demo.ctx), []); assert.equal(demo.calls.length, 0);
@@ -1078,7 +1080,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-nature-books-space.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Commit**
 

@@ -1383,27 +1383,19 @@ git add src/ui/dom.js src/ui/a11y.js src/ui/theme.js src/ui/toast.js tests/unit/
 git commit -m "Add the DOM builder, live regions, access attributes and toasts"
 ```
 
-### Task 12: Router, view registries and boot
+### Task 12: Hash router
 
 **Files:**
-- Create: `src/ui/router.js`, `src/ui/views/index.js`, `src/ui/views/settings/index.js`, `tests/e2e/helpers/app.js`
-- Modify: `src/ui/boot.js` (replace the Task 9 stub)
-- Test: `tests/unit/router.test.js`, `tests/unit/boot-data.test.js`, `tests/e2e/shell.spec.js`
+- Create: `src/ui/router.js`
+- Test: `tests/unit/router.test.js`
 
 **Interfaces:**
-- Consumes: everything from Tasks 2–11; `createPwaPlatform`, `registerServiceWorker` (Task 7).
-- Produces:
-  - `router.js`: `ROUTES`, `registerView(route, {title, render(container, app, params), leave?})` (a later registration for the same route replaces the earlier one; an unknown route throws `Error('unknown route: <route>')`), `getView(route) → view|undefined`, `parseHash(hash) → {route, params}`, `buildHash(route, params = {}) → string`, `startRouter(render)`, `navigate(route, params = {})`. `params` is `{id?: string}` for `#/<route>/<id>` (a Daily Fate date or a settings section id) and `{payload: string}` for `#s=<payload>`.
-  - `views/settings/index.js`: `registerSettingsSection({id, label, order, render(container, app)})`, `listSettingsSections() → Array` sorted by `order`. It registers the `settings` view.
-  - `views/index.js`: imports `./settings/index.js`, then registers a placeholder view for each of `stumble feed daily vault saved import` that has no view yet. Later plans add their import lines above this.
-  - `boot.js`: `DATA_FILES = {tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json'}`, `EMPTY_DATA` (the empty shapes from Task 9), `loadData(fetchFn, baseUrl) → Promise<object>`, `STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.'`, `VIEW_FAILED_MESSAGE = 'This view failed to load.'`, `boot(platform) → Promise<App>` with the Plan 01 `App` fields plus `getSettings()`, and `bootFromShell()`. Plans 07 and 08 add their shells' branches to `bootFromShell`.
-  - `tests/e2e/helpers/app.js`: `gotoApp(page, hash = '#/stumble')`. It loads the page, then clicks **Skip** while a `[data-firstrun]` element is shown, then waits for the `h1`.
+- Consumes: `flush` (Task 3, tests).
+- Produces: `ROUTES`, `registerView(route, {title, render(container, app, params), leave?})` (a later registration for the same route replaces the earlier one; an unknown route throws `Error('unknown route: <route>')`), `getView(route) → view|undefined`, `parseHash(hash) → {route, params}`, `buildHash(route, params = {}) → string`, `startRouter(render, win = globalThis)`, `navigate(route, params = {})`. `params` is `{id?: string}` for `#/<route>/<id>` (a Daily Fate date or a settings section id) and `{payload: string}` for `#s=<payload>`. `startRouter` also handles the cancelable window event `byways:back` that Plan 08 dispatches: when no listener calls `preventDefault()` and the hash is not the home view (`''`, `'#'`, `'#/'` or `'#/stumble'`), it calls `history.back()`.
 
-View titles: `stumble` "Stumble", `feed` "Feed", `daily` "Daily Fate", `vault` "Vault", `saved` "Saved", `settings` "Settings", `import` "Import". A placeholder renders an `h1` with its title and the paragraph "Nothing here yet.".
+- [ ] **Step 1: Write the failing test** `tests/unit/router.test.js`
 
-- [ ] **Step 1: Write the failing unit tests**
-
-`tests/unit/router.test.js`:
+The file imports `flush` from `./helpers/async.js` and fakes a window with `const fakeWin = hash => Object.assign(new EventTarget(), { location: { hash }, history: { backs: 0, back() { this.backs++; } } });`.
 
 ```js
 test('parseHash reads the hash forms', () => {

@@ -1040,21 +1040,20 @@ Expected: Node fails with `ENOENT` on `TtsBridge.kt`; Gradle fails with `Unresol
 
 - `MediaBridge`: one `android.media.session.MediaSession(ctx, "Byways")`. Below API 26 it also calls `setFlags(FLAG_HANDLES_MEDIA_BUTTONS or FLAG_HANDLES_TRANSPORT_CONTROLS)`, without which Android 7 sends it no headset buttons. The callback's `onSkipToNext`, `onSkipToPrevious`, and both `onPlay` and `onPause`, emit `next`, `previous` and `playPause`. `setActive {on}` sets `isActive` and a `PlaybackState` with `ACTION_SKIP_TO_NEXT or ACTION_SKIP_TO_PREVIOUS or ACTION_PLAY_PAUSE or ACTION_PLAY or ACTION_PAUSE`, in `STATE_PLAYING` when on and `STATE_PAUSED` when off. When `PLAY_SILENCE` is true, `setActive(true)` also plays a looping silent `AudioTrack` (`USAGE_MEDIA`) until `setActive(false)` or `release()`: from Android 8, media buttons go to the app that last played audio, and TTS audio plays in the engine's process. The real-device checklist decides whether to turn it on.
 - `ShareBridge.send {title, text, url}`: an `Intent.ACTION_SEND` of type `"text/plain"` whose `EXTRA_TEXT` is the non-null parts of `text` and `url` joined by a space, with `EXTRA_SUBJECT = title`. Start `Intent.createChooser(intent, "Share")` and reply `'shared'`.
-- `FilesBridge.save {name, mime, base64}`: a `CreateDocument("*/*")` subclass whose `createIntent` sets the intent type to the requested `mime`. A `null` result replies `'cancelled'`. Otherwise decode and write on a background thread, then reply `'saved'`. A second save while one is open replies `busy`.
+- `FilesBridge`: `save {name, mime, base64}` and `save {name, mime, saveId}` open a `CreateDocument("*/*")` subclass whose `createIntent` sets the intent type to `mime`. A `null` result replies `'cancelled'`; otherwise the bytes are written on a background thread and it replies `'saved'`. `append {saveId, base64}` decodes and appends on one background thread, in arrival order, to a part file from `File.createTempFile("save-", ".part", cacheDir)`, kept in a map by `saveId` (never used as a path); `save {…, saveId}` writes that part and deletes it, and so does a cancelled picker. A part over 1 GiB replies `too-large` and is deleted. A second save while the picker is open replies `busy`. Parts exist because one bridge message holds at most 16 MiB, and a PC state from the Lab is far bigger.
 
 - [ ] **Step 5: Wire them in `MainActivity`**
 
 Add `"tts" to tts`, `"media" to media`, `"share" to share` and `"files" to files` to the handler map. `onDestroy` calls `tts.shutdown()` and `media.release()`.
 
-- [ ] **Step 6: Run it to see it pass**
+- [ ] **Step 6: Run them to see them pass**
 
-Run: `node --test tests/unit/android-shell.test.js`
-Expected: PASS (10 tests). CI `assembleDebug` compiles the new files.
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 14 tests; Gradle: 5 new tests). `assembleDebug` compiles the new files.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways tests/unit/android-shell.test.js
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt tests/unit/android-shell.test.js
 git commit -m "Add native read-aloud, media buttons, share and file save"
 ```
 

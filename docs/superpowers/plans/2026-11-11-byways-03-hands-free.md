@@ -1284,31 +1284,49 @@ git commit -m "Add the single-key map with a text-field guard"
     - `window.__speechCancels` counts `cancel()`. With `holdSpeech`, an utterance ends only on `window.__endSpeech()` or `cancel()` (otherwise after Plan 01's 10 ms). An utterance with empty text ends at once and is not recorded. `window.__utterances` gets `{text, voiceURI, rate, volume}` for each recorded utterance. `getVoices()` adds `{voiceURI: 'net-en', name: 'Online English', lang: 'en-US', localService: false}` after Plan 01's `fake-en-US`;
     - `window.__wakeLock` gains `releases`; `window.__media` holds the handlers given to `navigator.mediaSession.setActionHandler`, by action name; `window.__announcements` gets `[regionId, text]` for every non-empty text written to `#live-polite` or `#live-assertive`; a fake `AudioContext` counts oscillator `start()` calls in `window.__tones`.
 
-Bar contents. `#handsfree` is a `<section aria-label="Hands-free">` outside the routed view, so it is on every screen. Every button is at least 56 px tall.
+The bar renders into Plan 01's `<div id="hf-bar">` (between the header and `<main>`, outside the routed view, so it is on every screen) and removes its `hidden` attribute. It is a `section` with `aria-label="Hands-free"`. Every button is at least 56 px tall. While a first-run step is shown, `body:has([data-firstrun]) #hf-start { display: none; }` hides the bar's Start, so the step's own Start is the only one.
 
 | Element | Visible text and behaviour |
 |---|---|
-| Start button | `Start`, shown while idle. Calls `startHandsFree(app)`: probe with `allowCloud: settings.voice.cloudOptIn`, build listener and controller with `getListenMode = () => effectiveListenMode(settings.voice.mode, status)`, `wakeLock.on()`, `media.setActive(true)`, `hf.start()` |
-| Turn off button | `Turn off hands-free`, shown when not idle; calls `stop()` |
-| Listening indicator `#hf-listening` | `Listening`, `Not listening`, `Hold V to talk` (push mode) or `No voice` (off) |
-| Pause/Play | `Pause` while active, `Play` while paused; hidden while idle |
-| Stop | text `Stop`, `aria-label="Stop reading"`; calls `command('stop')`. Always visible |
+| Start `#hf-start` | `Start`, shown while idle; runs the Start press routine below |
+| Turn off | `Turn off hands-free`, shown when not idle; calls `stop()` |
+| Listening indicator `#hf-listening` | `Listening` while the mic is on; otherwise `Push to talk` (push mode), `No voice` (off) or `Not listening` |
+| Talk | `Talk`, shown in push mode while not idle. `pointerdown` calls `talk(true)` and `pointerup` calls `talk(false)` (Task 4 turns a short press into a tap). It works whatever **Single-key shortcuts** is set to |
+| Stop listening | shown while the mic is on; `dispatch('stopListening')` |
+| Pause/Play | `Pause` while active, `Play` while paused; hidden while idle and with `leanBack: false` |
+| Stop | text `Stop`, `aria-label="Stop reading"`; `dispatch('stop')`. Always visible |
 | Mute | `Mute` with `aria-pressed`; calls `setMuted`. Always visible |
+| Surprise me | `dispatch('fate')`. Always visible |
+| Help | `dispatch('help')`. Always visible |
 | Countdown `#hf-countdown` | `Next find in <n> s`; empty when `countdown(null)` |
-| Caption `#hf-caption` | `Heard: <label>` for each voice command, with an 80 ms 660 Hz tone at gain 0.05 from an `AudioContext` made on the Start press |
-| Tap to resume | `Tap to resume`, shown when `wake()` returns `false`; calls `wake()` |
+| Caption `#hf-caption` | `Heard: <label>` for each voice command, with an 80 ms 660 Hz tone at gain 0.05 from the Start press's `AudioContext` (no tone when there is none) |
+| Help line `#hf-help` | The help for a fatal voice error (table below); cleared by the next Start |
+| Tap to resume | `Tap to resume`, shown when `wake()` returns `false`; calls `wake()`, and hides when it returns `true` |
+
+The Start press routine (module-private; the bar's Start and the first-run step's Start run it): before any `await`, call `platform.tts.speak('')`, which unlocks speech output inside the press, and create and `resume()` the tone's `AudioContext`; then call `app.handsFree.start()`.
+
+`prepare` (given to `createHandsFree`): navigate to `stumble` when another route is shown; `status = await platform.voice.probe({allowCloud: settings.voice.cloudOptIn})`; return `null` when `status.kind` is `'none'`, else a new `createListener(platform.voice, {clock, phrases: commandPhrases(), lang: settings.voice.lang, allowCloud: settings.voice.cloudOptIn})` with the caption, indicator and help-line handlers attached. `getListenMode` is `() => effectiveListenMode(settings.voice.mode, status)`, so voice settings apply from the next Start. The probe runs before any recogniser is made, so a cloud-only recogniser is never started before the opt-in.
+
+| Fatal code | `#hf-help` |
+|---|---|
+| `not-allowed` | `Allow the microphone for Byways in your settings, then turn hands-free off and on.` |
+| `service-not-allowed` | `Voice commands do not work here. Keys, touch and headset buttons still work.` |
+| `audio-capture` | `Connect a microphone, then turn hands-free off and on.` |
+| `language-not-supported` | `Voice does not support this language here. Keys, touch and headset buttons still work.` |
+| `network` | `Voice needs a connection. Turn hands-free off and on to try again.` |
 
 Wiring rules:
-- `ui.show` navigates to `stumble` first when needed, then calls `showResult`. `ui.act(id)` clicks the first button in `main` whose trimmed text equals the command's label (for `open`, `Open` or `Play`), else announces `No <label> button here`. `ui.recap(shown)` opens a dialog headed `This session` with `You saw <n> finds and saved <m>.` and the saved titles, where saved means `(await app.collections.has(find.id)).length > 0`.
-- `ui.openHelp()` opens `<dialog>` headed `What you can say`: one row per `COMMANDS` entry with columns `Say` (the label), `Also` (the other words), `Key` (`Space` for `' '`, `Esc` for `Escape`, else the key in upper case, `—` for none), then the line `Hold V to talk when push to talk is on.` and a `Close` button. It holds `'help'` until closed.
-- The keymap dispatches to `app.handsFree.command(id)`, except `search`, which focuses `main input[type="search"]` when there is one, or else opens a dialog with a field labelled `Search for` and a `Search` button that calls `command('search', text)`.
-- `hashchange` to any route other than `stumble` calls `hold('view')`; back on `stumble` calls `release('view')`.
-- `visibilitychange` to hidden calls `suspend()` when active or paused; to visible calls `wake()`.
-- Capture-phase `pointerdown` and `keydown` on `document`, outside `#handsfree`, call `input()`.
-- Media handlers: `next` → `command('next')`, `previous` → `command('back')`, `playPause` → `command('pause')`.
+- `ui.show(result)`: when Stumble is on screen (`parseHash(location.hash).route === 'stumble'` and no `[data-firstrun]` in `#app`), call `showResult(result)`; otherwise `navigate('stumble')`, and the view's first render shows `engine.current()`.
+- `ui.act(id)` clicks the first button in `main` whose trimmed text equals the command's label (for `open`, `Open` or `Play`), else announces `No <label> button here`. `ui.openHelp()` and `ui.recap()` do nothing until Task 10.
+- `dispatch(id, arg)` (module-private) is the one command entry point. The keymap, the bar, the media keys, the search dialog (Task 10) and voice (through `createHandsFree({dispatch})`) all call it, and it ends in `app.handsFree.command(id, arg)`. A `search` with no `arg` opens search instead (Task 10). Plan 06 adds its Lab stop here.
+- Installed once, by `installHandsFreeUi`: `installKeymap({getSettings: app.getSettings, dispatch, onTalk: (on) => app.handsFree.talk(on)})`, and the media handlers `next` → `dispatch('next')`, `previous` → `dispatch('back')`, `playPause` → `dispatch('pause')`.
+- `hold('view')` while the route is not `stumble` (checked at install and on each `hashchange`); `release('view')` on `stumble`.
+- `visibilitychange` to hidden calls `suspend()` when active or paused; to visible calls `wake()`, and shows **Tap to resume** when it returns `false`.
+- Capture-phase `pointerdown` and `keydown` on `document`, outside `#hf-bar`, call `input()`.
 - `ui.setState('active')` calls `wakeLock.on()` and `media.setActive(true)`; any other state calls `off()` and `setActive(false)`.
-- `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find)` after rendering a find; the `open` and `play` actions call `app.handsFree.pause()` when its state is `'active'`; the `read` action calls `app.handsFree.command('read')`.
-- `boot.js` imports `handsfree-ui.js` and calls `installHandsFreeUi(app)` after the engine and router start.
+- `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find, result.why)` after rendering a find; the `open` and `play` actions call `app.handsFree?.pause()`, which says `Lean-back paused` when lean-back was on; the `read` action calls `app.handsFree.command('read')`.
+- `boot.js` imports `handsfree-ui.js` and calls `installHandsFreeUi(app)` once the engine exists and before `await runFirstRun(app)`.
+- `card-actions.spec.js` (Plan 02): hands-free now reads one sentence per utterance, with the card's reason as the main why reason, so the **Read it** assertion becomes `await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual(['Tiny Synth.', 'From example.com.', 'Make sounds with a tiny synth.', 'wildcard.']);`.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
