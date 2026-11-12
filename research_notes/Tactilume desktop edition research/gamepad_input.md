@@ -148,14 +148,14 @@ These limits apply on every OS: at most 8 pads, and no gyro, accelerometer, LEDs
 - **Latency.** Polling once per `requestAnimationFrame` gives roughly 60–144 Hz input, depending on the display. Chromium samples at about 250 Hz. For an Electron app the event-driven path is probably `webPreferences.enableBlinkFeatures: 'GamepadRawInputChangeEvent'`, because origin-trial tokens are awkward for `file://` or custom-scheme pages. This is experimental, so feature-detect it and fall back to rAF polling. Test it in Electron 45 before relying on it.
 - **Touchpads.** To try Gamepad touch in Electron, enable both the Blink feature (`enableBlinkFeatures: 'GamepadMultitouch'`) and the browser feature (`app.commandLine.appendSwitch('enable-features', 'EnableGamepadMultitouch')`). The browser-feature string is confirmed: the two-argument `BASE_FEATURE(kEnableGamepadMultitouch, …)` form names a feature by dropping the leading `k`, so the switch value is `EnableGamepadMultitouch`. Its runtime effect in Electron 45 still needs testing. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/base/feature.h; https://github.com/chromium/chromium/blob/156.0.8078.96/base/feature_internal.h] Read both `gamepad.touches` (spec name) and `gamepad.touchEvents` (Chromium's name). On Windows only the DualShock 4 path parses touch, so DualSense touch on Windows needs WebHID.
 - **Gesture gating.** Show a "press any button to join" screen. Pads stay invisible until the first press or a stick deflection above 0.5. Because a gamepad press counts as a user activation when the window is visible (in Electron 45; from Chromium 159, so Electron 46, it must also be focused), a "press A to enable advanced features" prompt could start `navigator.hid.requestDevice()`, which needs transient activation. [Verified correction: https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/modules/gamepad/navigator_gamepad.cc; https://github.com/chromium/chromium/blob/159.0.8154.0/third_party/blink/renderer/platform/runtime_enabled_features.json5] In Electron, `setDevicePermissionHandler` can avoid the chooser entirely (see section 2).
-- **Window visibility.** Gamepad updates stop while a page is hidden (for example a minimised or `show:false` window). Keep input handling in the visible main window.
-- **DualSense rumble on Windows.** Chromium's Raw Input path has no DualSense haptics, so rumble for DualSense on Windows needs WebHID output reports.
+- **Window visibility.** Gamepad updates stop while a page is hidden (for example a minimised or `show:false` window). Keep input handling in the visible main window. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/modules/gamepad/navigator_gamepad.cc]
+- **DualSense rumble on Windows.** Chromium's Raw Input path has no DualSense haptics, so rumble for DualSense on Windows needs WebHID output reports. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/raw_input_gamepad_device_win.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/public/cpp/gamepad_features.cc]
 - **Trigger-rumble scope.** Trigger-rumble through the Gamepad API is effectively Xbox-on-Windows only, with macOS a possible extra. Treat it as an optional enhancement, not a core mechanic.
 
 ### Gaps
 - I could not read chromestatus, so the GamepadRawInputChangeEvent origin-trial milestones (start/end) are unknown.
 - I did not confirm whether the Elite 2 paddles reach the Gamepad API on macOS or Linux, or whether WGI itself limits how many gamepads it reports.
-- The 4 ms polling interval and the per-OS mapping tables were read on trunk (160), not on the 156 tag. Behaviour in Electron 45 may differ slightly.
+- The 4 ms polling interval and the per-OS mapping tables were first read on trunk (160). The fact-check closed this: the interval is the same at the 156 tag, and the Windows, macOS and Linux mapping tables and `gamepad_id_list.cc` are byte-identical at 156.0.8078.96 and on trunk. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_provider.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_standard_mappings_linux.cc]
 - I did not verify which macOS GameController models report trigger haptic localities. That decides whether trigger-rumble works on Mac for Xbox Series pads or DualSense.
 - The exact `Gamepad.id` string format, which an app would use to match Gamepad API pads to WebHID devices, was not verified in source.
 
@@ -169,12 +169,12 @@ WebHID works in Chromium-based browsers and in Electron through session handlers
 - Xbox pads over USB are not HID devices.
 
 ### Cited Findings
-- The coordinator measured that Chrome 153 exposes `navigator.hid`; no physical pad was tested.
+- The coordinator measured that headless Chromium 153.0.8010.12 (Playwright 1.63.0, Linux) exposes `navigator.hid`; no physical pad was tested. MDN lists WebHID in Chrome 89+ (Edge mirrors Chrome) and not in Firefox or Safari. [Verified: measured in this container; https://github.com/mdn/browser-compat-data/blob/main/api/HID.json]
 - WebHID spec:
   - `requestDevice()` rejects unless there is transient activation.
   - In an `inputreport` event, `data` is a DataView of the report **excluding the report-ID byte** whenever the interface uses report IDs, and `reportId` is given separately.
   - `receiveFeatureReport(reportId)` rejects with a TypeError if `reportId` is 0 on an interface that uses report IDs, or non-zero on one that does not.
-  - Source: [WICG WebHID spec source (index.bs)](https://github.com/WICG/webhid/blob/main/index.bs)
+  - Source: [WICG WebHID spec source (index.bs)](https://github.com/WICG/webhid/blob/main/index.bs) [Verified: https://github.com/WICG/webhid/blob/main/index.bs]
 - Electron's WebHID hooks:
   - The session's `select-hid-device` event picks the device when `navigator.hid.requestDevice` is called.
   - `hid-device-added` and `hid-device-removed` fire only until the `select-hid-device` callback runs; they are not general device listeners.
