@@ -107,7 +107,7 @@ test('COMMANDS follow the §6.3 table exactly', () => {
   ]);
 });
 
-test('every label is spoken as its first word list entry or starts it', () => {
+test('every visible label parses to its own command', () => {
   for (const c of COMMANDS) if (c.id !== 'search') assert.ok(parseUtterance(c.label)?.id === c.id, c.label);
 });
 
@@ -329,7 +329,8 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/voice/listener.js`.
 - Treat `network`, `busy` and `too-many-requests` as backoff codes: consecutive failure n (1–6) waits `min(1000 · 2^(n−1), 30000)`; the 7th gives the fatal `network` error. Reset n on any result.
 - `firstTry` applies to a `network` error before the listener has ever received a result.
 - The idle timer is 600000 ms, reset by every final result that parses to a command (acted on or not).
-- `listening` mirrors the engine's last `state` event.
+- `state` fires only when the listener's own on/off value changes: `{listening:true}` from `start()`, and `{listening:false, reason}` when it stops for good. Engine restarts fire nothing. `listening` returns that value.
+- Non-fatal errors fire no `error` event.
 
 - [ ] **Step 4: Run test to verify it passes**
 
@@ -377,9 +378,9 @@ test('cardScript reads title, domain, first sentence and why', () => {
 
 test('cardScript names the source for non-site finds and the models for AI finds', () => {
   const art = { ...site, source: 'wikipedia', kind: 'article', title: 'Ada Lovelace?', description: '', why: [],
-    foundBy: ['Scout · claude-opus-5-5', 'Digger · gpt-6', 'Captain · claude-opus-5-5'] };
+    foundBy: ['Scout · model-a', 'Digger · model-b', 'Captain · model-a'] };
   assert.deepEqual(cardScript(art), ['Ada Lovelace?', `From ${getSource('wikipedia').name}.`,
-    'Found by claude-opus-5-5 and gpt-6.']);
+    'Found by model-a and model-b.']);
 });
 
 function fakeTts() {
@@ -442,7 +443,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/voice/reader.js`.
 
 - [ ] **Step 3: Implement `src/core/voice/reader.js`**
 
-Keep a generation counter. `read` and `stop` bump it, and the loop leaves when its generation is stale. `pause` cancels the TTS and makes the loop await a resume promise without moving the sentence index. `tts.speak` resolving after `cancel()` is not a sentence end.
+`read` calls `tts.speak` for the first sentence before its first `await`, and passes `{voiceURI, rate, volume, lang}` from `getSettings().voice`. Keep a generation counter. `read` and `stop` bump it (a new `read` also calls `tts.cancel()`), and the loop leaves when its generation is stale. `pause` cancels the TTS and makes the loop await a resume promise without moving the sentence index. `tts.speak` resolving after `cancel()` is not a sentence end.
 
 - [ ] **Step 4: Run test to verify it passes**
 
