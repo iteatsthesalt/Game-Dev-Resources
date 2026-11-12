@@ -860,15 +860,40 @@ Plan 02 creates `ui/views/settings/privacy.js` with the whole text. No other pla
 
 **Lab CSP.** The Lab pages extend the web app CSP. On top of the global Lab additions:
 
-- `lab/index.html` adds `'self'` to `frame-src`, so it can frame its runner pages;
-- `dos.html` and `console.html` add `blob:` to `connect-src`;
+- **Every Lab page** uses `connect-src 'self' blob:`, with no `https:` and no localhost. If a vendored file is ever missing, EmulatorJS's CDN fallback (`cdn.emulatorjs.org` plus a `blob:` script) then fails closed instead of loading remote code.
+- `lab/index.html` adds `'self'` to `frame-src`, so it can frame its runner pages.
+- `console.html` adds `style-src-attr 'unsafe-inline'`, because EmulatorJS 4.2.3 sets style attributes but creates no `<style>` elements.
 - `flash.html` may add `style-src 'unsafe-inline'`, but only if its e2e test shows Ruffle needs it.
+- Plan 01's `expectedCsp(path)` returns these exact per-page strings, and the Lab specs import them rather than copying them.
+
+**EmulatorJS core pinning.**
+
+- `console.js` sets `EJS_defaultOptions = { retroarch_core: <the pinned core for the system> }`. Without it, EmulatorJS picks its own first core, for example `smsplus` for Master System, which is not vendored.
+- A unit test checks that, for every console system, `EJS_emulator.getCore()` equals `versions.emulatorjs.cores[system]`.
+- `EJS_paths` maps the minified loader file names and preloads the helper scripts, so no 404 appears in the console.
+- `EJS_disableLocalStorage` is on. EmulatorJS's own settings, such as control remaps, reset each session. That is a known v1 limit, and the README says so.
+
+**Stopping the Lab with "stop".** Only the voice command "stop" (source `'voice'`) stops a running Lab, as §11.2 says. The app's Stop button and the Esc key keep their meaning, which is to stop reading. `dispatch(id, arg, {source})` carries the source.
 
 **Other Lab facts:**
 
-- **Android layout:** `assets/lab/{lab/**, vendor/**, versions.json}`. Nothing Lab-related goes in `assets/www`.
+- **Android layout:** `assets/lab/{lab/**, vendor/**, versions.json}`. Nothing Lab-related goes in `assets/www`. Lab modules (`src/lab/*.js`) import only `./…`, `../vendor/…` and `../versions.json`, and a unit test pins this.
+- **Saving files.**
+  - Downloads and exports go through `browserSave(name, blob, doc)` in `src/lab/storage-panel.js`.
+  - On Android, `labSaveFile` comes first and falls back to it.
+  - There is no `saved` runner message. The runner protocol `TYPES` are `ready start started error stop stopped`, and `createRunnerHost().open(runner, label, {timeoutMs = 20000})` rejects on a timeout.
+- **`buildLicenses({versions, target, pkg})`** gives Byways its `APP_VERSION`, and Atkinson Hyperlegible its `@fontsource` pin.
+- **Other Plan 06 names:** `checkVendored(root)`, `ejsGlobals({system, id, baseHref})` and `recordFlashKeys(db, fileId, keys)`.
+- **The Lab database.** The Lab's IndexedDB is `byways-lab`, and its `files` store keeps `{id, name, system, lastUsed, ruffleKeys?}`.
+- **Placeholder build tests.** Plan 01's placeholder build test is two tests:
+  - "extension targets write only build.json and licenses.json until Plan 07", which Plan 07 deletes;
+  - "android targets write only build.json, licenses.json and the Lab until Plan 08", which Plan 08 deletes.
 - **Licenses screen:** a settings section with `id:'licenses'` and `order:100`.
-- **Service worker:** the `byways-vendor` cache holds same-origin GETs under `vendor/` and is never deleted on activate.
+- **Service worker.**
+  - The `byways-vendor` cache holds same-origin GETs under `vendor/` and is never deleted on activate. Storing a file under `vendor/<name>@<version>/` removes that cache's entries for other versions of the same `<name>`.
+  - The Lab's rules (for `lab/`, `vendor/`, `versions.json` and `licenses.json`) run before Plan 01's navigation fallback, and that fallback never applies under `lab/`.
+  - The offline Lab spec uses `test.use({serviceWorkers: 'allow'})`.
+  - Every v1 core except `pcsx_rearmed` loads its `-legacy-wasm.data` variant by default.
 - **Test files:** `tests/fixtures/files/make.js` generates the tiny Lab test files.
 
 ### Version numbers and Android signing (Plan 08 creates; Plan 09 uses)
@@ -995,7 +1020,7 @@ No environment variable sets the version. The release APK asset is named `byways
   - **`tests/e2e/helpers/net.js`:**
     - `test` and `expect`: a Playwright `test` whose `page` fixture calls `mockNet` and, after each test, asserts that `unmocked(page)` and `pageProblems(page)` are both empty;
     - the fixture option `ignoreProblems: RegExp[]` (default `[]`), set with `test.use({ignoreProblems: [...]})`, for known harmless console errors such as EmulatorJS's missing `emulator.min.js`;
-    - `pageProblems(target, {ignore = []} = {}) → string[]`: page errors and console errors that no pattern matches. `target` may be a Page or a BrowserContext; for a context it uses the `console` and `weberror` events.
+    - `pageProblems(target, {ignore = []} = {}) → string[]`: page errors and console errors that no pattern matches. `target` may be a Page or a BrowserContext; for a context it uses the `console` and `weberror` events. Console entries include the source URL, as `'console: <text> (<url>)'`, so an ignore pattern can match a file name.
   - **`tests/e2e/helpers/app.js`:**
     - `gotoApp(page, hash = '#/stumble') → Promise<void>`: opens the app at the base path and skips first run;
     - `skipFirstRun(page) → Promise<void>`: clicks **Skip** while it is visible.
