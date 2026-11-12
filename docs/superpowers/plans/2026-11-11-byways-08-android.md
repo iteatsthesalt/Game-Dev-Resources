@@ -1091,7 +1091,7 @@ class SiteView(private val activity: ComponentActivity, private val host: FrameL
 }
 ```
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```kotlin
 class LinkPolicyTest {
@@ -1187,7 +1187,7 @@ git commit -m "Add the in-app site view with link rules"
 - Consumes: `Bridge.emit`, `Bridge.pageStarted` and the handler map (Task 5); `SiteView.isOpen`, `goBack`, `close` (Task 10); `MainActivity.APP_URL` (Task 2); `BridgeGate.LAB_ORIGIN` (Task 5).
 - Produces: the `back` channel (`state {canHandle}`, `result {token, handled}`) and the events `back` `request {token}` and `app` `shared {text}`.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
 
 ```js
 test('activity handles full screen, files, back, insets and share-in', () => {

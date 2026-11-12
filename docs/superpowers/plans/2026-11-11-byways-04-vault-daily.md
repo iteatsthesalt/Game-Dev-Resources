@@ -916,49 +916,50 @@ In `boot.js`, before `createEngine` is called: set `app.ia = sharedIaClient({htt
 `registerView('vault', {title: 'Vault', render})`. The view renders:
 
 - `h1` "Vault" and the line "Hidden games from the Internet Archive. They play in the Archive's own player."
-- One `<section aria-labelledby>` per `VAULT_COLLECTIONS.shelves` entry, with an `h2` label and a `<ul>` of `<li>` items. Each item holds `renderCard(find, {compact: true, onAction})`, a link "Details on archive.org" to `find.url`, and an empty player slot `div`. Snapshot gems come from `loadSnapshot('vault-index')` for the shelf's collections. They are mapped with `iaDocToFind(gem, {kind: 'game'})`, sorted by `gemScore` (`currentYear` is the UTC year from `app.clock.now()`) and capped at 12. An empty shelf shows "No gems loaded yet."
+- One `<section aria-labelledby>` per `VAULT_COLLECTIONS.shelves` entry, with an `h2` label and a `<ul>` of `<li>` items. Each item holds `renderCard(find, {compact: true, headingLevel: 3, onAction})`, plus a badge "Not working here" when `app.data.embedBroken` has the id. Snapshot gems come from `readSnapshot(ctx, 'vault-index.json')` for the shelf's collections. They are mapped with `iaDocToFind(gem, {kind: 'game'})`, sorted by `gemScore` (`currentYear` is the UTC year from `app.clock.now()`) and capped at 12. An empty shelf shows "No gems loaded yet."
 - A **More gems** button per shelf. It calls `validateCollections(app.ia, cache, shelf.collections)`, then `shelfGems(app.ia, shelf, {rand: app.rand, currentYear, skip: app.data.embedBroken, valid})`, and adds up to 12 finds that are not shown yet. It loads nothing until it is pressed.
 - When a live load throws, it stops and shows (once, above the shelves) an `h2` "Archive unavailable" and the line "The Internet Archive is not answering right now. Gems from the last snapshot are still here, and the other modes keep working." Then it calls `announce('Archive unavailable')`.
-- On shelves with `keyboard: true`, when `matchMedia('(pointer: coarse)').matches`, each item gets a badge "Keyboard needed".
-- An "Indie web" section: up to 6 starter-library entries with `kind: 'game'` (through `libraryEntryToFind`), plus up to 6 finds from `getSource('itch').random(ctx)`. Its **More gems** button adds `getSource('github').random(ctx)`, and `getSource('hn').random(ctx)` when that adapter exists. Errors are ignored. `ctx` is `{http, rand, clock, cache, settings: app.getSettings(), secrets: app.platform.secrets, data: app.data, platformName: app.platform.name}`.
+- An "Indie web" section: the first 6 library entries with `kind: 'game'` and `added` on or before today's UTC date, newest `added` first (ties by `id`), mapped with `libraryEntryToFind`, plus up to 6 finds from `getSource('itch').random(ctx)`. Its **More gems** button adds the `kind: 'game'` finds from `getSource('github').random(ctx)` and `getSource('hn').search('game', ctx)`, and skips a source the user turned off (`settings.sources[id]?.enabled === false`). Errors are ignored.
 - The footer line "Games and media courtesy of the Internet Archive."
 
-`handleCardAction(app, find, action, extra, slot)`: `open` → `app.platform.openFind(find, 'tab')`; `share` → `app.platform.share({title: find.title, url: find.url})`; `like`, `dislike`, `save`, `lessTopic`, `neverSite`, `broken` → `const r = await app.engine.react(find, action, extra); showToast(r.message, {undo: r.undo})`; `more` → `app.engine.rabbit.start(find)`, then `navigate('stumble')`; `read` → `app.platform.tts.speak(find.title + '. ' + find.description)`; `why` → `showToast(find.why.join(' · '))`; `play` is added in Task 8.
+`cache` is `createCache(app.store, app.clock)`, and `ctx` is `{http: app.http, rand: app.rand, clock: app.clock, cache, settings: app.getSettings(), secrets: app.secrets, data: app.data, platformName: app.platform.name, caps: app.platform.caps, dataUrl: app.dataUrl}`. Each item's `onAction` is Plan 02's `makeActionHandler(app, {advance})`, wrapped so that its `advance` knows which action called it: after **More like this** it navigates to `stumble`, where the Rabbit Hole runs, and after **Never this site** or **Broken or spam** it removes the item.
 
-- [ ] **Step 5: Run the tests to see them pass**
+- [ ] **Step 6: Run the tests to see them pass**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault.spec.js`
 Expected: PASS, 7 tests.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add src/ui/views/vault.js src/ui/boot.js src/ui/views/index.js tests/fixtures/routes.js tests/fixtures/http/ia/thumb.svg tests/e2e/vault.spec.js
-git commit -m "Add the Vault shelves and wire the Archive client into boot"
+git add src/ui/components/card.js src/ui/views/vault.js src/ui/boot.js src/ui/views/index.js tests/e2e/vault.spec.js
+git commit -m "Add the Vault shelves, the card's Archive extras and the boot wiring"
 ```
+
+Before committing, also `git add tests/e2e/axe.spec.js` if Step 3 changed it.
 
 ---
 
-### Task 8: Play, the watchdog and embed-broken marks
+### Task 10: Play, the watchdog and embed-broken marks
 
 **Files:**
 - Create: `tests/fixtures/http/ia/embed.html`
-- Modify: `src/ui/views/vault.js`
+- Modify: `src/ui/components/card.js`, `tests/fixtures/routes.js` (add `/^https:\/\/archive\.org\/embed\//` → `ia/embed.html` with `content-type: text/html` at the top)
 - Test: `tests/e2e/vault-play.spec.js`
 
 **Interfaces:**
-- Consumes: `app.ia.metadata`, `app.data.embedBroken`, `app.store`, `app.handsFree` (Plan 03, may be absent), `announce`, `h`; Task 7's view.
-- Produces: `mountPlayer(slot, find, app) → Promise<{unmount()}|null>` from `views/vault.js` (plan-internal; Task 9 uses it), and `handleCardAction` now handles `play`.
+- Consumes: `app.ia.metadata`, `app.data.embedBroken`, `app.store`, `app.handsFree` (Plan 03, may be absent), `announce`, `h`; Task 9's card and view.
+- Produces: `mountPlayer(slot, find, app) → Promise<{unmount()}|null>` exported from `card.js`. Plan 02's `makeActionHandler` hands `play` to it, so **Play** mounts the Archive player in Stumble, Feed, Saved, the Vault and Daily Fate alike (§10.1). `renderCard` gives a find with `embedUrl` an empty `div.player` and calls `onAction('play', find, {slot})` with it.
 
 `embed.html` is `<!doctype html><title>Archive player stub</title><p>Player stub</p>`.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
-Same `beforeEach`, `afterEach` and `openView` as Task 7. `whizz = () => page.getByRole('region', {name: 'DOS'}).getByRole('listitem').filter({hasText: 'Whizz'})`. `hang = () => page.route(/archive\.org\/embed\//, () => {})` (the frame never loads).
+Same imports and `beforeEach` as Task 9, plus `installFakeSpeech` from `./helpers/fakes.js`. `whizz = () => page.getByRole('region', {name: 'DOS'}).getByRole('listitem').filter({hasText: 'Whizz'})`. `hang = () => page.route(/archive\.org\/embed\//, () => {})` (the frame never loads).
 
 ```js
 test('Play mounts the Archive frame only after Play', async ({ page }) => {
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await expect(page.locator('iframe')).toHaveCount(0);
   await whizz().getByRole('button', { name: 'Play' }).click();
   const frame = page.locator('iframe');

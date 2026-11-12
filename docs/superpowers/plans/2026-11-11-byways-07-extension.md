@@ -1042,11 +1042,11 @@ git commit -m "Add the Byways tab and an e2e harness that loads the Chrome build
 ### Task 6: Side panel and sidebar extras
 
 **Files:**
-- Modify: `shells/extension/panel.html`, `shells/extension/panel.js`
+- Modify: `shells/extension/panel.html`, `shells/extension/app.html`, `shells/extension/panel.js`
 - Test: `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: `showResult(result)`, `getCurrentFind()` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})`; `app.engine.feed(n)`, `app.engine.rabbit.start(find)` and `.next()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
+- Consumes: `showResult(result)` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})` and `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` (`ui/components/card.js`, Plan 02); `app.history.push(find)`; `app.engine.current()`, `.next({mode})`, `.feed(n)`, `.on(event, fn)`, `.rabbit.start(find)` and `.rabbit.climbOut()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers and `EXT_ROUTES`; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
 - Produces: nothing new for other tasks.
 
 All extras are only on `data-surface="panel"`, except the access banner, which both pages show.
@@ -1054,86 +1054,123 @@ All extras are only on `data-surface="panel"`, except the access banner, which b
 - [ ] **Step 1: Write the failing tests** in `tests/e2e/extension.spec.js`
 
 ```js
-test('the side panel shows the card for the stumbled tab', async ({ context, sw, extId }) => {
-  const panel = await extPage(context, extId, 'panel.html');
-  await onlyLibrary(panel);
-  const site = await extPage(context, extId, 'app.html#/saved');
-  const s = await tabInfo(site); const p = await tabInfo(panel);
-  await sw.evaluate(([t, w]) => chrome.tabs.move(t, { windowId: w, index: -1 }), [s.id, p.windowId]);
-  const r = await stumbleTab(panel, s.id);
-  await expect(panel.locator('#main')).toContainText(r.find.title);
-  await expect(panel.getByRole('button', { name: 'Start' })).toBeVisible();
-});
+test.describe('side panel', () => {
+  test('the side panel shows the card for the stumbled tab', async ({ context, sw, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const site = await extPage(context, extId, 'app.html#/saved');
+    const s = await tabInfo(site); const p = await tabInfo(panel);
+    await sw.evaluate(([t, w]) => chrome.tabs.move(t, { windowId: w, index: -1 }), [s.id, p.windowId]);
+    const r = await stumbleTab(panel, s.id);
+    await expect(panel.locator('#main')).toContainText(r.find.title);
+    await expect(panel.getByRole('button', { name: 'Start' })).toBeVisible();
+  });
 
-test('Open Byways tab opens app.html', async ({ context, extId }) => {
-  const panel = await extPage(context, extId, 'panel.html');
-  const [tab] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: 'Open Byways tab' }).click()]);
-  expect(tab.url()).toBe(`chrome-extension://${extId}/app.html`);
-});
+  test("a side panel that opens after a toolbar Stumble shows that tab's find", async ({ context, sw, extId }) => {
+    const app = await extPage(context, extId, 'app.html#/saved');
+    await useSources(app);
+    const site = await extPage(context, extId, 'app.html#/saved');
+    const s = await tabInfo(site);
+    const r = await stumbleTab(app, s.id);
+    await expect(site).toHaveTitle('Mock find');
+    const [panel] = await Promise.all([context.waitForEvent('page'),       // opened behind the site, so the site stays the active tab
+      sw.evaluate((w) => chrome.tabs.create({ url: chrome.runtime.getURL('panel.html'), windowId: w, active: false }), s.windowId)]);
+    await expect(panel.locator('#main')).toContainText(r.find.title);
+  });
 
-test('the mini feed shows compact cards', async ({ context, extId }) => {
-  const panel = await extPage(context, extId, 'panel.html');
-  await onlyLibrary(panel);
-  const feed = panel.getByRole('region', { name: 'More finds' });
-  await expect(feed.locator('#mini-feed-list > *')).toHaveCount(6);
-});
+  test('Open Byways tab opens app.html', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const [tab] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: 'Open Byways tab' }).click()]);
+    expect(tab.url()).toBe(`chrome-extension://${extId}/app.html`);
+  });
 
-test('the panel explains a not-web page', async ({ context, sw, extId }) => {            // Review Focus 4
-  const panel = await extPage(context, extId, 'panel.html');
-  await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { error: 'not-web' } }).then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
-  await expect(panel.locator('#live-polite')).toHaveText('More like this page works only on web pages.');
-});
+  test('the mini feed shows compact cards', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const feed = panel.getByRole('region', { name: 'More finds' });
+    await expect(feed.locator('#mini-feed-list > *')).toHaveCount(6);
+  });
 
-test('a page seed starts a Rabbit Hole from Marginalia similar sites', async ({ context, sw, extId }) => {
-  const asked = [];
-  context.on('request', (r) => asked.push(r.url()));
-  const panel = await extPage(context, extId, 'panel.html');
-  await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
-    title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } })
-    .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
-  await expect.poll(() => asked.some((u) => u.startsWith('https://api2.marginalia-search.com/api/v2/site/small.example/similar'))).toBe(true);
-});
+  test('More like this on a mini-feed card starts a Rabbit Hole', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
+    await panel.locator('#mini-feed-list > *').first().getByRole('button', { name: 'More like this' }).click();
+    await expect(panel.locator('#main').getByRole('button', { name: 'Climb out' })).toBeVisible();
+  });
 
-test('the access banner grants and disappears', async ({ context, sw, extId }) => {      // Review Focus 5
-  const panel = await extPage(context, extId, 'panel.html');
-  await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true }).then(() => chrome.runtime.sendMessage({ type: 'accessChanged', needsAccess: true })));
-  const banner = panel.locator('#access-banner');
-  await expect(banner).toContainText('Byways lost access to some sites. Grant access to turn them back on.');
-  await banner.getByRole('button', { name: 'Grant access' }).click();
-  await expect(banner).toBeHidden();
-});
+  test('the panel explains a not-web page and a refused consent', async ({ context, sw, extId }) => {   // Review Focus 4
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const send = (pending) => sw.evaluate((p) => chrome.storage.session.set({ pendingRabbit: p })
+      .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })), pending);
+    await send({ error: 'not-web' });
+    await expect.poll(() => said(panel)).toContain('More like this page works only on web pages.');
+    await send({ error: 'no-consent' });
+    await expect.poll(() => said(panel)).toContain("More like this page needs permission to send this site's address to Marginalia. Nothing was sent.");
+  });
 
-test('the panel has no serious accessibility issues', async ({ context, extId }) => {
-  const panel = await extPage(context, extId, 'panel.html');
-  await onlyLibrary(panel);
-  await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
-  await expectNoSeriousA11y(panel);                       // tests/e2e/helpers/axe.js (Plan 01)
+  test('a page seed asks Marginalia for similar sites and says when it finds none', async ({ context, sw, extId }) => {
+    const asked = [];
+    context.on('request', (r) => asked.push(r.url()));
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel, ['marginalia']);         // Marginalia's random gives nothing, so no local find can stand in
+    await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
+      title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } })
+      .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
+    await expect.poll(() => asked.some((u) => u.startsWith('https://api2.marginalia-search.com/api/v2/site/small.example/similar'))).toBe(true);
+    await expect.poll(() => said(panel)).toContain('No similar sites found for small.example.');
+  });
+
+  for (const path of ['panel.html', 'app.html']) {
+    test(`the access banner on ${path} grants and disappears`, async ({ context, sw, extId }) => {     // Review Focus 5
+      const page = await extPage(context, extId, path);
+      await useSources(page);
+      await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true })
+        .then(() => chrome.runtime.sendMessage({ type: 'accessChanged', needsAccess: true })));
+      const banner = page.locator('#access-banner');
+      await expect(banner).toContainText('Byways lost access to some sites. Grant access to turn them back on.');
+      await banner.getByRole('button', { name: 'Grant access' }).click();
+      await expect(banner).toBeHidden();
+    });
+  }
+
+  test('the panel has no serious accessibility issues', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
+    await expectNoSeriousA11y(panel);                       // tests/e2e/helpers/axe.js (Plan 01)
+  });
 });
 ```
 
-Add to the `mockNet` overrides in the fixture: `{match: /^https:\/\/api2\.marginalia-search\.com\/api\/v2\/site\/small\.example\/similar/, file: 'html/find-page.html', status: 503}`. Marginalia's 503 means "busy", so the panel must cope with it.
+Add to `EXT_ROUTES`: `{match: /^https:\/\/api2\.marginalia-search\.com\/api\/v2\/site\/small\.example\/similar/, file: 'html/find-page.html', status: 503}`. Marginalia's 503 means "busy", and the panel must say so plainly rather than fail.
 
 - [ ] **Step 2: Run them and see them fail**
 
-Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "panel|Open Byways|mini feed|banner|seed|accessibility"`
-Expected: FAIL. The first fails on `toContainText(r.find.title)` and the others on missing elements.
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "side panel"`
+Expected: FAIL. The two tab-find tests fail on `toContainText(r.find.title)` and the others on missing elements or missing announcements.
 
-- [ ] **Step 3: Add the markup to `panel.html`**
+- [ ] **Step 3: Add the markup**
 
-Above `#main`: `<div id="access-banner" hidden>` holding `<p>Byways lost access to some sites. Grant access to turn them back on.</p>` and `<button type="button">Grant access</button>`, then `<button type="button" id="open-tab">Open Byways tab</button>`. Below `#main`: `<section id="mini-feed" aria-labelledby="mini-feed-h"><h2 id="mini-feed-h">More finds</h2><div id="mini-feed-list"></div></section>`. `app.html` gets the same banner markup only.
+In `panel.html`, above `#main` and so outside `#app`, which first run clears: `<div id="access-banner" hidden>` holding `<p>Byways lost access to some sites. Grant access to turn them back on.</p>` and `<button type="button">Grant access</button>`, then `<button type="button" id="open-tab">Open Byways tab</button>`. Below `#main`: `<section id="mini-feed" aria-labelledby="mini-feed-h"><h2 id="mini-feed-h">More finds</h2><div id="mini-feed-list"></div></section>`. `app.html` gets the same banner markup only.
 
 - [ ] **Step 4: Implement the extras in `panel.js`**
 
-- **This tab's find.** On load, read the active tab of this window (`tabs.query({active: true, currentWindow: true})`) and its `storage.session['find:<id>']`. If one is found, `navigate('stumble')` and `showResult(stored)`. On `tabFind` whose `windowId` equals `(await ext.windows.getCurrent()).id`, do the same with the message.
+Before `boot` (Task 5's rule), so they work while first run is on screen:
 - **Open Byways tab.** `#open-tab` calls `ext.tabs.create({url: ext.runtime.getURL('app.html')})`.
-- **Mini feed.** After boot, `app.engine.feed(6)` and append `renderCard(find, {onAction, compact: true})` for each to `#mini-feed-list`. `onAction('open', find)` calls `app.platform.openFind(find, 'current')`. Other actions call `app.engine.react(find, action)` for reactions, or `showResult({find, branch: null, why: find.why})` for `'more'` and `'read'`.
-- **Rabbit Hole seed.** On load and on `rabbit`, take `pendingRabbit` from `storage.session` and remove it. `{error: 'not-web'}` → `announce('More like this page works only on web pages.')`. A find → `app.engine.rabbit.start(seed)`, then `const next = await app.engine.rabbit.next()`. If it returns a find, `navigate('stumble')` and `showResult({find: next, branch: 'momentum', why: ['More like ' + domainOf(seed.url)]})`. Otherwise `announce('No similar sites found for ' + domainOf(seed.url) + '.')`.
 - **Access banner** (both surfaces). On load, show it when `storage.local.needsAccess` is `true`. On `accessChanged`, show or hide it. The **Grant access** click calls `ext.permissions.request({origins: ext.runtime.getManifest().host_permissions})` as its first statement (a user gesture is needed), then sends `{type: 'checkAccess'}` and hides the banner when the reply has `needsAccess: false`.
+
+After `ready`, with `settle(app)`: an internal helper that resolves at once when `app.engine.current()` is set, else on the engine's next `find` or `empty` event, or after 10 s. It lets the Stumble view's first `engine.next` finish before the panel shows anything of its own, so the two never race:
+- **This tab's find.** On load, read the active tab of this window (`tabs.query({active: true, currentWindow: true})`) and its `storage.session['find:<id>']`. On `tabFind`, use the message when its `windowId` equals `(await ext.windows.getCurrent()).id`. Either way: `await settle(app)`; unless `app.engine.current()?.id` is that find's id, `app.history.push(find)`; then `navigate('stumble')`. The Stumble view renders `engine.current()`, which is now that find.
+- **Mini feed.** `await settle(app)`, then `app.engine.feed(6)`, and append `renderCard(find, {onAction, compact: true})` for each to `#mini-feed-list`. `onAction(action, find, extra)` runs Plan 02's `makeActionHandler(app, {advance, whyLine: (f) => f.why.join(' · ')})(action, find, extra)`, so every card button does what its label says. Its `advance` is the next find in the main view for `more` (as in the Rabbit Hole seed below), and removing that card from `#mini-feed-list` for `neverSite` and `broken`. Open uses a new tab, as on the main card.
+- **Rabbit Hole seed.** On load and on `rabbit`, take `pendingRabbit` from `storage.session` and remove it. `{error: 'not-web'}` → `announce('More like this page works only on web pages.')`. `{error: 'no-consent'}` → `announce("More like this page needs permission to send this site's address to Marginalia. Nothing was sent.")`. A find → `await settle(app)`, `app.engine.rabbit.start(seed)`, `navigate('stumble')` unless the route is already `stumble`, then `const r = await app.engine.next({mode: app.getSettings().mode})`. While the trail is not empty, the engine serves the Rabbit Hole, so this is the first similar site, shown, added to the seen-set and to history like any other find. A find → `showResult(r)`. `{empty}` or a rejection (Marginalia's 503 included) → `app.engine.rabbit.climbOut()` and `announce('No similar sites found for ' + domainOf(seed.url) + '.')`.
 
 - [ ] **Step 5: Run them and see them pass**
 
-Run the Step 2 command with `-g "panel|Open Byways|mini feed|banner|seed|accessibility"`.
-Expected: PASS, 7 tests.
+Run the Step 2 command again.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 6: Commit**
 

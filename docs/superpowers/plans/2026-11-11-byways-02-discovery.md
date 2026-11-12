@@ -2168,7 +2168,7 @@ git commit -m "Add the Feed with batches of 30"
 - [ ] **Step 1: Write the failing test**
 
 ```js
-// same imports, `small` and `open` helper as stumble.spec.js
+// same imports, `small` and `open` helper as stumble.spec.js, plus `buildShareUrl` and `SHARE_BASE` from '../../src/core/share.js'
 test('a saved find shows up in Saved', async ({ page }) => {
   await open(page, [small[0]]); await page.getByRole('button', { name: 'Save' }).click();
   await page.goto('./#/saved'); await page.getByRole('button', { name: 'Saved (1)' }).click();
