@@ -86,7 +86,13 @@ export async function calibrate(engine, { refreshHz = 60, budget = 0.7, timeLimi
     await engine.setQuality({ particles: n });
     // the GPU could not hold that many: the engine lowered its limit
     if (engine.stats.particles < n) return null;
-    for (let i = 0; i < WARM_UP; i++) await timed();
+    let last = 0;
+    for (let i = 0; i < WARM_UP; i++) last = await timed();
+    // far over budget: one frame says enough, and a slow GPU keeps its time for fewer
+    if (last > limit * 4) {
+      results.push({ n, ms: last });
+      return last;
+    }
     const samples = [];
     for (let s = 0; s < SAMPLES; s++) {
       let sum = 0;

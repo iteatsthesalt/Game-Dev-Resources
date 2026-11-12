@@ -122,11 +122,15 @@ describe('calibrate', () => {
     assert.ok(cost(particles) <= (1000 / 60) * 0.7, 'and it fits the budget');
   });
 
-  test('on a GPU too slow for anything, the fewest it measured', async () => {
-    const engine = fakeEngine({ cost: () => 100 });
+  test('on a GPU too slow for anything, the fewest it measured, found quickly', async () => {
+    // a second a frame: a software GPU at a large window
+    const engine = fakeEngine({ cost: () => 1000 });
     const { particles, results } = await calibrate(engine, { refreshHz: 60, now: engine.clock });
     assert.deepEqual(results.map((r) => r.n), [1 << 18, 1 << 16, 1 << 14]);
     assert.equal(particles, 1 << 14);
+    // far over budget, each count is judged on its warm-up frames alone, so all three fit
+    // in the time limit
+    assert.equal(engine.calls.frames, 6);
   });
 
   test('stops when the GPU cannot hold a count', async () => {

@@ -193,7 +193,7 @@ describe('WebSocket: who gets in', () => {
     await c.opened;
     c.send({ t: 'hello', v: 1, token: `${token.slice(0, -1)}${token.endsWith('A') ? 'B' : 'A'}` });
     assert.deepEqual(await c.next('reject'), { t: 'reject', why: 'token' });
-    assert.equal((await c.closed).code, 1008);
+    assert.equal((await c.closing()).code, 1008);
     assert.equal(events.length, 0);
   });
 
@@ -203,7 +203,7 @@ describe('WebSocket: who gets in', () => {
     await c.opened;
     c.send({ t: 'hello', v: 2, token });
     assert.deepEqual(await c.next('reject'), { t: 'reject', why: 'version' });
-    assert.equal((await c.closed).code, 1008);
+    assert.equal((await c.closing()).code, 1008);
   });
 
   test('anything but hello first is refused with "bad"', async () => {
@@ -213,7 +213,7 @@ describe('WebSocket: who gets in', () => {
       await c.opened;
       c.send(first);
       assert.deepEqual(await c.next('reject'), { t: 'reject', why: 'bad' }, JSON.stringify(first));
-      assert.equal((await c.closed).code, 1008);
+      assert.equal((await c.closing()).code, 1008);
     }
     assert.equal(events.length, 0);
   });
@@ -223,7 +223,7 @@ describe('WebSocket: who gets in', () => {
     const c = client(port);
     await c.opened;
     const t0 = Date.now();
-    assert.equal((await c.closed).code, 1008);
+    assert.equal((await c.closing()).code, 1008);
     assert.ok(Date.now() - t0 >= 60, 'closed too early');
     assert.equal(events.length, 0);
   });
@@ -253,7 +253,7 @@ describe('WebSocket: who gets in', () => {
     await c.opened;
     c.send({ t: 'hello', v: 1, token });
     assert.deepEqual(await c.next('reject'), { t: 'reject', why: 'closed' });
-    assert.equal((await c.closed).code, 1013);
+    assert.equal((await c.closing()).code, 1013);
     assert.equal(server.setAllowNew(true).allowNew, true);
     assert.equal((await join(port, token)).welcome.player, 1);
   });
@@ -266,7 +266,7 @@ describe('WebSocket: who gets in', () => {
     await c.opened;
     c.send({ t: 'hello', v: 1, token });
     assert.deepEqual(await c.next('reject'), { t: 'reject', why: 'full' });
-    assert.equal((await c.closed).code, 1013);
+    assert.equal((await c.closing()).code, 1013);
   });
 
   test('each phone takes the lowest free player number, and leaving frees it', async () => {
@@ -331,7 +331,7 @@ describe('WebSocket: messages from a phone that has joined', () => {
     const { port, token, events } = await start();
     const c = await join(port, token);
     for (let i = 0; i < 1000; i++) c.send({ t: 'ping', c: i });
-    const { code, reason } = await c.closed;
+    const { code, reason } = await c.closing();
     assert.equal(code, 1008);
     assert.equal(reason, 'rate');
     const pongs = c.messages.filter((m) => m.t === 'pong').length;
@@ -354,14 +354,14 @@ describe('WebSocket: messages from a phone that has joined', () => {
     const { port, token } = await start();
     const c = await join(port, token);
     c.send(JSON.stringify({ t: 'ping', c: 1, pad: 'x'.repeat(5000) }));
-    assert.equal((await c.closed).code, 1009);
+    assert.equal((await c.closing()).code, 1009);
   });
 
   test('a binary message closes with 1003', async () => {
     const { port, token } = await start();
     const c = await join(port, token);
     c.ws.send(Buffer.from('{"t":"ping","c":1}'));
-    assert.equal((await c.closed).code, 1003);
+    assert.equal((await c.closing()).code, 1003);
   });
 
   test('a listener that throws does not break the link', async () => {
@@ -380,7 +380,7 @@ describe('WebSocket: silence and stuck fingers', () => {
     const { port, token, events } = await start({ timeouts: quick });
     const c = await join(port, token, { autoPong: false });
     const t0 = Date.now();
-    await c.closed;
+    await c.closing();
     assert.ok(Date.now() - t0 >= quick.drop - 30, `dropped after ${Date.now() - t0} ms`);
     await waitFor(() => leaves(events).length === 1, 'the leave event');
   });
@@ -426,7 +426,7 @@ describe('WebSocket: coming back as the same phone', () => {
     await waitFor(() => touchesOf(events).length === 1, 'the touch');
     const fresh = await join(port, token, { id: ID_A });
     assert.equal(fresh.welcome.player, old.welcome.player);
-    assert.equal((await old.closed).code, 4000);
+    assert.equal((await old.closing()).code, 4000);
     await sleep(50);
     assert.deepEqual(events.map((e) => e.type), ['join', 'touch', 'touch'], 'no leave and no second join');
     assert.deepEqual(touchesOf(events)[1].touches, [], 'the fingers the old connection had down are let go');
@@ -491,7 +491,7 @@ describe('WebSocket: coming back as the same phone', () => {
     const c = await join(port, token, { id: ID_A });
     assert.equal(server.kick(c.welcome.player), true);
     assert.equal((await c.next('reject')).why, 'token');
-    assert.equal((await c.closed).code, 1008);
+    assert.equal((await c.closing()).code, 1008);
     await waitFor(() => leaves(events).length === 1, 'the leave');
     assert.notEqual(server.info().token, token);
     const back = client(port);
@@ -584,7 +584,7 @@ describe('start, stop and info', () => {
     await server.stop();
     assert.equal(server.info().running, false);
     assert.equal(server.info().url, null);
-    await Promise.all([a.closed, waiting.closed]);
+    await Promise.all([a.closing(), waiting.closing()]);
     await waitFor(() => leaves(events).length === 1, 'the leave');
     await server.stop(); // a second stop is harmless
     const info = await server.start();
