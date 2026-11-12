@@ -754,4 +754,134 @@ git add src/core/share.js tests/unit/share.test.js
 git commit -m "Add the share-link codec with the 2,000 character limit"
 ```
 
+### Task 10: Backup and bookmarks
+
+**Files:**
+- Create: `src/core/backup.js`
+- Test: `tests/unit/backup.test.js`
+
+**Interfaces:**
+- Consumes: `loadSettings(store)`, `DEFAULT_TASTE`, `createSeen` (Task 2), `createCollections` (Task 8), `makeFind`, `utcDate`, `toPlainText`.
+- Produces:
+  - `exportBackup(store, {includeKeys = false, app, clock, secrets}) → Promise<object>`: `{format: 'byways-backup', v: 1, exportedAt: ISO, app, settings, taste, collections, history, seen}`, plus `keys: {id: value}` only when `includeKeys`. `taste` is the `taste` store key `'taste'` (or `DEFAULT_TASTE`), `history` is the `'trail'` items, and `seen` is `[[hash, t], …]`.
+  - `backupFileName(clock, includeKeys) → 'byways-backup-YYYY-MM-DD.json'` or `'byways-backup-YYYY-MM-DD-with-keys.json'`.
+  - `importBackup(store, data, {secrets}) → Promise<{collections, seen, history, keys}>` (counts written). It throws `'This is not a Byways backup file.'` before writing anything unless `format === 'byways-backup'`, `v === 1` and `collections`, `history` and `seen` are arrays. Merge rules: seen hashes are unioned; a collection with a new id is added; one with the same id, name and item ids is skipped; any other clash is added as `<id>-copy` (then `-copy-2`, …) named `<name> (imported)`. Every imported item goes through `makeFind` and is dropped if it returns `null`. History is written only when the local trail is empty (last 50). Taste is written only when there is no local taste or it has `reactions === 0`. Keys are written only when `data.keys` exists.
+  - `toBookmarksHtml(collection) → string` (Netscape format: `<!DOCTYPE NETSCAPE-Bookmark-file-1>`, a `<DL><p>` with one `<DT><H3>` for the collection name and one `<DT><A HREF="…">` per item, with `& < > "` escaped), `fromBookmarksHtml(html) → Array<{url, title}>` (every `<A … HREF="…">…</A>`, http(s) only, titles through `toPlainText`).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const clock = fakeClock(Date.UTC(2026, 10, 11, 12));
+const A = makeFind({ source: 'library', kind: 'site', title: 'Tiny Synth', url: 'https://a.example.com/', safety: 'curated' });
+const B = makeFind({ source: 'library', kind: 'site', title: 'Pixel Garden', url: 'https://b.example.com/', safety: 'curated' });
+const mem = (o = {}) => ({ get: async (k) => o[k] ?? null, set: async (k, v) => { o[k] = v; }, delete: async (k) => { delete o[k]; }, list: async () => Object.keys(o) });
+test('exportBackup writes the spec shape and leaves keys out', async () => {
+  const store = await openStore(memoryBackend());
+  await createSeen(store).add('https://a.example.com/');
+  await createCollections(store, clock).add('saved', A);
+  const out = await exportBackup(store, { app: 'pwa', clock, secrets: mem({ 'src:europeana': 'k' }) });
+  assert.equal(out.format, 'byways-backup'); assert.equal(out.v, 1); assert.equal(out.app, 'pwa');
+  assert.equal(out.exportedAt, '2026-11-11T12:00:00.000Z'); assert.equal(out.seen.length, 1);
+  assert.equal(out.collections[0].items[0].find.title, 'Tiny Synth'); assert.equal('keys' in out, false);
+  const withKeys = await exportBackup(store, { includeKeys: true, app: 'pwa', clock, secrets: mem({ 'src:europeana': 'k' }) });
+  assert.deepEqual(withKeys.keys, { 'src:europeana': 'k' });
+  assert.equal(backupFileName(clock, true), 'byways-backup-2026-11-11-with-keys.json');
+});
+test('importBackup merges seen and keeps a copy on a clash', async () => {
+  const from = await openStore(memoryBackend());
+  await createSeen(from).add('https://a.example.com/'); await createSeen(from).add('https://b.example.com/');
+  await createCollections(from, clock).add('saved', B);
+  const data = await exportBackup(from, { app: 'android', clock });
+  const to = await openStore(memoryBackend());
+  await createSeen(to).add('https://a.example.com/'); const cols = createCollections(to, clock); await cols.add('saved', A);
+  const counts = await importBackup(to, data, {});
+  assert.equal(counts.seen, 1); assert.equal(await createSeen(to).count(), 2);
+  assert.equal((await cols.get('saved')).items.length, 1);
+  assert.equal((await cols.get('saved-copy')).name, 'Saved (imported)');
+});
+test('importBackup rejects a foreign file and writes nothing', async () => {
+  const to = await openStore(memoryBackend());
+  for (const bad of [{ format: 'other' }, { format: 'byways-backup', v: 2, collections: [], history: [], seen: [['x', 1]] }, null])
+    await assert.rejects(importBackup(to, bad, {}), { message: 'This is not a Byways backup file.' });
+  assert.equal(await createSeen(to).count(), 0);
+});
+test('bookmarks HTML round-trips and drops bad links', () => {
+  const html = toBookmarksHtml({ name: 'Weird & wonderful', items: [{ find: A }] });
+  assert.ok(html.startsWith('<!DOCTYPE NETSCAPE-Bookmark-file-1>')); assert.ok(html.includes('Weird &amp; wonderful'));
+  assert.deepEqual(fromBookmarksHtml(html), [{ url: 'https://a.example.com/', title: 'Tiny Synth' }]);
+  assert.deepEqual(fromBookmarksHtml('<DT><A HREF="javascript:x">x</A><DT><A HREF="https://c.example/">&lt;b&gt;C</A>'), [{ url: 'https://c.example/', title: '<b>C' }]);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/backup.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `backup.js`**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/backup.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/backup.js tests/unit/backup.test.js
+git commit -m "Add backup export and merge import, and bookmarks HTML"
+```
+
+### Task 11: Link check
+
+**Files:**
+- Create: `src/core/liveness.js`
+- Test: `tests/unit/liveness.test.js`
+
+**Interfaces:**
+- Consumes: `siteOrigin(u)`.
+- Produces: `checkLive(url, {transport, privileged = false, timeoutMs = 8000}) → Promise<boolean>`. Privileged: `HEAD url` with `privileged: true`; live when the status is below 400 or is 405. Not privileged: `HEAD siteOrigin(url) + '/'` with `mode: 'no-cors'` and `credentials: 'omit'`; live when the fetch resolves (opaque). A throw or the timeout means not live.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const tr = (fn) => { const calls = []; return { calls, fetch: (u, init) => { calls.push({ u, init }); return fn(u, init); } }; };
+test('the web check only asks whether the site answers', async () => {
+  const t = tr(async () => ({ status: 0, type: 'opaque' }));
+  assert.equal(await checkLive('https://example.com/a/b?x=1', { transport: t }), true);
+  assert.equal(t.calls[0].u, 'https://example.com/'); assert.equal(t.calls[0].init.mode, 'no-cors');
+  assert.equal(await checkLive('https://gone.example/', { transport: tr(async () => { throw new TypeError('Failed to fetch'); }) }), false);
+});
+test('the privileged check reads the status', async () => {
+  for (const [status, live] of [[200, true], [405, true], [404, false], [500, false]]) {
+    const t = tr(async () => ({ status }));
+    assert.equal(await checkLive('https://example.com/a', { transport: t, privileged: true }), live);
+    assert.equal(t.calls[0].init.privileged, true);
+  }
+});
+test('a hung site counts as not live', async () => {
+  const hang = tr((u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted')))));
+  assert.equal(await checkLive('https://slow.example/', { transport: hang, timeoutMs: 20 }), false);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/liveness.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `checkLive`** with an `AbortController` and `setTimeout(timeoutMs)`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/liveness.test.js`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/liveness.js tests/unit/liveness.test.js
+git commit -m "Add the link check for web and privileged fetch"
+```
+
 <!-- PLAN CONTINUES -->

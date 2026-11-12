@@ -316,4 +316,195 @@ git commit -m "Add Vault collections, gem score and Vault Fate"
 
 ---
 
+### Task 3: Daily Fate core
+
+**Files:**
+- Create: `src/core/daily.js`, `tests/fixtures/http/daily/library.json`, `tests/fixtures/http/daily/vault-starter.json`, `tests/fixtures/http/daily/wiki-featured.json`, `tests/fixtures/http/daily/apod.json`
+- Test: `tests/unit/daily.test.js`
+
+**Interfaces:**
+- Consumes: `fnv1a32(str)`, `mulberry32(seed)`; `makeFind(partial)`.
+- Produces: `DAILY_SLOTS = ['game','web','wonder']`; `dailySeed(date) → number`; `backupDaily({date, library, vaultStarter, fetchWikiFeatured, fetchApod}) → Promise<DailyFile>`, where `fetchWikiFeatured(date) → Promise<tfa|null>` and `fetchApod(date) → Promise<apod|null>`; `loadDaily({date, fetchDailyFile, backup}) → Promise<{file, backup:boolean}>`; mappers `wikiFeaturedToFind(tfa)`, `apodToFind(apod)`, `libraryEntryToFind(entry)`, `starterToFind(entry)`, each `→ Find|null`. `DailyFile = {v:1, date, picks: Array<{slot, find}>}`.
+
+Fixtures (hand-written from the research shapes):
+
+- `library.json` (`{"v":1,"entries":[…]}`, listed in this order): `lib-0003` "Pixel Weather" (site), `lib-0001` "Paper Toy Garden" (toy), `lib-0006` "The Button Museum" (site), `lib-0004` "Late Arrival" (site, `added` `2026-11-12`), `lib-0002` "A Tiny Handmade Site" (site), `lib-0005` "Moth Radio" (site). Each has `url` `https://<kebab title>.example/`, a one-line `blurb`, `tags: ["web"]` and `added` `2026-11-01` unless stated.
+- `vault-starter.json`: `ia:zx_Fixture_Game_1984` "Tape Loader Blues" (ZX Spectrum, 1984), `ia:msdos_Whizz_1994` "Whizz" (DOS, 1994), `ia:apple_Fixture_Game_1983` "Orchard Quest" (Apple II, 1983), `ia:c64_Fixture_Game_1985` "Comet Hopper" (C64, 1985), all `added` `2026-11-01`.
+- `wiki-featured.json`: `{tfa: {title: 'Ada_Lovelace', titles: {canonical: 'Ada_Lovelace', normalized: 'Ada Lovelace'}, extract: 'Ada Lovelace was an English mathematician and writer.', content_urls: {desktop: {page: 'https://en.wikipedia.org/wiki/Ada_Lovelace'}}, thumbnail: {source: 'https://upload.wikimedia.org/wikipedia/commons/thumb/a/a4/Ada.jpg/320px-Ada.jpg'}}, image: {title: 'File:Night moth.jpg', thumbnail: {source: 'https://upload.wikimedia.org/wikipedia/commons/thumb/b/b0/Night_moth.jpg/640px-Night_moth.jpg'}, file_page: 'https://commons.wikimedia.org/wiki/File:Night_moth.jpg', artist: {text: 'Jane Doe'}, license: {type: 'CC BY-SA 4.0'}, description: {text: 'A moth at night.'}}}`.
+- `apod.json`: `{date: '2026-11-14', title: 'Fixture Nebula', explanation: 'A small fixture nebula glows.', media_type: 'image', url: 'https://apod.nasa.gov/apod/image/2611/fixture.jpg', copyright: ' A. Astronomer '}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`backupFor(date, wiki = async () => FEED.tfa, apod = async () => APOD)` calls `backupDaily` with the fixtures and spy fetchers. `titles = (file) => file.picks.map((p) => p.find.title)`.
+
+```js
+test('dailySeed and the PRNG match the test vectors', () => {
+  assert.deepEqual(DAILY_SLOTS, ['game', 'web', 'wonder']);
+  assert.equal(dailySeed('2026-11-11'), 3348453531);
+  assert.equal(dailySeed('2026-11-14'), 3398786388);
+  const r = mulberry32(3348453531);   // pins Plan 01's mulberry32 to the standard algorithm
+  assert.deepEqual([r(), r(), r()].map((x) => x.toFixed(6)), ['0.300052', '0.364634', '0.339530']);
+});
+test('backup recipe for 2026-11-11 uses the featured article', async () => {
+  const f = await backupFor('2026-11-11');
+  assert.deepEqual(wikiCalls, ['2026-11-11']); assert.deepEqual(apodCalls, []);
+  assert.deepEqual(f.picks.map((p) => p.slot), ['game', 'web', 'wonder']);
+  assert.deepEqual(titles(f), ['Comet Hopper', 'A Tiny Handmade Site', 'Ada Lovelace']);
+  assert.equal(f.v, 1); assert.equal(f.date, '2026-11-11');
+});
+test('backup recipe for 2026-11-12 counts the entry added that day', async () => {
+  assert.deepEqual(titles(await backupFor('2026-11-12')), ['Comet Hopper', 'Moth Radio', 'Ada Lovelace']);
+});
+test('backup recipe for 2026-11-14 uses APOD', async () => {
+  const f = await backupFor('2026-11-14');
+  assert.deepEqual(apodCalls, ['2026-11-14']);
+  assert.deepEqual(titles(f), ['Orchard Quest', 'Paper Toy Garden', 'Fixture Nebula']);
+});
+test('wonder falls back to the other source, and is left out when both fail', async () => {
+  const boom = async () => { throw new Error('down'); };
+  assert.equal(titles(await backupFor('2026-11-11', boom))[2], 'Fixture Nebula');
+  assert.deepEqual((await backupFor('2026-11-11', boom, async () => null)).picks.map((p) => p.slot), ['game', 'web']);
+});
+test('mappers build finds', () => {
+  const w = wikiFeaturedToFind(FEED.tfa);
+  assert.deepEqual([w.id, w.source, w.kind, w.title, w.url, w.licence], ['wiki:en:Ada_Lovelace', 'wikipedia', 'article', 'Ada Lovelace', 'https://en.wikipedia.org/wiki/Ada_Lovelace', 'CC BY-SA 4.0']);
+  const a = apodToFind(APOD);
+  assert.deepEqual([a.id, a.url, a.imageUrl, a.attribution], ['apod:2026-11-14', 'https://apod.nasa.gov/apod/ap261114.html', 'https://apod.nasa.gov/apod/image/2611/fixture.jpg', '© A. Astronomer']);
+  assert.equal(apodToFind({ ...APOD, media_type: 'video', thumbnail_url: 'https://img.youtube.com/vi/x/0.jpg' }).imageUrl, 'https://img.youtube.com/vi/x/0.jpg');
+  const g = starterToFind(VS.entries[1]);
+  assert.deepEqual([g.id, g.source, g.kind, g.embedUrl], ['ia:msdos_Whizz_1994', 'vault', 'game', 'https://archive.org/embed/msdos_Whizz_1994']);
+  assert.deepEqual(g.why, ['DOS', '1994']);
+  assert.equal(libraryEntryToFind(LIB.entries[1]).source, 'library');
+});
+test('loadDaily uses the file when it is for today', async () => {
+  const file = { v: 1, date: '2026-11-11', picks: [{ slot: 'web', find: {} }] };
+  assert.deepEqual(await loadDaily({ date: '2026-11-11', fetchDailyFile: async () => file, backup: async () => 'B' }), { file, backup: false });
+});
+test('loadDaily uses the backup when the file is from yesterday', async () => {   // Review Focus 3
+  const old = { v: 1, date: '2026-11-10', picks: [{ slot: 'web', find: {} }] };
+  assert.deepEqual(await loadDaily({ date: '2026-11-11', fetchDailyFile: async () => old, backup: async () => 'B' }), { file: 'B', backup: true });
+});
+test('loadDaily uses the backup when the file is missing or malformed', async () => {
+  const b = async () => 'B';
+  assert.equal((await loadDaily({ date: '2026-11-11', fetchDailyFile: async () => { throw new Error('404'); }, backup: b })).backup, true);
+  assert.equal((await loadDaily({ date: '2026-11-11', fetchDailyFile: async () => ({ v: 2, date: '2026-11-11', picks: [] }), backup: b })).backup, true);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/daily.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/daily.js'".
+
+- [ ] **Step 3: Implement `src/core/daily.js`**
+
+`backupDaily` draws all three numbers before any `await`, so the order is fixed in every shell:
+
+```js
+const rand = mulberry32(dailySeed(date));
+const rWonder = rand(), rWeb = rand(), rGame = rand();
+// wonder: rWonder < 0.5 → fetchWikiFeatured(date), else fetchApod(date); if that throws or gives null, try the other one
+// web:  entries with added <= date, sorted by id (plain < compare), index floor(rWeb * n), mapped with libraryEntryToFind
+// game: the same over vaultStarter.entries, mapped with starterToFind
+// picks follow DAILY_SLOTS order; a slot that cannot be filled is left out
+```
+
+Mapper values: Wikipedia `licence: 'CC BY-SA 4.0'`, `attribution: 'Wikipedia'`, `why: ["Wikipedia: today's featured article"]`. APOD `kind: 'image'`, page URL `https://apod.nasa.gov/apod/ap<yymmdd>.html`, `imageUrl` from `url` for images and `thumbnail_url` for videos, `attribution` `© <copyright trimmed>` or `NASA`, `why: ['NASA Astronomy Picture of the Day']`. Library: `id: 'lib:' + entry.id`, kind `game`/`article` kept, anything else `site`, `description` from `blurb`, `why: ['Byways starter library']`. Starter: `kind: 'game'`, source `vault`, the three Archive URLs from the identifier, `tags: ['retro']`, `why: [platform, String(year)]`, `attribution: 'Internet Archive'`. Every mapper sets `safety: 'curated'`. `loadDaily` accepts a file only when `v === 1`, `date` equals `date`, and `picks` is a non-empty array.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/daily.test.js`
+Expected: PASS, 9 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/daily.js tests/unit/daily.test.js tests/fixtures/http/daily
+git commit -m "Add the Daily Fate seed, backup recipe and file loader"
+```
+
+---
+
+### Task 4: The `ia` and `vault` source adapters
+
+**Files:**
+- Create: `src/core/sources/ia.js`, `src/core/sources/vault.js`, `tests/fixtures/http/ia/meta-collection.json`, `tests/fixtures/http/ia/meta-game.json`, `tests/fixtures/http/ia/count-250.json`, `tests/fixtures/http/ia/search-gems.json`, `tests/fixtures/http/ia/search-film.json`, `tests/fixtures/http/ia/vault-index.json`
+- Modify: `src/core/ia/client.js` (add `luceneEscape`), `src/core/sources/index.js` (register both)
+- Test: `tests/unit/sources-ia.test.js`
+
+**Interfaces:**
+- Consumes: `sharedIaClient`, `VAULT_COLLECTIONS`, `validateCollections`, `vaultFate`, `shelfGems`, `iaDocToFind` (Tasks 1–2); the adapter shape and `ctx`; `SOURCES`, `getSource`.
+- Produces: default-exported adapters `ia` and `vault`; `IA_COLLECTIONS: Array<{id, label, kind, safety}>` from `sources/ia.js`; `luceneEscape(text) → string` from `ia/client.js`. Both adapters read `ctx.data.embedBroken: Set<string>` and `ctx.data.loadSnapshot(name) → Promise<object|null>`, which Task 7 adds to `app.data`.
+
+`IA_COLLECTIONS` (in this order): `prelinger` "Prelinger Archives" video; `feature_films` "Feature Films" video, safety `mixed`; `georgeblood` "Great 78 Project" audio; `78rpm` "78 RPMs and Cylinder Recordings" audio; `oldtimeradio` "Old Time Radio" audio; `librivoxaudio` "LibriVox" audio; `etree` "Live Music Archive" audio; `computermagazines` "Computer Magazines" book. Safety is `mostly` unless stated.
+
+Fixtures: `meta-collection.json` = `{"result":{"identifier":"x","mediatype":"collection"}}`; `meta-game.json` = `{"result":{"identifier":"msdos_Whizz_1994","mediatype":"software","emulator":"dosbox","emulator_ext":"zip"}}`; `count-250.json` = `{"responseHeader":{"status":0},"response":{"numFound":250,"start":0,"docs":[]}}`; `search-gems.json` holds three docs in this order: `msdos_Whizz_1994` "Whizz" (312 downloads, year "1994", creator "Flair", avg_rating 4.5, num_reviews 3), `msdos_Tiny_Tunes_1992` "Tiny Tunes" (20, "1992") and `msdos_Big_Blast_1995` "Big Blast" (2900, "1995"), all in `["softwarelibrary_msdos_shareware"]`; `search-film.json` holds `DayAtTheFair1950` "A Day at the Fair" (`mediatype` "movies", collection `["feature_films"]`); `vault-index.json` follows the contract shape with `softwarelibrary_msdos_shareware` (the three gems above) and `softwarelibrary_c64_games` (one gem `c64_Fixture_Game_1985` "Comet Hopper", 40 downloads, 1985).
+
+- [ ] **Step 1: Write the failing tests**
+
+`ctx = {http: createHttp({transport: net, clock}), rand, clock, cache, settings: DEFAULT_SETTINGS, secrets: null, data: {embedBroken: new Set(), loadSnapshot: async () => VAULT_INDEX}, platformName: 'pwa'}` with `clock = instantClock()`. Routes: `/\/metadata\//` → `meta-collection.json`, `/rows=0/` → `count-250.json`, `/advancedsearch/` → `search-gems.json` (per-test overrides).
+
+```js
+test('ia adapter declares the contract shape', () => {
+  assert.deepEqual([ia.id, ia.tier, ia.key, ia.safety, ia.fate], ['ia', 'probe', 'none', 'mostly', true]);
+  assert.deepEqual(ia.rate, { perMinute: 60, concurrent: 2 });
+  assert.deepEqual(IA_COLLECTIONS.map((c) => c.id), ['prelinger', 'feature_films', 'georgeblood', '78rpm', 'oldtimeradio', 'librivoxaudio', 'etree', 'computermagazines']);
+  assert.equal(IA_COLLECTIONS[1].safety, 'mixed');
+});
+test('ia random picks a validated collection and returns one find with an embed', async () => {
+  // advancedsearch (rows=1) → search-film.json; rand = seq(0.13, 0.5)
+  const [f] = await ia.random(ctx);
+  const u = new URL(net.calls.at(-1).url);
+  assert.deepEqual([u.searchParams.get('q'), u.searchParams.get('rows'), u.searchParams.get('page'), u.searchParams.getAll('sort[]')[0]], ['collection:(feature_films)', '1', '126', 'identifier asc']);
+  assert.deepEqual([f.kind, f.safety, f.source, f.embedUrl], ['video', 'mixed', 'ia', 'https://archive.org/embed/DayAtTheFair1950']);
+  assert.deepEqual(f.why, ['Internet Archive: Feature Films']);
+});
+test('ia search escapes Lucene characters', async () => {
+  await ia.search('C++ (1990)', ctx);
+  assert.equal(new URL(net.calls.at(-1).url).searchParams.get('q'), '(C\\+\\+ \\(1990\\)) AND collection:(prelinger OR feature_films OR georgeblood OR 78rpm OR oldtimeradio OR librivoxaudio OR etree OR computermagazines)');
+});
+test('vault random returns a Vault Fate find and skips embed-broken games', async () => {
+  // rand = seq(0, 0.5)
+  assert.deepEqual((await vault.random(ctx)).map((f) => f.id), ['ia:msdos_Whizz_1994']);
+  ctx.data.embedBroken.add('ia:msdos_Whizz_1994'); ctx.rand = seq(0, 0.5);
+  assert.deepEqual(await vault.random(ctx), []);
+});
+test('vault random falls back to the vault-index snapshot when the Archive fails', async () => {
+  // every archive.org responder throws; rand = seq(0.9)
+  const [f] = await vault.random(ctx);
+  assert.equal(f.source, 'vault');
+  assert.ok(['Whizz', 'Tiny Tunes', 'Big Blast', 'Comet Hopper'].includes(f.title));
+});
+test('sources/index.js registers ia and vault', () => {
+  assert.equal(getSource('ia'), ia); assert.equal(getSource('vault'), vault);
+  assert.deepEqual([vault.tier, vault.safety, vault.fate], ['snapshot', 'curated', true]);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/sources-ia.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/sources/ia.js'".
+
+- [ ] **Step 3: Implement both adapters, `luceneEscape` and the registration**
+
+- `luceneEscape` puts a backslash before each of `+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /` and leaves spaces alone.
+- `ia`: `kinds: ['video','audio','book']`, `probeUrl: 'https://archive.org/advancedsearch.php?q=identifier%3Aprelinger&fl%5B%5D=identifier&rows=1&output=json'`. Every method gets its client from `sharedIaClient({http: ctx.http, cache: ctx.cache, clock: ctx.clock})`, and its collections from `validateCollections(ia, ctx.cache, IA_COLLECTIONS.map(c => c.id))`. `random`: pick a collection with `ctx.rand()`, count `collection:(<id>)`, `offset = floor(ctx.rand() · min(N, 10000))`, then one `rows: 1` search sorted `identifier asc`, with `fl` `identifier,title,creator,year,description,collection,mediatype`. Map it with `iaDocToFind(doc, {kind, safety, why: ['Internet Archive: ' + label]})`. `search`: 20 rows, no sort, with the query above, and each doc's kind and label come from its first collection in `IA_COLLECTIONS`. `more(find)`: `random` limited to `find.meta.collection`, or plain `random` when that is not an `IA_COLLECTIONS` id.
+- `vault`: `name: 'Internet Archive games'`, `kinds: ['game']`, `tier: 'snapshot'`, `rate: {perMinute: 60, concurrent: 2}`, no `probeUrl`. `random`: `vaultFate(client, ctx.rand, await validateCollections(client, ctx.cache))`, dropping a find whose id is in `ctx.data.embedBroken`. On any thrown error it uses `ctx.data.loadSnapshot('vault-index')` instead: it flattens every collection's `gems`, drops broken ids, picks one with `ctx.rand()`, and maps it with `iaDocToFind(gem, {kind: 'game'})`. `search`: `(<escaped>) AND mediatype:software AND collection:(<valid ids joined by OR>)`, 20 rows. `more(find)`: `shelfGems` on the shelf holding `find.meta.collection`, with `skip` set to the broken ids and `currentYear` from `ctx.clock.now()` in UTC, first 10.
+- `sources/index.js`: import both default exports and add them to `SOURCES` under `ia` and `vault`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/sources-ia.test.js`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/ia.js src/core/sources/vault.js src/core/ia/client.js src/core/sources/index.js tests/fixtures/http/ia tests/unit/sources-ia.test.js
+git commit -m "Add the Archive and Vault source adapters"
+```
+
+---
+
 <!-- PLAN CONTINUES -->

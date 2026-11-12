@@ -1006,7 +1006,7 @@ git commit -m "Add the web voice engine with on-device first"
   - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {}) → Platform['media']`.
   - `silentWavBlob() → Blob`: 1 s of 8 kHz, mono, 8-bit silence (`audio/wav`, 8044 bytes). A `blob:` URL is used because the CSP's `media-src` has no `data:`.
 
-The TTS tests use `fakeSynth(voiceLists)`: `getVoices()` returns the next list from `voiceLists` on each call (the last one repeats), `speak(u)` records `u`, `cancel()` counts, and `addEventListener('voiceschanged', fn)` stores `fn` (omitted when the test passes `{noEvents:true}`). `FakeUtterance` stores `text` and dispatches `onend` and `onerror`. Voices: `local = {voiceURI:'local-en', name:'Local English', lang:'en-US', localService:true}`, `net = {voiceURI:'net-en', name:'Online English', lang:'en-US', localService:false}`, `fr = {voiceURI:'local-fr', name:'Local French', lang:'fr-FR', localService:true}`.
+The TTS tests use `fakeSynth(voiceLists)`: `getVoices()` returns the next list from `voiceLists` on each call (the last one repeats), `speak(u)` pushes `u` onto `spoken`, `cancel()` counts into `cancels`, and `addEventListener('voiceschanged', fn)` stores `fn` for `fireVoicesChanged()` (the method is absent when the test passes `{noEvents:true}`). `FakeUtterance` stores `text` and dispatches `onend` and `onerror`. Voices: `local = {voiceURI:'local-en', name:'Local English', lang:'en-US', localService:true}`, `net = {voiceURI:'net-en', name:'Online English', lang:'en-US', localService:false}`, `fr = {voiceURI:'local-fr', name:'Local French', lang:'fr-FR', localService:true}`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1033,7 +1033,7 @@ test('voices polls every 250 ms when voiceschanged never fires, and gives up at 
   assert.equal((await p).length, 1);
   const c2 = fakeClock(0);
   const q = createWebTts(fakeSynth([[]], { noEvents: true }), { Utterance: FakeUtterance, clock: c2 }).voices();
-  c2.advance(2000); await flush();
+  for (let i = 0; i < 8; i++) { c2.advance(250); await flush(); }
   assert.deepEqual(await q, []);
 });
 
