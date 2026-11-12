@@ -475,7 +475,7 @@ git commit -m "Add read-aloud with sentence-level pause"
 
 `tests/unit/helpers/handsfree-fakes.js` exports `makeHarness(settingsPatch = {})`. It returns `{hf, clock, engine, listener, reader, ui, settings, finds}` where:
 - `finds` is an endless generator of `{id:'f<n>', kind:'site', url:'https://s<n>.example/', title:'Find <n>', description:'', why:[], tags:[], source:'library', safety:'curated'}`;
-- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:[]}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject;
+- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:[]}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject; `engine.current()` returns the last find it gave (or `null`), and `engine.back()` returns `null`;
 - `listener` records `starts`, `stops` and `halfDuplex` (an array of booleans), and has `emit(event, payload)`; `listener.failStart = true` makes `start()` reject;
 - `reader.read(s)` records `s` in `reader.reads` and resolves at once unless `reader.hold = true`, when `reader.finish()` resolves it; it counts `stops`, `pauses`, `resumes`;
 - every `ui` method records its arguments in `ui.log` as `[name, ...args]`; `ui.search` resolves `{finds:[]}`;
@@ -648,13 +648,14 @@ Rules the tests do not spell out:
 - `command(id)` calls `input()` first for every id except `pause`, `resume`, `stop`, `stopListening` and `help`.
 - `command('pause')` toggles between active and paused; `command('resume')` only resumes.
 - `showing(find)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find for the recap, stops the reader, and in the active state reads `cardScript(find)` (Task 5 adds the dwell).
-- `say(text)`: `ui.announce(text)` when muted, in screen-reader mode or while the reader is speaking; otherwise `reader.read([text])`.
-- `suspend()` remembers the previous state; `wake()` returns to it.
+- Status messages go to `ui.announce(text)` (polite): `Lean-back paused`, `Lean-back on`, `Listening off`, `Searching for <words>` and the idle message. Errors add `{assertive:true}`.
+- `say(text)` is for spoken cues only (Task 5): `ui.announce(text)` when muted or in screen-reader mode, otherwise `reader.read([text])`.
+- `suspend()` calls `reader.pause()` and remembers the previous state; `wake()` calls `reader.resume()` and returns to it. The reader ignores both when it is not reading.
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree.test.js`
-Expected: PASS, 16 tests.
+Expected: PASS, 15 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -833,7 +834,7 @@ test('half-duplex is on while reading', async () => {
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `node --test tests/unit/handsfree-leanback.test.js`
-Expected: FAIL. The first test fails with `2 !== 1` style assertion errors because nothing advances yet.
+Expected: FAIL. The first test reports `1 !== 2`, because nothing advances yet.
 
 - [ ] **Step 3: Implement the lean-back loop in `src/core/handsfree.js`**
 
@@ -846,7 +847,7 @@ Expected: FAIL. The first test fails with `2 !== 1` style assertion errors becau
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree-leanback.test.js tests/unit/handsfree.test.js`
-Expected: PASS, 15 and 16 tests.
+Expected: PASS, 15 tests in each file.
 
 - [ ] **Step 5: Commit**
 

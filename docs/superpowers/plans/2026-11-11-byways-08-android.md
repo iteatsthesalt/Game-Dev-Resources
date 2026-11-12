@@ -303,4 +303,276 @@ git commit -m "Add the Android project and its CI job"
 
 After the branch is pushed, `gh run watch --exit-status` on the `byways.yml` run. Expected: the `android` job passes and uploads `byways-debug-apk`. If AGP 9.3.2 or webkit 1.18.0 does not resolve, apply the fallbacks above and commit `Use the fallback androidx.webkit version`.
 
+### Task 3: The nativeFetch URL policy
+
+**Files:**
+- Create: `…/byways/FetchPolicy.kt`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/FetchPolicyTest.kt`
+
+**Interfaces:**
+- Produces (pure Kotlin, no Android imports):
+
+```kotlin
+object FetchPolicy {
+  const val MAX_BYTES = 10 * 1024 * 1024
+  sealed interface Verdict { data object Allow : Verdict; data class Deny(val code: String) : Verdict }
+  fun check(url: String, approved: Set<String>): Verdict   // codes: "bad-url", "scheme", "not-local", "not-approved"
+  fun hostOf(url: String): String?                          // lowercase, IPv6 without brackets
+  fun isLocalHost(host: String): Boolean
+}
+```
+
+- [ ] **Step 1: Write the failing test**
+
+```kotlin
+class FetchPolicyTest {
+  private val none = emptySet<String>()
+  private fun deny(c: String) = FetchPolicy.Verdict.Deny(c)
+  private val allow = FetchPolicy.Verdict.Allow
+  @Test fun allowsAnyHttps() = assertEquals(allow, FetchPolicy.check("https://api.mistral.ai/v1/models", none))
+  @Test fun refusesHttpToPublicHosts() = assertEquals(deny("not-local"), FetchPolicy.check("http://example.com/", setOf("example.com")))
+  @Test fun needsApprovalForLanHosts() {
+    assertEquals(deny("not-approved"), FetchPolicy.check("http://192.168.1.20:11434/v1/models", none))
+    assertEquals(allow, FetchPolicy.check("http://192.168.1.20:11434/v1/models", setOf("192.168.1.20")))
+  }
+  @Test fun acceptsLoopbackPrivateAndLocalNames() {
+    val ok = setOf("localhost", "::1", "fd12:3456::1", "printer.local", "172.31.255.1", "10.1.2.3", "127.0.0.1")
+    for (u in listOf("HTTP://LocalHost:1234/v1/models", "http://[::1]:11434/", "http://[fd12:3456::1]/",
+      "http://printer.local/", "http://172.31.255.1/", "http://10.1.2.3/", "http://127.0.0.1:11434/api/tags"))
+      assertEquals(u, allow, FetchPolicy.check(u, ok))
+  }
+  @Test fun deniesLookalikeHosts() {
+    val ok = setOf("192.168.1.5.nip.io", "10.0.0.1", "2130706433", "0x7f000001", "::ffff:8.8.8.8", "172.32.0.1")
+    for (u in listOf("http://192.168.1.5.nip.io/", "http://10.0.0.1@evil.com/", "http://2130706433/",
+      "http://0x7f000001/", "http://[::ffff:8.8.8.8]/", "http://172.32.0.1/"))
+      assertEquals(u, deny("not-local"), FetchPolicy.check(u, ok))
+  }
+  @Test fun refusesOtherSchemes() {
+    for (u in listOf("ftp://10.0.0.1/", "file:///etc/hosts", "javascript:alert(1)", "intent://x#Intent;end"))
+      assertEquals(u, deny("scheme"), FetchPolicy.check(u, setOf("10.0.0.1")))
+  }
+  @Test fun refusesBadUrls() {
+    assertEquals(deny("bad-url"), FetchPolicy.check("not a url", none))
+    assertEquals(deny("bad-url"), FetchPolicy.check("http://", none))
+  }
+  @Test fun capIsTenMegabytes() = assertEquals(10485760, FetchPolicy.MAX_BYTES)
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run (where `ANDROID_HOME` is set; otherwise read the CI `android` job): `gradle -p shells/android testDebugUnitTest --tests '*FetchPolicyTest'`
+Expected: FAIL to compile with `Unresolved reference 'FetchPolicy'`.
+
+- [ ] **Step 3: Implement `FetchPolicy`**
+
+- Parse with `java.net.URI`. A parse error or a missing host gives `bad-url`. Check the scheme first (lower-cased): `https` → `Allow`; anything but `http` → `scheme`.
+- For `http`: not `isLocalHost(host)` → `not-local`; host not in `approved` → `not-approved`; else `Allow`. Approval is per host, for any port.
+- `isLocalHost` never resolves DNS. It is true only for: `localhost`; an IPv4 literal of exactly four decimal parts, each 0–255, in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; the IPv6 literal `::1`, or one whose first group is `fc00`–`fdff`; a name ending in `.local` with at least one label of `[a-z0-9-]` before it and not ending in a digit-only label.
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: the Step 2 command. Expected: PASS (8 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways/FetchPolicy.kt shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/FetchPolicyTest.kt
+git commit -m "Add the native fetch URL policy"
+```
+
+### Task 4: The native HTTP executor
+
+**Files:**
+- Create: `…/byways/NativeFetch.kt`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/NativeFetchTest.kt`
+
+**Interfaces:**
+- Consumes: `FetchPolicy.check`, `FetchPolicy.MAX_BYTES` (Task 3).
+- Produces (pure JVM, `java.net.HttpURLConnection` only):
+
+```kotlin
+data class FetchRequest(val url: String, val method: String = "GET", val headers: Map<String, String> = emptyMap(), val body: String? = null)
+data class FetchResponse(val status: Int, val statusText: String, val headers: Map<String, String>, val body: String, val url: String)
+class FetchError(val code: String) : Exception(code)   // policy codes, "timeout", "network", "too-large", "redirects", "aborted"
+class NativeFetch(private val approved: () -> Set<String>, private val connectTimeoutMs: Int = 15_000,
+                  private val readTimeoutMs: Int = 90_000, private val maxBytes: Int = FetchPolicy.MAX_BYTES) {
+  fun execute(req: FetchRequest, cancelled: () -> Boolean = { false }): FetchResponse
+}
+```
+
+- [ ] **Step 1: Write the failing test**
+
+The test starts `com.sun.net.httpserver.HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)` in `@Before`, with `base = "http://127.0.0.1:${server.address.port}"` and `nf = NativeFetch({ setOf("127.0.0.1") })`. Each test adds the context it needs. `code { … }` runs the block and returns the `FetchError.code` it throws.
+
+```kotlin
+@Test fun passesStatusHeadersAndBody() {   // /slow → 429, Retry-After: 3, body {"error":"slow"}
+  val r = nf.execute(FetchRequest("$base/slow"))
+  assertEquals(429, r.status); assertEquals("3", r.headers["retry-after"]); assertEquals("""{"error":"slow"}""", r.body)
+}
+@Test fun sendsNoCookiesAndKeepsOtherHeaders() {   // /echo records request headers
+  nf.execute(FetchRequest("$base/echo", headers = mapOf("Cookie" to "a=1", "X-Api-Key" to "k")))
+  assertNull(seen.getFirst("Cookie")); assertEquals("k", seen.getFirst("X-api-key"))
+}
+@Test fun sendsPostBody() {
+  nf.execute(FetchRequest("$base/echo", "POST", mapOf("Content-Type" to "application/json"), """{"q":1}"""))
+  assertEquals("""{"q":1}""", seenBody)
+}
+@Test fun capsResponseSize() {   // /big?n=… returns n bytes
+  val small = NativeFetch({ setOf("127.0.0.1") }, maxBytes = 1024)
+  assertEquals(1024, small.execute(FetchRequest("$base/big?n=1024")).body.length)
+  assertEquals("too-large", code { small.execute(FetchRequest("$base/big?n=1025")) })
+}
+@Test fun followsSafeRedirects() {   // /a → 302 Location: /b; /b → 200 "ok"
+  val r = nf.execute(FetchRequest("$base/a")); assertEquals("ok", r.body); assertTrue(r.url.endsWith("/b"))
+}
+@Test fun blocksRedirectToUnapprovedHost() {   // /out → http://192.168.77.77/x ; /pub → http://example.com/
+  assertEquals("not-approved", code { nf.execute(FetchRequest("$base/out")) })
+  assertEquals("not-local", code { nf.execute(FetchRequest("$base/pub")) })
+}
+@Test fun stopsAfterFiveRedirects() = assertEquals("redirects", code { nf.execute(FetchRequest("$base/loop")) })
+@Test fun timesOut() {   // /sleep waits 1500 ms
+  assertEquals("timeout", code { NativeFetch({ setOf("127.0.0.1") }, readTimeoutMs = 300).execute(FetchRequest("$base/sleep")) })
+}
+@Test fun checksPolicyBeforeConnecting() {
+  assertEquals("not-approved", code { NativeFetch({ emptySet() }).execute(FetchRequest("$base/echo")) }); assertEquals(0, echoHits)
+}
+@Test fun honoursCancel() = assertEquals("aborted", code { nf.execute(FetchRequest("$base/echo")) { true } })
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `gradle -p shells/android testDebugUnitTest --tests '*NativeFetchTest'` (or the CI job).
+Expected: FAIL to compile with `Unresolved reference 'NativeFetch'`.
+
+- [ ] **Step 3: Implement `NativeFetch.execute`**
+
+- Check `cancelled()` and `FetchPolicy.check(url, approved())` before every hop. A `Deny` throws `FetchError(deny.code)`.
+- `instanceFollowRedirects = false`, `useCaches = false`, the two timeouts. Copy request headers except `cookie`, `cookie2`, `host` and `content-length` (any case). Never install a `CookieHandler`.
+- Redirects (301, 302, 303, 307, 308): resolve `Location` against the current URL and loop, at most 5 hops, then `redirects`. 303 always becomes GET without a body, and so do 301 and 302 after a POST. 307 and 308 keep the method and body.
+- Read `errorStream` for status ≥ 400. Stop with `too-large` once more than `maxBytes` bytes arrive (or when `Content-Length` says so). Decode with the `charset` from `Content-Type`, else UTF-8.
+- Header names are lower-cased, and repeated values are joined with `", "`. The null status-line key is skipped.
+- `SocketTimeoutException` → `timeout`; other `IOException` → `network`. Never log a URL, header or body.
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: the Step 2 command. Expected: PASS (10 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways/NativeFetch.kt shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/NativeFetchTest.kt
+git commit -m "Add the native HTTP executor with redirect checks and a size cap"
+```
+
+### Task 5: Bridge codec, origin gate and the core channels
+
+**Files:**
+- Create: `…/byways/BridgeCodec.kt`, `…/byways/Bridge.kt`
+- Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/BridgeCodecTest.kt`
+
+**Interfaces:**
+- Consumes: `NativeFetch`, `FetchRequest`, `FetchError` (Task 4); `FetchPolicy.isLocalHost` (Task 3); `MainActivity.webView`, `APP_URL` (Task 2).
+- Produces:
+
+```kotlin
+object BridgeCodec {
+  val CHANNELS = setOf("voice", "tts", "media", "share", "fetch", "files", "back", "app", "screen")
+  const val MAX_MESSAGE_CHARS = 16 * 1024 * 1024
+  data class Request(val id: String, val ch: String, val op: String, val args: JSONObject)
+  class BadMessage(val code: String) : Exception(code)     // "bad-message", "unknown-channel", "too-large"
+  fun decode(raw: String): Request
+  fun ok(id: String, result: Any?): String
+  fun error(id: String, code: String, message: String): String
+  fun event(ch: String, event: String, data: Any?): String
+}
+object BridgeGate {
+  const val APP_ORIGIN = "https://appassets.androidplatform.net"
+  const val LAB_ORIGIN = "https://lab.appassets.androidplatform.net"
+  fun accepts(allowedOrigin: String, sourceOrigin: String, isMainFrame: Boolean): Boolean
+}
+// Bridge.kt
+fun interface ChannelHandler { fun handle(req: BridgeCodec.Request, reply: Reply) }
+class Reply(private val id: String, private val post: (String) -> Unit) { fun ok(result: Any?); fun error(code: String, message: String = code) }
+class Bridge(private val webView: WebView, private val handlers: Map<String, ChannelHandler>) {
+  fun install(): Boolean                             // false when WEB_MESSAGE_LISTENER is missing
+  fun emit(ch: String, event: String, data: Any?)
+}
+```
+
+- [ ] **Step 1: Write the failing tests**
+
+```kotlin
+class BridgeCodecTest {
+  @Test fun decodesARequest() {
+    val r = BridgeCodec.decode("""{"id":"7","ch":"tts","op":"speak","args":{"text":"Hi"}}""")
+    assertEquals("7", r.id); assertEquals("tts", r.ch); assertEquals("speak", r.op); assertEquals("Hi", r.args.getString("text"))
+  }
+  @Test fun missingArgsBecomeEmpty() = assertEquals(0, BridgeCodec.decode("""{"id":"1","ch":"app","op":"hello"}""").args.length())
+  @Test fun rejectsBadMessages() {
+    for ((raw, code) in listOf("nope" to "bad-message", """{"ch":"app","op":"hello"}""" to "bad-message",
+      """{"id":"1","ch":"app"}""" to "bad-message", """{"id":"1","ch":"camera","op":"x"}""" to "unknown-channel",
+      "x".repeat(BridgeCodec.MAX_MESSAGE_CHARS + 1) to "too-large"))
+      assertEquals(raw.take(20), code, assertThrows(BridgeCodec.BadMessage::class.java) { BridgeCodec.decode(raw) }.code)
+  }
+  @Test fun encodesReplies() {
+    assertEquals(JSONObject("""{"id":"7","ok":true,"result":{"a":1}}""").toString(), JSONObject(BridgeCodec.ok("7", JSONObject("""{"a":1}"""))).toString())
+    assertTrue(JSONObject(BridgeCodec.ok("8", null)).isNull("result"))
+    val e = JSONObject(BridgeCodec.error("9", "not-approved", "Host not approved"))
+    assertFalse(e.getBoolean("ok")); assertEquals("not-approved", e.getJSONObject("error").getString("code"))
+    val ev = JSONObject(BridgeCodec.event("voice", "result", JSONObject("""{"text":"next","final":true}""")))
+    assertEquals("voice", ev.getString("ch")); assertEquals("result", ev.getString("event")); assertEquals("next", ev.getJSONObject("data").getString("text"))
+  }
+  @Test fun gateRejectsOtherOriginsAndSubframes() {
+    val app = BridgeGate.APP_ORIGIN
+    assertTrue(BridgeGate.accepts(app, "https://appassets.androidplatform.net", true))
+    assertFalse(BridgeGate.accepts(app, "https://appassets.androidplatform.net", false))
+    assertFalse(BridgeGate.accepts(app, "https://archive.org", true))
+    assertFalse(BridgeGate.accepts(app, BridgeGate.LAB_ORIGIN, true))
+    assertFalse(BridgeGate.accepts(app, "https://appassets.androidplatform.net.evil.com", true))
+    assertFalse(BridgeGate.accepts(app, "null", true))
+    assertTrue(BridgeGate.accepts(BridgeGate.LAB_ORIGIN, "https://lab.appassets.androidplatform.net", true))
+  }
+}
+```
+
+Add to `tests/unit/android-shell.test.js`:
+
+```js
+test('bridge and fetch code never log', () => {
+  for (const f of ['Bridge.kt', 'NativeFetch.kt', 'FetchPolicy.kt'])
+    assert.doesNotMatch(R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`), /\bLog\.[vdiwe]\(|println\(/, f);
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/android-shell.test.js` and `gradle -p shells/android testDebugUnitTest --tests '*BridgeCodecTest'` (or the CI job).
+Expected: the Node test fails with `ENOENT` on `Bridge.kt`; Gradle fails with `Unresolved reference 'BridgeCodec'`.
+
+- [ ] **Step 3: Implement `BridgeCodec` and `BridgeGate`**
+
+`decode` checks the length first, then parses with `JSONObject`. `id` must be a non-empty string of at most 64 characters, and `op` a non-empty string. `ok` and `event` write `JSONObject.NULL` for `null`. `accepts` is true only when `isMainFrame` and `sourceOrigin == allowedOrigin` exactly.
+
+- [ ] **Step 4: Implement `Bridge`, `Reply` and the core channels**
+
+- `install()`: if `!WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)` return false. Otherwise `WebViewCompat.addWebMessageListener(webView, "BywaysNative", setOf(BridgeGate.APP_ORIGIN)) { _, message, sourceOrigin, isMainFrame, proxy -> … }`. Drop the message unless `BridgeGate.accepts(APP_ORIGIN, sourceOrigin.toString(), isMainFrame)`. Keep the latest `proxy` for `emit`. Decode; on `BadMessage` reply with its code when an id can be read, else drop. Route by `ch`. A handler that throws replies `internal`. An unknown op replies `unknown-op`.
+- `Reply` sends once (later calls do nothing) and always posts to `proxy.postMessage` on the main thread (`webView.post`). `emit` before the first `hello` queues events and flushes them on `hello`.
+- `app` handler: `hello` → `{versionName, versionCode, sdk: Build.VERSION.SDK_INT, micConsent}` (`micConsent` is the `micConsent` boolean in SharedPreferences `byways`, default false); `openExternal {url}` → `ACTION_VIEW` with `CATEGORY_BROWSABLE` for `http(s)` only, else error `scheme`.
+- `fetch` handler (a `FetchChannel` class in `Bridge.kt`): `request` runs `NativeFetch.execute` on a 4-thread executor, with `cancelled` reading a per-request flag; `abort {fetchId}` sets the flag of that request id; `approve {host}` replies true when the host is already in the `approvedHosts` string set, false when `!FetchPolicy.isLocalHost(host)`, else shows an `AlertDialog` titled `Allow a local network device?` with the message `Byways wants to reach http://<host> on your network, for a local AI model. Allow it?` and the buttons **Allow** (store and reply true) and **Cancel** (reply false). `FetchError` replies with its code.
+- `screen` handler: `keepOn {on}` adds or clears `WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON`.
+- In `MainActivity.onCreate`, build the `Bridge` before `loadUrl`. If `install()` is false, load nothing and show a `TextView` saying `This phone's WebView is too old for Byways. Update Android System WebView, then open Byways again.`
+
+- [ ] **Step 5: Run them to see them pass**
+
+Run: the Step 2 commands. Expected: PASS (Node: 8 tests; Gradle: 5 tests).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/BridgeCodecTest.kt tests/unit/android-shell.test.js
+git commit -m "Add the native bridge with an origin gate and the fetch channel"
+```
+
 <!-- PLAN CONTINUES -->

@@ -320,4 +320,254 @@ git add src/data/tags.json src/core/taste.js tests/unit/tags-data.test.js tests/
 git commit -m "Add the tag vocabulary and taste reactions"
 ```
 
+### Task 4: Tuned picking
+
+**Files:**
+- Create: `src/core/pick.js`
+- Test: `tests/unit/pick.test.js`
+
+**Interfaces:**
+- Consumes: `gumbel(rand)`, `domainOf`, `DEFAULT_TASTE` (Task 3), `makeFind` (Task 1).
+- Produces: `chooseBranch(rand, s) → 'momentum'|'taste'|'wildcard'`; `scoreFind(find, taste, rand) → number`; `eligible(find, {seenHas, taste, recentDomains, familyFilter}) → boolean` where `seenHas` is a sync `(url) → boolean`; `pickNext({candidates, current, taste, rand, seenHas, recentDomains, familyFilter}) → {find, branch, why}|null`. `why` is `'wildcard'`, `'similar to <current title>'` or `'matches <tag> +<weight>'` (the find's highest-weighted tag, weight printed like `2` or `1.5`).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const seq = (...xs) => { let i = 0; return () => xs[i++ % xs.length]; };
+const F = (title, tags, extra = {}) => makeFind({ source: 'library', kind: 'site', title, tags, safety: 'curated', url: `https://${title}.example.com/`, ...extra });
+const warm = { ...DEFAULT_TASTE, tags: { retro: 2 }, reactions: 5 };
+const opts = { seenHas: () => false, recentDomains: [], familyFilter: true };
+
+test('chooseBranch splits 45/22.5/32.5 at s = 0.25', () => {
+  assert.equal(chooseBranch(seq(0.449), 0.25), 'momentum');
+  assert.equal(chooseBranch(seq(0.451), 0.25), 'taste');
+  assert.equal(chooseBranch(seq(0.674), 0.25), 'taste');
+  assert.equal(chooseBranch(seq(0.676), 0.25), 'wildcard');
+  assert.equal(chooseBranch(seq(0), 1), 'wildcard');
+});
+test('scoreFind sums tag and source weights plus Gumbel noise', () => {
+  const taste = { ...DEFAULT_TASTE, tags: { retro: 2, indie: 1 }, sources: { library: 0.5 } };
+  assert.equal(scoreFind(F('a', ['retro', 'indie', 'toy']), taste, () => 0.5), 3.5 + gumbel(() => 0.5));
+});
+test('eligible applies every always-on filter', () => {
+  const t = { ...DEFAULT_TASTE, hiddenTags: ['toy'], blockedDomains: ['b.example.com'] };
+  assert.equal(eligible(F('a', []), { ...opts, taste: t }), true);
+  assert.equal(eligible(F('a', []), { ...opts, taste: t, seenHas: () => true }), false);
+  assert.equal(eligible(F('b', []), { ...opts, taste: t }), false);
+  assert.equal(eligible(F('a', []), { ...opts, taste: t, recentDomains: ['a.example.com'] }), false);
+  assert.equal(eligible(F('a', ['toy']), { ...opts, taste: t }), false);
+  assert.equal(eligible(F('a', [], { safety: 'mixed' }), { ...opts, taste: t }), false);
+  assert.equal(eligible(F('a', [], { safety: 'mixed' }), { ...opts, taste: t, familyFilter: false }), true);
+});
+test('cold start always picks a wildcard', () => {
+  const r = pickNext({ ...opts, candidates: [F('a', ['retro'])], current: null, taste: DEFAULT_TASTE, rand: seq(0.1) });
+  assert.equal(r.branch, 'wildcard'); assert.equal(r.why, 'wildcard');
+});
+test('momentum picks a candidate sharing a tag with the current find', () => {
+  const r = pickNext({ ...opts, candidates: [F('a', ['puzzle']), F('b', ['retro'])], current: F('cur', ['retro']), taste: warm, rand: seq(0.1, 0.5) });
+  assert.equal(r.find.title, 'b'); assert.equal(r.branch, 'momentum'); assert.equal(r.why, 'similar to cur');
+});
+test('taste picks the best score and says why', () => {
+  const r = pickNext({ ...opts, candidates: [F('a', ['puzzle']), F('b', ['retro'])], current: null, taste: warm, rand: seq(0.5) });
+  assert.equal(r.find.title, 'b'); assert.equal(r.branch, 'taste'); assert.equal(r.why, 'matches retro +2');
+});
+test('momentum with no shared tag falls back to taste', () => {
+  const r = pickNext({ ...opts, candidates: [F('b', ['retro'])], current: F('cur', ['music']), taste: warm, rand: seq(0.1, 0.5) });
+  assert.equal(r.branch, 'taste');
+});
+test('pickNext returns null when nothing is eligible', () => {
+  assert.equal(pickNext({ ...opts, candidates: [F('a', [])], current: null, taste: warm, rand: seq(0.9), seenHas: () => true }), null);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/pick.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `pick.js`**
+
+`pickNext` first filters with `eligible`. Then it calls `rand` once for the branch (not in cold start, `taste.reactions < 5`), then once per scored candidate (taste branch, and momentum among the tag-sharing set by highest score) or once for the wildcard index (`Math.floor(rand() * n)`). Momentum with no `current` or no tag-sharing candidate falls back to taste. A find without tags has no `matches` reason: its taste `why` is `'matches your taste'`.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/pick.test.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/pick.js tests/unit/pick.test.js
+git commit -m "Add Tuned branch maths, scoring and filters"
+```
+
+### Task 5: Source registry, probe and the adapter test kit
+
+**Files:**
+- Create: `src/core/sources/index.js`, `src/core/sources/probe.js`, `tests/unit/helpers/fixture-http.js`, `tests/fixtures/http/probe/ok.json` (`{"ok":true}`), `tests/fixtures/http/probe/captcha.html` (`<html><body>Are you a robot?</body></html>`)
+- Modify: `tests/fixtures/routes.js` (append the two probe routes: `/probe-ok\.example\//` → `probe/ok.json`, `/probe-html\.example\//` → `probe/captcha.html` with `content-type: text/html`)
+- Test: `tests/unit/sources-index.test.js`, `tests/unit/probe.test.js`
+
+**Interfaces:**
+- Consumes: `createHttp({transport, clock})`, `createCache(store, clock)`, `openStore`, `memoryBackend`, `fakeClock(start)`, `mulberry32(seed)`, `DEFAULT_SETTINGS`, the `routes` array from `tests/fixtures/routes.js`.
+- Produces:
+  - `IDENT = 'Byways/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)'`, the value of `Api-User-Agent` and `AIC-User-Agent`. Adapters read it inside functions only (the index imports the adapters, so a top-level read would hit the import cycle).
+  - `SOURCES` (id → adapter, in the order of an `ADAPTERS` array that each adapter task extends with one import), `getSource(id) → Adapter|undefined`.
+  - `enabledSources(settings, probe, platformName, all = Object.values(SOURCES)) → Adapter[]`. A source is in when `settings.sources[id]?.enabled` is `true`, or is absent and the adapter's `key` is not `'required'`. On `'pwa'`, a `probe` tier source also needs `probe[id] === 'ok'`, and `privileged` and `navigate` tiers are out.
+  - `probeSource(adapter, http) → Promise<'ok'|'fail'>`: no `probeUrl` gives `'ok'`; otherwise `'ok'` only when `http.getJson(probeUrl, {source: id, timeoutMs: 8000})` resolves.
+  - `runProbes(adapters, http, store, clock, platformName = 'pwa') → Promise<Object<string,'ok'|'fail'>>`: reuses `health['probe:<platformName>'] = {at, results}` while it is under 24 h old and covers every adapter id.
+  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]`, reads `tests/fixtures/http/<file>`, records `{url, method, headers, body}` in `calls`, and throws `TypeError('unmatched <url>')` for anything else. It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `secrets` is an in-memory `SecretStore` seeded from `secrets`, and `data.tags` is read from `src/data/tags.json`.
+
+**Adapter table.** Every adapter task builds its row exactly. Rate is `{perMinute, concurrent}`. Key ids are `SecretStore` ids.
+
+| id | name | tier | key · keyName | safety | rate | fate | kinds | base tags |
+|---|---|---|---|---|---|---|---|---|
+| wikipedia | Wikipedia | open | none | mostly | 10·1 | yes | article | education |
+| commons | Wikimedia Commons | open | none | mostly | 10·1 | no | image | photography |
+| inat | iNaturalist | open | none | mostly | 60·1 | yes | image | nature |
+| openlibrary | Open Library | open | none | mostly | 60·1 | no | book | books |
+| apod | NASA APOD | open | demo · src:apidatagov | curated | 2·1 | yes | image, video | space, science |
+| marginalia | Marginalia | open | optional · src:marginalia | mostly | 20·1 | no | site | web |
+| github | GitHub | open | optional · src:github | mostly | 10·1 | no | project, game | indie, programming |
+| hn | Show HN | probe | none | mostly | 60·2 | no | project, game | tech, indie |
+| aic | Art Institute of Chicago | open | none | curated | 60·1 | yes | image | art |
+| met | The Met | probe | none | curated | 60·2 | yes | image | art, history |
+| cleveland | Cleveland Museum of Art | probe | none | curated | 60·1 | yes | image | art |
+| nasaimages | NASA Images | probe | none | curated | 30·1 | no | image | space |
+| loc | Library of Congress | probe | none | curated | 10·1 | no | image | history, photography |
+| smithsonian | Smithsonian | probe | required · src:apidatagov | curated | 30·1 | yes | image | history |
+| europeana | Europeana | open | required · src:europeana | mostly | 30·1 | no | image | culture, history |
+| openverse | Openverse | open | required · src:openverse | mostly | 20·1 | no | image, audio | photography |
+| kagi | Kagi Small Web | open | none | curated | 6·1 | yes | site, video | web, essays |
+| kagirandom | Kagi Small Web random | probe | none | curated | 20·1 | yes | site | web, essays |
+| wiby | Wiby | probe | none | curated | 10·1 | no | site | oldweb, web |
+| library | Starter library | open | none | curated | 600·4 | yes | site, game, article | entry tags |
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/sources-index.test.js
+const fake = (id, tier, key = 'none') => ({ id, tier, key, fate: true, rate: { perMinute: 60, concurrent: 1 }, random: async () => [], search: async () => [], more: async () => [] });
+const all = [fake('a', 'open'), fake('k', 'open', 'required'), fake('p', 'probe'), fake('n', 'navigate'), fake('v', 'privileged')];
+const ids = (xs) => xs.map(x => x.id);
+test('enabledSources applies settings, keys and the probe', () => {
+  assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'pwa', all)), ['a']);
+  assert.deepEqual(ids(enabledSources({ sources: {} }, { p: 'ok' }, 'pwa', all)), ['a', 'p']);
+  assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'android', all)), ['a', 'p', 'v']);
+  assert.deepEqual(ids(enabledSources({ sources: { a: { enabled: false }, k: { enabled: true } } }, {}, 'pwa', all)), ['k']);
+});
+test('every registered adapter has the contract shape', () => {
+  for (const [id, a] of Object.entries(SOURCES)) {
+    assert.equal(a.id, id);
+    assert.ok(['open','probe','privileged','snapshot','navigate'].includes(a.tier));
+    assert.ok(['none','demo','optional','required'].includes(a.key));
+    for (const m of ['random', 'search', 'more']) assert.equal(typeof a[m], 'function');
+    assert.ok(a.rate.perMinute > 0 && a.rate.concurrent > 0);
+  }
+});
+```
+
+```js
+// tests/unit/probe.test.js
+const ad = (id, probeUrl) => ({ id, tier: 'probe', probeUrl, rate: { perMinute: 60, concurrent: 1 } });
+test('probeSource needs a JSON reply', async () => {
+  const { ctx } = await adapterCtx();
+  assert.equal(await probeSource(ad('x', 'https://probe-ok.example/'), ctx.http), 'ok');
+  assert.equal(await probeSource(ad('x', 'https://probe-html.example/'), ctx.http), 'fail');
+  assert.equal(await probeSource(ad('x', 'https://nowhere.example/'), ctx.http), 'fail');
+  assert.equal(await probeSource({ id: 'x' }, ctx.http), 'ok');
+});
+test('runProbes stores results and re-runs after 24 h', async () => {
+  const { ctx, calls, store } = await adapterCtx();
+  const list = [ad('x', 'https://probe-ok.example/'), ad('y', 'https://nowhere.example/')];
+  assert.deepEqual(await runProbes(list, ctx.http, store, ctx.clock), { x: 'ok', y: 'fail' });
+  assert.deepEqual((await store.get('health', 'probe:pwa')).results, { x: 'ok', y: 'fail' });
+  const n = calls.length; ctx.clock.advance(3600e3);
+  await runProbes(list, ctx.http, store, ctx.clock); assert.equal(calls.length, n);
+  ctx.clock.advance(24 * 3600e3); await runProbes(list, ctx.http, store, ctx.clock); assert.ok(calls.length > n);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/sources-index.test.js tests/unit/probe.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `sources/index.js`, `sources/probe.js` and `tests/unit/helpers/fixture-http.js`**
+
+`ADAPTERS` starts empty. Probes for a list run in parallel. The kit's responses use `content-type: application/json` for `.json` files and `text/plain` for `.txt`, unless the route sets `headers`.
+
+- [ ] **Step 4: Run them and see them pass**
+
+Run: `node --test tests/unit/sources-index.test.js tests/unit/probe.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/index.js src/core/sources/probe.js tests/unit/helpers/fixture-http.js tests/fixtures/http/probe tests/fixtures/routes.js tests/unit/sources-index.test.js tests/unit/probe.test.js
+git commit -m "Add the source registry, the runtime probe and the adapter test kit"
+```
+
+### Task 6: Fate
+
+**Files:**
+- Create: `src/core/fate.js`
+- Test: `tests/unit/fate.test.js`
+
+**Interfaces:**
+- Consumes: the adapter shape (Task 5).
+- Produces: `fatePull({sources, weights, ctx, rand, seenHas, retries = 3}) → Promise<{find}|{miss: true, reason}>`. `seenHas` is async `(url) → Promise<boolean>`. Only sources with `fate: true` and weight above 0 count; a missing weight is 1. One pull makes at most `retries + 1` `random()` calls. A call that throws, returns `[]` or returns only seen finds is a miss; otherwise the first unseen find wins.
+- Reasons (exact): `'Nothing new here. Try again, or turn on more Fate sources.'` and `'No Fate sources are on. Turn some on in Settings → Sources.'`
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const find = (t) => makeFind({ source: 's', kind: 'site', title: t, url: `https://${t}.example.com/`, safety: 'curated' });
+const src = (id, outs, extra = {}) => { const calls = []; return { id, fate: true, calls, ...extra,
+  random: async () => { calls.push(1); const o = outs.shift(); if (o instanceof Error) throw o; return o ?? []; } }; };
+const never = async () => false;
+test('fatePull follows the weights', async () => {
+  const a = src('a', [[find('a')]]); const b = src('b', [[find('b')]]);
+  const r = await fatePull({ sources: [a, b], weights: { a: 0 }, ctx: {}, rand: () => 0.01, seenHas: never });
+  assert.equal(r.find.title, 'b'); assert.equal(a.calls.length, 0);
+});
+test('fatePull skips seen and failed pulls', async () => {
+  const a = src('a', [new Error('down'), [find('old')], [find('new')]]);
+  const r = await fatePull({ sources: [a], weights: {}, ctx: {}, rand: () => 0.5, seenHas: async (u) => u.includes('old') });
+  assert.equal(r.find.title, 'new');
+});
+test('fatePull gives up after 3 retries', async () => {
+  const a = src('a', []);
+  const r = await fatePull({ sources: [a], weights: {}, ctx: {}, rand: () => 0.5, seenHas: never });
+  assert.deepEqual(r, { miss: true, reason: 'Nothing new here. Try again, or turn on more Fate sources.' });
+  assert.equal(a.calls.length, 4);
+});
+test('fatePull says when no Fate source is on', async () => {
+  const r = await fatePull({ sources: [src('a', [], { fate: false })], weights: {}, ctx: {}, rand: () => 0.5, seenHas: never });
+  assert.deepEqual(r, { miss: true, reason: 'No Fate sources are on. Turn some on in Settings → Sources.' });
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/fate.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Implement `fatePull`**
+
+Each attempt draws `rand() * totalWeight` and walks the sources in order to pick one.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/fate.test.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/fate.js tests/unit/fate.test.js
+git commit -m "Add the Fate pull with weights and retries"
+```
+
 <!-- PLAN CONTINUES -->
