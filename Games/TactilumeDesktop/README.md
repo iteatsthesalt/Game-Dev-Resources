@@ -18,8 +18,9 @@ engine instead. The mobile edition lives next door in [`../Tactilume`](../Tactil
 Why it is built this way is in [docs/design.md](docs/design.md). The interfaces between its
 parts are in [CONTRACTS.md](CONTRACTS.md).
 
-**Status:** first milestone, being built. The engine draws a stand-in glow at each touch until
-the particle engine lands; the Sound and Settings panels are still to come.
+**Status:** first milestone (M1), built and tested: the WebGPU particle engine, the phone link,
+gamepads, sound, the overlay with its Phone, Sound and Settings panels, and installers from CI.
+What is still missing is listed under "Known gaps" below.
 
 ## Running it
 
@@ -33,11 +34,12 @@ npm start            # build, then open the app
 The first start downloads Electron's binary, which takes a minute.
 
 On Linux, Chromium turns WebGPU off for some graphics drivers. The app then runs the mobile
-engine. The `forceWebGPU` setting (in `settings.json` in the app's user-data folder, and in
-the Settings panel once it lands) turns WebGPU on anyway, from the next start.
+engine. "Force WebGPU" in Settings (or in the app's small menu) turns WebGPU on anyway, from
+the next start; the app offers to restart.
 
-If you run the app as root, as in some containers, add `--no-sandbox` (for example
-`npx electron . --no-sandbox`). Chromium refuses to start as root otherwise.
+Chromium refuses to start as root with its sandbox on. Run the app as an ordinary user. In a
+throwaway container where you must be root, add `--no-sandbox` (for example
+`npx electron . --no-sandbox`); never ship or document that for real use.
 
 ## Testing it
 
@@ -54,9 +56,39 @@ xvfb-run -a npm run smoke            # the real app under a virtual display (Lin
   Chromium with WebGPU on its software adapter. A shim stands in for the Electron bridge, so
   the tests can play fake phones (`window.__tlShim.emit`) and fake gamepads. Headless Chromium
   cannot show a WebGPU canvas, so the tests draw offscreen (`present=0`) and read the picture
-  back. Each part adds its own `tests/e2e/scenarios-<area>.js`.
+  back. Each part adds its own `tests/e2e/scenarios-<area>.js`; `scenarios-integration.js`
+  plays two phones, a gamepad, the mouse and a music file all at once.
 - **The smoke test** starts the real app with an empty profile, waits for the renderer to say
   it is ready, checks that the phone link answers, prints one line and exits: 0 means it works.
+
+## Known gaps
+
+Things M1 does not do yet, or that the tests cannot reach. Each is safe to leave for now.
+
+- **No phone-to-app test in one piece.** Each hop is tested on its own: the link server with
+  a real WebSocket client and the real phone page, the main process forwarding link events,
+  and the renderer with fake link events. No automated test sends a real phone's touches all
+  the way into the running Electron app.
+- **The smoke test runs the classic engine here.** Under Xvfb, Chromium turns WebGPU off, so
+  `--smoke` boots the mobile engine. The WebGPU engine was checked by hand in Electron with
+  WebGPU forced on (it calibrated and presented); the browser tests cover it otherwise.
+- **Presenting is not tested.** Headless Chromium cannot show a WebGPU canvas, so the tests
+  read the offscreen picture. The step that copies it to the screen is only checked by hand.
+- **No per-adapter tuning yet.** `docs/design.md` plans to use `subgroups` and `shader-f16`
+  where the GPU offers them, and larger workgroups where allowed. The engine requests
+  `shader-f16` but its shaders do not use it or subgroups yet; the particle passes use
+  256-wide workgroups everywhere, and eye adaptation runs on a single invocation. The engine is correct without these; they only make it faster.
+- **Settings shows no tier.** The Settings panel shows the GPU and the particle count, but not
+  the requirement tier from `docs/design.md`.
+- **One phone cannot be removed.** The link server can drop a single phone for good
+  (`kick(player)`), but there is no IPC call or button for it yet. "New code" removes the
+  way back in for everyone not yet joined.
+- **System audio on Linux** comes only from monitor inputs (PipeWire or PulseAudio), listed
+  among the inputs in the Sound panel; Electron has no loopback capture there.
+- **Fast light looks dotted on slow machines.** Trails build up frame by frame, so a speck
+  that moves further than its own size in one frame leaves a dotted trail. At 60 frames a
+  second this is slight; on the tests' software GPU (a few frames a second) it is plain.
+- **Unsigned installers.** Windows SmartScreen and macOS Gatekeeper warn on first launch.
 
 ## Making installers
 

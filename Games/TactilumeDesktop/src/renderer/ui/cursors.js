@@ -53,6 +53,18 @@ export function gamepadCursors({ hub, gamepads, engine, width, height }) {
   return out;
 }
 
+// Where a ring's name goes: centred under the ring, but always whole inside the window. A
+// gamepad cursor may sit right at the window's edge (cursors stop 2% inside it), where a
+// centred name would be cut off, so the name slides in from the sides, and goes above the
+// ring when there is no room below. → { x, y, baseline } for a centre-aligned fillText.
+export function labelPlace({ px, py, r, textWidth, width, height, k = 1 }) {
+  const half = textWidth / 2 + 2 * k;     // a little room for the dark outline
+  const x = Math.min(Math.max(px, half), Math.max(half, width - half));
+  const gap = LABEL_GAP * k;
+  const below = py + r + gap + (FONT_PX + 2) * k <= height;
+  return below ? { x, y: py + r + gap, baseline: 'top' } : { x, y: py - r - gap, baseline: 'bottom' };
+}
+
 const rgba = (c, a) => `rgba(${c.slice(0, 3).map((v) => Math.round(Math.min(1, Math.max(0, Number(v) || 0)) * 255)).join(', ')}, ${a})`;
 
 export function createCursorLayer(canvas, { hub, gamepads, engine, scale = () => 1 }) {
@@ -102,14 +114,14 @@ export function createCursorLayer(canvas, { hub, gamepads, engine, scale = () =>
     if (c.label) {
       ctx.font = `600 ${Math.round(FONT_PX * k)}px system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif`;
       ctx.textAlign = 'center';
-      ctx.textBaseline = 'top';
       ctx.lineWidth = 4 * k;
       ctx.strokeStyle = 'rgba(0, 0, 0, 0.7)';
       ctx.lineJoin = 'round';
-      const ty = py + r + LABEL_GAP * k;
-      ctx.strokeText(c.label, px, ty);
+      const at = labelPlace({ px, py, r, textWidth: ctx.measureText(c.label).width, width, height, k });
+      ctx.textBaseline = at.baseline;
+      ctx.strokeText(c.label, at.x, at.y);
       ctx.fillStyle = '#f5f6fa';
-      ctx.fillText(c.label, px, ty);
+      ctx.fillText(c.label, at.x, at.y);
     }
     ctx.restore();
   }

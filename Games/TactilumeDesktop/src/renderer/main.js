@@ -317,8 +317,14 @@ async function boot() {
     },
   };
 
+  // The behaviour crossfade the frame loop runs. Made here, before the inputs, because the
+  // gamepads ask which behaviour leads: letting go of a gathered Nova rumbles the pad.
+  const first = behaviourFor(store.scene, 1).key;
+  const blend = { a: first, b: first, mix: 1 };
+  const lead = () => (blend.mix < 0.5 ? blend.a : blend.b);
+
   const pointer = createPointer(canvas, { engine, hub, actions });
-  const gamepads = createGamepads({ engine, hub, actions, getSettings: currentSettings });
+  const gamepads = createGamepads({ engine, hub, actions, getSettings: currentSettings, getLead: lead });
   const phones = createPhones({ bridge, hub, engine, actions, store, getSettings: currentSettings });
   const autopilot = createAutopilot({ seed: TEST ? 7 : Date.now() & 0xffffff });
   ui = createUI({
@@ -343,8 +349,6 @@ async function boot() {
   }
 
   // ---- the frame loop -------------------------------------------------------------------
-  const first = behaviourFor(store.scene, 1).key;
-  const blend = { a: first, b: first, mix: 1 };
   let last = performance.now();
   let errors = 0;
 
