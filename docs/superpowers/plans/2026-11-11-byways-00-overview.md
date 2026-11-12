@@ -630,7 +630,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`voice/reader.js`**
 
-- `cardScript(find, why = null) → string[]`, where `why` is `result.why` from `engine.next` (the full form under **Other Plan 03 names** below is the one that counts).
+- `cardScript(find, why = null) → string[]`, where `why` is `result.why` from `engine.next`.
 - `createReader(tts, getSettings) → {read(sentences) → Promise<void>, stop(), pause(), resume(), get speaking}`.
 
 **`handsfree.js`**
