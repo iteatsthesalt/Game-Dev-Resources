@@ -1231,7 +1231,7 @@ Expected: FAIL with "Cannot find module '…/tools/linkcheck.js'" and "SyntaxErr
 
 - [ ] **Step 3: Implement `tools/linkcheck.js` and the `build.js` change**
 
-- `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`. `failStreak` is 0 when ok. For a dead link it is the previous streak plus 1 when `previous.checkedAt` falls on an earlier UTC date than `now` (or there is no previous result), and `max(previous streak, 1)` on the same date, because `pages.yml` also runs on pushes and by hand ("fails two days in a row", §7.5). It runs at most `concurrency` checks at once.
+- `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`. `failStreak` is 0 when ok. For a dead link it is the previous streak plus 1 when `previous.checkedAt` falls on an earlier UTC date than `now` (or there is no previous result or `checkedAt`), and `max(previous streak, 1)` on the same date, because `pages.yml` also runs on pushes and by hand ("fails two days in a row", §7.5). It runs at most `concurrency` checks at once.
 - The CLI writes the result to `--out` and prints `Checked <n> links; <m> dead; <k> flagged for review (failStreak ≥ 2).`
 - `build.js --linkcheck <file>`: when the file exists and parses, every target's `data/library.json` is written through `excludeDeadLinks`, and the build prints `Left out <n> library entries that failed two link checks in a row.` A missing file changes nothing. Plan 01's `build.test.js` already imports `tools/build.js`, so its CLI runs only when the file is run directly; keep that.
 
@@ -1339,14 +1339,14 @@ Expected: FAIL with "Cannot find module '…/tools/data-job.js'".
 
 Every request goes through one transport that adds `User-Agent: USER_AGENT` to the caller's headers. That transport feeds `createHttp`, then `createIaClient` with a memory-backed cache. Each output is built on its own:
 
-- **`daily.json`.** `rand = mulberry32(dailySeed(date))`. Draw `rCol, rOff, rWebSrc, rWebIdx, rWonder` in that order before any request.
+- **`daily.json`.** First fetch `<liveBase>data/daily.json`. When it parses with `v === 1` and `date === <date>`, write it unchanged and add it to `kept`: the first good file of a day is final, because `pages.yml` also runs on pushes and by hand. Otherwise `rand = mulberry32(dailySeed(date))`, and draw `rCol, rOff, rWebSrc, rWebIdx, rWonder` in that order before any other request.
   - Game: `cols = [...VAULT_COLLECTIONS.verified].sort()`, `col = cols[floor(rCol · 4)]`, and `q = gemQuery(col, 1).q + ' AND publicdate:[* TO <date>T00:00:00Z]'`. Count it, take `offset = floor(rOff · min(N, 10000))`, fetch one doc (`rows: 1`, `page: offset + 1`, `sort: ['identifier asc']`) and map it with `iaDocToFind(doc, {kind: 'game'})`.
-  - Web: when `rWebSrc < 0.5`, the starter library (entries with `added ≤ date`, sorted by `id`) at `floor(rWebIdx · n)`, mapped with `libraryEntryToFind`. Otherwise use `https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt`: keep the lines that pass `isHttpUrl`, map them to `siteOrigin`, dedupe and sort, then take `floor(rWebIdx · n)`. Build it with `makeFind({source: 'kagi', kind: 'site', url: origin + '/', title: domainOf(origin), description: 'A personal site from the Kagi Small Web list.', attribution: 'Kagi Small Web (MIT)', why: ['Kagi Small Web'], tags: [], safety: 'mostly'})`.
-  - Wonder: `rWonder < 1/3` → `wikiFeaturedToFind(feed.tfa)`. `rWonder < 2/3` → the picture of the day: `makeFind({source: 'commons', kind: 'image', title: image.title without 'File:', url: image.file_page, imageUrl: image.thumbnail.source, description: toPlainText(image.description.text), author: toPlainText(image.artist.text), licence: image.license.type, attribution: 'Wikimedia Commons', why: ['Wikimedia Commons: picture of the day'], safety: 'curated'})`. Otherwise `apodToFind` of `https://api.nasa.gov/planetary/apod?api_key=<apodKey>&date=<date>&thumbs=true`. The feed URL is `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD`.
-  - Any slot that throws or gives `null` fails the whole file.
+  - Web: when `rWebSrc < 0.5`, the starter library after `excludeDeadLinks(library, previous)` (`previous` as in `linkcheck.json` below), with entries `added ≤ date` sorted by `id`, at `floor(rWebIdx · n)`, mapped with `libraryEntryToFind`. Otherwise use `https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt`: keep the lines that pass `isHttpUrl`, map them to `siteOrigin`, dedupe and sort, then take `floor(rWebIdx · n)`. `HEAD` that origin through the job's transport; while it fails (a network error, 404, 410 or a status of 500 or more), move to the next index, wrapping, at most 5 tries in all (§7.6 checks Kagi finds before they are shown). Build it with `makeFind({source: 'kagi', kind: 'site', url: origin + '/', title: domainOf(origin), description: 'A personal site from the Kagi Small Web list.', attribution: 'Kagi Small Web (MIT)', why: ['Kagi Small Web'], tags: ['web'], safety: 'mostly'})`.
+  - Wonder: `rWonder < 1/3` → `wikiFeaturedToFind(feed.tfa)`. `rWonder < 2/3` → the picture of the day, with Plan 02's Commons rules: `makeFind({source: 'commons', kind: 'image', title: image.title without 'File:' and the extension, url: image.file_page, imageUrl: image.thumbnail.source, description: toPlainText(image.description.text), author: toPlainText(image.artist.text), licence: image.license.type, tags: ['photography'], why: ['Wikimedia Commons: picture of the day'], safety: 'curated'})`. Otherwise `apodToFind` of `https://api.nasa.gov/planetary/apod?api_key=<apodKey>&date=<date>&thumbs=true`. The feed URL is `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD`. When the chosen wonder throws or gives `null`, the featured article fills the slot.
+  - Any slot that still throws or gives `null` fails the whole file.
 - **`itch.json`.** Fetch every `ITCH_FEEDS` URL as text and parse it with `parseItchRss`. A feed with no items fails the file. The output is `{v: 1, generatedAt, feeds: [{feed, items}]}`.
 - **`vault-index.json`.** Run `validateCollections(ia, cache)`. For each id, use `rand = mulberry32(fnv1a32('vault-index-' + date + '-' + id))` and count `gemQuery(id, 1).q`. Then fetch `gemQuery(id, 1 + floor(rand() · ceil(min(N, 10000) / 100)))`, sort the docs by `gemScore` (`curated: CURATED_COLLECTIONS`, `currentYear` from `date`), and keep the top 24 with the contract's gem fields. A collection that throws is left out. If none succeeds, the file fails.
-- **`linkcheck.json`.** `checkLibrary({entries: library.entries, fetch, previous, now: clock.now()})`, where `previous` is the live `data/linkcheck.json` (or `null`).
+- **`linkcheck.json`.** `checkLibrary({entries: library.entries, fetch, previous, now: clock.now()})`, where `previous` is the live `data/linkcheck.json` (or `null`), fetched once before any output is built.
 - **Extras.** `webrings.json` = `{v: 1, generatedAt, ring: 'xxiivv', sites: [{url, title}]}` from `https://raw.githubusercontent.com/XXIIVV/webring/main/index.html`, matching `<li … id="<title>"…>` followed by its first `<a href="<url>">`. `neocities.json` = `{v: 1, generatedAt, sites: [{url}]}` from the unique `https://<name>.neocities.org/` links on `https://neocities.org/browse?sort_by=featured`. Each is written only with 5 or more sites. Otherwise it is skipped, and it is never reported as failed.
 - **Fallback.** When one of the four main files fails, fetch `<liveBase>data/<name>`. If it parses with `v === 1`, write it unchanged and add it to `kept`; otherwise add the name to `failed`. `generatedAt` and `checkedAt` come from `clock.now()`.
 - **CLI.** Print the three lists. When `GITHUB_STEP_SUMMARY` is set, append `## Byways data job (<date>)`, the lists and a "Flagged for review" list of library ids with `failStreak ≥ 2`. Always exit 0, so the deploy still runs.
@@ -1354,7 +1354,7 @@ Every request goes through one transport that adds `User-Agent: USER_AGENT` to t
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/data-job.test.js`
-Expected: PASS, 8 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1365,47 +1365,118 @@ git commit -m "Add the daily data job with live fallbacks"
 
 ---
 
-### Task 12: The live probe
+### Task 14: The `webring` snapshot adapter
+
+**Files:**
+- Create: `src/core/sources/webring.js`
+- Modify: `src/core/sources/index.js` (append to `ADAPTERS`), `tests/unit/sources-index.test.js` (add the `webring` row)
+- Test: `tests/unit/sources-webring.test.js`
+
+**Interfaces:**
+- Consumes: `readSnapshot` (Task 4); `makeFind`, `domainOf`; the `webrings.json` (`{v: 1, generatedAt, ring: 'xxiivv', sites: [{url, title}]}`) and `neocities.json` (`{v: 1, generatedAt, sites: [{url}]}`) shapes that the data job writes (Task 13).
+- Produces: the default-exported `webring` adapter, the contract's snapshot source: domain cards with `fate: true` and safety `mostly`, and `[]` without a throw when neither file exists.
+
+- [ ] **Step 1: Write the failing tests**
+
+Same `ctx` as Task 5 (fresh per test, `rand = () => 0`), with the routes `/data\/webrings\.json$/` → `{v: 1, ring: 'xxiivv', sites: [{url: 'https://ring1.example/', title: 'ring1'}]}` and `/data\/neocities\.json$/` → `{v: 1, sites: [{url: 'https://moss.neocities.org/'}]}` unless a test says otherwise.
+
+```js
+test('webring reads both snapshots through dataUrl and returns domain cards', async () => {
+  const finds = await webring.random(ctx);
+  assert.deepEqual(net.calls.map((c) => c.url).sort(), [DATA + 'neocities.json', DATA + 'webrings.json']);
+  assert.deepEqual(finds.map((f) => [f.title, f.url, f.why[0]]).sort(), [['moss.neocities.org', 'https://moss.neocities.org/', 'Neocities: featured'], ['ring1', 'https://ring1.example/', 'Webring: XXIIVV']]);
+  assert.deepEqual([finds[0].source, finds[0].kind, finds[0].safety], ['webring', 'site', 'mostly']);
+  assert.deepEqual((await webring.search('MOSS', ctx)).map((f) => f.title), ['moss.neocities.org']);
+});
+test('webring gives [] without throwing when neither file exists', async () => {
+  // both routes → 404
+  assert.deepEqual(await webring.random(ctx), []);
+  assert.deepEqual(await webring.search('moss', ctx), []);
+});
+```
+
+Add the `TABLE` row `webring: ['snapshot','none','mostly',60,true]` to `tests/unit/sources-index.test.js`.
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/sources-webring.test.js tests/unit/sources-index.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/sources/webring.js'".
+
+- [ ] **Step 3: Implement the adapter and the registration**
+
+`webring`: `name: 'Webrings and Neocities'`, `kinds: ['site']`, `tier: 'snapshot'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`. `random` reads both files with `readSnapshot`, joins their `sites` and returns up to 10 in a `ctx.rand` shuffle. XXIIVV members get `why: ['Webring: XXIIVV']` and the description "A member of the XXIIVV webring."; Neocities sites get `why: ['Neocities: featured']` and "A featured site on Neocities." Each is `makeFind({source: 'webring', kind: 'site', url, title: site.title || domainOf(url), tags: ['web'], safety: 'mostly', …})`. `search(query)` keeps the sites whose lowercased URL or title contains the lowercased query, up to 20. `more(find)` is `random` over the list that gave `find.why[0]`. Append the adapter to `ADAPTERS`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/sources-webring.test.js tests/unit/sources-index.test.js`
+Expected: PASS, 2 tests plus Plan 02's.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/webring.js src/core/sources/index.js tests/unit/sources-webring.test.js tests/unit/sources-index.test.js
+git commit -m "Add the webring and Neocities snapshot source"
+```
+
+---
+
+### Task 15: The live probe
 
 **Files:**
 - Create: `tools/probe-live.js`
 - Test: `tests/unit/probe-live.test.js`
 
 **Interfaces:**
-- Consumes: `SOURCES`; `PROVIDERS` from `src/core/ai/providers.js` through a dynamic `import()` (Plan 05 may not have run yet); `VAULT_COLLECTIONS` (Task 2); `IA_COLLECTIONS` (Task 4); `ITCH_FEEDS`, `parseItchRss` (Task 5); `USER_AGENT` (Task 10); `realClock`.
-- Produces: `PAGES_ORIGIN = 'https://iteatsthesalt.github.io'`; `buildTargets({sources, providers, vaultStarter}) → Array<{check: 'cors'|'framing'|'collection'|'item'|'endpoint', name, url, requestHeaders?}>`; `runLiveProbe({fetch, targets, clock = realClock}) → Promise<Array<{check, name, url, pass, detail}>>`; `toMarkdown(rows, {date}) → string`. CLI: `node tools/probe-live.js [--out probe-report.md]` (`npm run probe`).
+- Consumes: `SOURCES`; `PROVIDERS` from `src/core/ai/providers.js` through a dynamic `import()` (Plan 05 may not have run yet); `VAULT_COLLECTIONS` (Task 2); `IA_COLLECTIONS` (Task 5); `ITCH_FEEDS`, `parseItchRss` (Task 7); `USER_AGENT` (Task 12); `realClock`.
+- Produces: `PAGES_ORIGIN = 'https://iteatsthesalt.github.io'`; `OPEN_SAMPLES: {[sourceId]: [url, requestHeaders?]}`; `buildTargets({sources, providers, vaultStarter}) → Array<{check: 'cors'|'framing'|'collection'|'item'|'subcollections'|'endpoint', name, url: string|null, requestHeaders?}>`; `runLiveProbe({fetch, targets, clock = realClock}) → Promise<Array<{check, name, url, pass, detail}>>`; `toMarkdown(rows, {date}) → string`. CLI: `node tools/probe-live.js [--out probe-report.md]` (`npm run probe`).
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
-const SRC = { a: { id: 'a', tier: 'open', probeUrl: 'https://a.example/x' }, vault: { id: 'vault', tier: 'snapshot' }, itch: { id: 'itch', tier: 'privileged' } };
-const PROV = { anthropic: { id: 'anthropic', baseURL: 'https://api.anthropic.com/v1', modelsPath: '/models', auth: { header: 'x-api-key' } } };
+const SRC = { a: { id: 'a', tier: 'open', probeUrl: 'https://a.example/x' }, wikipedia: { id: 'wikipedia', tier: 'open' }, w: { id: 'w', tier: 'open' },
+  library: { id: 'library', tier: 'open' }, vault: { id: 'vault', tier: 'snapshot' }, itch: { id: 'itch', tier: 'open' } };
+const PROV = { anthropic: { id: 'anthropic', baseURL: 'https://api.anthropic.com', modelsPath: '/v1/models?limit=1000', auth: { header: 'x-api-key', prefix: '' } },
+  ollamaweb: { id: 'ollamaweb', baseURL: 'https://ollama.com/api', modelsPath: null, auth: { header: 'Authorization', prefix: 'Bearer ' } },
+  ollama: { id: 'ollama', baseURL: 'http://127.0.0.1:11434/v1', modelsPath: '/api/tags', auth: null } };
 const T = buildTargets({ sources: SRC, providers: PROV, vaultStarter: { entries: [{ id: 'ia:msdos_Whizz_1994' }] } });
 const of = (c) => T.filter((t) => t.check === c);
-test('buildTargets covers sources, providers, framing, collections and endpoints', () => {
-  assert.ok(of('cors').some((t) => t.name === 'a' && t.url === 'https://a.example/x'));
-  assert.ok(of('cors').some((t) => t.name === 'itch' && t.url === ITCH_FEEDS[0].url));
-  assert.ok(!T.some((t) => t.name === 'vault'));
-  assert.ok(of('cors').some((t) => t.name === 'provider:anthropic' && t.url === 'https://api.anthropic.com/v1/models' && t.requestHeaders === 'x-api-key,content-type'));
+const cors = (name) => of('cors').find((t) => t.name === name);
+test('buildTargets covers every source and provider, framing, collections, sub-collections and endpoints', () => {
+  assert.equal(cors('a').url, 'https://a.example/x');
+  assert.deepEqual([cors('wikipedia').url, cors('wikipedia').requestHeaders], ['https://en.wikipedia.org/api/rest_v1/page/random/summary', 'api-user-agent']);
+  assert.deepEqual([cors('w').url, cors('itch').url], [null, ITCH_FEEDS[0].url]);
+  assert.ok(!T.some((t) => ['vault', 'library', 'provider:ollama'].includes(t.name)));
+  assert.deepEqual([cors('provider:anthropic').url, cors('provider:anthropic').requestHeaders], ['https://api.anthropic.com/v1/models?limit=1000', 'x-api-key,content-type,anthropic-version,anthropic-dangerous-direct-browser-access']);
+  assert.deepEqual([cors('provider:ollamaweb').url, cors('provider:ollamaweb').requestHeaders], ['https://ollama.com/api', 'authorization,content-type']);
   assert.deepEqual(of('framing').map((t) => t.url), ['https://archive.org/embed/msdos_Scorched_Earth_1991', 'https://archive.org/embed/msdos_Whizz_1994']);
-  assert.equal(of('collection').length, 23); assert.equal(of('item').length, 1);
+  assert.deepEqual([of('collection').length, of('item').length, of('subcollections').length], [23, 1, 16]);
+  assert.equal(new URL(of('subcollections')[0].url).searchParams.get('q'), 'collection:(softwarelibrary) AND mediatype:collection');
   assert.ok(of('endpoint').some((t) => t.url === 'https://kagi.com/smallweb/api/random'));
+  assert.ok(of('endpoint').some((t) => t.name === 'archive-img' && t.url === 'https://archive.org/services/img/softwarelibrary_c64_games'));
   assert.equal(of('endpoint').filter((t) => t.url.startsWith('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/')).length, 4);
 });
 let net;
 const probe = (targets, routes) => { net = fakeFetch(routes); return runLiveProbe({ fetch: net.fetch, targets, clock: instantClock() }); };
 const acao = (v) => ({ headers: v ? { 'access-control-allow-origin': v } : {} });
 const t = (check, name, url) => ({ check, name, url });
-test('CORS passes on ACAO * after a preflight sent with Origin', async () => {
-  const [row] = await probe([of('cors')[0]], [[/a\.example/, (u, i) => ({ status: i.method === 'OPTIONS' ? 204 : 200, ...acao('*') })]]);
+test('a source passes CORS on ACAO * after a preflight sent with Origin, and fails without it', async () => {
+  const [row] = await probe([cors('a')], [[/a\.example/, (u, i) => ({ status: i.method === 'OPTIONS' ? 204 : 200, ...acao('*') })]]);
   assert.deepEqual([row.pass, row.detail], [true, 'preflight 204 ACAO=* ACAH=none; GET 200 ACAO=*']);
   const h = new Headers(net.calls[0].init.headers);
   assert.deepEqual([net.calls[0].init.method, h.get('origin'), h.get('access-control-request-method')], ['OPTIONS', PAGES_ORIGIN, 'GET']);
+  assert.equal((await probe([cors('a')], [[/a\.example/, () => ({ status: 200 })]]))[0].pass, false);
+  assert.equal((await probe([cors('w')], []))[0].detail, 'no sample URL');
 });
-test('CORS fails without ACAO, and a provider 401 with ACAO passes', async () => {
-  const prov = of('cors').find((x) => x.name === 'provider:anthropic');
-  const rows = await probe([of('cors')[0], prov], [[/a\.example/, () => ({ status: 200 })], [/anthropic/, (u, i) => ({ status: i.method === 'OPTIONS' ? 204 : 401, ...acao(PAGES_ORIGIN) })]]);
-  assert.deepEqual(rows.map((r) => r.pass), [false, true]);
+test('a provider passes only when its preflight allows every header it sends', async () => {
+  const all = 'x-api-key, content-type, anthropic-version, anthropic-dangerous-direct-browser-access';
+  const pre = (acah, status = 204) => [[/anthropic/, (u, i) => (i.method === 'OPTIONS'
+    ? { status, headers: { 'access-control-allow-origin': PAGES_ORIGIN, ...(acah ? { 'access-control-allow-headers': acah } : {}) } }
+    : { status: 401, ...acao(PAGES_ORIGIN) })]];
+  const pass = async (name, routes) => (await probe([cors(name)], routes))[0].pass;
+  assert.equal(await pass('provider:anthropic', pre(all)), true);
+  assert.equal(await pass('provider:anthropic', pre('x-api-key, content-type')), false);
+  assert.equal(await pass('provider:anthropic', pre(all, 403)), false);
+  assert.equal(await pass('provider:ollamaweb', [[/ollama/, () => ({ status: 401, headers: { 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' } })]]), false);
 });
 test('framing fails on X-Frame-Options SAMEORIGIN or a closed frame-ancestors', async () => {
   const rows = await probe(['a', 'b', 'c'].map((id) => t('framing', id, 'https://archive.org/embed/' + id)), [
@@ -1422,16 +1493,20 @@ test('collections need mediatype collection, and items need an identifier', asyn
   assert.deepEqual(rows.map((r) => r.pass), [true, false, true]);
   assert.equal(rows[1].detail, 'mediatype=missing');
 });
-test('endpoints check the itch format, the Kagi JSON and ACAO on Pages files', async () => {
+test('sub-collection rows list the ids the Vault does not know yet', async () => {
+  const [row] = await probe([of('subcollections')[0]], [[/advancedsearch/, () => ({ body: { response: { docs: [{ identifier: 'softwarelibrary_c64_demos' }, { identifier: 'softwarelibrary_c64_games' }] } } })]]);
+  assert.deepEqual([row.pass, row.detail], [true, 'new: softwarelibrary_c64_demos']);
+});
+test('endpoints check the itch format, the Kagi JSON, ACAO on Pages files and the thumbnail type', async () => {
   const pages = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/';
   const urls = [ITCH_FEEDS[0].url, 'https://kagi.com/smallweb/api/random', pages + 'daily.json', pages + 'itch.json'];
-  const rows = await probe(urls.map((u) => t('endpoint', u, u)), [
+  const rows = await probe([...urls.map((u) => t('endpoint', u, u)), of('endpoint').find((x) => x.name === 'archive-img')], [
     [/itch\.io/, () => ({ body: readFixture('itch/platform-web.xml') })], [/kagi\.com/, () => ({ body: { url: 'https://x.example/' } })],
-    [/daily\.json/, () => ({ body: {}, ...acao('*') })], [/itch\.json/, () => ({ body: {} })]]);
-  assert.deepEqual(rows.map((r) => r.pass), [true, true, true, false]);
+    [/daily\.json/, () => ({ body: {}, ...acao('*') })], [/itch\.json/, () => ({ body: {} })], [/services\/img/, () => ({ headers: { 'content-type': 'image/jpeg' } })]]);
+  assert.deepEqual(rows.map((r) => r.pass), [true, true, true, false, true]);
 });
 test('a network error fails the row', async () => {
-  const [row] = await probe([of('cors')[0]], [[/a\.example/, () => { throw new Error('ECONNRESET'); }]]);
+  const [row] = await probe([cors('a')], [[/a\.example/, () => { throw new Error('ECONNRESET'); }]]);
   assert.deepEqual([row.pass, row.detail], [false, 'network error: ECONNRESET']);
 });
 test('toMarkdown writes the report', () => {

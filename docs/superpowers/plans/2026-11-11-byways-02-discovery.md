@@ -68,9 +68,9 @@ All paths are under `Apps/Byways/`.
 | `src/data/library.json` | About 300 curated starter finds |
 | `src/ui/components/card.js` | `renderCard` with every action |
 | `src/ui/components/generated-image.js` | `generatedImage`: initial, hue from `hash64`, source badge |
-| `src/ui/views/stumble.js` | Stumble view, modes, search, Back, Rabbit Hole UI, Wiby leap |
+| `src/ui/views/stumble.js` | Stumble view, modes, Familiar ↔ Strange, search, Back, Rabbit Hole UI, Wiby leap |
 | `src/ui/views/feed.js` | Feed batches of 30 |
-| `src/ui/views/saved.js` | Collections, share, bookmarks |
+| `src/ui/views/saved.js` | Collections, share, bookmarks, **Import from link** |
 | `src/ui/views/import.js` | `#s=` preview and **Import** |
 | `src/ui/views/settings/taste.js` | Your taste section and the first-run interests step |
 | `src/ui/views/settings/sources.js` | Sources section and source keys |
@@ -315,7 +315,7 @@ test('describeChange uses the tag labels', () => {
 - [ ] **Step 2: Run them and see them fail**
 
 Run: `node --test tests/unit/tags-data.test.js tests/unit/taste.test.js`
-Expected: FAIL (`ENOENT` or a wrong tag count for `tags.json`, `ERR_MODULE_NOT_FOUND` for `taste.js`).
+Expected: FAIL: the group list of Plan 01's empty `tags.json` is wrong, and `ERR_MODULE_NOT_FOUND` for `taste.js`.
 
 - [ ] **Step 3: Write `tags.json` from the table and implement `taste.js`**
 
@@ -668,7 +668,7 @@ Expected: PASS, 6 tests.
 
 ```bash
 git add src/core/rabbit.js tests/unit/rabbit.test.js
-git commit -m "Add Rabbit Hole with source, Marginalia and local similarity"
+git commit -m "Add Rabbit Hole with source, Marginalia, local and AI steps"
 ```
 
 ### Task 8: Collections

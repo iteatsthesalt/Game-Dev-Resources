@@ -670,7 +670,7 @@ The research build showed the official Anthropic SDK bundle (83 KB gzipped) work
 | xAI | `POST /v1/responses` with `web_search`. Optional `x_search` | After Test |
 | Mistral | `POST /v1/conversations` with `web_search` (about $30 per 1,000 searches) | No: extension, Android, or through OpenRouter |
 | DeepSeek | `POST /responses`, model `deepseek-v4-pro`, `web_search` | No: Android. Extension if its Origin header is accepted |
-| Ollama, LM Studio | No search of their own. Byways passes in candidates (§12.5) | Only on this computer (Chrome shows a local-network prompt; not Safari). The extension and Android can reach other computers on your network |
+| Ollama, LM Studio | No search of their own. They return leads, which Byways looks up in its own sources (§12.5) | Only on this computer (Chrome shows a local-network prompt; not Safari). The extension and Android can reach other computers on your network |
 | Ollama web search API | `ollama.com/api/web_search` (needs a key) | Extension and Android |
 | Chrome built-in AI (Gemini Nano) | No search. It ranks and describes candidates | Desktop Chrome 148+ only, after a one-tap model download |
 | Custom OpenAI-compatible | Depends on the endpoint | Extension and Android. The web app only if CORS allows |
@@ -689,6 +689,7 @@ The research build showed the official Anthropic SDK bundle (83 KB gzipped) work
 ### 12.3 Claude AI Search request
 
 - **Headers:** `POST https://api.anthropic.com/v1/messages` with `x-api-key`, `anthropic-version: 2026-10-21`, `anthropic-dangerous-direct-browser-access: true` and `content-type: application/json`. Never send `credentials: 'include'`.
+- **Server-side fallback** (added during planning, following Anthropic's current API reference). Requests to the models the reference lists for it also send `anthropic-beta: server-side-fallback-2026-07-01` and `fallbacks: 'default'`, so a refusal can be answered by a fallback model. Cost and **Found by** follow the model that actually answered (the response's `model` field). The refusal handling below stays as the last step.
 - **Body:**
   - the chosen model and `max_tokens`;
   - `output_config.effort` set to `low`;

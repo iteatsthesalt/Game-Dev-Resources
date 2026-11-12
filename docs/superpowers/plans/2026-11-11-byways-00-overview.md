@@ -100,11 +100,11 @@ Apps/Byways/
       ai/leads.js          resolveLeads
       ai/team.js           defaultTeam, mergeFinds, runTeam
       ai/search.js         aiSearch
-      ai/openrouter-pkce.js  startPkce, finishPkce
+      ai/openrouter-pkce.js  startPkce, finishPkce, pkceMode, connectWithIdentity
       keys.js              createKeyring
     ui/
       boot.js  router.js  dom.js  a11y.js  theme.js  keymap.js  toast.js  firstrun.js
-      components/card.js  components/generated-image.js  components/cost-line.js
+      components/card.js  components/generated-image.js
       views/index.js  stumble.js  feed.js  daily.js  vault.js  saved.js  import.js
       views/settings/index.js  taste.js  sources.js  ai.js  voice.js  access.js  data.js  privacy.js  about.js  licenses.js
       handsfree-ui.js      Start button, listening indicator, Pause/Play, Stop/Mute, help card
@@ -419,7 +419,9 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   goStraightToSite: false,                       // Android site view only
   sessionLengthMin: null, exploringCue: false,
   voice: { mode: 'auto', cloudOptIn: false, voiceURI: null, rate: 1, volume: 1, lang: 'en-US' },
-    // mode 'auto' | 'always' | 'push' | 'off'; 'auto' = always on for on-device/native-13+, push elsewhere
+    // mode 'auto' | 'always' | 'push' | 'off'. Per spec §6.2, 'auto' resolves to:
+    //   'always' for web-local, for web-cloud after opt-in on browsers that are not Android, and for native continuous (Android 13+);
+    //   'push' for Android browsers (each restart beeps) and for native Android 24–32.
   ai: { provider: null, model: null, runCapUsd: 0.5, dailySearchCap: 50, dailySpendCapUsd: 2,
         baseUrls: {},                            // {[providerId]: user-entered base URL} for custom, ollama, lmstudio
         team: { enabled: false, captain: false, roles: { scout: null, digger: null, wildcard: null, captain: null } } },
@@ -574,7 +576,30 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`handsfree.js`**
 
-- `createHandsFree({engine, listener, reader, clock, getSettings, ui, leanBack = true}) → {start(), pause(), resume(), stop(), suspend(), wake(), input(), command(id, arg), get state}`.
+- `createHandsFree({engine, listener = null, reader, clock, getSettings, ui, leanBack = true, getListenMode, prepare, dispatch}) → {start(), pause(), resume(), stop(), suspend(), wake(), input(), command(id, arg), get state}`.
+  - `start()` awaits `prepare() → Promise<listener|null>`, which probes and returns a fresh listener. That listener replaces the old one, which is stopped and unsubscribed.
+  - `dispatch(id, arg)` receives the listener's command events.
+- **One controller.** `app.handsFree` is one object for the app's whole life. `boot()` creates it by calling `installHandsFreeUi(app)` (`ui/handsfree-ui.js`) once the engine exists and BEFORE `runFirstRun`, and never replaces it.
+  - `app.handsFree.start()` runs the full Start routine: probe, new listener, wake lock, media active, lean-back.
+  - Plan 07's toggle and Plan 08's no-touch start call `app.handsFree.start()`.
+- **Lean-back flag.** `installHandsFreeUi` reads `app.platform.caps.leanBack`, where absent means `true`, and passes it as `leanBack`. Plan 07 sets `caps.leanBack: false` for the side-panel surface.
+- **Engine switches for lean-back.** `engine.next({mode, ai = true, leanBack = false})`:
+  - With `ai: false`, `rabbit.next` skips the `useAi` hook. Lean-back passes `ai: settings.leanBackAI`.
+  - With `leanBack: true` and the Family filter on, `mixed` finds are skipped, including injected ones.
+- **Family filter at inject.** `engine.inject(finds, origin)` does NOT apply the Family filter to finds from a search the user asked for (origins `'search'` and `'ai'`). Tuned picks, Fate and lean-back's own pulls keep it (§7.4).
+- **Other Plan 03 names:**
+  - `cardScript(find, why = null)`, where `why` is `result.why` from `engine.next`;
+  - `Tts.speak(text, {voiceURI, rate, volume, lang})`;
+  - `createWebTts(speechSynthesis, Utterance = globalThis.SpeechSynthesisUtterance, {clock} = {})`;
+  - `createWebVoice(win, {lang = 'en-US'} = {})`;
+  - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {})`;
+  - `installKeymap({getSettings, dispatch, onTalk, target = document}) → uninstall()`.
+- **Talk button.** The bar has a **Talk** button in push mode, which works whatever the single-key setting is:
+  - a press shorter than 300 ms is a tap, which listens for one command;
+  - holding works like V;
+  - listening continues for 1.5 s after release, and a turn is capped at 8 s.
+- **Cloud-only convention.** It also covers a recogniser that is `downloadable` or `downloading` and has no opt-in: `{kind:'none', vendor, needsDownload:true, reason:'cloud-only'}`. The UI then offers both **Download offline voice** and the vendor-named opt-in.
+- **Unit helpers.** `tests/unit/helpers/handsfree-fakes.js` gives `makeHarness` and `makeListener`.
 - With `leanBack: false`, Start gives voice commands and read-aloud but no auto-advance. The extension side panel uses this, because §6.5 lists only the Byways tab as a lean-back surface in the extension.
 - Plan 03 also gives the controller:
   - the option `getListenMode() → 'always'|'push'|'off'`, and accepts `listener: null` when there is no voice;
@@ -646,6 +671,43 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 - `costOf(usage, price) → number`, where `usage = {inputTokens, outputTokens, searches}`.
 - `estimateRun(members, prices) → number`.
 - `createBudget({store, clock, settings}) → {canRun(estimateUsd) → {ok, reason}, record(providerId, usage, usd), spentToday(), searchesToday(providerId)}`.
+
+**Plan 05 additions** (from its review):
+
+- **Adapter signatures.**
+  - `search({provider, key, model, brief, transport, signal, maxUses, maxTokens, modelInfo, baseURL, role, meter})`. `AiResult` adds `unknownPrice`, `searchErrors` and `model`, the model that actually answered.
+  - `complete(...)` returns `{json, usage, costUsd}`.
+- **Search and team.**
+  - `aiSearch({query, app, env, inject = true})` returns `note` too.
+  - `runTeam` takes `settings` instead of a run-cap number, plus `resolveUrl` and `modelInfoFor`.
+  - `cost.js` adds `cautiousPrice(providerId)`, `planRun(...)` and `createMeter(capUsd)`.
+  - `grounding.js` adds `groundedFinds(result, label, {resolveUrl})`.
+  - `search.js` adds `aiReady(settings, keyring)`, `syncRabbitAi(app, env)` and `rabbitQuery(find)`.
+  - `openrouter-pkce.js` adds `pkceMode(platform)` and `connectWithIdentity({identity, transport})`.
+  - `models.js` adds `saveBaseUrl(app, providerId, url)`.
+  - `AiError` is built as `new AiError(kind, message, {provider, status, retryAfterMs, hint, setupText})`.
+- **`PROVIDERS` row fields.**
+  - `adapter`, `baseURL`, `auth` and `modelsPath` may be `null`.
+  - New fields: `modelsFallbackPath`, `modelsFromRoot`, `searchTool`, `searchModels` (RegExp), `extraHeaders`, `fallbackModels` and `userBaseURL`.
+  - `prices` keys may be `'<prefix>*'`, and a price may carry `over100k: {in, out}`.
+  - The Claude row lists every current Claude model price from the claude-api reference, including the fallback targets.
+  - OpenRouter and xAI estimates use the prices their model lists return.
+- **Claude request details.**
+  - `fallbackModels` is the reference's list (Opus 5.5, Sonnet 5.5, Fable 5.2, Fable 5.1 and Opus 5). Requests to those models send `fallbacks: 'default'` and `anthropic-beta: server-side-fallback-2026-07-01`.
+  - Cost and **Found by** follow `res.model`.
+  - The web search tool version is chosen per model from the reference's list of models that support `web_search_20260209`. Any other model gets `web_search_20250305`.
+- **Local models** (Ollama, LM Studio) return leads (§12.5). Nano ranks candidates.
+- **The cost note** shows in Plan 02's Stumble `p.note`. There is no `ui/components/cost-line.js`.
+- **Test files:** `tests/unit/ai/fake-transport.js`, `tests/e2e/helpers/ai.js` and `tests/fixtures/http/ai/README.md`, which marks unverified fixtures.
+
+**Transport rules every shell honours** (Plans 01, 07, 08):
+
+- `transport.fetch` honours `init.redirect === 'error'`. Plan 05 sends it on every request that carries a key, so a key never follows a redirect to another host.
+- With `privileged: true`, the transport reports the final URL after redirects. A browser `Response` has it in `Response.url`. A constructed `Response` (Android `nativeFetch`) carries it in the header `x-byways-final-url`.
+- `requestOrigins(origins)` takes plain origins (`scheme://host[:port]`), and each shell maps them to its own permission form.
+- `platform.identity` (when present) also has `redirectUrl: string`, the callback URL its flow catches. In the extension this is `identity.getRedirectURL()`.
+- Plan 07's `host_permissions` include `https://vertexaisearch.cloud.google.com/*`, for resolving Gemini redirect links.
+- `renderCard` (Plan 02) shows `find.meta.displayDomain` in place of `domainOf(url)` when it is set.
 
 **`ai/adapters/<name>.js`** exports:
 

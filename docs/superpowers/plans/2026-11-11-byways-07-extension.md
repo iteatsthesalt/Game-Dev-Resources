@@ -38,8 +38,8 @@
 1. **A host missing from `host_permissions`, or a check on a site outside them.** A source or provider that works in the web app must not silently fail CORS in the extension, and a link check on an arbitrary blog must not mark every find dead. Pinned by `every host the adapters and providers call is covered` (Task 1) and `transport omits cookies, drops the privileged flag and checks hosts it has no access to without CORS` (Task 3).
 2. **Rapid repeated Stumble presses** (toolbar double-click, held Alt+Shift+S). Each press must navigate once, in order, to a different find, with no unhandled rejection, and never to a find the side panel or the Byways tab already showed. Pinned by `concurrent stumbles run one at a time and never repeat a find` and `stumble skips a find another page already showed` (Task 4).
 3. **Stumble with nothing new or while offline.** The engine returns `{empty:true, reason}` or throws. The tab must stay where it is and the toolbar must say why. Pinned by `an empty pool sets the badge and title and does not navigate` and `an engine error sets the badge and does not navigate` (Task 4).
-4. **"More like this page" on a non-web tab** (`chrome://newtab/`, `about:addons`, `file:///`). The panel must still open and say it works only on web pages. Pinned by `more like this page on a non-web tab stores a not-web marker` (Task 4) and `the panel explains a not-web page` (Task 6).
-5. **Host access revoked after install** (Firefox lets users untick it). The badge must show it and the panel must offer **Grant access**, which clears once granted. Pinned by `checkAccess flags revoked hosts and clears when granted` (Task 4) and `the access banner grants and disappears` (Task 6).
+4. **"More like this page" on a non-web tab** (`chrome://newtab/`, `about:addons`, `file:///`). The panel must still open and say it works only on web pages. Pinned by `more like this page on a non-web tab stores a not-web marker` (Task 4) and `the panel explains a not-web page and a refused consent` (Task 6).
+5. **Host access revoked after install** (Firefox lets users untick it). The badge must show it, a later Stumble must not hide it, and both pages must offer **Grant access**, which clears once granted. Pinned by `checkAccess flags revoked hosts and clears when granted` and `a Stumble after lost access keeps the global warning badge` (Task 4), and `the access banner on <page> grants and disappears` for `panel.html` and `app.html` (Task 6).
 
 ---
 
@@ -172,11 +172,11 @@ Review Focus 1, in the same file. `adapterCtx` answers from `tests/fixtures/rout
 ```js
 test('every host the adapters and providers call is covered', async () => {
   const m = await extensionManifest('chrome');
-  const data = (f) => JSON.parse(readFileSync(`src/data/${f}`, 'utf8'));
+  const readJson = (f) => JSON.parse(readFileSync(`src/data/${f}`, 'utf8'));
   const { ctx } = await adapterCtx({
     secrets: { 'src:europeana': 'k', 'src:openverse': JSON.stringify({ clientId: 'id', clientSecret: 's' }),
       'src:datagov': 'k', 'src:marginalia': 'k', 'src:github': 'k' },
-    data: { library: data('library.json'), vaultStarter: data('vault-starter.json'), geocities: data('geocities-seeds.json'),
+    data: { library: readJson('library.json'), vaultStarter: readJson('vault-starter.json'), geocities: readJson('geocities-seeds.json'),
       loadSnapshot: async () => null, embedBroken: new Set() } });
   Object.assign(ctx, { platformName: 'extension', dataUrl: (f) => PAGES + 'data/' + f,
     caps: { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false, labHref: PAGES + 'lab/', framesArchive: true } });
@@ -1047,7 +1047,7 @@ git commit -m "Add the Byways tab and an e2e harness that loads the Chrome build
 - Test: `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: `showResult(result)` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})` and `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` (`ui/components/card.js`, Plan 02); `app.history.push(find)`; `app.engine.current()`, `.next({mode})`, `.feed(n)`, `.on(event, fn)`, `.rabbit.start(find)` and `.rabbit.climbOut()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers and `EXT_ROUTES`; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
+- Consumes: `showResult(result)` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})` and `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` (`ui/components/card.js`, Plan 02); `app.getSettings()`; `app.history.push(find)`; `app.engine.current()`, `.next({mode})`, `.feed(n)`, `.on(event, fn)`, `.rabbit.start(find)` and `.rabbit.climbOut()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers and `EXT_ROUTES`; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
 - Produces: nothing new for other tasks.
 
 All extras are only on `data-surface="panel"`, except the access banner, which both pages show.
