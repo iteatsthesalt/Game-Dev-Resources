@@ -1684,7 +1684,7 @@ Expected: FAIL: the "Welcome to Byways" heading is not found.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/firstrun.spec.js tests/e2e/shell.spec.js`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 

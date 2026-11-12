@@ -429,7 +429,7 @@ git commit -m "Add Tuned branch maths, scoring and filters"
   - `enabledSources(settings, probe, platformName, all = Object.values(SOURCES)) → Adapter[]`. A source is in when `settings.sources[id]?.enabled` is `true`, or is absent and the adapter's `key` is not `'required'`. A `navigate` tier source is never in, on any platform (it makes no data calls). On `'pwa'` a `probe` tier source also needs `probe[id] === 'ok'`. A `privileged` source stays in everywhere, because in the web app it reads its daily snapshot instead (Plan 04's `itch`).
   - `probeSource(adapter, http) → Promise<'ok'|'fail'>`: no `probeUrl` gives `'ok'`. Otherwise it is `'ok'` when `http.getJson(probeUrl, {source: id, timeoutMs: 8000})` resolves, or when it rejects with a `NetError` of kind `http` and a status from 400 to 499 (the host answered with CORS, so a refused `DEMO_KEY` is not a reachability problem). Anything else is `'fail'`.
   - `runProbes(adapters, http, store, clock, platformName = 'pwa') → Promise<Object<string,'ok'|'fail'>>`: reuses `health['probe:<platformName>'] = {at, results}` while it is under 24 h old and covers every adapter id.
-  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]` on every request (so a test may change `extraRoutes` later), reads `tests/fixtures/http/<file>`, records `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It takes the same route fields as `mockNet` (`file`, `body`, `json`, `status`, `headers`) plus `error: true` (throw `TypeError('Failed to fetch')`) and `hang: true` (never settle until `init.signal` aborts, then reject with an `AbortError`). It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `{http, rand: mulberry32(seed), clock: fakeClock(now), cache, settings, secrets, data, platformName: 'pwa', caps: {privilegedFetch: false, localNetworkHttp: false, inAppSiteView: false, labHref: 'lab/', framesArchive: true}, dataUrl: (f) => 'data/' + f}`, where `secrets` is `memorySecrets(secrets)` and `data.tags` is read from `src/data/tags.json`.
+  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]` on every request (so a test may change `extraRoutes` later), reads `tests/fixtures/http/<file>`, records every request as `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It takes the same route fields as `mockNet` (`file`, `body`, `json`, `status`, `headers`) plus `error: true` (throw `TypeError('Failed to fetch')`) and `hang: true` (never settle until `init.signal` aborts, then reject with an `AbortError`). It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `{http, rand: mulberry32(seed), clock: fakeClock(now), cache, settings, secrets, data, platformName: 'pwa', caps: {privilegedFetch: false, localNetworkHttp: false, inAppSiteView: false, labHref: 'lab/', framesArchive: true}, dataUrl: (f) => 'data/' + f}`, where `secrets` is `memorySecrets(secrets)` and `data.tags` is read from `src/data/tags.json`.
   - `memorySecrets(seed = {}) → SecretStore` in the same kit file: an in-memory store, `get` giving `null` for a missing id.
 
 **Adapter table.** Every adapter task builds its row exactly. Rate is `{perMinute, concurrent}`. Key ids are `SecretStore` ids.
@@ -1459,7 +1459,7 @@ git commit -m "Add the Kagi Small Web, Kagi random and Wiby adapters"
 
 **Interfaces:**
 - Consumes: `adapterCtx`, `similarLocal` (Task 7), `makeFind`, `tokenize`, `utcDate`.
-- Produces: the `library` adapter, which makes no network requests and reads `ctx.data.library.entries`. Only entries with `added ≤ utcDate(ctx.clock.now())` count. Entry to find: id `lib:<entry.id>`, `url`, `title`, `description = blurb`, `tags = entry.tags`, `kind`: `game` → `'game'`, `article` → `'article'`, otherwise `'site'`; `meta: {libraryKind: entry.kind, published: entry.added}`; why `['Starter library']`. `random` samples 10 entries with `ctx.rand` (partial Fisher–Yates). `search(q)` returns up to 20 entries whose title, blurb and tags contain every `tokenize(q)` word. `more(find)` is `similarLocal(find, <all entries as finds>, 10)`.
+- Produces: the `library` adapter, which makes no network requests and reads `ctx.data.library.entries`. Only entries with `added ≤ utcDate(ctx.clock.now())` count. Entry to find: id `lib:<entry.id>`, `url`, `title`, `description = blurb`, `tags = entry.tags`, `kind`: `game` → `'game'`, `article` → `'article'`, otherwise `'site'`; `meta: {libraryKind: entry.kind, published: entry.added}`; why `['Starter library']`. `random` returns every counted entry in a `ctx.rand` Fisher–Yates shuffle: it is local and costs no quota, and a sample would let a refill miss unseen entries (the engine keeps at most 50). `search(q)` returns up to 20 entries whose title, blurb and tags contain every `tokenize(q)` word. `more(find)` is `similarLocal(find, <all entries as finds>, 10)`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1488,7 +1488,7 @@ test('library search and more', async () => {
 
 ```js
 // add to tests/unit/sources-index.test.js
-const TABLE = { wikipedia: ['open','none','mostly',10,true], commons: ['open','none','mostly',10,false], inat: ['open','none','mostly',60,true],
+const TABLE = { wikipedia: ['open','none','mostly',10,true], commons: ['open','none','mixed',10,false], inat: ['open','none','mostly',60,true],
   openlibrary: ['open','none','mostly',60,false], apod: ['open','demo','curated',2,true], marginalia: ['open','optional','mostly',20,false],
   github: ['open','optional','mostly',10,false], hn: ['probe','none','mostly',60,false], aic: ['open','none','curated',60,true],
   met: ['probe','none','curated',60,true], cleveland: ['probe','none','curated',60,true], nasaimages: ['probe','none','curated',30,false],
@@ -1501,6 +1501,8 @@ test('the registry matches the adapter table', () => {
     assert.deepEqual([a.tier, a.key, a.safety, a.rate.perMinute, a.fate], [tier, key, safety, perMinute, fate], id);
     if (tier === 'probe') assert.match(a.probeUrl, /^https:\/\//, id);
   }
+  assert.deepEqual(['apod', 'smithsonian', 'europeana', 'openverse', 'marginalia', 'github'].map((id) => getSource(id).keyName),
+    ['src:datagov', 'src:datagov', 'src:europeana', 'src:openverse', 'src:marginalia', 'src:github']);
   for (const id of ['ia', 'vault', 'oldweb', 'itch']) assert.equal(getSource(id), undefined);
 });
 ```
@@ -1515,7 +1517,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `library.js`, and the registry te
 - [ ] **Step 4: Run them and see them pass**
 
 Run: `node --test tests/unit/src-library.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 

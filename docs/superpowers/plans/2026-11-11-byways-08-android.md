@@ -1210,20 +1210,20 @@ Expected: FAIL with `onShowCustomView`.
 
 - **Full screen:** `onShowCustomView(view, callback)` adds `view` to a black, match-parent `FrameLayout` above everything and hides the system bars with `WindowInsetsControllerCompat(window, view)` (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`). `onHideCustomView` removes it, shows the bars and calls `callback.onCustomViewHidden()`.
 - **File chooser:** `onShowFileChooser(view, callback, params)` first sends `null` to any earlier callback still waiting, then keeps the new one. It launches `ACTION_GET_CONTENT` with `CATEGORY_OPENABLE`, type `"*/*"`, and `EXTRA_ALLOW_MULTIPLE = params.mode == FileChooserParams.MODE_OPEN_MULTIPLE`, through a `StartActivityForResult` launcher registered in `onCreate`. The result's `clipData` URIs, else its `data` URI, else `null`, go to the callback. Return `true`.
-- **Back:** an `OnBackPressedCallback(true)` handles, in order:
+- **Back:** one `OnBackPressedCallback` whose `isEnabled` is `customViewShowing || siteView.isOpen || onLabOrigin || webCanHandle`. `updateBack()` recomputes it whenever one of these changes: the custom view shows or hides, the site view opens or closes, the main WebView's `onPageStarted` (which also sets `onLabOrigin` from the URL, resets `webCanHandle` to false and calls `bridge.pageStarted()`), and the `back` op `state {canHandle}`. While it is disabled, predictive back shows the back-to-home preview. `handleOnBackPressed` handles, in order:
   1. a custom view showing → hide it;
   2. the site view open → `goBack()`, or else `close()`;
   3. the main WebView on the Lab origin → `goBack()` when it can, else `loadUrl(APP_URL)`;
-  4. otherwise increment `backToken`, emit `back` `request {token}` and wait up to 500 ms for the `back` `result {token, handled}` with that token.
+  4. otherwise increment `backToken`, emit `back` `request {token}` and `handler.postDelayed(timeout, 500)`. Never wait on the main thread: the reply arrives on it.
 
-  When `handled` is false or the wait times out, set `isEnabled = false`, call `onBackPressedDispatcher.onBackPressed()`, then set `isEnabled = true`.
+  The `back` op `result {token, handled}` for the current token removes the timeout. When `handled` is false or the timeout runs, set `isEnabled = false`, call `onBackPressedDispatcher.onBackPressed()`, then call `updateBack()`.
 - **Insets:** `enableEdgeToEdge()`, then `ViewCompat.setOnApplyWindowInsetsListener(root)` pads `root` with the union of `systemBars()`, `ime()` and `displayCutout()` and returns `WindowInsetsCompat.CONSUMED`.
-- **Share-in:** `handleShare(intent)` runs from `onCreate` and `onNewIntent`. For `ACTION_SEND` with type `text/plain`, it emits `app` `shared {text}` with `EXTRA_TEXT` (or `EXTRA_SUBJECT` when the text is missing), cut to 10,000 characters. `Bridge.emit` queues it until the page says `hello`.
+- **Share-in:** `handleShare(intent)` runs from `onCreate` and `onNewIntent`. For `ACTION_SEND` with type `text/plain`, it emits `app` `shared {text}` with `EXTRA_TEXT` (or `EXTRA_SUBJECT` when the text is missing), cut to 10,000 characters. `Bridge.emit` holds it until the page sends `app.ready`, so a share that launches Byways waits for the app to start. When the main WebView is on the Lab origin, `handleShare` first loads `APP_URL`.
 
 - [ ] **Step 4: Run it to see it pass**
 
 Run: `node --test tests/unit/android-shell.test.js`
-Expected: PASS (12 tests). CI `assembleDebug` compiles the activity.
+Expected: PASS (17 tests). CI `assembleDebug` compiles the activity.
 
 - [ ] **Step 5: Commit**
 

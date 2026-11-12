@@ -1603,46 +1603,47 @@ git add src/ui/handsfree-ui.js tests/e2e/handsfree.spec.js
 git commit -m "Add the help card, the search dialog, the recap and panel holds"
 ```
 
-### Task 10: Voice settings, cloud opt-in and the first-run step
+### Task 11: Voice settings, cloud opt-in and the first-run step
 
 **Files:**
 - Create: `src/ui/views/settings/voice.js`
-- Modify: `src/ui/handsfree-ui.js`, `src/ui/views/index.js`, `tests/e2e/helpers/fakes.js`
+- Modify: `src/ui/handsfree-ui.js`, `src/ui/views/index.js`
 - Test: `tests/e2e/settings-voice.spec.js`
 
 **Interfaces:**
-- Consumes: `registerSettingsSection` (`ui/views/settings/index.js`), `registerFirstRunStep` (`ui/firstrun.js`), `startHandsFree(app)` (Task 9), `platform.voice.probe/install`, `platform.tts.voices/speak`, `app.saveSettings(patch)`.
+- Consumes: `registerSettingsSection` (`ui/views/settings/index.js`), `registerFirstRunStep` (`ui/firstrun.js`), the Start press routine (Task 9), `platform.voice.probe/install`, `platform.tts.voices/speak`, `app.saveSettings(patch)`; Task 9's fake counters (`__installs`, `__recognizers`, `__recStarts`, `__utterances`); in tests `skipFirstRun` (`helpers/app.js`).
 - Produces (all in `handsfree-ui.js`, so `voice.js` imports them without a cycle):
   - `VENDOR_NAMES = {google:'Google', apple:'Apple', microsoft:'Microsoft', mozilla:'Mozilla', android:'Android'}`;
   - `describeEngine(status) → string`, with the copy below;
-  - `renderCloudOptIn(container, app, vendor, done(accepted:boolean))`.
-  - In `fakes.js`: `window.__utterances`, one `{text, voiceURI, rate, volume}` per `speak`, and `window.__recognizers` (instances constructed) and `window.__recStarts` (calls to `start`).
+  - `renderCloudOptIn(container, app, vendor, done(accepted:boolean))`;
+  - the `handsfree` first-run step, registered when `handsfree-ui.js` loads.
 
-`describeEngine` copy:
+`describeEngine` copy (the first row that matches gives the text; `<Vendor>` is `VENDOR_NAMES[status.vendor]`):
 
 | Status | Text |
 |---|---|
 | `web-local` | `Voice runs on this device.` |
 | `none`, `needsDownload` | `Voice can run on this device after a one-time download.` |
+| `none`, `reason: 'cloud-only'` | `Voice on this device goes to <Vendor>. It stays off unless you turn on cloud voice.` |
+| `none`, other | `<reason> Keys, touch and headset buttons still work.` (`No voice here.` when `reason` is `null`) |
 | `web-cloud` | `Voice goes to <Vendor> to be recognised.` |
-| `native` | `Voice uses this phone's speech recognition.` |
-| `none`, vendor set | `Voice on this browser goes to <Vendor>. It stays off unless you turn on cloud voice.` |
-| `none`, no vendor | `No voice on this browser. Keys, touch and headset buttons still work.` |
+| `native`, vendor `android` | `Voice uses this phone's speech recognition.` |
+| `native`, other vendor | `Voice goes to <Vendor> to be recognised.` |
 
-The opt-in screen: heading `Use <Vendor> cloud voice?`; text `On this browser, voice commands are sent to <Vendor> to be turned into text. Byways never stores your audio. You can turn this off at any time in Settings, Voice.`; buttons `Turn on cloud voice` (saves `voice.cloudOptIn: true`, then `done(true)`) and `Not now` (`done(false)`).
+The opt-in screen: heading `Use <Vendor> cloud voice?`; text `On this device, voice commands are sent to <Vendor> to be turned into text. Byways never stores your audio. You can turn this off at any time in Settings, Voice.`; buttons `Turn on cloud voice` (saves `voice.cloudOptIn: true`, then `done(true)`) and `Not now` (`done(false)`).
 
 The Voice section (`id:'voice'`, `label:'Voice'`, `order:30`), top to bottom:
 - `#voice-engine`: `describeEngine(await platform.voice.probe({allowCloud}))`.
 - `Download offline voice`, only when `needsDownload`. Its click calls `platform.voice.install()`, then probes again. When `install()` resolves `false`, it announces `The offline voice could not be downloaded.` assertively.
-- `Use <Vendor> cloud voice`, only for `kind:'none'` with a vendor and no opt-in. It shows the opt-in screen in place.
-- `Cloud voice (<Vendor>)`, a checkbox, only after opting in. Unchecking saves `cloudOptIn:false`.
-- A `Listening` fieldset of radios: `Automatic` (`auto`), `Always on while Byways is open` (`always`), `Push to talk (hold V)` (`push`), `Off` (`off`).
+- `Use <Vendor> cloud voice`, only when the status has `reason: 'cloud-only'` (so a `downloadable` browser offers both buttons). It shows the opt-in screen in place.
+- `Cloud voice (<Vendor>)`, a checkbox, only when cloud voice is on and the status names a vendor. Unchecking saves `cloudOptIn:false`.
+- A `Listening` fieldset of radios: `Automatic` (`auto`), `Always on while Byways is open` (`always`), `Push or tap to talk (hold V)` (`push`), `Off` (`off`).
 - `Reading voice`, a select: `Automatic (on this device)` (value `''` saves `null`), then each voice name, with ` (online)` appended when it is not local.
 - `Speed` (range 0.5–2, step 0.1) and `Volume` (range 0–1, step 0.1).
 - `Test voice`, which speaks `This is how Byways sounds.` with the saved voice settings.
-- The line `Byways never stores your audio. A microphone grant applies to every page on iteatsthesalt.github.io.`
+- A link `How Byways handles your voice` to `#/settings/privacy`. The voice privacy copy (the vendor note and the shared-origin microphone note) lives in Plan 02's Privacy section, which this plan does not edit.
 
-The first-run step (`id:'handsfree'`, `order:30`): heading `Hands-free`; the text `Byways can read each find aloud, move on by itself and listen for commands such as "next" and "save it". Press Start once each time you open Byways.`; the engine line; `renderCloudOptIn` when the opt-in applies; `Download offline voice` when needed; and a `Start` button that calls `done()` and then `startHandsFree(app)` in the same click.
+The first-run step (`id:'handsfree'`, `order:30`): heading `Hands-free`; the text `Byways can read each find aloud, move on by itself and listen for commands such as "next" and "save it". Press Start once each time you open Byways.`; the engine line; `renderCloudOptIn` in place when the status has `reason: 'cloud-only'`; `Download offline voice` when needed; and a `Start` button that runs the Start press routine and then calls `done()`, in the same click.
 
 - [ ] **Step 1: Write the failing e2e tests**
 

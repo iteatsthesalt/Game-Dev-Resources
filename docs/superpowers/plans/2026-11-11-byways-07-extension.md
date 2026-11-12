@@ -118,10 +118,15 @@ test('mergeManifest deep-merges objects, unions arrays and lets overlay scalars 
   assert.deepEqual(base, { a: 1, list: ['x', 'y'], obj: { k: 1, keep: true } }); // inputs untouched
 });
 
+test('the version lives in the base manifest only', () => {
+  assert.equal(part('manifest.base.json').version, pkg.version);
+  for (const f of ['manifest.chrome.json', 'manifest.firefox.json']) assert.equal('version' in part(f), false, f);
+});
+
 test('chrome manifest', async () => {
-  const m = await extensionManifest('chrome', { version: '1.2.3' });
+  const m = await extensionManifest('chrome');
   assert.equal(m.manifest_version, 3);
-  assert.equal(m.version, '1.2.3');
+  assert.equal(m.version, pkg.version);
   assert.deepEqual(m.background, { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' });
   assert.equal(m.content_security_policy.extension_pages, CSP);
   assert.deepEqual([...m.permissions].sort(), ['activeTab', 'contextMenus', 'sidePanel', 'storage', 'unlimitedStorage']);
@@ -140,7 +145,8 @@ test('chrome manifest', async () => {
 });
 
 test('firefox manifest', async () => {
-  const m = await extensionManifest('firefox', { version: '1.2.3' });
+  const m = await extensionManifest('firefox');
+  assert.equal(m.version, pkg.version);
   assert.deepEqual(m.background, { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' });
   assert.equal(m.content_security_policy.extension_pages, CSP);
   assert.equal(m.side_panel, undefined);
