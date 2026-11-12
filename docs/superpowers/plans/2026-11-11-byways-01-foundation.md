@@ -1760,7 +1760,7 @@ test('a new build shows the update toast and Reload switches to it', async ({ pa
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/sw.spec.js`
-Expected: FAIL: `caches.keys()` returns `[]`, because `sw.js` has no install handler yet.
+Expected: FAIL: `caches.keys()` returns `[]`, because `sw.js` has no install handler yet, and the update test finds no toast. Only "only the app URL gets the cached shell" passes already, since a worker with no `fetch` handler sends every navigation to the network; it guards the navigation rule in Step 3.
 
 - [ ] **Step 3: Implement the handlers in `shells/pwa/sw.js`**
 

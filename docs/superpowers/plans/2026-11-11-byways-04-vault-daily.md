@@ -575,38 +575,45 @@ test('vault random returns a Vault Fate find and skips embed-broken games', asyn
   assert.deepEqual(await vault.random(ctx), []);
 });
 test('vault random falls back to the vault-index snapshot when the Archive fails', async () => {
-  // every archive.org responder throws; rand = seq(0.9)
+  // every archive.org responder throws; rand = () => 0.9
   const [f] = await vault.random(ctx);
-  assert.equal(f.source, 'vault');
-  assert.ok(['Whizz', 'Tiny Tunes', 'Big Blast', 'Comet Hopper'].includes(f.title));
+  assert.deepEqual([f.source, f.title], ['vault', 'Comet Hopper']);
+  assert.ok(net.calls.some((c) => c.url === DATA + 'vault-index.json'));
 });
-test('sources/index.js registers ia and vault', () => {
-  assert.equal(getSource('ia'), ia); assert.equal(getSource('vault'), vault);
-  assert.deepEqual([vault.tier, vault.safety, vault.fate], ['snapshot', 'curated', true]);
+test('vault search and more stay inside the Vault collections', async () => {
+  // rand = seq(0, 0.5)
+  await vault.search('whizz', ctx);
+  assert.match(new URL(net.calls.at(-1).url).searchParams.get('q'), /^\(whizz\) AND mediatype:software AND collection:\(softwarelibrary_c64_games OR /);
+  ctx.data.embedBroken.add('ia:msdos_Whizz_1994');
+  const more = await vault.more({ meta: { collection: 'softwarelibrary_msdos_shareware' } }, ctx);
+  assert.ok(new URL(net.calls.at(-1).url).searchParams.get('q').startsWith('collection:(softwarelibrary_msdos_shareware)'));
+  assert.deepEqual(more.map((f) => f.title), ['Tiny Tunes', 'Big Blast']);
 });
 ```
 
+Add to Plan 02's `tests/unit/sources-index.test.js`: the `TABLE` rows `ia: ['probe','none','mostly',60,true]` and `vault: ['snapshot','none','curated',60,true]`, and remove `'ia'` and `'vault'` from its `for (const id of ['ia', 'vault', 'oldweb', 'itch'])` loop.
+
 - [ ] **Step 2: Run the tests to see them fail**
 
-Run: `node --test tests/unit/sources-ia.test.js`
+Run: `node --test tests/unit/sources-ia.test.js tests/unit/sources-index.test.js`
 Expected: FAIL with "Cannot find module '…/src/core/sources/ia.js'".
 
 - [ ] **Step 3: Implement both adapters, `luceneEscape` and the registration**
 
 - `luceneEscape` puts a backslash before each of `+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /` and leaves spaces alone.
-- `ia`: `kinds: ['video','audio','book']`, `probeUrl: 'https://archive.org/advancedsearch.php?q=identifier%3Aprelinger&fl%5B%5D=identifier&rows=1&output=json'`. Every method gets its client from `sharedIaClient({http: ctx.http, cache: ctx.cache, clock: ctx.clock})`, and its collections from `validateCollections(ia, ctx.cache, IA_COLLECTIONS.map(c => c.id))`. `random`: pick a collection with `ctx.rand()`, count `collection:(<id>)`, `offset = floor(ctx.rand() · min(N, 10000))`, then one `rows: 1` search sorted `identifier asc`, with `fl` `identifier,title,creator,year,description,collection,mediatype`. Map it with `iaDocToFind(doc, {kind, safety, why: ['Internet Archive: ' + label]})`. `search`: 20 rows, no sort, with the query above, and each doc's kind and label come from its first collection in `IA_COLLECTIONS`. `more(find)`: `random` limited to `find.meta.collection`, or plain `random` when that is not an `IA_COLLECTIONS` id.
-- `vault`: `name: 'Internet Archive games'`, `kinds: ['game']`, `tier: 'snapshot'`, `rate: {perMinute: 60, concurrent: 2}`, no `probeUrl`. `random`: `vaultFate(client, ctx.rand, await validateCollections(client, ctx.cache))`, dropping a find whose id is in `ctx.data.embedBroken`. On any thrown error it uses `ctx.data.loadSnapshot('vault-index')` instead: it flattens every collection's `gems`, drops broken ids, picks one with `ctx.rand()`, and maps it with `iaDocToFind(gem, {kind: 'game'})`. `search`: `(<escaped>) AND mediatype:software AND collection:(<valid ids joined by OR>)`, 20 rows. `more(find)`: `shelfGems` on the shelf holding `find.meta.collection`, with `skip` set to the broken ids and `currentYear` from `ctx.clock.now()` in UTC, first 10.
-- `sources/index.js`: import both default exports and add them to `SOURCES` under `ia` and `vault`.
+- `ia`: `name: 'Internet Archive'`, `kinds: ['video','audio','book']`, `tier: 'probe'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`, `probeUrl: 'https://archive.org/advancedsearch.php?q=identifier%3Aprelinger&fl%5B%5D=identifier&rows=1&output=json'`. Every method gets its client from `sharedIaClient({http: ctx.http, cache: ctx.cache, clock: ctx.clock})`, and its collections from `validateCollections(ia, ctx.cache, IA_COLLECTIONS.map(c => c.id))`, minus the `mixed` ones while `ctx.settings.familyFilter` is on. Every method drops a find whose id is in `ctx.data.embedBroken`. `random`: pick a collection with `ctx.rand()`, count `collection:(<id>)`, `offset = floor(ctx.rand() · min(N, 10000))`, then one `rows: 1` search sorted `identifier asc`, with `fl` `identifier,title,creator,year,description,collection,mediatype`. Map it with `iaDocToFind(doc, {kind, safety, why: ['Internet Archive: ' + label]})`. `search(query)`: `q = '(' + luceneEscape(query) + ') AND collection:(' + ids.join(' OR ') + ')'`, 20 rows, no sort; each doc's kind and label come from its first collection in `IA_COLLECTIONS`. `more(find)`: `random` limited to `find.meta.collection` when that is one of the current ids, else plain `random`.
+- `vault`: `name: 'Internet Archive games'`, `kinds: ['game']`, `tier: 'snapshot'`, `key: 'none'`, `safety: 'curated'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`, no `probeUrl`. `random`: `vaultFate(client, ctx.rand, await validateCollections(client, ctx.cache))`, dropping a find whose id is in `ctx.data.embedBroken`. On any thrown error it uses `readSnapshot(ctx, 'vault-index.json')` instead: it flattens every collection's `gems`, drops broken ids, picks one with `ctx.rand()` (an empty list gives `[]`), and maps it with `iaDocToFind(gem, {kind: 'game'})`. `search(query)`: `(<escaped>) AND mediatype:software AND collection:(<valid ids joined by ' OR '>)`, 20 rows. `more(find)`: `shelfGems` on the shelf holding `find.meta.collection`, with `skip` set to the broken ids and `currentYear` from `ctx.clock.now()` in UTC, first 10.
+- `sources/index.js`: import both default exports and append them to `ADAPTERS` (Plan 02).
 
 - [ ] **Step 4: Run the tests to see them pass**
 
-Run: `node --test tests/unit/sources-ia.test.js`
-Expected: PASS, 6 tests.
+Run: `node --test tests/unit/sources-ia.test.js tests/unit/sources-index.test.js`
+Expected: PASS, 7 tests plus Plan 02's.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/sources/ia.js src/core/sources/vault.js src/core/ia/client.js src/core/sources/index.js tests/fixtures/http/ia tests/unit/sources-ia.test.js
+git add src/core/sources/ia.js src/core/sources/vault.js src/core/ia/client.js src/core/sources/index.js tests/fixtures/http/ia tests/fixtures/routes.js tests/unit/sources-ia.test.js tests/unit/sources-index.test.js
 git commit -m "Add the Archive and Vault source adapters"
 ```
 

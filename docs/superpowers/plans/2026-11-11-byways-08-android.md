@@ -1529,40 +1529,119 @@ Expected: FAIL in every test except `Connect OpenRouter finishes through the log
 
 - [ ] **Step 4: Implement `attach(app)` in `src/platform/android.js`**
 
-`attach` loads its UI imports with dynamic `import()`, so the Node tests of Tasks 6–7 stay DOM-free. It then:
+`attach` loads its UI modules with dynamic `import()`, so the Node tests of Tasks 6–7 stay DOM-free. In this order, it:
 
-- **Share-in:** handles `app` `shared {text}` with `extractSharedLink`.
-  - `null` → `showToast('That share had no link in it.')`.
-  - `share` → `win.location.hash = hash`; the router opens Import.
-  - `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: ['Shared to Byways']})`. The find is `makeFind({url, title: domainOf(url), source: 'marginalia', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`, so **More like this** uses Marginalia similar sites.
-- **Back:** handles `back` `request {token}`. Dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`. If it was cancelled, `handled = true`. Otherwise, when the hash is not `''`, `'#'` or `'#/stumble'`, call `win.history.back()` and `handled = true`. Otherwise `handled = false`. Send `back.result {token, handled}`.
-- **Site view:**
-  - `openSite` sets `siteOpen = true`, and `app` `siteClosed` sets it false.
-  - `app` `siteNext` runs `await app.engine.next({mode: app.getSettings().mode})`, then `showResult(result)`, then `openFind(result.find, 'inapp')` when there is a find.
-  - `app.engine.on('find', find => …)` opens the find in the site view when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`.
-- **Hands-free start:** when `hello.micConsent && hello.sdk >= 33 && settings.firstRunDone && ['auto', 'always'].includes(settings.voice.mode)`, call `app.handsFree?.start()` with no touch.
+1. **Subscribes.**
+   - **Share-in** (`app` `shared {text}`), through `extractSharedLink`: `null` → `showToast('That share had no link in it.')`; `share` → `win.location.hash = hash` (the router opens Import); `url` → `navigate('stumble')`, then `showResult({find, branch: 'shared', why: ['Shared to Byways']})` with `find = makeFind({url, title: domainOf(url), source: 'marginalia', kind: 'site', why: ['Shared to Byways'], safety: 'mixed'})`. The contract has no source id for a shared link; `marginalia` makes **More like this** use Marginalia similar sites.
+   - **Back** (`back` `request {token}`): dispatch `new CustomEvent('byways:back', {cancelable: true})` on `win`; if it was cancelled, `handled = true`. Otherwise, when the hash is not `''`, `'#'` or `'#/stumble'`, call `win.history.back()` and `handled = true`; else `handled = false`. Send `back.result {token, handled}`.
+   - **Site view:** every `app.openSite` the platform sends sets `siteOpen = true`. `siteClosed` sets it false and calls `app.handsFree.pause()` when the state is `'active'`, so the view does not come back by itself. `siteNext` runs `showResult(await app.engine.next({mode: app.getSettings().mode}))`. `app.engine.on('find', find => …)` calls `openFind(find)` when `siteOpen`, or when `getSettings().goStraightToSite && app.handsFree?.state === 'active'`. `sitePause` and `siteStop` call `app.handsFree.command('pause')` and `command('stop')`. While `siteOpen`, it sends `app.siteControls {state: app.handsFree?.state ?? 'idle'}` when the view opens and whenever that state changes (checked every 500 ms).
+   - **Lifecycle:** `app` `paused` calls `app.handsFree.suspend()` when the state is `'active'` or `'paused'`; `resumed` calls `wake()` when it is `'suspended'`.
+2. Sends `app.ready`, so native delivers the events it held, such as the share that launched Byways.
+3. Sends `back.state {canHandle}` now, and again whenever `canHandle` changes: on `hashchange`, and through a `MutationObserver` on `document.body` (`subtree`, `childList`, and the attributes `open` and `aria-expanded`). `canHandle` is true when the hash is not `''`, `'#'` or `'#/stumble'`, or when a `dialog[open]` or a `[aria-haspopup="menu"][aria-expanded="true"]` exists.
+4. **Starts hands-free with no touch** (§6.1) when `hello.micConsent && hello.sdk >= 33 && getSettings().firstRunDone && ['auto', 'always'].includes(getSettings().voice.mode) && app.handsFree.state === 'idle'`: it calls `startHandsFree(app)`, which probes, wires the listener, keeps the screen on, starts the media session and starts lean-back, as the **Start** button does.
 
-- [ ] **Step 5: Wire boot, About and the setting**
+- [ ] **Step 5: Wire boot, the card and the dialogs**
 
 - `src/ui/boot.js`: call `await platform.attach?.(app)` after the app object is complete, just before it is returned.
-- `about.js`: when `app.platform.app` exists, show `Version <versionName>` and a **Check for updates** button.
-  - On click, call `checkUpdate()`.
-  - `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`.
-  - Not available → `You have the latest version (<versionName>).`
-  - A rejection → `Could not check for updates. Try again later.`
-  - Each status line also goes through `announce`.
-- The dwell section: when `app.platform.caps.inAppSiteView`, add a checkbox labelled `Go straight to the site`, with the hint `In lean-back, show each find's real site instead of its card.` It is bound to `goStraightToSite` through `app.saveSettings({goStraightToSite})`.
+- `card.js`: in `makeActionHandler`, when `app.platform.caps.inAppSiteView` is true, `open` announces `Opened in the site view.` instead of `Opened in a new tab.`. While the **⋯** menu is open, a `byways:back` listener on `window` closes it the way Escape does and calls `event.preventDefault()`; closing the menu removes the listener.
+- `handsfree-ui.js`: while the help card, the recap or the search dialog is open, a `byways:back` listener closes it the way its **Close** button does, so its `hold` is released, and calls `event.preventDefault()`.
 
 - [ ] **Step 6: Run it to see it pass**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`, then `npm test`
-Expected: PASS (11 e2e tests), and all unit tests still pass.
+Expected: PASS (13 e2e tests), and all unit tests still pass.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add src/platform/android.js src/ui/boot.js src/ui/views/settings tests/e2e/helpers/fakes.js tests/e2e/android.spec.js
-git commit -m "Wire share-in, Back, the site view and updates into the Android app"
+git add src/platform/android.js src/ui/boot.js src/ui/components/card.js src/ui/handsfree-ui.js tests/e2e/helpers/fakes.js tests/e2e/android.spec.js
+git commit -m "Wire share-in, Back, the site view and hands-free into the Android app"
+```
+
+### Task 15: Android settings: updates, the site view setting, voice reasons and Tap to talk
+
+**Files:**
+- Modify: `src/ui/views/settings/about.js`, `src/ui/views/settings/access.js`, `src/ui/views/settings/voice.js`, `src/ui/handsfree-ui.js`
+- Test: `tests/e2e/android.spec.js`
+
+**Interfaces:**
+- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `sent` and the fake (Task 14).
+- Produces: the UI for `goStraightToSite` (already in `DEFAULT_SETTINGS`), which Task 14's `attach` reads.
+
+- [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`)
+
+```js
+const U = 'https://github.com/iteatsthesalt/Game-Dev-Resources/releases/download/byways-v9.9.9/byways-9.9.9.apk';
+test('About offers Download update', async ({ page }) => {
+  await openAndroid(page, { update: { available: true, latest: '9.9.9', url: U } });
+  await page.evaluate(() => { location.hash = '#/settings/about'; });
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByText('Version 9.9.9 is available.')).toBeVisible();
+  await page.getByRole('button', { name: 'Download update' }).click();
+  await expect.poll(async () => (await sent('app', 'openExternal')).at(0)?.args.url).toBe(U);
+});
+test('About says when the check fails', async ({ page }) => {
+  await openAndroid(page, { update: 'error' });
+  await page.evaluate(() => { location.hash = '#/settings/about'; });
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByText('Could not check for updates. Try again later.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Download update' })).toHaveCount(0);
+});
+test('Settings offers Go straight to the site and keeps it', async ({ page }) => {
+  await openAndroid(page); await page.evaluate(() => { location.hash = '#/settings/access'; });
+  await page.getByLabel('Go straight to the site').check(); await page.reload();
+  await page.evaluate(() => { location.hash = '#/settings/access'; });
+  await expect(page.getByLabel('Go straight to the site')).toBeChecked();
+});
+test('the PWA has no Go straight to the site', async ({ page }) => {
+  await gotoApp(page, '#/settings/access');
+  await expect(page.getByLabel('Seconds on each find')).toBeVisible();
+  await expect(page.getByLabel('Go straight to the site')).toHaveCount(0);
+});
+test('Settings says why voice is not always on', async ({ page }) => {
+  const why = 'Always-on voice needs Android 13 and on-device speech. Use Tap to talk.';
+  await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: why } });
+  await page.evaluate(() => { location.hash = '#/settings/voice'; });
+  await expect(page.locator('#voice-reason')).toHaveText(why);
+});
+test('cloud-only voice waits for the vendor opt-in', async ({ page }) => {
+  await openAndroid(page, { probe: { kind: 'none', vendor: 'google', needsDownload: false, continuous: false, reason: 'cloud-only' } });
+  await page.evaluate(() => { location.hash = '#/settings/voice'; });
+  await expect(page.getByRole('button', { name: 'Use Google cloud voice' })).toBeVisible();
+  await expect(page.locator('#voice-reason')).toHaveCount(0);
+});
+test('Tap to talk listens on a tap', async ({ page }) => {
+  await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: 'x' } });
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.getByRole('button', { name: 'Tap to talk' })).toBeVisible();
+  expect((await sent('voice', 'start')).length).toBe(0);
+  await page.getByRole('button', { name: 'Tap to talk' }).click();
+  await expect.poll(async () => (await sent('voice', 'start')).length).toBe(1);
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
+Expected: the seven new tests FAIL, waiting for **Check for updates**, the checkbox, `#voice-reason` and **Tap to talk**, except `the PWA has no Go straight to the site` and `cloud-only voice waits for the vendor opt-in`, which pin behaviour that must not change.
+
+- [ ] **Step 3: Implement the four changes**
+
+- `about.js`: when `app.platform.app` exists, show `Version <versionName>` and a **Check for updates** button. On click it calls `checkUpdate()`: `available` → the text `Version <latest> is available.` and a **Download update** button that calls `app.platform.app.openExternal(url)`; not available → `You have the latest version (<versionName>).`; a rejection → `Could not check for updates. Try again later.` Each status line also goes through `announce`.
+- `access.js`: when `app.platform.caps.inAppSiteView` is true, the `Lean-back` fieldset ends with a checkbox labelled `Go straight to the site`, with the hint `In lean-back, show each find's real site instead of its card.`, bound to `goStraightToSite` through `app.saveSettings({goStraightToSite})`.
+- `voice.js`: when `app.platform.name === 'android'`, a `#voice-reason` line under `#voice-engine` shows `status.reason` when it is set and is not `'cloud-only'` (that case already shows the vendor opt-in). Otherwise the line is not rendered.
+- `handsfree-ui.js`: when `app.platform.name === 'android'`, hands-free is not idle and `effectiveListenMode(settings.voice.mode, status)` for the last Start probe is `'push'`, `#handsfree` shows a 56 px **Tap to talk** button (§6.2: tap to talk on Android 24–32). A tap calls `app.handsFree.talk(true)`, and the next voice `state {listening:false}` calls `talk(false)`.
+
+- [ ] **Step 4: Run them to see them pass**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`, then `npm test`
+Expected: PASS (20 e2e tests), and all unit tests still pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/about.js src/ui/views/settings/access.js src/ui/views/settings/voice.js src/ui/handsfree-ui.js tests/e2e/android.spec.js
+git commit -m "Add the Android update check, site setting, voice reasons and Tap to talk"
 ```
 
 ---
