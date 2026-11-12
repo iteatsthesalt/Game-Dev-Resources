@@ -90,9 +90,9 @@ export function createRabbitHole({ sources, ctx, seenHas, pool = () => [], accep
     }
   }
 
-  async function askAi(last) {
+  async function askAi(hook, last) {
     try {
-      const found = await aiHook(last);
+      const found = await hook(last);
       return Array.isArray(found) ? found : [];
     } catch (err) {
       console.warn(`Rabbit hole: the AI hook failed: ${err?.message ?? err}`);
@@ -101,8 +101,8 @@ export function createRabbitHole({ sources, ctx, seenHas, pool = () => [], accep
   }
 
   /** The first candidate that is off the trail, unseen and accepted, or null. */
-  async function firstUsable(candidates) {
-    const onTrail = new Set(trail.map((find) => normalizeUrl(find.url)));
+  async function firstUsable(candidates, onThisTrail) {
+    const onTrail = new Set(onThisTrail.map((find) => normalizeUrl(find.url)));
     for (const candidate of candidates) {
       if (!candidate || onTrail.has(normalizeUrl(candidate.url))) continue;
       if (accept(candidate) && !(await seenHas(candidate.url))) return candidate;
@@ -110,8 +110,8 @@ export function createRabbitHole({ sources, ctx, seenHas, pool = () => [], accep
     return null;
   }
 
-  /** The steps for the last find, in order; each yields candidates only when it is called. */
-  function steps(last, ai) {
+  /** The steps for the last find, in order; each yields candidates only when it is called. `hook` is the AI hook as it was when the pick began. */
+  function steps(last, ai, hook) {
     const list = sourceList().filter((source) => typeof source.more === 'function');
     const own = last.source === SHARED ? undefined : list.find((source) => source.id === last.source);
     const marginalia = list.find((source) => source.id === MARGINALIA);
@@ -121,25 +121,38 @@ export function createRabbitHole({ sources, ctx, seenHas, pool = () => [], accep
       result.push(() => askMore(marginalia, last));
     }
     result.push(async () => similarLocal(last, pool(), POOL_PICKS));
-    if (aiHook && ai) result.push(() => askAi(last));
+    if (hook && ai) result.push(() => askAi(hook, last));
     return result;
   }
+
+  /** One pick. It gives up (null, nothing pushed) if `start` or `climbOut` replaced the trail while it awaited. */
+  async function pickNext(ai) {
+    const mine = trail;
+    const hook = aiHook;
+    if (!mine.length) return null;
+    const last = mine[mine.length - 1];
+    for (const step of steps(last, ai, hook)) {
+      const pick = await firstUsable(await step(), mine);
+      if (trail !== mine) return null;
+      if (pick) {
+        mine.push(pick);
+        return pick;
+      }
+    }
+    return null;
+  }
+
+  /** Picks run one at a time, so overlapping `next()` calls each extend the trail the one before left. */
+  let queue = Promise.resolve();
 
   return {
     start(find) {
       trail = [find];
     },
-    async next({ ai = true } = {}) {
-      if (!trail.length) return null;
-      const last = trail[trail.length - 1];
-      for (const step of steps(last, ai)) {
-        const pick = await firstUsable(await step());
-        if (pick) {
-          trail.push(pick);
-          return pick;
-        }
-      }
-      return null;
+    next({ ai = true } = {}) {
+      const run = queue.then(() => pickNext(ai));
+      queue = run.catch(() => {});
+      return run;
     },
     trail: () => [...trail],
     climbOut() {

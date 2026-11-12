@@ -22,10 +22,11 @@ test('next uses the source first, then Marginalia, then the local pool', async (
   assert.deepEqual(hole.trail().map(x => x.title), ['Start', 'A', 'M', 'Local']);
 });
 test('next skips trail and seen finds and survives a failing source', async (t) => {
-  t.mock.method(console, 'warn', () => {});
+  const warn = t.mock.method(console, 'warn', () => {});
   const start = F('Start');
   const hole = createRabbitHole({ sources: [ad('library', [new Error('down')]), ad('marginalia', [[F('Start'), F('Old'), F('B')]])], ctx: {}, seenHas: async (u) => u.includes('old.') });
   hole.start(start); assert.equal((await hole.next()).title, 'B');
+  assert.equal(warn.mock.callCount(), 1);
 });
 test('a shared link asks Marginalia whatever its kind, and an article from a source does not', async () => {
   const asked = []; const marginalia = { id: 'marginalia', more: async (f) => { asked.push(f.source); return [F('Neighbour', [], '', 'marginalia')]; } };
@@ -46,12 +47,81 @@ test('next leaves out candidates that accept rejects', async () => {
   hole.start(F('Start')); assert.equal((await hole.next()).title, 'Fine');
 });
 test('the AI hook comes after the sources and the pool, and only while it is set', async (t) => {
-  t.mock.method(console, 'warn', () => {});
+  const warn = t.mock.method(console, 'warn', () => {});
   const hole = createRabbitHole({ sources: [ad('library', [])], ctx: {}, seenHas: never, pool: () => [] });
   hole.start(F('Start')); assert.equal(await hole.next(), null);
   const asked = []; hole.useAi(async (f) => { asked.push(f.title); return [F('Start'), F('AI pick')]; });
   assert.equal(await hole.next({ ai: false }), null); assert.deepEqual(asked, []);
   assert.equal((await hole.next()).title, 'AI pick'); assert.deepEqual(asked, ['Start']);
   hole.useAi(async () => { throw new Error('down'); }); assert.equal(await hole.next(), null);
+  assert.equal(warn.mock.callCount(), 1);
   hole.useAi(null); assert.equal(await hole.next(), null); assert.equal(asked.length, 1);
+  assert.equal(warn.mock.callCount(), 1);
+});
+
+/** A source whose `more` waits until `release(found)` is called, so a test can act while a pick is in flight. */
+const gated = (id) => {
+  let release;
+  const source = { id, more: () => new Promise((resolve) => { release = resolve; }) };
+  return { source, release: (found) => release(found) };
+};
+const tick = () => new Promise((resolve) => setImmediate(resolve));
+
+test('climbOut during a pending more() leaves the trail empty and next resolves null', async () => {
+  const gate = gated('library');
+  const hole = createRabbitHole({ sources: [gate.source], ctx: {}, seenHas: never });
+  hole.start(F('Start'));
+  const pending = hole.next();
+  await tick();
+  hole.climbOut();
+  gate.release([F('Late')]);
+  assert.equal(await pending, null);
+  assert.deepEqual(hole.trail(), []);
+});
+test('start(B) during a pending next on A leaves the trail as just B', async () => {
+  const gate = gated('library');
+  const hole = createRabbitHole({ sources: [gate.source], ctx: {}, seenHas: never });
+  hole.start(F('A'));
+  const pending = hole.next();
+  await tick();
+  const b = F('B');
+  hole.start(b);
+  gate.release([F('Late')]);
+  assert.equal(await pending, null);
+  assert.deepEqual(hole.trail(), [b]);
+});
+test('two concurrent next() calls push two different finds in order', async () => {
+  const slow = (outs) => ({ id: 'library', more: async () => { await tick(); return outs.shift() ?? []; } });
+  const hole = createRabbitHole({ sources: [slow([[F('A'), F('B')], [F('A'), F('B')]])], ctx: {}, seenHas: async () => { await tick(); return false; } });
+  hole.start(F('Start'));
+  const [first, second] = await Promise.all([hole.next(), hole.next()]);
+  assert.equal(first.title, 'A');
+  assert.equal(second.title, 'B');
+  assert.deepEqual(hole.trail().map((x) => x.title), ['Start', 'A', 'B']);
+});
+test('an AI hook cleared during an earlier step is still the hook that pick uses, without a warning', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const gate = gated('library');
+  const hole = createRabbitHole({ sources: [gate.source], ctx: {}, seenHas: never, pool: () => [] });
+  const asked = [];
+  hole.useAi(async (f) => { asked.push(f.title); return [F('AI pick')]; });
+  hole.start(F('Start'));
+  const pending = hole.next();
+  await tick();
+  hole.useAi(null);
+  gate.release([]);
+  assert.equal((await pending).title, 'AI pick');
+  assert.deepEqual(asked, ['Start']);
+  assert.equal(warn.mock.callCount(), 0);
+});
+test('sources given as a function is resolved again on every next()', async () => {
+  let calls = 0;
+  let current = [ad('library', [[F('A')]])];
+  const hole = createRabbitHole({ sources: () => { calls++; return current; }, ctx: {}, seenHas: never });
+  hole.start(F('Start'));
+  assert.equal((await hole.next()).title, 'A');
+  assert.equal(calls, 1);
+  current = [ad('library', [[F('B')]])];
+  assert.equal((await hole.next()).title, 'B');
+  assert.equal(calls, 2);
 });
