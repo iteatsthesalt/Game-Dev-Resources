@@ -1624,7 +1624,7 @@ git add src/ui/views/index.js src/ui/views/settings/index.js src/ui/views/settin
 git commit -m "Add the app boot, the view registries and the About section"
 ```
 
-### Task 13: First run and the Welcome step
+### Task 14: First run and the Welcome step
 
 **Files:**
 - Create: `src/ui/firstrun.js`
@@ -1632,7 +1632,7 @@ git commit -m "Add the app boot, the view registries and the About section"
 - Test: `tests/e2e/firstrun.spec.js`
 
 **Interfaces:**
-- Consumes: `h`, `clear` (Task 11); `app.getSettings()`, `app.saveSettings(patch)` (Task 12).
+- Consumes: `h`, `clear` (Task 11); `app.getSettings()`, `app.saveSettings(patch)` (Task 13); `test`, `expect` (Task 10) and `gotoApp` (Task 13).
 - Produces: `registerFirstRunStep({id, order, render(container, app, done)})`, `runFirstRun(app) → Promise<void>`, `PRIVACY_PROMISE` = `'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.'` (the §1 promise, verbatim). Each step renders inside `section[data-firstrun="<id>"]` in `#app`.
 
 - [ ] **Step 1: Write the failing spec** `tests/e2e/firstrun.spec.js`
@@ -1643,7 +1643,8 @@ test('the first visit shows Welcome with the privacy promise, once', async ({ pa
   await page.goto('./');
   await expect(page.getByRole('heading', { level: 1, name: 'Welcome to Byways' })).toBeVisible();
   await expect(page.getByText(PRIVACY, { exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Skip' })).toBeVisible();
+  for (const name of ['Continue', 'Skip'])
+    expect((await page.getByRole('button', { name }).boundingBox()).height).toBeGreaterThanOrEqual(56);
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
   await page.reload();
@@ -1654,9 +1655,9 @@ test('steps run in order, Skip moves on, and a broken step is passed over', asyn
   await gotoApp(page);
   const done = page.evaluate(async () => {
     const f = await import(new URL('ui/firstrun.js', document.baseURI).href);
-    f.registerFirstRunStep({ id: 'b', order: 20, render: (c, app, done) => c.append(Object.assign(document.createElement('button'), { textContent: 'Finish b', onclick: done })) });
+    f.registerFirstRunStep({ id: 'b', order: 18, render: (c, app, done) => c.append(Object.assign(document.createElement('button'), { textContent: 'Finish b', onclick: done })) });
     f.registerFirstRunStep({ id: 'boom', order: 15, render: () => { throw new Error('x'); } });
-    f.registerFirstRunStep({ id: 'a', order: 10, render: c => c.append('Step a') });
+    f.registerFirstRunStep({ id: 'a', order: 12, render: c => c.append('Step a') });
     await f.runFirstRun({ getSettings: () => ({ firstRunDone: false }), saveSettings: async p => { window.__saved = p; } });
     return window.__saved;
   });
@@ -1669,6 +1670,8 @@ test('steps run in order, Skip moves on, and a broken step is passed over', asyn
 });
 ```
 
+The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`. The test steps use orders 12, 15 and 18, so they sort after Welcome (10) without relying on a tie.
+
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/firstrun.spec.js`
@@ -1676,7 +1679,7 @@ Expected: FAIL: the "Welcome to Byways" heading is not found.
 
 - [ ] **Step 3: Implement `src/ui/firstrun.js` and wire it into boot**
 
-`runFirstRun(app)` returns at once when `app.getSettings().firstRunDone` is true. Otherwise it runs the steps sorted by `order`. For each step it clears `#app` and appends a `section` with `data-firstrun=<id>`. It calls `render(section, app, done)` and appends a **Skip** button. It moves on when `done()` is called or Skip is pressed. A step whose `render` throws is passed over. After the last step it awaits `app.saveSettings({firstRunDone: true})`. The module registers the Welcome step `{id: 'welcome', order: 0}`, which renders an `h1` "Welcome to Byways" (`tabindex="-1"`, focused on show), a paragraph with `PRIVACY_PROMISE`, and a **Continue** button that calls `done`. In `boot.js`, await `runFirstRun(app)` before `startRouter(show)`.
+`runFirstRun(app)` returns at once when `app.getSettings().firstRunDone` is true. Otherwise it runs the steps sorted by `order`. For each step it clears `#app` and appends a `section` with `data-firstrun=<id>`. It calls `render(section, app, done)` and appends a **Skip** button. It moves on when `done()` is called or Skip is pressed; each acts once per step. A step whose `render` throws is passed over (logged with `console.warn`). After the last step it clears `#app` and awaits `app.saveSettings({firstRunDone: true})`. The module registers the Welcome step `{id: 'welcome', order: 10}`, which renders an `h1` "Welcome to Byways" (`tabindex="-1"`, focused on show), a paragraph with `PRIVACY_PROMISE`, and a **Continue** button that calls `done`. In `boot.js`, await `runFirstRun(app)` before `startRouter(show)`.
 
 - [ ] **Step 4: Run it and see it pass**
 

@@ -1398,16 +1398,21 @@ test('parseKagiList drops junk lines and opens the site origin', () => {
     { url: 'http://0x80.example/', title: '0x80.example' },
     { url: 'https://blog.example.net/', title: 'blog.example.net' },
     { url: 'https://www.blog.example.org/', title: 'blog.example.org' }]);
-  assert.deepEqual(parseKagiList(read('kagi/smallyt.txt'), 'smallyt'), [{ url: 'https://www.youtube.com/channel/UCabc', title: 'Tom S' }]);
+  assert.deepEqual(parseKagiList(read('kagi/smallyt.txt'), 'smallyt'), [
+    { url: 'https://www.youtube.com/channel/UCabc', title: 'Tom S' }, { url: 'https://www.youtube.com/channel/UCxyz', title: 'UCxyz' }]);
 });
-test('the Kagi lists are cached for a week', async () => {
-  const { ctx, calls } = await adapterCtx();
+test('the Kagi lists refresh weekly and survive a failed refresh', async () => {
+  const extra = []; const { ctx, calls } = await adapterCtx({ extraRoutes: extra });
   await loadKagiList(ctx, 'smallweb'); await loadKagiList(ctx, 'smallweb'); assert.equal(calls.length, 1);
   assert.equal(calls[0].url, KAGI_LISTS.smallweb);
-  ctx.clock.advance(7 * 864e5 + 1); await loadKagiList(ctx, 'smallweb'); assert.equal(calls.length, 2);
+  extra.push({ match: /smallweb\.txt/, error: true }); ctx.clock.advance(7 * 864e5 + 1);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await flush(); assert.equal(calls.length, 2);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3);
 });
-test('kagi random gives domain-only cards', async () => {
-  const { ctx } = await adapterCtx(); const out = await kagi.random(ctx);
+test('kagi random gives domain-only cards, and none before a list is loaded', async () => {
+  const { ctx } = await adapterCtx(); assert.deepEqual(await kagi.random(ctx), []);
+  for (const name of Object.keys(KAGI_LISTS)) await loadKagiList(ctx, name);
+  const out = await kagi.random(ctx);
   assert.ok(out.length >= 1 && out.length <= 5);
   for (const f of out) { assert.equal(f.imageUrl, undefined); assert.equal(f.attribution, 'Kagi Small Web list (MIT)'); assert.deepEqual(f.why, ['Kagi Small Web']); }
 });
@@ -1424,7 +1429,7 @@ test('wiby searches JSON and leaps by navigation only', async () => {
 });
 ```
 
-(`read(name)` reads `tests/fixtures/http/<name>` with `fs.readFileSync(…, 'utf8')`.)
+(`read(name)` reads `tests/fixtures/http/<name>` with `fs.readFileSync(…, 'utf8')`; `flush = () => new Promise((r) => setTimeout(r, 0))`.)
 
 - [ ] **Step 2: Run it and see it fail**
 
@@ -1436,7 +1441,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-smallweb.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 

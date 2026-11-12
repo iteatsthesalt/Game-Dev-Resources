@@ -86,26 +86,29 @@
 
 `storage.session` keys: `find:<tabId>` → `{find, branch, why}`, `pendingRabbit` → `Find`, `{error:'not-web'}` or `{error:'no-consent'}`, `permissionTabId` → number. `storage.local` keys: `secret:<id>` → string, `needsAccess` → boolean.
 
-Pages send nothing until they are told to: every `runtime.sendMessage` ends in `.catch(() => {})`, because a send with no page open rejects.
+Every `runtime.sendMessage`, in the background and in the pages, ends in `.catch(() => {})`, because a send with no receiver rejects.
 
 ### Task 1: Manifest template, overlays and merge
 
 **Files:**
 - Create: `shells/extension/manifest.base.json`, `shells/extension/manifest.chrome.json`, `shells/extension/manifest.firefox.json`
-- Modify: `tools/build.js` (add three exports; keep the CLI from running on import)
+- Modify: `tools/build.js` (add three exports)
 - Test: `tests/unit/ext-manifest.test.js`
 
 **Interfaces:**
-- Consumes: `SOURCES` from `src/core/sources/index.js`; `PROVIDERS` from `src/core/ai/providers.js`; `DEFAULT_SETTINGS` from `src/core/settings.js`; `mulberry32` from `src/core/util/hash.js`; `fakeClock` from `src/core/util/clock.js`.
+- Consumes: `SOURCES` from `src/core/sources/index.js`; `PROVIDERS` from `src/core/ai/providers.js`; Plan 02's test kit `adapterCtx({settings?, secrets?, data?, seed?, now?, extraRoutes?}) → Promise<{ctx, calls, store}>` from `tests/unit/helpers/fixture-http.js`, whose transport answers from `tests/fixtures/routes.js`.
 - Produces (in `tools/build.js`):
   - `mergeManifest(base: object, overlay: object) → object`
-  - `extensionManifest(browser: 'chrome'|'firefox', {version: string}) → Promise<object>`
+  - `extensionManifest(browser: 'chrome'|'firefox') → Promise<object>`. The version comes from `manifest.base.json`, which carries the `package.json` version (Plan 09's `checkVersions` relies on it).
   - `hostCovered(patterns: string[], url: string) → boolean`
 
 - [ ] **Step 1: Write the failing tests** in `tests/unit/ext-manifest.test.js`
 
 ```js
 const CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
+const PAGES = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/';
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+const part = (f) => JSON.parse(readFileSync(`shells/extension/${f}`, 'utf8'));
 const keys = (c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.suggested_key.default]));
 
 test('mergeManifest deep-merges objects, unions arrays and lets overlay scalars win', () => {

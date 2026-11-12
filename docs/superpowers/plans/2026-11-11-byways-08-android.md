@@ -1183,16 +1183,16 @@ git commit -m "Add the in-app site view with link rules"
 - Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
 
 **Interfaces:**
-- Consumes: `Bridge.emit` and the handler map (Task 5); `SiteView.isOpen`, `goBack`, `close` (Task 10); `MainActivity.APP_URL` (Task 2); `BridgeGate.LAB_ORIGIN` (Task 5).
-- Produces: the `back` channel (`result {token, handled}`) and the events `back` `request {token}` and `app` `shared {text}`.
+- Consumes: `Bridge.emit`, `Bridge.pageStarted` and the handler map (Task 5); `SiteView.isOpen`, `goBack`, `close` (Task 10); `MainActivity.APP_URL` (Task 2); `BridgeGate.LAB_ORIGIN` (Task 5).
+- Produces: the `back` channel (`state {canHandle}`, `result {token, handled}`) and the events `back` `request {token}` and `app` `shared {text}`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
 test('activity handles full screen, files, back, insets and share-in', () => {
   const m = R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainActivity.kt`);
-  for (const s of ['onShowCustomView', 'onHideCustomView', 'onShowFileChooser', '"*/*"', 'EXTRA_ALLOW_MULTIPLE',
-    'OnBackPressedCallback', 'enableEdgeToEdge', 'setOnApplyWindowInsetsListener', 'onNewIntent', 'Intent.EXTRA_TEXT', '"back" to'])
+  for (const s of ['onShowCustomView', 'onHideCustomView', 'onShowFileChooser', '"*/*"', 'EXTRA_ALLOW_MULTIPLE', 'OnBackPressedCallback',
+    'postDelayed', 'onPageStarted', 'pageStarted()', 'enableEdgeToEdge', 'setOnApplyWindowInsetsListener', 'onNewIntent', 'Intent.EXTRA_TEXT', '"back" to'])
     assert.ok(m.includes(s), s);
 });
 test('WebView permission requests are always denied', () => {
