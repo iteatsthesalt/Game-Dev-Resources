@@ -8,4 +8,8 @@ export default [
   { match: /page\/random\/summary/, file: 'wikipedia/random-summary.json' },
   { match: /feed\/featured\//, file: 'wikipedia/featured.json' },
   { match: /commons\.wikimedia\.org\/w\/api\.php/, file: 'commons/search.json' },
+  { match: /api\.inaturalist\.org\/v1\/observations/, file: 'inat/observations.json' },
+  { match: /openlibrary\.org\/search\.json/, file: 'openlibrary/search.json' },
+  { match: /openlibrary\.org\/subjects\//, file: 'openlibrary/subject.json' },
+  { match: /api\.nasa\.gov\/planetary\/apod/, file: 'apod/count.json' },
 ];
