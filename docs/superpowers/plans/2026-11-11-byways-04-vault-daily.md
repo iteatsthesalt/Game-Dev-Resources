@@ -1599,7 +1599,7 @@ In `pages.yml`:
 1. Add `schedule:` with `- cron: '7 0 * * *'` under `on:`, next to the existing push and `workflow_dispatch` triggers.
 2. In the build job, before the web build, add a step "Fetch the last link check" that runs `curl -fsS --max-time 20 -o linkcheck-prev.json https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/linkcheck.json || rm -f linkcheck-prev.json`.
 3. Add `--linkcheck linkcheck-prev.json` to the web build command.
-4. After the build, add a step "Daily data" that runs `node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`, with `env: NASA_API_KEY: ${{ secrets.NASA_API_KEY }}`, before `_site/` is assembled. A shared runner's IP spends `DEMO_KEY`'s 50 calls a day quickly; without the secret the job falls back to `DEMO_KEY`.
+4. After the build, add a step "Daily data" that runs `node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`, with `env: NASA_API_KEY: ${{ secrets.NASA_API_KEY }}`, before `_site/` is assembled. `DEMO_KEY` allows 50 calls a day per IP and GitHub's runner IPs are shared (free-sources.md), so the secret is worth setting; without it the job uses `DEMO_KEY`, and a failed APOD falls back to the featured article (Task 13).
 
 Keep the steps in `Apps/Byways/` like the rest of the job. In `README.md`, add to the one-time setup list: "Optional: add a `NASA_API_KEY` repository secret (a free api.data.gov key), so the daily job does not share `DEMO_KEY`."
 
