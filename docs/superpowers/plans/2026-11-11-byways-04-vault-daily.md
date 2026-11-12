@@ -1062,38 +1062,41 @@ git commit -m "Play Archive finds in place, with the watchdog and embed-broken m
 
 ---
 
-### Task 9: The Daily Fate view
+### Task 11: The Daily Fate view
 
 **Files:**
 - Create: `src/ui/views/daily.js`, `tests/fixtures/http/daily/daily-2026-11-11.json`
-- Modify: `src/ui/views/index.js` (add `import './daily.js';`), `tests/fixtures/routes.js`
+- Modify: `src/ui/views/index.js` (add `import './daily.js';`), `tests/e2e/axe.spec.js` (only when Plan 03 has created it: append `'#/daily'` to `VIEWS`)
 - Test: `tests/e2e/daily.spec.js`
 
 **Interfaces:**
-- Consumes: `loadDaily`, `backupDaily`, mappers (Task 3); `utcDate`, `nextUtcMidnight`; `mountPlayer`, `handleCardAction` (Tasks 7–8); `registerView`, `renderCard`, `announce`, `h`; `app.http`, `app.data.library`, `app.data.vaultStarter`, `app.platform.share`, `app.platform.secrets`, `app.store`, `app.clock`.
-- Produces: the `daily` route (`#/daily` and `#/daily/YYYY-MM-DD`).
+- Consumes: `loadDaily`, `backupDaily`, mappers (Task 3); `utcDate`, `nextUtcMidnight`; `renderCard`, `makeActionHandler` and the Vault's `onAction` rule (Tasks 9–10); `IDENT` (Plan 02 `sources/index.js`); `SHARE_BASE` (Plan 02 `share.js`); `registerView`, `navigate`, `announce`, `h`, `createCache`; `app.http`, `app.dataUrl`, `app.secrets`, `app.data.library`, `app.data.vaultStarter`, `app.platform.share`, `app.store`, `app.clock`.
+- Produces: the `daily` route: `#/daily`, and `#/daily/YYYY-MM-DD` through the router's `params.id`.
 
-`daily-2026-11-11.json` is `{v: 1, date: '2026-11-11', picks: […]}` with `game` = `starterToFind` of the Whizz starter entry, `web` = `libraryEntryToFind` of `lib-0002`, and `wonder` = `wikiFeaturedToFind` of the fixture `tfa`. Add to `routes.js`: `/^https:\/\/en\.wikipedia\.org\/api\/rest_v1\/feed\/featured\/\d{4}\/\d{2}\/\d{2}$/` → `daily/wiki-featured.json`, and `/^https:\/\/api\.nasa\.gov\/planetary\/apod\?.*date=/` → `daily/apod.json`.
+`daily-2026-11-11.json` is `{v: 1, date: '2026-11-11', picks: […]}` with `game` = `starterToFind` of the Whizz starter entry, `web` = `libraryEntryToFind` of `lib-0002`, and `wonder` = `wikiFeaturedToFind` of the fixture `tfa`. The spec routes the featured feed and APOD itself, because Plan 02's shared routes answer those URLs with fixtures that have no `tfa` or that list several days.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
-`test.use({locale: 'en-US', timezoneId: 'America/New_York'})`. `beforeEach`: `mockNet(page)`; route `**/data/library.json` and `**/data/vault-starter.json` to the Task 3 fixtures; route `**/data/daily.json` to `daily-2026-11-11.json` unless a test overrides it; and add an init script that defines `navigator.share` as `async (d) => { window.__shared = d; }`. `afterEach` asserts no unmocked requests. `openView` is the Task 7 helper.
+`test.use({locale: 'en-US', timezoneId: 'America/New_York'})`, with the imports of Task 9. `beforeEach` routes `**/data/library.json` → `daily/library.json` and `**/data/vault-starter.json` → `daily/vault-starter.json` (the Task 3 fixtures); `/\/data\/daily\.json(\?|$)/` → `daily/daily-2026-11-11.json` unless a test overrides it; `/en\.wikipedia\.org\/api\/rest_v1\/feed\/featured\//` → `daily/wiki-featured.json`; and `/api\.nasa\.gov\/planetary\/apod\?/` → `daily/apod.json`. Routes added in a test win over `mockNet`'s. It also adds an init script that defines `navigator.share` as `async (d) => { window.__shared = d; }`.
 
 ```js
 const at = (page, iso) => page.clock.install({ time: new Date(iso) });
-test("shows today's three picks from daily.json", async ({ page }) => {
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+const pick = (page, name) => page.getByRole('region', { name, exact: true });
+test("shows today's three picks from daily.json?d=<today>", async ({ page }) => {   // Review Focus 3
+  await at(page, '2026-11-11T15:00:00Z');
+  const asked = page.waitForRequest(/\/data\/daily\.json\?d=2026-11-11$/);
+  await gotoApp(page, '#/daily'); await asked;
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate');
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Game', 'Web', 'Wonder']);
-  for (const t of ['Picks for 2026-11-11 (UTC)', 'Whizz', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
+  for (const [n, t] of [['Game', 'Whizz'], ['Web', 'A Tiny Handmade Site'], ['Wonder', 'Ada Lovelace']]) await expect(pick(page, n).getByRole('heading', { level: 3 })).toHaveText(t);
+  await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
 });
 test('shows the next rollover in local time', async ({ page }) => {
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
   await expect(page.getByText('Next Daily Fate: 07:00 PM your time')).toBeVisible();
 });
 test('falls back to the backup pick with its label', async ({ page }) => {
-  await page.route('**/data/daily.json', (r) => r.fulfill({ status: 404, body: '' }));
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await page.route(/\/data\/daily\.json(\?|$)/, (r) => r.fulfill({ json: { v: 1 } }));   // the build's placeholder
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
   for (const t of ['Comet Hopper', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
 });
