@@ -1227,18 +1227,18 @@ test('excludeDeadLinks drops entries that failed two checks in a row', () => {
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `node --test tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js`
-Expected: FAIL with "Cannot find module '…/tools/linkcheck.js'" and "excludeDeadLinks is not a function" (or the import error).
+Expected: FAIL with "Cannot find module '…/tools/linkcheck.js'" and "SyntaxError: The requested module '../../tools/build.js' does not provide an export named 'excludeDeadLinks'".
 
 - [ ] **Step 3: Implement `tools/linkcheck.js` and the `build.js` change**
 
-- `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`, and `failStreak` is 0 when ok, else the previous streak plus 1. It runs at most `concurrency` checks at once.
+- `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`. `failStreak` is 0 when ok. For a dead link it is the previous streak plus 1 when `previous.checkedAt` falls on an earlier UTC date than `now` (or there is no previous result), and `max(previous streak, 1)` on the same date, because `pages.yml` also runs on pushes and by hand ("fails two days in a row", §7.5). It runs at most `concurrency` checks at once.
 - The CLI writes the result to `--out` and prints `Checked <n> links; <m> dead; <k> flagged for review (failStreak ≥ 2).`
-- `build.js --linkcheck <file>`: when the file exists and parses, every target's `data/library.json` is written through `excludeDeadLinks`, and the build prints `Left out <n> library entries that failed two link checks in a row.` A missing file changes nothing. Guard the CLI with `if (import.meta.url === pathToFileURL(process.argv[1]).href)` so that tests can import the module.
+- `build.js --linkcheck <file>`: when the file exists and parses, every target's `data/library.json` is written through `excludeDeadLinks`, and the build prints `Left out <n> library entries that failed two link checks in a row.` A missing file changes nothing. Plan 01's `build.test.js` already imports `tools/build.js`, so its CLI runs only when the file is run directly; keep that.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js`
-Expected: PASS, 5 tests. Then run `npm test`; expected: all unit tests pass.
+Expected: PASS, 6 tests. Then run `npm test`; expected: all unit tests pass.
 
 - [ ] **Step 5: Commit**
 

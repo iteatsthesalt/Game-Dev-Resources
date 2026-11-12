@@ -2192,7 +2192,7 @@ test('a shared collection link previews and imports', async ({ page, context }) 
   await page.goto('./' + link.slice(link.indexOf('#')));
   await expect(page.getByRole('heading', { name: 'Shared with you' })).toBeVisible();
   await expect(page.locator('p.kind')).toHaveText('A collection: Saved');
-  await page.getByRole('button', { name: 'Import' }).click(); await expect(page.getByText('Imported 1 find into Saved.')).toBeVisible();
+  await page.getByRole('button', { name: 'Import', exact: true }).click(); await expect(page.getByText('Imported 1 find into Saved.')).toBeVisible();
 });
 test('Import from link opens a pasted Byways link and refuses others', async ({ page }) => {
   const { url } = await buildShareUrl(SHARE_BASE, { v: 1, t: 'f', n: '', i: [['library', 'https://example.org/', 'Moth Atlas']] });
@@ -2404,7 +2404,7 @@ test('export, reset and import a backup', async ({ page }) => {
   await expect(page.getByText('You have seen 1 find.')).toBeVisible();
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()]);
   expect(download.suggestedFilename()).toMatch(/^byways-backup-\d{4}-\d{2}-\d{2}\.json$/);
-  await page.getByRole('button', { name: 'Reset seen' }).click(); await page.getByRole('button', { name: 'Reset' }).click();
+  await page.getByRole('button', { name: 'Reset seen' }).click(); await page.getByRole('button', { name: 'Reset', exact: true }).click();
   await expect(page.getByText('You have seen 0 finds.')).toBeVisible();
   const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import backup' }).click()]);
   await chooser.setFiles(await download.path());
@@ -2503,7 +2503,7 @@ Expected: PASS, 1 test, then the whole suite passes.
 
 ```bash
 git add src/ui/views/settings/privacy.js src/ui/views/index.js tests/e2e/settings-privacy.spec.js
-git commit -m "Add Settings → Privacy with the network table and the privacy notes"
+git commit -m "Add the Privacy settings with the network table and the privacy notes"
 ```
 
 ### Task 31: Curate the starter library

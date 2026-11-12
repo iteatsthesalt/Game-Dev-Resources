@@ -1312,13 +1312,24 @@ git commit -m "Add the one-time mic grant page, the listening toggle and lean-ba
 ### Task 8: CI: extension zips and the extension spec
 
 **Files:**
-- Modify: `.github/workflows/byways.yml` (web job), and, only if the Task 5 spike recorded "fail", `tests/e2e/extension.spec.js`
+- Modify: `.github/workflows/byways.yml` at the repo root (`../../.github/workflows/byways.yml` from `Apps/Byways`; the web job), `tests/unit/workflows.test.js`, and, only if the Task 5 spike recorded "fail", `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: `dist/chrome/` and `dist/firefox/` from `npm run e2e` (Task 2); the spike line at the top of `tests/e2e/extension.spec.js` (Task 5).
-- Produces: the `byways-extension` workflow artifact, holding `byways-chrome.zip` and `byways-firefox.zip`.
+- Consumes: `dist/chrome/` and `dist/firefox/` from `npm run e2e` (Task 2); Plan 01's web job, whose last step uploads those two folders as the `byways-extensions` artifact, and Plan 01's test `byways.yml runs the web job on Byways changes` in `tests/unit/workflows.test.js`; the spike line at the top of `tests/e2e/extension.spec.js` (Task 5).
+- Produces: the `byways-extensions` workflow artifact, now holding `byways-chrome.zip` and `byways-firefox.zip` (§17.1: "It uploads the extension zips as artifacts").
 
-- [ ] **Step 1: Add the zip and upload steps after the e2e step**
+- [ ] **Step 1: Write the failing test**
+
+In `tests/unit/workflows.test.js`, Plan 01's `byways.yml runs the web job on Byways changes` lists `'Apps/Byways/dist/chrome'` and `'Apps/Byways/dist/firefox'`. Replace those two strings with `'name: byways-extensions'`, `'Apps/Byways/dist/byways-chrome.zip'`, `'Apps/Byways/dist/byways-firefox.zip'` and `'if-no-files-found: error'`.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: FAIL on `Apps/Byways/dist/byways-chrome.zip`.
+
+- [ ] **Step 3: Zip the builds and upload the zips**
+
+In the web job, add the zip step right after the e2e step, and change Plan 01's upload step (`name: byways-extensions`) to upload the zips instead of the folders, so that CI keeps one artifact:
 
 ```yaml
       - name: Zip the extension builds
@@ -1328,14 +1339,14 @@ git commit -m "Add the one-time mic grant page, the listening toggle and lean-ba
           (cd firefox && zip -qr ../byways-firefox.zip .)
       - uses: actions/upload-artifact@v7
         with:
-          name: byways-extension
+          name: byways-extensions
           path: |
             Apps/Byways/dist/byways-chrome.zip
             Apps/Byways/dist/byways-firefox.zip
           if-no-files-found: error
 ```
 
-- [ ] **Step 2: Only if the spike line says "fail", run the extension spec under `xvfb-run`**
+- [ ] **Step 4: Only if the spike line says "fail", run the extension spec under `xvfb-run`**
 
 Add `test.skip(process.env.BYWAYS_SKIP_EXT === '1', 'This spec runs in its own xvfb-run step.');` at the top level of `tests/e2e/extension.spec.js`. Set `BYWAYS_SKIP_EXT: '1'` in the `env:` of the existing e2e step. Then add this step after it:
 
@@ -1347,24 +1358,24 @@ Add `test.skip(process.env.BYWAYS_SKIP_EXT === '1', 'This spec runs in its own x
         run: xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js
 ```
 
-- [ ] **Step 3: Check the workflow parses**
+- [ ] **Step 5: Run the test and check the workflow parses**
 
-Run (from the repo root): `npx --yes js-yaml@4.1.0 .github/workflows/byways.yml > /dev/null && echo ok`
-Expected: `ok`.
+Run: `node --test tests/unit/workflows.test.js && npx --yes js-yaml@4.1.0 ../../.github/workflows/byways.yml > /dev/null && echo ok`
+Expected: PASS, then `ok`.
 
-- [ ] **Step 4: Check the zip command locally**
+- [ ] **Step 6: Check the zip command locally**
 
 Run: `npm run build && cd dist/chrome && zip -qr ../byways-chrome.zip . && unzip -l ../byways-chrome.zip | grep -c manifest.json`
 Expected: `1`. (`dist/` is gitignored.)
 
-- [ ] **Step 5: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add .github/workflows/byways.yml tests/e2e/extension.spec.js
+git add ../../.github/workflows/byways.yml tests/unit/workflows.test.js tests/e2e/extension.spec.js
 git commit -m "Upload the extension zips from CI and run the extension spec there"
 ```
 
-Expected on the next CI run: the web job passes and lists the `byways-extension` artifact with two zips.
+Expected on the next CI run: the web job passes and lists the `byways-extensions` artifact with two zips.
 
 ### Task 9: Firefox manual checks
 

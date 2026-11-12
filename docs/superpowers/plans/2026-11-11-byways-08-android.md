@@ -949,11 +949,7 @@ Expected: Node fails with `ENOENT` on `SpeechBridge.kt`; Gradle fails with `Unre
 
 - [ ] **Step 3: Implement `SpeechErrors.toCode` and `VoiceProbe.status`**
 
-`toCode` is the table above, with every other value giving `aborted`. `status` returns all five `VoiceStatus` keys; `needsDownload` and `continuous` are `false` unless a row says otherwise. Rows, first match wins:
-1. `!hasMic` → `none`, vendor `null`, reason `Microphone permission is off. Turn it on in Android settings.`
-2. `!onDevice && !anyRecogniser` → `none`, vendor `null`, reason `This phone has no speech recogniser.`
-3. `onDevice` → `native`, vendor `android`, `needsDownload = langInstalled == false`, `continuous = sdk >= 33`, reason `null` on 33+ and otherwise `Always-on voice needs Android 13 and on-device speech. Use Tap to talk.`
-4. Cloud only: vendor `google` when `servicePackage` starts with `com.google`, else `android`. Without `allowCloud`, the contract's `{kind:'none', vendor, reason:'cloud-only'}`; with it, `native` with the Tap to talk reason.
+`toCode` is the table above, with every other value giving `aborted`. `status` returns all five `VoiceStatus` keys, with the rows the test pins, first match wins: no mic; neither `onDevice` nor any recogniser; `onDevice` (`needsDownload = langInstalled == false`, `continuous = sdk >= 33`); otherwise cloud only, with vendor `google` when `servicePackage` starts with `com.google`, else `android`, and the contract's `reason: 'cloud-only'` until `allowCloud`.
 
 - [ ] **Step 4: Implement `SpeechBridge`**
 
