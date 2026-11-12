@@ -854,8 +854,8 @@ test('expectedCsp gives each Lab page its exact CSP', () => {
   assert.equal(expectedCsp('dist/pwa/index.html'), APP_CSP);
   for (const f of ['lab/dos.html', 'dist/pwa/lab/pc.html', 'dist/pwa/lab/flash.html']) assert.equal(expectedCsp(f), LAB_CSP, f);
   assert.equal(expectedCsp('lab/index.html'), LAB_CSP.replace('frame-src ', "frame-src 'self' "));
-  assert.equal(expectedCsp('shells/android/app/src/main/assets/lab/lab/console.html'),
-    LAB_CSP.replace("style-src 'self';", "style-src 'self'; style-src-attr 'unsafe-inline';"));
+  for (const f of ['lab/console.html', 'shells/android/app/src/main/assets/lab/lab/console.html'])
+    assert.equal(expectedCsp(f), LAB_CSP.replace("style-src 'self';", "style-src 'self'; style-src-attr 'unsafe-inline';"), f);
 });
 test('checkRefs reports imports and links that do not resolve', () => {
   const have = new Set(['/out/ui/a.js', '/out/index.html', '/out/ui/styles/app.css']); const exists = p => have.has(p);
@@ -1404,11 +1404,16 @@ git commit -m "Add the DOM builder, live regions, access attributes and toasts"
 
 **Interfaces:**
 - Consumes: `flush` (Task 3, tests).
-- Produces: `ROUTES`, `registerView(route, {title, render(container, app, params), leave?})` (a later registration for the same route replaces the earlier one; an unknown route throws `Error('unknown route: <route>')`), `getView(route) → view|undefined`, `parseHash(hash) → {route, params}`, `buildHash(route, params = {}) → string`, `startRouter(render, win = globalThis)`, `navigate(route, params = {})`. `params` is `{id?: string}` for `#/<route>/<id>` (a Daily Fate date or a settings section id) and `{payload: string}` for `#s=<payload>`. `startRouter` also handles the cancelable window event `byways:back` that Plan 08 dispatches: when no listener calls `preventDefault()` and the hash is not the home view (`''`, `'#'`, `'#/'` or `'#/stumble'`), it calls `history.back()`.
+- Produces: `ROUTES`, `registerView(route, {title, render(container, app, params), leave?})` (a later registration for the same route replaces the earlier one; an unknown route throws `Error('unknown route: <route>')`), `getView(route) → view|undefined`, `parseHash(hash) → {route, params}`, `buildHash(route, params = {}) → string`, `startRouter(render, win = globalThis)`, `navigate(route, params = {})`. `params` is `{id?: string}` for `#/<route>/<id>` (a Daily Fate date or a settings section id) and `{payload: string}` for `#s=<payload>`. `startRouter` also handles the cancelable window event `byways:back` that Plan 08 dispatches. First, when a `dialog[open]` exists, it closes the topmost one and calls `preventDefault()` at once, before `dispatchEvent` returns, and does not go back; so dialogs from any plan need no Back handling of their own, and Plan 08's `attach` sees the Back as handled even at home. Otherwise, when no listener calls `preventDefault()` and the hash is not the home view (`''`, `'#'`, `'#/'` or `'#/stumble'`), it calls `history.back()`.
 
 - [ ] **Step 1: Write the failing test** `tests/unit/router.test.js`
 
-The file imports `flush` from `./helpers/async.js` and fakes a window with `const fakeWin = hash => Object.assign(new EventTarget(), { location: { hash }, history: { backs: 0, back() { this.backs++; } } });`.
+The file imports `flush` from `./helpers/async.js` and fakes a window, whose document finds the open ones among `dialogs`:
+
+```js
+const fakeWin = (hash, dialogs = []) => Object.assign(new EventTarget(), { location: { hash }, history: { backs: 0, back() { this.backs++; } },
+  document: { querySelectorAll: s => (s === 'dialog[open]' ? dialogs.filter(d => d.open) : []) } });
+```
 
 ```js
 test('parseHash reads the hash forms', () => {
@@ -1455,7 +1460,19 @@ test('byways:back goes back unless a listener cancels it or the view is home', a
   win.removeEventListener('byways:back', cancel); win.location.hash = '#/stumble';
   back(); await flush(); assert.equal(win.history.backs, 1);
 });
+test('byways:back first closes the topmost open dialog, at once and even at home', async () => {
+  const dialogs = [true, false, true].map(open => ({ open, close() { this.open = false; } }));
+  const win = fakeWin('#/stumble', dialogs); startRouter(() => {}, win);
+  const back = () => { const e = new CustomEvent('byways:back', { cancelable: true }); win.dispatchEvent(e); return e.defaultPrevented; };
+  assert.equal(back(), true); assert.deepEqual(dialogs.map(d => d.open), [true, false, false]);
+  win.location.hash = '#/feed';
+  assert.equal(back(), true); assert.deepEqual(dialogs.map(d => d.open), [false, false, false]);
+  await flush(); assert.equal(win.history.backs, 0);
+  assert.equal(back(), false); await flush(); assert.equal(win.history.backs, 1);
+});
 ```
+
+`back()` reads `defaultPrevented` straight after `dispatchEvent`, as Plan 08's `attach` does.
 
 The fake `location` fires no `hashchange` of its own, so `navigate('vault')` only changes the hash here.
 
@@ -1466,12 +1483,12 @@ Expected: FAIL with `Cannot find module` for `src/ui/router.js`.
 
 - [ ] **Step 3: Implement `src/ui/router.js`**
 
-`parseHash`: `#s=<payload>` with a non-empty payload gives `import`. Otherwise it splits `#/route/id`, lower-cases `route` and keeps it only when `ROUTES.includes(route)`; anything else gives `stumble` with no params. It decodes `id` with `decodeURIComponent` inside try/catch, drops the id when decoding fails, and ignores later segments. `buildHash` encodes `id` with `encodeURIComponent`. `startRouter(render, win)` keeps `win` for `navigate`, calls `render(route, params)` for `parseHash(win.location.hash)` at once and on each `hashchange`, and listens for `byways:back`. That listener reads `event.defaultPrevented` on a microtask (`queueMicrotask`), after every listener has run, because panels add their listeners after the router; when nothing prevented it and the hash is not home, it calls `win.history.back()`. `navigate` sets `win.location.hash`, and calls `render` directly when the hash is unchanged. The module touches no global at import.
+`parseHash`: `#s=<payload>` with a non-empty payload gives `import`. Otherwise it splits `#/route/id`, lower-cases `route` and keeps it only when `ROUTES.includes(route)`; anything else gives `stumble` with no params. It decodes `id` with `decodeURIComponent` inside try/catch, drops the id when decoding fails, and ignores later segments. `buildHash` encodes `id` with `encodeURIComponent`. `startRouter(render, win)` keeps `win` for `navigate`, calls `render(route, params)` for `parseHash(win.location.hash)` at once and on each `hashchange`, and listens for `byways:back`. Listeners on `window` run in the order they were added, and boot starts the router before Plan 08 can send a Back, while panels and menus add their listeners only while open, so this one runs first. It first takes the last element of `win.document.querySelectorAll('dialog[open]')`, which is the topmost, because a dialog opened over another comes later in the document. If there is one, it calls that dialog's `close()` and `event.preventDefault()` there and then, and stops. Otherwise it reads `event.defaultPrevented` on a microtask (`queueMicrotask`), after the later listeners have run; when nothing prevented it and the hash is not home, it calls `win.history.back()`. `navigate` sets `win.location.hash`, and calls `render` directly when the hash is unchanged. The module touches no global at import.
 
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/router.test.js`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1480,10 +1497,10 @@ git add src/ui/router.js tests/unit/router.test.js
 git commit -m "Add the hash router"
 ```
 
-### Task 13: Boot, views and the About section
+### Task 13: Data loader, boot, views and the About section
 
 **Files:**
-- Create: `src/ui/views/index.js`, `src/ui/views/settings/index.js`, `src/ui/views/settings/about.js`, `tests/e2e/helpers/app.js`
+- Create: `src/core/data.js`, `src/ui/views/index.js`, `src/ui/views/settings/index.js`, `src/ui/views/settings/about.js`, `tests/e2e/helpers/app.js`
 - Modify: `src/ui/boot.js` (replace the Task 9 stub)
 - Test: `tests/unit/boot-data.test.js`, `tests/e2e/shell.spec.js`
 
@@ -1493,7 +1510,8 @@ git commit -m "Add the hash router"
   - `views/settings/index.js`: `registerSettingsSection({id, label, order, render(container, app)})` (a later registration with the same id replaces the earlier one) and `listSettingsSections() → Array`, sorted by `order`. It registers the `settings` view.
   - `views/settings/about.js`: the `about` section (`order: 90`, label `About`) with the version, the build id and links. Plan 08 adds its update check to this file.
   - `views/index.js`: imports `./settings/index.js` and `./settings/about.js`, then registers a placeholder for each of `stumble feed daily vault saved import` that has no view yet. Later plans add their import lines above the placeholders.
-  - `boot.js`: `DATA_FILES = {tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json'}`, `EMPTY_DATA` (the empty shapes from Task 9), `loadData(fetchFn, baseUrl) → Promise<object>`, `dataUrlFor(platformName, file) → string`, `STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.'`, `VIEW_FAILED_MESSAGE = 'This view failed to load.'`, `boot(platform) → Promise<App>` with the Plan 01 `App` fields (`store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl`), and `bootFromShell()`. Plans 07 and 08 add their shells' branches to `bootFromShell`.
+  - `core/data.js`, the one data loader, DOM-free: `DATA_FILES = {tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json'}`, `EMPTY_DATA` (the empty shapes from Task 9), `dataUrlFor(platformName, file) → string`, and `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities}>`, which also registers the `pages` Http source (`perMinute: 30, concurrent: 2`) on `http`. Plan 04 adds `embedBroken`, read from `store`, and Plan 07's background calls the same function.
+  - `boot.js`: re-exports `DATA_FILES`, `EMPTY_DATA`, `dataUrlFor` and `loadAppData`; `STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.'`, `VIEW_FAILED_MESSAGE = 'This view failed to load.'`, `boot(platform) → Promise<App>` with the Plan 01 `App` fields (`store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl`, where `dataUrl(file)` is `dataUrlFor(platform.name, file)`), and `bootFromShell()`. `bootFromShell` boots only the `pwa` shell. The extension's pages boot from `shells/extension/panel.js` (Plan 07) and Android from `assets/www/android-boot.js` (Plan 08), and both call `boot(platform)`.
   - The routed page: `#app` holds one `div.view`, with the view's `title` as its `h1` and then `div.view-body`, the container passed to `render`. A view never renders an `h1`; one that must change its heading text sets `container.closest('.view').querySelector('h1').textContent`.
   - `tests/e2e/helpers/app.js`: `skipFirstRun(page) → Promise<void>` and `gotoApp(page, hash = '#/stumble') → Promise<void>`.
 
@@ -1501,25 +1519,43 @@ View titles: `stumble` "Stumble", `feed` "Feed", `daily` "Daily Fate", `vault` "
 
 - [ ] **Step 1: Write the failing unit test** `tests/unit/boot-data.test.js`
 
+The file imports `DATA_FILES`, `EMPTY_DATA`, `dataUrlFor` and `loadAppData` from `../../src/core/data.js`, and `openStore` and `memoryBackend` from `../../src/core/store/db.js`.
+
 ```js
-test('loadData falls back to empty shapes for missing or broken files', async () => {
+test('loadAppData reads the four files, falls back to empty shapes and registers pages', async () => {
+  const base = 'http://localhost:4321/Game-Dev-Resources/byways/'; const urls = [], registered = [];
   const fetchFn = async url => {
+    urls.push(url);
     if (url.endsWith('/data/tags.json')) return Response.json({ v: 1, groups: [{ id: 'g', label: 'G', tags: [] }] });
     if (url.endsWith('/data/library.json')) return new Response('nope', { status: 404 });
     if (url.endsWith('/data/vault-starter.json')) throw new TypeError('offline');
     return new Response('{not json');
   };
-  const data = await loadData(fetchFn, 'http://localhost:4321/Game-Dev-Resources/byways/');
+  const http = { register: (id, opts) => registered.push([id, opts]) };
+  const data = await loadAppData({ fetchFn, base, dataUrl: f => dataUrlFor('pwa', f), http, store: await openStore(memoryBackend()) });
   assert.equal(data.tags.groups[0].id, 'g');
   assert.deepEqual([data.library, data.vaultStarter, data.geocities], [EMPTY_DATA.library, EMPTY_DATA.vaultStarter, EMPTY_DATA.geocities]);
   assert.notEqual(data.library, EMPTY_DATA.library);
+  assert.deepEqual(urls.sort(), Object.values(DATA_FILES).map(f => base + 'data/' + f).sort());
+  assert.deepEqual(registered, [['pages', { perMinute: 30, concurrent: 2 }]]);
+});
+test('DATA_FILES and EMPTY_DATA hold the four src/data files', () => {
+  assert.deepEqual(DATA_FILES, { tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json' });
+  assert.deepEqual([EMPTY_DATA.tags, EMPTY_DATA.library, EMPTY_DATA.vaultStarter, EMPTY_DATA.geocities],
+    [{ v: 1, groups: [] }, { v: 1, entries: [] }, { v: 1, entries: [] }, { v: 1, urls: [] }]);
 });
 test('dataUrlFor is relative in the PWA and the Pages URL elsewhere', () => {
   assert.equal(dataUrlFor('pwa', 'daily.json'), 'data/daily.json');
   for (const p of ['extension', 'android'])
     assert.equal(dataUrlFor(p, 'itch.json'), 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/itch.json');
 });
+test('boot.js re-exports the data loader', async () => {
+  const boot = await import('../../src/ui/boot.js');
+  for (const [name, value] of Object.entries({ DATA_FILES, EMPTY_DATA, dataUrlFor, loadAppData })) assert.equal(boot[name], value, name);
+});
 ```
+
+The last test also holds `boot.js` and every view module it imports to the import-time rule, since Node has no `document`.
 
 - [ ] **Step 2: Write the failing e2e spec** `tests/e2e/shell.spec.js`
 
@@ -1589,7 +1625,7 @@ CI builds with `GITHUB_SHA` as the build id, so the About test reads the id from
 - [ ] **Step 3: Run them and see them fail**
 
 Run: `node --test tests/unit/boot-data.test.js`
-Expected: FAIL with `SyntaxError: The requested module '../../src/ui/boot.js' does not provide an export named …`, because `boot.js` is still the Task 9 stub.
+Expected: FAIL with `Cannot find module` for `src/core/data.js`.
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
 Expected: FAIL with `Cannot find module` for `./helpers/app.js`.
 
@@ -1601,15 +1637,15 @@ The settings view's `render(container, app, params)`: with no matching `params.i
 
 `views/index.js` imports `./settings/index.js` and `./settings/about.js`, then registers each placeholder whose route `getView` does not know yet.
 
-- [ ] **Step 5: Implement `boot.js`**
+- [ ] **Step 5: Implement `src/core/data.js` and `boot.js`**
 
-`loadData` fetches `new URL('data/' + file, baseUrl).href` for each `DATA_FILES` entry in parallel. A failed fetch, a non-ok status or bad JSON gives `structuredClone(EMPTY_DATA[key])`. `dataUrlFor('pwa', file)` is `'data/' + file`. For any other platform it is `'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/' + file`, because those builds hold no generated data files.
+`loadAppData({fetchFn, base, dataUrl, http, store})` first calls `http.register('pages', {perMinute: 30, concurrent: 2})`, the Http source that Plan 04's reads of generated files name, so no later plan registers it again. It then fetches `new URL('data/' + file, base).href` through `fetchFn` for each `DATA_FILES` entry in parallel. A failed fetch, a non-ok status or bad JSON gives `structuredClone(EMPTY_DATA[key])`. It resolves `{tags, library, vaultStarter, geocities}`. `dataUrl` and `store` are unused in this plan. Callers pass them anyway, so Plan 04 can read `store` without changing any caller. `dataUrlFor('pwa', file)` is `'data/' + file`. For any other platform it is `'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/' + file`, because those builds hold no generated data files. The module touches no DOM (the core boundary), because Plan 07's background imports it. `boot.js` re-exports the four names with `export { … } from '../core/data.js'`.
 
 `boot(platform)`:
 1. Opens `openStore(idbBackend())`. If that rejects, it opens `openStore(memoryBackend())` and, after step 7, calls `announce(STORAGE_OFF_MESSAGE, {assertive: true})`.
 2. Loads settings and calls `applyAccessSettings`.
-3. Builds `clock = realClock`, `rand = mulberry32(crypto.getRandomValues(new Uint32Array(1))[0])`, `http = createHttp({transport: platform.transport, clock})` and `data = await loadData(platform.transport.fetch, document.baseURI)`.
-4. Makes `app = {store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl}`, where `dataUrl = file => dataUrlFor(platform.name, file)`. `app.saveSettings(patch)` calls the core `saveSettings`, copies the result onto the live `settings` object, and re-applies access settings.
+3. Builds `clock = realClock`, `rand = mulberry32(crypto.getRandomValues(new Uint32Array(1))[0])`, `http = createHttp({transport: platform.transport, clock})`, `dataUrl = file => dataUrlFor(platform.name, file)` and `data = await loadAppData({fetchFn: url => platform.transport.fetch(url), base: document.baseURI, dataUrl, http, store})`, which also registers the `pages` Http source.
+4. Makes `app = {store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl}`. `app.saveSettings(patch)` calls the core `saveSettings`, copies the result onto the live `settings` object, and re-applies access settings.
 5. Wires the `.skip-link` click to `preventDefault()` and `focusMain()`.
 6. Awaits `runFirstRun(app)` (Task 14; until then, skip this step).
 7. Calls `startRouter(show)`.
@@ -1626,15 +1662,15 @@ The settings view's `render(container, app, params)`: with no matching `params.i
 - [ ] **Step 7: Run them and see them pass**
 
 Run: `node --test tests/unit/boot-data.test.js`
-Expected: PASS, 2 tests.
+Expected: PASS, 4 tests.
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
 Expected: PASS, 6 tests.
 
 - [ ] **Step 8: Commit**
 
 ```bash
-git add src/ui/views/index.js src/ui/views/settings/index.js src/ui/views/settings/about.js src/ui/boot.js tests/e2e/helpers/app.js tests/unit/boot-data.test.js tests/e2e/shell.spec.js
-git commit -m "Add the app boot, the view registries and the About section"
+git add src/core/data.js src/ui/views/index.js src/ui/views/settings/index.js src/ui/views/settings/about.js src/ui/boot.js tests/e2e/helpers/app.js tests/unit/boot-data.test.js tests/e2e/shell.spec.js
+git commit -m "Add the data loader, the app boot, the view registries and the About section"
 ```
 
 ### Task 14: First run and the Welcome step
@@ -1645,8 +1681,8 @@ git commit -m "Add the app boot, the view registries and the About section"
 - Test: `tests/e2e/firstrun.spec.js`
 
 **Interfaces:**
-- Consumes: `h`, `clear` (Task 11); `app.getSettings()`, `app.saveSettings(patch)` (Task 13); `test`, `expect` (Task 10) and `gotoApp` (Task 13).
-- Produces: `registerFirstRunStep({id, order, render(container, app, done)})`, `runFirstRun(app) → Promise<void>`, `PRIVACY_PROMISE` = `'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.'` (the §1 promise, verbatim). Each step renders inside `section[data-firstrun="<id>"]` in `#app`.
+- Consumes: `h`, `clear` (Task 11); `app.getSettings()`, `app.saveSettings(patch)` (Task 13); `test`, `expect` (Task 10) and `gotoApp` (Task 13); in the spec's fake app, `DEFAULT_SETTINGS` (Task 6) and `EMPTY_DATA` (Task 13).
+- Produces: `registerFirstRunStep({id, order, render(container, app, done)})`, `runFirstRun(app) → Promise<void>`, `PRIVACY_PROMISE` = `'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.'` (the §1 promise, verbatim). Each step renders into a `div` inside `section[data-firstrun="<id>"]` in `#app`, and the section's **Skip** button follows that `div`. `render` may be async: runFirstRun does not wait for it, and a throw or a rejection passes the step over.
 
 - [ ] **Step 1: Write the failing spec** `tests/e2e/firstrun.spec.js`
 
@@ -1667,32 +1703,37 @@ test('the first visit shows Welcome with the privacy promise, once', async ({ pa
 test('steps run in order, Skip moves on, and a broken step is passed over', async ({ page }) => {
   await gotoApp(page);
   const done = page.evaluate(async () => {
-    const f = await import(new URL('ui/firstrun.js', document.baseURI).href);
+    const at = p => import(new URL(p, document.baseURI).href);
+    const [f, { EMPTY_DATA }, { DEFAULT_SETTINGS }] = await Promise.all([at('ui/firstrun.js'), at('core/data.js'), at('core/settings.js')]);
     f.registerFirstRunStep({ id: 'b', order: 18, render: (c, app, done) => c.append(Object.assign(document.createElement('button'), { textContent: 'Finish b', onclick: done })) });
+    f.registerFirstRunStep({ id: 'late', order: 16, render: async () => { throw new Error('y'); } });
     f.registerFirstRunStep({ id: 'boom', order: 15, render: () => { throw new Error('x'); } });
-    f.registerFirstRunStep({ id: 'a', order: 12, render: c => c.append('Step a') });
-    await f.runFirstRun({ getSettings: () => ({ firstRunDone: false }), saveSettings: async p => { window.__saved = p; } });
+    f.registerFirstRunStep({ id: 'a', order: 12, render: c => { c.append('Step a'); return new Promise(() => {}); } });
+    const settings = structuredClone(DEFAULT_SETTINGS);
+    await f.runFirstRun({ settings, data: structuredClone(EMPTY_DATA), getSettings: () => settings,
+      saveSettings: async p => { window.__saved = p; return Object.assign(settings, p); } });
     return window.__saved;
   });
-  await expect(page.locator('[data-firstrun="welcome"]')).toBeVisible();
-  await page.getByRole('button', { name: 'Skip' }).click();
-  await expect(page.locator('[data-firstrun="a"]')).toContainText('Step a');
-  await page.getByRole('button', { name: 'Skip' }).click();
+  const skip = page.locator('[data-firstrun]').getByRole('button', { name: 'Skip', exact: true });
+  await expect(page.locator('[data-firstrun="welcome"]')).toBeVisible(); await skip.click();
+  await expect(page.locator('[data-firstrun="a"]')).toContainText('Step a'); await skip.click();
   await page.getByRole('button', { name: 'Finish b' }).click();
+  let settled = false; done.then(() => { settled = true; }, () => { settled = true; });
+  while (!settled) await skip.click({ timeout: 2000 }).catch(() => {});
   expect(await done).toEqual({ firstRunDone: true });
 });
 ```
 
-The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`. The test steps use orders 12, 15 and 18, so they sort after Welcome (10) without relying on a tie.
+The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./helpers/app.js`. The test steps use orders 12, 15, 16 and 18, so they sort after Welcome (10) and before the steps later plans add (`interests` 20, `handsfree` 30, `ai` 40), without relying on a tie. Step `a` returns a promise that never settles, so Skip must not wait for a render, and step `late` rejects, so a rejection must pass the step over instead of reaching the page as an error, which the fixture would report. The fake app has the Plan 01 fields a step can read without a platform: `settings`, `getSettings`, `saveSettings` and `data` (the empty shapes). A later plan's step may render on it or be passed over. Either way, the `while` loop after **Finish b** keeps pressing Skip until `runFirstRun` resolves, so this test passes whatever steps later plans register. Each press waits at most 2 seconds for a Skip button, so the loop ends soon after the last step.
 
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/firstrun.spec.js`
-Expected: FAIL: the "Welcome to Byways" heading is not found.
+Expected: FAIL: the "Welcome to Byways" heading is not found, and the second test cannot import `ui/firstrun.js`.
 
 - [ ] **Step 3: Implement `src/ui/firstrun.js` and wire it into boot**
 
-`runFirstRun(app)` returns at once when `app.getSettings().firstRunDone` is true. Otherwise it runs the steps sorted by `order`. For each step it clears `#app` and appends a `section` with `data-firstrun=<id>`. It calls `render(section, app, done)` and appends a **Skip** button. It moves on when `done()` is called or Skip is pressed; each acts once per step. A step whose `render` throws is passed over (logged with `console.warn`). After the last step it clears `#app` and awaits `app.saveSettings({firstRunDone: true})`. The module registers the Welcome step `{id: 'welcome', order: 10}`, which renders an `h1` "Welcome to Byways" (`tabindex="-1"`, focused on show), a paragraph with `PRIVACY_PROMISE`, and a **Continue** button that calls `done`. In `boot.js`, await `runFirstRun(app)` before `startRouter(show)`.
+`runFirstRun(app)` returns at once when `app.getSettings().firstRunDone` is true. Otherwise it runs the steps sorted by `order`. For each step it clears `#app` and appends a `section` with `data-firstrun=<id>` that holds an empty `div` and, after it, a **Skip** button. Then it calls `render(div, app, done)` inside try/catch. `render` may return a promise, and runFirstRun does not wait for it, so a step that is still loading can be skipped (§5.6: every step can be skipped). The step ends at the first of three things: `done()` is called, Skip is pressed, or `render` throws or its promise rejects, which passes the step over (logged with `console.warn`). Whatever comes after the first does nothing. After the last step it clears `#app` and awaits `app.saveSettings({firstRunDone: true})`. The module registers the Welcome step `{id: 'welcome', order: 10}`, which renders an `h1` "Welcome to Byways" (`tabindex="-1"`, focused on show), a paragraph with `PRIVACY_PROMISE`, and a **Continue** button that calls `done`. In `boot.js`, await `runFirstRun(app)` before `startRouter(show)`.
 
 - [ ] **Step 4: Run it and see it pass**
 

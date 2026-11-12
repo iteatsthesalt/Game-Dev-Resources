@@ -34,7 +34,7 @@ Dependencies:
 - **Working directory.** Every command runs in `Apps/Byways/` unless it says otherwise.
 - **Language.** JavaScript ES2022 modules, with no TypeScript, no framework and no bundler. Types are JSDoc typedefs in `src/core/types.js`. Kotlin is used only in `shells/android/`.
 - **Core boundary.** `src/core/**` must not touch `window`, `document` or `chrome`. It may use web APIs that Node 22 also has: `fetch`, `Response`, `URL`, `TextEncoder`, `crypto.subtle`, `CompressionStream`, `structuredClone` and `AbortController`. Anything else comes in as a parameter, usually through the `Platform` object.
-- **Data loading.** Data files (`src/data/*.json`) are never imported by core modules. `ui/boot.js` fetches them and passes them in, and tests read them with `fs`.
+- **Data loading.** Data files (`src/data/*.json`) are never imported by core modules. `core/data.js`'s `loadAppData` fetches them through the `fetchFn` it is given (it imports nothing), `ui/boot.js` and Plan 07's background page call it, and tests read the files with `fs`.
 - **Forbidden in `src/**`:** `innerHTML`, `outerHTML =`, `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and remote `<script src="http`. The `--check` build fails on any of them (Plan 01, Tasks 8–9: `tools/check.js`, run by `--check`).
 - **Unit tests:** `node:test`, in `tests/unit/**/*.test.js`, with no network. Run them with `npm test`.
 - **End-to-end tests:** `@playwright/test@1.63.0` (it matches the preinstalled Chromium build 1243 in `/opt/pw-browsers`), in `tests/e2e/**/*.spec.js`. Run them with `npm run e2e`. Every non-localhost request is mocked (see "Test helpers").
@@ -360,7 +360,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   | `ia` | 04 |
   | `keyring`, `budget` | 05 |
 
-- **The Stumble search form (Plan 02).** It has a text field labelled **Search for** and a button **Search**, and submitting calls `app.search(text)`. The `/` key (Plan 03) focuses that field. Plan 05's e2e tests use this same form.
+- **The Stumble search form (Plan 02).** It has a text field labelled **Search for** and a button **Search**. Its submit handler calls `app.search(text)` as its first statement, with no `await` before it, so Plan 05's `requestDataCollection` call (Firefox's data-collection prompt) stays inside the user's click. The `/` key (Plan 03) focuses that field. Plan 05's e2e tests use this same form.
 - **AI badges (Plan 02).** `renderCard` shows **Found by <labels>** from `find.foundBy`, and **Team pick** when `find.teamPick` is set. Plan 05 only fills those fields.
 - **Rabbit Hole AI hook (Plan 02 defines; Plan 05 uses).** `engine.rabbit.useAi(fn|null)`, where `fn(find) → Promise<Find[]>`. Rabbit Hole mixes those finds in, after the source and local ones. Plan 05 sets it only when `settings.aiInRabbitHole` is on and an AI provider is ready.
 - `ui/views/stumble.js` (Plan 02) also exports:
@@ -425,7 +425,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 - `ui/router.js`: `registerView(route, {title, render(container, app, params) → void|Promise<void>, leave?() → void})`.
 - `ui/views/settings/index.js`: `registerSettingsSection({id, label, order, render(container, app)})`, which routes as `#/settings/<id>`.
-- `ui/firstrun.js`: `registerFirstRunStep({id, order, render(container, app, done)})` and `runFirstRun(app) → Promise<void>`. Steps run in `order`, and every step shows a **Skip** button.
+- `ui/firstrun.js`: `registerFirstRunStep({id, order, render(container, app, done)})` and `runFirstRun(app) → Promise<void>`. Steps run in `order`, and every step shows a **Skip** button. A step renders into a `div` inside `section[data-firstrun="<id>"]`, and the Skip button follows that `div`. A step's `render` may return a promise; `runFirstRun` does not wait for it, so Skip works at once (§5.6), and a throw or a rejection passes the step over with a `console.warn`.
 - `ui/views/index.js`: the one file that imports every view and settings module, so that each one registers itself.
 
 `DEFAULT_SETTINGS`, with every value taken from the spec:
@@ -627,7 +627,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`voice/reader.js`**
 
-- `cardScript(find) → string[]`.
+- `cardScript(find, why = null) → string[]`, where `why` is `result.why` from `engine.next` (the full form under **Other Plan 03 names** below is the one that counts).
 - `createReader(tts, getSettings) → {read(sentences) → Promise<void>, stop(), pause(), resume(), get speaking}`.
 
 **`handsfree.js`**
@@ -636,7 +636,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `start()` awaits `prepare() → Promise<listener|null>`, which probes and returns a fresh listener. That listener replaces the old one, which is stopped and unsubscribed.
   - `dispatch(id, arg, {source})` is owned by Plan 03 and receives every command. The source is `'voice' | 'key' | 'button' | 'media' | 'dialog'`.
     - `createHandsFree` passes `{source: 'voice'}` for listener commands.
-    - In `handsfree-ui.js`, the keymap passes `'key'`, the bar `'button'` and media keys `'media'`.
+    - In `handsfree-ui.js`, the keymap passes `'key'`, the bar `'button'`, media keys `'media'` and the search dialog `'dialog'`.
     - Plan 06's Lab stop acts only on `source === 'voice'`.
 - **One controller.** `app.handsFree` is one object for the app's whole life. `boot()` creates it by calling `installHandsFreeUi(app)` (`ui/handsfree-ui.js`) once the engine exists and BEFORE `runFirstRun`, and never replaces it.
   - `app.handsFree.start()` runs the full Start routine: probe, new listener, wake lock, media active, lean-back.
@@ -653,7 +653,8 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `createWebVoice(win, {lang = 'en-US'} = {})`;
   - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {})`;
   - `installKeymap({getSettings, dispatch, onTalk, target = document}) → uninstall()`.
-- **Listening on and off.** The controller also has `get listening → boolean` and `setListening(on) → Promise<boolean>`, which turns the mic on or off within the current session. `setListening(false)` is the same as `command('stopListening')`. Plan 07's Alt+Shift+V uses them.
+- **Listening on and off.** The controller also has `get listening → boolean` and `setListening(on) → Promise<boolean>`, which turns the mic on or off within the current session. `setListening(false)` is the same as `command('stopListening')`. `setListening(true)` starts the current listener while the controller is active or paused, in `'always'` and `'push'` mode alike, and resolves `true`; it resolves `false` and starts nothing while idle or suspended, with no listener, in `'off'` mode, or when the listener's `start()` rejects. A mic turned on this way is not a push-to-talk turn. Plan 07's Alt+Shift+V uses them and reports whatever the boolean says.
+- **Pause on input.** `input()` (any touch, key or voice input, §6.5) pauses lean-back for the moment and restarts the dwell from the full time. Only Pause, K and a `'pause'` command (§6.1), Open, and a game or embed leave lean-back paused until an explicit resume.
 - **Read it on a specific card.** `command('read', find)` reads that find. Card **Read it** buttons (Stumble, Feed, the panel's mini feed) pass their own find. With no find, it reads the current Stumble find.
 - **Talk button.** The bar has a **Talk** button in push mode, which works whatever the single-key setting is:
   - a press shorter than 300 ms is a tap, which listens for one command;
@@ -672,46 +673,46 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`platform/web-voice.js`**
 
-- `createWebVoice(win) → VoiceEngine`.
+- `createWebVoice(win, {lang = 'en-US'} = {}) → VoiceEngine`.
 
 **`ui/keymap.js`**
 
-- `installKeymap({getSettings, dispatch(commandId)})`. It ignores keys while a text field has focus or the Lab is focused.
+- `installKeymap({getSettings, dispatch, onTalk, target = document}) → uninstall()`, where `dispatch` is Plan 03's `dispatch(id, arg, {source: 'key'})`. It ignores keys while a text field has focus or the Lab is focused.
 
 ### Plan 04: Vault and Daily Fate
 
 **`ia/client.js`**
 
-- `createIaClient({http, cache, clock}) → {search({q, fl, sort, rows, page}) → {numFound, docs}, count(q) → number, metadata(id) → object|null}`.
+- `createIaClient({http, cache, clock}) → {search({q, fl, sort, rows, page}, {urgent = false} = {}) → {numFound, docs}, count(q, {urgent = false} = {}) → number, metadata(id, {urgent = false} = {}) → object|null}`. Every method takes the optional `{urgent}` as its last argument (see **Urgent lane**).
 - The queue runs at 1 request per second and 2 at a time. After two 429s in a row it pauses for 5 minutes. Searches are cached for 24 h and metadata for 7 days.
 
 **`ia/vault.js`**
 
 - `VAULT_COLLECTIONS = {verified:[…], likely:[…], shelves:[{id,label,collections}]}`.
-- `validateCollections(ia, cache, ids = [...verified, ...likely]) → Promise<string[]>`.
+- `validateCollections(ia, cache, ids = [...verified, ...likely], {urgent = false} = {}) → Promise<string[]>`. It passes `{urgent}` to every `IaClient` call it makes.
 - `gemQuery(id, page) → params` and `gemScore(doc, {currentYear, curated:Set}) → number`, using the §10.2 formula.
 - `gemWhy(doc) → string[]`.
 - `vaultFate(ia, rand, collections) → Promise<Find|null>`.
 - `iaDocToFind(doc, {kind, safety = 'curated', why}) → Find|null`. It returns `null` for an invalid identifier.
-- Also: `CURATED_COLLECTIONS`, `shelfGems(ia, shelf, opts)`, and a `keyboard` flag on each shelf.
+- Also: `CURATED_COLLECTIONS`, `shelfGems(ia, shelf, opts)` (where `opts.urgent` is passed to every `IaClient` call), and a `keyboard` flag on each shelf.
 
 **`ia/client.js`** also gives:
 
 - `sharedIaClient(...)`, which keeps one client per `http` object;
-- `IaClient.wayback(url, timestamp) → Promise<{url, timestamp}|null>`;
+- `IaClient.wayback(url, timestamp, {urgent = false} = {}) → Promise<{url, timestamp}|null>`;
 - `luceneEscape(text)`.
 
 **More Plan 04 names** (from its review):
 
 - **Snapshot reader.** `sources/index.js` exports `readSnapshot(ctx, file) → Promise<object|null>`. It does `ctx.http.getJson(ctx.dataUrl(file), {source: 'pages'})`, caches the result under `snap:<file>` for 1 h, and returns `null` on any error. The vault, itch and webring adapters all use it.
-- **The `pages` Http source.** Plan 01's boot registers it as `app.http.register('pages', {perMinute: 30, concurrent: 2})`. `dataUrlFor` is Plan 01's; Plan 04 does not define a second one.
+- **The `pages` Http source.** Plan 01's `loadAppData` registers it as `http.register('pages', {perMinute: 30, concurrent: 2})`, so boot and Plan 07's `bg.js`, which both call `loadAppData`, get it without registering it themselves. `dataUrlFor` is Plan 01's; Plan 04 does not define a second one.
 - **Card changes made by Plan 04:**
   - `renderCard(find, {onAction, compact, whyLine, headingLevel = 2})`. Cards inside h2 sections (Vault shelves, Daily picks) use `headingLevel: 3`.
   - A find with `embedUrl` shows a **Details on archive.org** link, a **Keyboard needed** badge on a coarse pointer, and a `div.player` slot.
   - **Play** calls `onAction('play', find, {slot})`.
   - `card.js` exports `mountPlayer(slot, find, app) → Promise<{unmount()}|null>`. `makeActionHandler`'s `play` calls it, so Archive finds play through the embed in Stumble, Feed and Saved too.
 - **Archive pacing.** No plan calls `http.register` for `ia` or `vault`, because the IA queue owns Archive pacing and backoff. Plan 02 exports `SELF_PACED = new Set(['ia', 'vault'])` from `sources/index.js`. Both `adapterCtx` and `createEngine`'s Start registration skip every id in it. Later plans (Plan 04's adapters, Plan 07's background page) name `SELF_PACED` rather than repeating the two ids.
-- **Urgent lane.** `IaClient` methods take `{urgent: true}`, which puts a call at the front of the queue, still at 1 per second. User actions such as Play, More gems and opening a shelf use it. First-run collection validation does not.
+- **Urgent lane.** Every `IaClient` method takes `{urgent: true}` as its optional last argument. An urgent job goes in after the urgent jobs already waiting and ahead of all others, with the same pacing (still 1 per second). User actions such as Play, More gems and opening a shelf use it, through `validateCollections(..., {urgent})` and `shelfGems(ia, shelf, {urgent})` where they reach the Archive that way. First-run collection validation does not.
 - **`gemWhy`.** Its first chip is the pool chip, `'Internet Archive: <collection label>'` (or `'Internet Archive'`).
 - **Placeholder data files.** The PWA build writes `{"v":1}` placeholders for `daily.json`, `itch.json`, `vault-index.json`, `webrings.json` and `neocities.json` into `dist/pwa/data/` when they are missing, so local and e2e runs never 404. The data job overwrites them.
 - **Test files.**
@@ -767,7 +768,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `AiError` is built as `new AiError(kind, message, {provider, status, retryAfterMs, hint, setupText})`.
 - **`PROVIDERS` row fields.**
   - `adapter`, `baseURL`, `auth` and `modelsPath` may be `null`.
-  - New fields: `modelsFallbackPath`, `modelsFromRoot`, `searchTool`, `searchModels` (RegExp), `extraHeaders`, `fallbackModels` and `userBaseURL`.
+  - New fields: `modelsFallbackPath`, `modelsFromRoot`, `searchTool`, `searchModels` (RegExp), `extraHeaders`, `fallbackModels`, `webSearch20260209` (string[]; the reference's list of models that take `web_search_20260209`, on the anthropic row only) and `userBaseURL`.
   - `prices` keys may be `'<prefix>*'`, and a price may carry `over100k: {in, out}`.
   - The Claude row lists every current Claude model price from the claude-api reference, including the fallback targets.
   - OpenRouter and xAI estimates use the prices their model lists return.
@@ -1051,7 +1052,7 @@ No environment variable sets the version. The release APK asset is named `byways
     - `cancel` fires `interrupted` or `canceled`;
     - the fake voices are `local-en` and `net-en`.
 
-    Plan 03 extends it, with `__utterances`, `__speechCancels`, `__endSpeech()`, `__recStarts`, `__media`, `__announcements`, and the options `{available, holdSpeech}`.
+    Plan 03 extends it, with `__utterances`, `__speechCancels`, `__endSpeech()`, `__recStarts`, `__recFailNext`, `__installs`, `__tones`, `__media`, `__announcements`, and the options `{available, holdSpeech}`.
 
 ## Global constraints (every plan)
 

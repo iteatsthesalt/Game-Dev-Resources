@@ -68,7 +68,7 @@
 | `tests/unit/web-tts.test.js`, `web-media.test.js`, `web-voice.test.js`, `pwa.test.js`, `tests/e2e/card-actions.spec.js` | Modify: Plan 01's and Plan 02's tests, with this plan's cases appended or adjusted |
 | `tests/unit/*.test.js`, `tests/e2e/*.spec.js` | Tests named in each task |
 
-Unit tests that drive async code with `fakeClock` use this helper at the top of the file: `const flush = () => new Promise((r) => setImmediate(r));`. Call `await flush()` after each `clock.advance(ms)`.
+Unit tests that drive async code with `fakeClock` import `flush` from Plan 01's `tests/unit/helpers/async.js` (it resolves on `setImmediate`, after pending microtasks; the overview's shared helpers, so no test file defines its own) and call `await flush()` after each `clock.advance(ms)`.
 
 ### Task 1: Voice grammar
 
@@ -190,7 +190,7 @@ The test file builds a fake engine: `fakeEngine()` returns a `VoiceEngine` whose
 - [ ] **Step 1: Write the failing tests**
 
 ```js
-// helpers in the test file: fakeEngine(), flush(), and
+// flush() is imported from ./helpers/async.js; fakeEngine() is defined in this file, and
 async function setup(opts = {}) {
   const clock = fakeClock(0), engine = fakeEngine();
   const l = createListener(engine, { clock, phrases: ['next'], lang: 'en-US', allowCloud: false, ...opts });
@@ -502,8 +502,8 @@ git commit -m "Add read-aloud with sentence-level pause"
 
 `tests/unit/helpers/handsfree-fakes.js` exports `makeListener()` and `makeHarness(settingsPatch = {}, options = {})`. `makeHarness` returns `{hf, clock, engine, listener, reader, ui, settings, finds}`, where `options` are passed to `createHandsFree` over the defaults, and:
 - `finds` is an endless generator of `{id:'f<n>', kind:'site', url:'https://s<n>.example/', title:'Find <n>', description:'', why:[], tags:[], source:'library', safety:'curated'}`;
-- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:''}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject; `engine.current()` returns the last find it gave (or `null`), `engine.back()` returns `null`, and `engine.rabbit.trail()` returns `engine.trail` (default `[]`);
-- `listener` comes from `makeListener()`: it records `starts`, `stops` and `halfDuplex` (an array of booleans), has `emit(event, payload)`, and its `on` returns an unsubscribe; `listener.failStart = true` makes `start()` reject;
+- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:''}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject; `engine.current()` returns the last find it gave (or `null`), and `engine.back()` returns `null`;
+- `listener` comes from `makeListener()`: it records `starts`, `stops` and `halfDuplex` (an array of booleans), has `emit(event, payload)`, and its `on` returns an unsubscribe; its `listening` is `true` after a `start()` that resolves, and `false` after `stop()` or an emitted `state` with `listening: false`; `listener.failStart = true` makes `start()` reject;
 - `reader.read(s)` records `s` in `reader.reads` and resolves at once unless `reader.hold = true`, when `reader.finish()` resolves it; it counts `stops`, `pauses`, `resumes`;
 - every `ui` method records its arguments in `ui.log` as `[name, ...args]`; `ui.show(result)` then calls `hf.showing(result.find, result.why)`, as the Stumble view does; `ui.search` resolves `{finds:[]}`;
 - `settings` is `DEFAULT_SETTINGS` deep-merged with `settingsPatch`, and `getListenMode` returns `settings.listenMode ?? 'always'`.
@@ -521,7 +521,7 @@ test('effectiveListenMode', () => {
   assert.equal(effectiveListenMode('auto', s('native', true, 'android')), 'always');
   assert.equal(effectiveListenMode('auto', s('native', false, 'android')), 'push');
   assert.equal(effectiveListenMode('auto', s('web-cloud', false, 'google')), 'push');
-  assert.equal(effectiveListenMode('auto', s('web-cloud', true, 'apple')), 'push');
+  assert.equal(effectiveListenMode('auto', s('web-cloud', true, 'apple')), 'always');
   assert.equal(effectiveListenMode('always', s('web-cloud', false, 'google')), 'always');
   assert.equal(effectiveListenMode('push', s('web-local', true)), 'push');
   assert.equal(effectiveListenMode('off', s('web-local', true)), 'off');
@@ -640,7 +640,20 @@ test('back shows the previous find', async () => {
   const prev = { id: 'p', title: 'Prev', url: 'https://p.example/', kind: 'site', why: ['x'] };
   engine.back = () => prev;
   await hf.command('back');
-  assert.deepEqual(ui.log.find((l) => l[0] === 'show')[1], { find: prev, branch: null, why: null });
+  assert.deepEqual(ui.log.find((l) => l[0] === 'show')[1], { find: prev, branch: 'history', why: 'seen before' });
+});
+
+test('read reads the find it is given, with the recorded why only for the find on screen', async () => {
+  const { hf, reader } = makeHarness();
+  const shown = { id: 's', kind: 'site', url: 'https://shown.example/', title: 'Shown', description: '', why: ['Starter library'], tags: [] };
+  const other = { ...shown, id: 'o', url: 'https://other.example/', title: 'Other' };
+  hf.showing(shown, 'wildcard');
+  await hf.command('read', other);
+  assert.deepEqual(reader.reads.at(-1), ['Other.', 'From other.example.', 'Starter library.']);
+  await hf.command('read', shown);
+  assert.deepEqual(reader.reads.at(-1), ['Shown.', 'From shown.example.', 'wildcard.']);
+  await hf.command('read');
+  assert.deepEqual(reader.reads.at(-1), ['Shown.', 'From shown.example.', 'wildcard.']);
 });
 
 test('open presses Open and pauses lean-back', async () => {
@@ -673,10 +686,31 @@ test('listener events become commands and messages', async () => {
   const idle = 'Listening paused after 10 minutes with no command.';
   listener.emit('state', { listening: false, reason: 'idle' });
   assert.equal(said(ui).at(-1), idle); assert.deepEqual(reader.reads.at(-1), [idle]);
-  const got = [], other = makeHarness({}, { dispatch: (id) => got.push(id) });
+  const got = [], other = makeHarness({}, { dispatch: (id, arg, opts) => got.push([id, arg, opts]) });
   await other.hf.start();
-  other.listener.emit('command', { id: 'next', text: 'next' }); await flush();
-  assert.deepEqual(got, ['next']); assert.equal(other.engine.calls.length, 1);
+  other.listener.emit('command', { id: 'search', arg: 'maps', text: 'search for maps' }); await flush();
+  assert.deepEqual(got, [['search', 'maps', { source: 'voice' }]]); assert.equal(other.engine.calls.length, 1);
+});
+
+test('listening and setListening turn the mic off and on within the session', async () => {
+  const { hf, listener, ui } = makeHarness();
+  assert.equal(await hf.setListening(true), false);
+  assert.equal(listener.starts, 0);
+  await hf.start();
+  assert.equal(hf.listening, true);
+  assert.equal(await hf.setListening(false), false);
+  assert.equal(hf.listening, false); assert.equal(listener.stops, 1); assert.equal(said(ui).at(-1), 'Listening off');
+  assert.equal(await hf.setListening(true), true);
+  assert.equal(await hf.setListening(true), true);
+  assert.equal(listener.starts, 2); assert.equal(hf.listening, true);
+  await hf.setListening(false); listener.failStart = true;
+  assert.equal(await hf.setListening(true), false);
+  const off = makeHarness({ listenMode: 'off' });
+  await off.hf.start();
+  assert.equal(await off.hf.setListening(true), false); assert.equal(off.listener.starts, 0);
+  const none = makeHarness({}, { listener: null });
+  await none.hf.start();
+  assert.equal(none.hf.listening, false); assert.equal(await none.hf.setListening(true), false);
 });
 
 test('mute stops reading and keeps later finds silent', async () => {
@@ -712,13 +746,14 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/handsfree.js`.
 - [ ] **Step 3: Implement `src/core/handsfree.js` (state machine and command routing)**
 
 Rules the tests do not spell out:
-- `effectiveListenMode`: kind `'none'` gives `'off'`. `'auto'` gives `'always'` for `web-local` and continuous `native`, and `'push'` for everything else, as the overview's `DEFAULT_SETTINGS` comment says (spec §6.2's table would keep continuous cloud engines always on; the overview wins). Any other mode is returned as it is.
+- `effectiveListenMode`: kind `'none'` gives `'off'`. `'auto'` gives `'always'` for `web-local`, and for `web-cloud` and `native` when `status.continuous` is `true` (web-cloud only exists after the opt-in, and Task 6 sets `continuous` to false on Android browsers); it gives `'push'` for `web-cloud` and `native` with `continuous` false (Android browsers, native Android 24–32). This is the overview's `DEFAULT_SETTINGS` rule and spec §6.2's table. Any other mode is returned as it is.
 - `start()` does nothing unless idle, or while an earlier `start()` is still running. It awaits `prepare` when given, goes active (`ui.setState('active')`), starts the mic when `getListenMode()` is `'always'`, and begins a new session list for the recap. It then reads the find on screen (the last find given to `showing`, else `engine.current()`) and puts it in that list. Only when both are `null` does it call `engine.next` and `ui.show` the result. It does not announce `Lean-back on`.
 - `start()` and `command()` resolve once the find is shown, and never wait for read-aloud.
-- `engine.next` gets `{mode: settings.mode}`, or `{mode:'fate'}` for `fate`. In `ai` mode the engine serves the search results waiting in its queue, and an `{empty}` result follows Task 5's rule.
+- Explicit pulls (`start()`, `next`, `search`) pass `engine.next` `{mode: settings.mode}`, and `fate` passes `{mode:'fate'}`; only lean-back's own pulls add `ai` and `leanBack` (Task 5). In `ai` mode the engine serves the search results waiting in its queue, and an `{empty}` result follows Task 5's rule.
 - `command(id)` calls `input()` first for every id except `pause`, `resume`, `stop`, `stopListening` and `help`.
 - `pause()` does nothing unless active, and `resume()` nothing unless paused. `command('pause')` toggles between active and paused; `command('resume')` only resumes.
-- `showing(find, why)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find and its `why`, adds the find to the session list, stops the reader, and in the active state reads `cardScript(find, why)` (Task 5 adds the dwell). `read` reads the find on screen with its `why`. `back` shows `{find, branch: null, why: null}`.
+- `showing(find, why)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find and its `why`, adds the find to the session list, stops the reader, and in the active state reads `cardScript(find, why)` (Task 5 adds the dwell). `command('read', find)` reads `cardScript(find, why)`, where `why` is the recorded one when `find.id` is the find on screen and `null` otherwise, so a Feed or panel card's **Read it** reads its own card; with no `find` it reads the find on screen (as `start()` picks it) with its recorded `why`. `back` shows `{find, branch: 'history', why: 'seen before'}`, the result `engine.back()` reports (Plan 02).
+- `listening` is the current listener's `listening`, or `false` with no listener. `setListening(false)` is `command('stopListening')` and resolves `false`. `setListening(true)` starts the current listener when it is off, in `'always'` and `'push'` mode alike (Plan 07's Alt+Shift+V is an explicit request), and resolves `listening`. That is not a talk turn, so the mic stays on after a command. It resolves `false` and starts nothing while idle or suspended, with no listener, or when `getListenMode()` is `'off'`; a rejected `start()` also resolves `false`.
 - Status messages go to `ui.announce(text)` (polite): `Lean-back paused`, `Lean-back on`, `Listening off`, `Searching for <words>` and the idle line, which is also read aloud unless muted or in screen-reader mode. Errors add `{assertive:true}`.
 - `say(text)` is for spoken cues (Task 5): `ui.announce(text)` when muted or in screen-reader mode, otherwise `reader.read([text])`.
 - `suspend()` (from active or paused) stops the mic, calls `reader.pause()` and remembers the state. `wake()` restarts the mic when it was on. When that fails it stays suspended and returns `false`; otherwise it returns to the remembered state, calling `reader.resume()` only when that state is `'active'`. The reader ignores pause and resume when it is not reading.
@@ -727,7 +762,7 @@ Rules the tests do not spell out:
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree.test.js`
-Expected: PASS, 18 tests.
+Expected: PASS, 20 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -744,7 +779,7 @@ git commit -m "Add the hands-free state machine and command routing"
 
 **Interfaces:**
 - Consumes: everything from Task 4.
-- Produces: no new names. Adds the dwell, the countdown, holds, the AI refill rule, the Rabbit Hole guard, the session length, the 45-minute cue, the recap on session end and what `leanBack: false` turns off.
+- Produces: no new names. Adds the dwell, the countdown, holds, the AI refill rule, the `ai` and `leanBack` switches on lean-back's own pulls, the session length, the 45-minute cue, the recap on session end and what `leanBack: false` turns off.
 
 The tests use `tick(clock, ms)`, which advances one second at a time and flushes after each: `for (let t = 0; t < ms; t += 1000) { clock.advance(1000); await flush(); }`.
 
@@ -862,15 +897,14 @@ test('no AI in lean-back unless Let AI refill lean-back is on', async () => {
   assert.ok(engine.calls.length > 20);
 });
 
-test('lean-back does not advance inside a Rabbit Hole that can use AI', async () => {
-  const { hf, clock, engine, ui } = makeHarness({ aiInRabbitHole: true });
-  engine.trail = [{ id: 'r1' }];
-  await hf.start();
-  await tick(clock, 20000);
-  assert.equal(hf.state, 'paused'); assert.equal(engine.calls.length, 1);
-  assert.equal(count(ui, 'Lean-back paused, because this Rabbit Hole can use AI.'), 1);
-  await hf.command('next');
-  assert.equal(engine.calls.length, 2);
+test('lean-back pulls pass ai and leanBack, and explicit ones do not', async () => {
+  for (const leanBackAI of [false, true]) {
+    const { hf, clock, engine } = makeHarness({ leanBackAI });
+    await hf.start();
+    await tick(clock, 20000);
+    await hf.command('next');
+    assert.deepEqual(engine.calls, [{ mode: 'tuned' }, { mode: 'tuned', ai: leanBackAI, leanBack: true }, { mode: 'tuned' }]);
+  }
 });
 
 test('with refill on, at most one AI search per 10 finds', async () => {
@@ -934,8 +968,8 @@ Expected: FAIL. The first test fails its `['countdown', 20]` deep-equal, because
 - After `cardScript` is read (or announced in screen-reader mode, or skipped when muted), and only while active with no holds, start the dwell: `clampDwell(settings.dwellSec)` seconds, or `ui.countdown(null)` when `dwellWaitForMe` is on.
 - Tick with `clock.setTimeout(…, 1000)`. Call `ui.countdown(left)` at the start and on each tick.
 - Announce `Next find in 10 seconds` when `left` reaches 10. When the dwell is 10 s or less, announce `Next find in <dwell> seconds` at the start instead. Keep a per-find flag, so `input()` and holds never repeat it.
-- At 0, advance: count the find; when `leanBackAI` is on, a search text exists and 10 finds have passed since the last search, call `ui.search(text)` first and reset the count. Then `engine.next`. An `{empty}` result pauses and announces `reason`. A rejection pauses and announces `Could not load the next find.` assertively. Only `command('search', text)` sets the search text; a search typed into the Stumble form (Plan 02, which calls `app.search` itself) does not feed the refill.
-- Rabbit Hole guard: inside a Rabbit Hole (`engine.rabbit.trail()` not empty) with `settings.aiInRabbitHole` on, `rabbit.next()` may call Plan 05's AI hook, so an auto-advance there pauses instead and announces `Lean-back paused, because this Rabbit Hole can use AI.` An explicit `next` still advances.
+- At 0, advance: count the find; when `leanBackAI` is on, a search text exists and 10 finds have passed since the last search, call `ui.search(text)` first and reset the count. Then `engine.next({mode: settings.mode, ai: settings.leanBackAI, leanBack: true})` (overview, "Engine switches for lean-back"): with `ai: false` a Rabbit Hole skips its AI hook, so lean-back runs no AI there unless **Let AI refill lean-back** is on, and `leanBack: true` keeps `mixed` finds out while the Family filter is on (§7.4). An `{empty}` result pauses and announces `reason`. A rejection pauses and announces `Could not load the next find.` assertively. Only `command('search', text)` sets the search text; a search typed into the Stumble form (Plan 02, which calls `app.search` itself) does not feed the refill.
+- `input()` is §6.5's pause on "any touch, key or voice input": it stops the countdown and starts it again from the full dwell, so lean-back goes on by itself once the person is done. Only **Pause** (or K, or "pause"), Open and an embed or game need an explicit resume (§6.1 enters Paused only on those; §6.5: "After a game or embed, it resumes only on an explicit **resume**").
 - `resume()` restarts the dwell from the full time.
 - `start()` sets `clock.setTimeout` for the session length (`Session over.`, then `stop()`) and, when `exploringCue` is on, for 45 minutes (`You've been exploring for 45 minutes.`). Both go through `say`. `stop()` clears them.
 - With `leanBack: false`, nothing advances by itself: no dwell, countdown, auto-advance, AI refill, session length or 45-minute cue. `pause()` and `resume()` still pause and resume read-aloud, and announce `Reading paused` and `Reading on` instead.
@@ -943,7 +977,7 @@ Expected: FAIL. The first test fails its `['countdown', 20]` deep-equal, because
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `node --test tests/unit/handsfree-leanback.test.js tests/unit/handsfree.test.js`
-Expected: PASS, 17 tests in `handsfree-leanback.test.js` and 18 in `handsfree.test.js`.
+Expected: PASS, 17 tests in `handsfree-leanback.test.js` and 20 in `handsfree.test.js`.
 
 - [ ] **Step 5: Commit**
 
@@ -1280,13 +1314,13 @@ git commit -m "Add the single-key map with a text-field guard"
 - Produces:
   - `installHandsFreeUi(app) → void`, called once by boot (wiring rules below). It creates the one controller for the app's life, `createHandsFree({engine: app.engine, reader: createReader(app.platform.tts, app.getSettings), clock: app.clock, getSettings: app.getSettings, ui, getListenMode, prepare, dispatch, leanBack: app.platform.caps.leanBack !== false})` with the `ui`, `getListenMode`, `prepare` and `dispatch` below, and sets `app.handsFree` to it. That object never changes identity, so a reference taken at boot (Plan 06's `connectLab`) stays valid, and `app.handsFree.start()` runs the whole Start routine with or without a click (Plans 07 and 08 call it directly).
   - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js`. `pwa.js` uses Plan 01's `win` parameter, never the globals: `voice: createWebVoice(win, {lang: 'en-US'})` and `media: createWebMedia(win.navigator, {silentAudio: SILENT_AUDIO_FALLBACK, createAudio: () => new win.Audio(), createObjectURL: (b) => win.URL.createObjectURL(b)})`.
-  - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`: Plan 01's fake, unchanged except for these additions:
+  - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`: Plan 01's fake, whose hooks and behaviour stay as they are (overview, "Test helpers"): `__say(text, final = true)`, `__voiceError(code)` (an `error`, then `end`, on every started recogniser), `__recognizers`, `__spoken`, `__wake = {requests, releases}`, the voices `local-en` and `net-en`, `cancel()` firing `interrupted` or `canceled`, and speech that starts and ends on later microtasks. This plan adds only:
     - static `SpeechRecognition.available()` resolves the stored availability (no static methods when `available` is `null`); static `install()` resolves `true`, sets the stored availability to `'available'` and counts `window.__installs`;
-    - the recogniser gains `processLocally`, `quality` and `phrases`; `window.__recStarts` counts `start()` calls, and `window.__recFailNext = true` makes the next `start()` throw a `NotAllowedError`. Plan 01's `__say(text, {final})`, `__sayError(code)` and `__recognizers` (a list) stay as they are;
-    - `window.__speechCancels` counts `cancel()`. With `holdSpeech`, an utterance ends only on `window.__endSpeech()` or `cancel()` (otherwise after Plan 01's 10 ms). An utterance with empty text ends at once and is not recorded. `window.__utterances` gets `{text, voiceURI, rate, volume}` for each recorded utterance. `getVoices()` adds `{voiceURI: 'net-en', name: 'Online English', lang: 'en-US', localService: false}` after Plan 01's `fake-en-US`;
-    - `window.__wakeLock` gains `releases`; `window.__media` holds the handlers given to `navigator.mediaSession.setActionHandler`, by action name; `window.__announcements` gets `[regionId, text]` for every non-empty text written to `#live-polite` or `#live-assertive`; a fake `AudioContext` counts oscillator `start()` calls in `window.__tones`.
+    - the recogniser gains `processLocally`, `quality` and `phrases`; `window.__recStarts` counts `start()` calls, and `window.__recFailNext = true` makes the next `start()` throw a `NotAllowedError`;
+    - `window.__speechCancels` counts `cancel()`. With `holdSpeech`, an utterance ends only on `window.__endSpeech()` or `cancel()`. An utterance with empty text (the Start press's unlock) ends at once and is not pushed to `__spoken`. `window.__utterances` gets `{text, voiceURI, rate, volume}` for each recorded utterance;
+    - `window.__media` holds the handlers given to `navigator.mediaSession.setActionHandler`, by action name; `window.__announcements` gets `[regionId, text]` for every non-empty text written to `#live-polite` or `#live-assertive`; a fake `AudioContext` counts oscillator `start()` calls in `window.__tones`.
 
-The bar renders into Plan 01's `<div id="hf-bar">` (between the header and `<main>`, outside the routed view, so it is on every screen) and removes its `hidden` attribute. It is a `section` with `aria-label="Hands-free"`. Every button is at least 56 px tall. While a first-run step is shown, `body:has([data-firstrun]) #hf-start { display: none; }` hides the bar's Start, so the step's own Start is the only one.
+The bar renders into Plan 01's `<div id="hf-bar">` (between the header and `<main>`, outside the routed view, so it is on every screen) and removes its `hidden` attribute. It is a `section` with `aria-label="Hands-free"`. Every button is at least 56 px tall. Every bar button that dispatches passes `{source: 'button'}`. While a first-run step is shown, `body:has([data-firstrun]) #hf-start { display: none; }` hides the bar's Start, so the step's own Start is the only one.
 
 | Element | Visible text and behaviour |
 |---|---|
@@ -1294,12 +1328,12 @@ The bar renders into Plan 01's `<div id="hf-bar">` (between the header and `<mai
 | Turn off | `Turn off hands-free`, shown when not idle; calls `stop()` |
 | Listening indicator `#hf-listening` | `Listening` while the mic is on; otherwise `Push to talk` (push mode), `No voice` (off) or `Not listening` |
 | Talk | `Talk`, shown in push mode while not idle. `pointerdown` calls `talk(true)` and `pointerup` calls `talk(false)` (Task 4 turns a short press into a tap). It works whatever **Single-key shortcuts** is set to |
-| Stop listening | shown while the mic is on; `dispatch('stopListening')` |
+| Stop listening | shown while the mic is on; `dispatch('stopListening', null, {source: 'button'})` |
 | Pause/Play | `Pause` while active, `Play` while paused; hidden while idle and with `leanBack: false` |
-| Stop | text `Stop`, `aria-label="Stop reading"`; `dispatch('stop')`. Always visible |
+| Stop | text `Stop`, `aria-label="Stop reading"`; `dispatch('stop', null, {source: 'button'})`, which stops reading and never the Lab (Plan 06). Always visible |
 | Mute | `Mute` with `aria-pressed`; calls `setMuted`. Always visible |
-| Surprise me | `dispatch('fate')`. Always visible |
-| Help | `dispatch('help')`. Always visible |
+| Surprise me | `dispatch('fate', null, {source: 'button'})`. Always visible |
+| Help | `dispatch('help', null, {source: 'button'})`. Always visible |
 | Countdown `#hf-countdown` | `Next find in <n> s`; empty when `countdown(null)` |
 | Caption `#hf-caption` | `Heard: <label>` for each voice command, with an 80 ms 660 Hz tone at gain 0.05 from the Start press's `AudioContext` (no tone when there is none) |
 | Help line `#hf-help` | The help for a fatal voice error (table below); cleared by the next Start |
@@ -1320,13 +1354,13 @@ The Start press routine (module-private; the bar's Start and the first-run step'
 Wiring rules:
 - `ui.show(result)`: while a `[data-firstrun]` step is in `#app`, do nothing; on any route but `stumble`, `navigate('stumble')`; in both cases Stumble's first render then shows `engine.current()`, the find just fetched. Otherwise call `showResult(result)`. (Before the router starts, `navigate` to an unchanged hash would render directly, so first run must not reach it.)
 - `ui.act(id)` clicks the first button in `main` whose trimmed text equals the command's label (for `open`, `Open` or `Play`), else announces `No <label> button here`. `ui.openHelp()` and `ui.recap()` do nothing until Task 10.
-- `dispatch(id, arg)` (module-private) is the one command entry point. The keymap, the bar, the media keys, the search dialog (Task 10) and voice (through `createHandsFree({dispatch})`) all call it, and it ends in `app.handsFree.command(id, arg)`. A `search` with no `arg` opens search instead (Task 10). Plan 06 adds its Lab stop here.
-- Installed once, by `installHandsFreeUi`: `installKeymap({getSettings: app.getSettings, dispatch, onTalk: (on) => app.handsFree.talk(on)})`, and the media handlers `next` → `dispatch('next')`, `previous` → `dispatch('back')`, `playPause` → `dispatch('pause')`.
+- `dispatch(id, arg, {source})` (module-private) is the one command entry point, and `source` says who sent the command: `'voice'` (the listener, through `createHandsFree({dispatch})`), `'key'` (the keymap), `'button'` (the bar), `'media'` (the media keys) or `'dialog'` (the search dialog, Task 10). Whatever the source, it ends in `app.handsFree.command(id, arg)`; a `search` with no `arg` opens search instead (Task 10). Plan 06 adds its Lab stop here, for `stop` with source `'voice'` only, so Esc and the bar's **Stop** only stop reading.
+- Installed once, by `installHandsFreeUi`: `installKeymap({getSettings: app.getSettings, dispatch: (id) => dispatch(id, null, {source: 'key'}), onTalk: (on) => app.handsFree.talk(on)})`, and the media handlers `next` → `dispatch('next', null, {source: 'media'})`, `previous` → `dispatch('back', null, {source: 'media'})`, `playPause` → `dispatch('pause', null, {source: 'media'})`.
 - `hold('view')` while the route is not `stumble` (checked at install and on each `hashchange`); `release('view')` on `stumble`.
 - `visibilitychange` to hidden calls `suspend()` when active or paused; to visible calls `wake()`, and shows **Tap to resume** when it returns `false`.
 - Capture-phase `pointerdown` and `keydown` on `document`, outside `#hf-bar`, call `input()`.
 - `ui.setState('active')` calls `wakeLock.on()` and `media.setActive(true)`; any other state calls `off()` and `setActive(false)`.
-- `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find, result.why)` after rendering a find; the `open` and `play` actions call `app.handsFree?.pause()`, which says `Lean-back paused` when lean-back was on; the `read` action calls `app.handsFree.command('read')`.
+- `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find, result.why)` after rendering a find; the `open` and `play` actions call `app.handsFree?.pause()`, which says `Lean-back paused` when lean-back was on. The `read` action stays Plan 02's `app.handsFree.command('read', find)` (its `makeActionHandler`, used by Stumble, Feed and Saved), so every card's **Read it** reads its own find.
 - `boot.js` imports `handsfree-ui.js` and calls `installHandsFreeUi(app)` once the engine exists and before `await runFirstRun(app)`.
 - `card-actions.spec.js` (Plan 02) now hears one sentence per utterance, the last being the card's reason, so its **Read it** assertion becomes `await expect.poll(() => page.evaluate(() => window.__spoken)).toEqual(['Tiny Synth.', 'From example.com.', 'Make sounds with a tiny synth.', 'wildcard.']);`.
 
@@ -1421,7 +1455,7 @@ test('headset next track shows a new find', async ({ page }) => {
 
 test('a blocked mic is announced and the bar shows help', async ({ page }) => {
   await start(page);
-  await page.evaluate(() => window.__sayError('not-allowed'));
+  await page.evaluate(() => window.__voiceError('not-allowed'));
   await expect(page.locator('#live-assertive')).toHaveText('Microphone blocked');
   await expect(page.locator('#hf-listening')).toHaveText('Not listening');
   await expect(page.locator('#hf-help')).toHaveText('Allow the microphone for Byways in your settings, then turn hands-free off and on.');
@@ -1429,7 +1463,7 @@ test('a blocked mic is announced and the bar shows help', async ({ page }) => {
 
 test('hiding the page stops the mic, and Tap to resume shows when it cannot restart', async ({ page }) => {
   await start(page);
-  expect(await page.evaluate(() => window.__wakeLock.requests)).toBeGreaterThan(0);
+  expect(await page.evaluate(() => window.__wake.requests)).toBeGreaterThan(0);
   await setVis(page, 'hidden'); await expect(page.locator('#hf-listening')).toHaveText('Not listening');
   await setVis(page, 'visible'); await expect(page.locator('#hf-listening')).toHaveText('Listening');
   await setVis(page, 'hidden'); await page.evaluate(() => { window.__recFailNext = true; });
@@ -1463,6 +1497,16 @@ test('Open pauses lean-back and says so', async ({ page }) => {
   await expect.poll(() => announced(page, 'live-polite', 'Lean-back paused')).toBe(1);
 });
 
+test('Read it on a Feed card reads that card, not the Stumble find', async ({ page }) => {
+  await open(page);
+  const onScreen = await title(page).textContent();
+  await page.goto('./#/feed');
+  const card = page.locator('ul.feed article.card').filter({ hasNotText: onScreen }).first();
+  const t = await card.locator('h2').textContent();
+  await card.getByRole('button', { name: 'Read it' }).click();
+  await expect.poll(() => page.evaluate(() => window.__spoken[0])).toBe(`${t}.`);
+});
+
 test('lean-back waits off the Stumble view and never opens a tab', async ({ page }) => {
   await page.clock.install();
   await start(page); await settle(page);
@@ -1475,9 +1519,9 @@ test('lean-back waits off the Stumble view and never opens a tab', async ({ page
   expect(page.context().pages()).toHaveLength(1);
 });
 
-// tests/unit/pwa.test.js (appended; Plan 01's fake `win` has no recogniser)
+// tests/unit/pwa.test.js (appended; Plan 01's `makeWin()` fake has no recogniser)
 test('voice is the web engine', async () => {
-  const p = createPwaPlatform({ secretsStore: await openStore(memoryBackend()), win });
+  const p = createPwaPlatform({ secretsStore: await openStore(memoryBackend()), win: makeWin().win });
   assert.deepEqual(await p.voice.probe({ allowCloud: false }),
     { kind: 'none', vendor: null, needsDownload: false, continuous: false, reason: 'This browser has no speech recognition.' });
 });
@@ -1486,7 +1530,7 @@ test('voice is the web engine', async () => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node --test tests/unit/pwa.test.js`, then `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/handsfree.spec.js tests/e2e/card-actions.spec.js`
-Expected: FAIL. The new `pwa.test.js` case gets Plan 01's `reason: 'not set up yet'`; each hands-free test times out waiting for `getByRole('button', { name: 'Start' })` (or `Stop reading`); and card-actions' **Read it** test sees one combined utterance.
+Expected: FAIL. The new `pwa.test.js` case gets Plan 01's `reason: 'not set up yet'`; each hands-free test times out waiting for `getByRole('button', { name: 'Start' })` (or `Stop reading`), except the Feed **Read it** test, which, like card-actions' **Read it** test, sees Plan 02's one combined utterance.
 
 - [ ] **Step 3: Implement the fakes, `handsfree-ui.js` and the modifications**
 
@@ -1495,7 +1539,7 @@ Build every node with `h()`; all text goes through `textContent`. Add `#hf-bar` 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run the Step 2 commands.
-Expected: PASS: 10 tests in `pwa.test.js`, 12 in `handsfree.spec.js` and 6 in `card-actions.spec.js`. Then run `npm test`; expected: PASS, with `--check` finding no forbidden APIs.
+Expected: PASS: 10 tests in `pwa.test.js`, 13 in `handsfree.spec.js` and 8 in `card-actions.spec.js`. Then run `npm test`; expected: PASS, with `--check` finding no forbidden APIs.
 
 - [ ] **Step 5: Commit**
 
@@ -1510,14 +1554,14 @@ git commit -m "Add the hands-free bar and its wiring"
 - Modify: `src/ui/handsfree-ui.js`, `tests/e2e/handsfree.spec.js` (append these tests)
 
 **Interfaces:**
-- Consumes: Task 9's `dispatch`, `ui` object and spec helpers (`open`, `start`, `settle`, `title`, `announced`); `COMMANDS` (Task 1); `app.collections.has(findId) → Promise<string[]>` (Plan 02).
+- Consumes: Task 9's `dispatch`, `ui` object and spec helpers (`open`, `start`, `settle`, `title`, `announced`); `COMMANDS` (Task 1); `app.collections.has(findId) → Promise<string[]>` (Plan 02); the router's `byways:back` rule that closes the topmost `dialog[open]` (Plan 01, overview "Open dialogs and Android Back").
 - Produces: `ui.openHelp()` and `ui.recap(shown)`; the `/` search; the `'panel'` hold. No new exported names.
 
 - `ui.openHelp()` opens a modal `<dialog>` headed `What you can say`: one row per `COMMANDS` entry, with columns `Say` (the label; `Search for …` for `search`), `Also` (the other words; `find me …` for `search`) and `Key` (`Space` for `' '`, `Esc` for `Escape`, else the key in upper case, `—` for none), then the line `Hold V, or press Talk, when push or tap to talk is on.` and a `Close` button.
-- `dispatch('search')` with no text focuses `main input[type="search"]` when there is one (the keymap has already prevented the `/` from being typed). Otherwise it opens a `<dialog>` headed `Search` with a field labelled `Search for` and a `Search` button, which closes the dialog and calls `dispatch('search', text)`.
+- `dispatch('search')` with no text focuses `main input[type="search"]` when there is one (the keymap has already prevented the `/` from being typed). Otherwise it opens a `<dialog>` headed `Search` with a field labelled `Search for` and a `Search` button, which closes the dialog and calls `dispatch('search', text, {source: 'dialog'})`.
 - `ui.recap(shown)`: the saved finds are those in `shown` for which `(await app.collections.has(find.id)).length > 0`. With none saved, nothing opens. Otherwise a `<dialog>` headed `This session` shows `You saw <n> find(s) and saved <m>.` (`find` when `n` is 1, else `finds`), a list of the saved titles and `Close`.
 - Panel hold: lean-back holds `'panel'` while the page has an open `dialog`, an element with `aria-expanded="true"` (Plan 02's **⋯** menu) or a `.why-detail`. A `MutationObserver` on `document.body` (`subtree`, `childList`, and `attributes` for `open` and `aria-expanded`) checks after every change.
-- Every dialog also closes on Plan 08's cancelable `byways:back` event and calls `preventDefault()` (overview, Android Back).
+- No dialog listens for `byways:back`. On Back the router closes the topmost `dialog[open]` and cancels the event (overview, "Open dialogs and Android Back"), so one Back closes one dialog. Each dialog does its cleanup in its own `close` listener, which returns focus to the control that opened it, so a close by the router or by Esc behaves like **Close**, and the panel hold's observer sees the `open` attribute go.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
@@ -1586,16 +1630,16 @@ test('the recap opens only when something was saved', async ({ page }) => {
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/handsfree.spec.js`
-Expected: FAIL. The five new tests fail (no help dialog, no search dialog, no recap, and the menu does not hold); Task 9's 12 still pass.
+Expected: FAIL. The five new tests fail (no help dialog, no search dialog, no recap, and the menu does not hold); Task 9's 13 still pass.
 
 - [ ] **Step 3: Implement the dialogs and the panel hold in `handsfree-ui.js`**
 
-Each dialog is built with `h()` and opened with `showModal()`, and focus returns to the control that opened it when it closes.
+Each dialog is built with `h()` and opened with `showModal()`; its `close` listener returns focus to the control that opened it.
 
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run the Step 2 command.
-Expected: PASS, 17 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1612,7 +1656,7 @@ git commit -m "Add the help card, the search dialog, the recap and panel holds"
 - Test: `tests/e2e/settings-voice.spec.js`
 
 **Interfaces:**
-- Consumes: `registerSettingsSection` (`ui/views/settings/index.js`), `registerFirstRunStep` (`ui/firstrun.js`), the Start press routine (Task 9), `platform.voice.probe/install`, `platform.tts.voices/speak`, `app.saveSettings(patch)`; Task 9's fake counters (`__installs`, `__recognizers`, `__recStarts`, `__utterances`); in tests `skipFirstRun` (`helpers/app.js`).
+- Consumes: `registerSettingsSection` (`ui/views/settings/index.js`), `registerFirstRunStep` (`ui/firstrun.js`), the Start press routine (Task 9), `platform.voice.probe/install`, `platform.tts.voices/speak`, `app.saveSettings(patch)`; the fake counters `__installs`, `__recStarts` and `__utterances` (Task 9) and `__recognizers` (Plan 01); in tests `skipFirstRun` (`helpers/app.js`).
 - Produces (all in `handsfree-ui.js`, so `voice.js` imports them without a cycle):
   - `VENDOR_NAMES = {google:'Google', apple:'Apple', microsoft:'Microsoft', mozilla:'Mozilla', android:'Android'}`;
   - `describeEngine(status) → string`, with the copy below;
@@ -1758,7 +1802,7 @@ Every control has a visible `<label>`. Each change saves at once with `app.saveS
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-voice.spec.js tests/e2e/handsfree.spec.js`
-Expected: PASS, 7 and 17 tests.
+Expected: PASS, 7 and 18 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1923,7 +1967,7 @@ git commit -m "Add accessibility settings and the Atkinson Hyperlegible font"
 
 **Interfaces:**
 - Consumes: `test`, `expect`, `stageLibrary` (`helpers/net.js`), `gotoApp` (`helpers/app.js`), `installFakeSpeech` (`helpers/fakes.js`) and `expectNoSeriousA11y(page)` (`helpers/axe.js`, Plan 01, which already installs `@axe-core/playwright@4.14.0` and runs the WCAG 2.2 AA tags); the settings sections registered so far. Plan 01's smoke test already checks every main view and the high-contrast theme.
-- Produces: nothing new.
+- Produces: the `VIEWS` array in `axe.spec.js`, which Plans 04 and 06 append to (`'#/vault'`, `'#/daily'`, `'lab/'`). Its loop makes one test per entry and opens each as `'./' + entry`: an entry that starts with `#` goes through `gotoApp`, which also skips first run; any other entry is a plain `page.goto`.
 
 - [ ] **Step 1: Write the test**
 
@@ -1937,6 +1981,12 @@ import { expectNoSeriousA11y } from './helpers/axe.js';
 
 const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
 test.beforeEach(async ({ page }) => { await installFakeSpeech(page); await stageLibrary(page, small); });
+
+const VIEWS = ['#/stumble', '#/feed', '#/saved', '#/settings'];
+for (const entry of VIEWS) test(`axe on ${entry}`, async ({ page }) => {
+  if (entry.startsWith('#')) await gotoApp(page, entry); else await page.goto('./' + entry);
+  await expectNoSeriousA11y(page);
+});
 
 test('every first-run step', async ({ page }) => {
   await page.goto('./#/stumble');
@@ -1976,7 +2026,7 @@ test('hands-free running, the help card and high contrast', async ({ page }) => 
 - [ ] **Step 2: Run it**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/axe.spec.js`
-Expected: PASS, 3 tests, or a list of violations to fix in Step 3.
+Expected: PASS, 7 tests (one per `VIEWS` entry and the three named ones), or a list of violations to fix in Step 3.
 
 - [ ] **Step 3: Fix what it finds**
 
@@ -2001,8 +2051,8 @@ Before committing, also `git add` each file you changed in Step 3, by its exact 
 ## Notes for later plans
 
 - Plan 04: the Vault's **Play** (an embed) and the play watchdog call `app.handsFree?.pause()`. `pause()` does nothing unless lean-back is active, so it is safe in any state, and lean-back resumes only on an explicit resume (§6.5).
-- Plan 06: `app.handsFree` is one object for the app's life, so `connectLab` can hold it from boot. `dispatch(id, arg)` in `handsfree-ui.js` is the one dispatcher for keys, the bar, media keys, the search dialog and voice; add the Lab stop there.
-- Plans 07 and 08: boot calls `installHandsFreeUi(app)` for every shell. `app.handsFree.start()` runs the whole Start routine (probe, a fresh listener, wake lock), with or without a click. `voice/grammar.js`, `voice/listener.js`, `voice/reader.js` and `handsfree.js` take the engine, TTS and clock as parameters; the extension and Android plans supply their own `VoiceEngine` and `Tts` and map native error codes onto `VoiceErrorCode`.
-- Plan 07: the side panel's platform sets `caps.leanBack: false`, and `installHandsFreeUi` then creates the controller with `leanBack: false` (voice and read-aloud, no auto-advance).
+- Plan 06: `app.handsFree` is one object for the app's life, so `connectLab` can hold it from boot. `dispatch(id, arg, {source})` in `handsfree-ui.js` is the one dispatcher, with source `'voice'` (listener commands, passed by `createHandsFree`), `'key'` (the keymap), `'button'` (the bar), `'media'` (media keys) or `'dialog'` (the search dialog). Add the Lab stop there, for `stop` with source `'voice'` only: Esc and the bar's **Stop** only stop reading.
+- Plans 07 and 08: boot calls `installHandsFreeUi(app)` for every shell. `app.handsFree.start()` runs the whole Start routine (probe, a fresh listener, wake lock, media session, lean-back), with or without a click. `voice/grammar.js`, `voice/listener.js`, `voice/reader.js` and `handsfree.js` take the engine, TTS and clock as parameters; the extension and Android plans supply their own `VoiceEngine` and `Tts` and map native error codes onto `VoiceErrorCode`.
+- Plan 07: the side panel's platform sets `caps.leanBack: false`, and `installHandsFreeUi` then creates the controller with `leanBack: false` (voice and read-aloud, no auto-advance). Alt+Shift+V uses `app.handsFree.listening` and `setListening(on)` (Task 4). The panel's mini-feed cards go through Plan 02's `makeActionHandler`, so their **Read it** calls `command('read', find)` and reads that card.
 - Plan 08: `effectiveListenMode` treats `{kind:'native', continuous:true}` as always on and other native statuses as push or tap to talk. A cloud-only recogniser before opt-in must report `{kind:'none', vendor, reason:'cloud-only'}` (overview) for the opt-in to show. `describeEngine` names any `native` vendor other than `android`.
 - `platform-shells.md`: Android WebView has no `speechSynthesis` and no Media Session, so Plan 08 must bridge native TTS and a native media session; the WebView mic grant is limited to `RESOURCE_AUDIO_CAPTURE` on the app's own origin.

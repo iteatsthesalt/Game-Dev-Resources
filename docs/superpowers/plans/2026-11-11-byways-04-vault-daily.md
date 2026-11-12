@@ -55,15 +55,17 @@
 | `src/core/sources/itch.js` | itch.io feeds: live with privileged fetch, else the snapshot; `parseItchRss` |
 | `src/core/sources/webring.js` | Webring and Neocities cards from the snapshot extras |
 | `src/core/sources/index.js` (modify) | `readSnapshot`; registers `ia`, `vault`, `oldweb`, `itch`, `webring` |
+| `src/core/data.js` (modify) | `embedBroken` in what Plan 01's `loadAppData` returns |
 | `src/ui/components/card.js` (modify) | Card heading level, details link, **Keyboard needed** badge, `mountPlayer` and the `play` action |
 | `src/ui/views/vault.js` | Vault view and shelves |
 | `src/ui/views/daily.js` | Daily Fate view |
-| `src/ui/boot.js`, `src/ui/views/index.js` (modify) | `app.dataUrl`, `app.ia`, the embed-broken set, view imports |
+| `src/ui/boot.js`, `src/ui/views/index.js` (modify) | `app.ia`, view imports |
 | `src/data/vault-starter.json`, `src/data/geocities-seeds.json` (modify) | Curated data |
-| `tools/data-job.js` | Writes `daily.json`, `itch.json`, `vault-index.json`, `linkcheck.json` and the snapshot extras |
+| `tools/data-job.js` | Always writes `daily.json`, `itch.json`, `vault-index.json`, `linkcheck.json` and the snapshot extras: built, else the live copy, else an empty shape |
 | `tools/linkcheck.js` | Checks library links and keeps fail streaks |
 | `tools/build.js` (modify) | `{"v":1}` placeholders for the generated files; `--linkcheck <file>` drops entries with `failStreak ≥ 2` |
 | `tools/probe-live.js` | The §17.4 live checks and Markdown report |
+| `package.json` (modify) | The `linkcheck`, `data` and `probe` scripts (Plan 01 leaves them to the plans that create the tools) |
 | `.github/workflows/byways-probe.yml`, `.github/workflows/pages.yml`, `README.md` (modify) | Weekly probe; daily data step; the optional `NASA_API_KEY` secret |
 | `tests/unit/helpers/fake-fetch.js` | `fakeFetch`, `instantClock` and `readFixture` for unit tests |
 | `tests/unit/sources-index.test.js`, `tests/unit/workflows.test.js`, `tests/e2e/axe.spec.js` (modify) | Plan 02's registry table, Plan 01's workflow checks, Plan 03's axe views |
@@ -77,7 +79,7 @@
 
 **Interfaces:**
 - Consumes: `createHttp({transport, clock}) → Http` (`request`, `getJson`); `new NetError(kind, message, {status, retryAfterMs, source})`; `createCache(store, clock)`; `openStore(memoryBackend())`; `fakeClock(start)` with `advance(ms)`.
-- Produces: `createIaClient({http, cache, clock}) → IaClient`, where `IaClient = {search({q, fl, sort, rows, page}) → Promise<{numFound, docs}>, count(q) → Promise<number>, metadata(id) → Promise<object|null>, wayback(url, timestamp) → Promise<{url, timestamp}|null>}`. Failures reject with `NetError`; the circuit pause rejects with `kind: 'circuit'`. `sharedIaClient({http, cache, clock}) → IaClient` returns one client per `http` object. Test helpers `fakeFetch(routes, {clock}?) → {fetch(url, init) → Promise<Response>, calls: Array<{url, init, at}>}` (routes are `[RegExp, (url, init) => ({status?, body?, headers?}) | Promise<…>]`; the first match answers; an object body is sent as JSON and a string as text; a responder that throws makes `fetch` reject; unmatched URLs get 404), `instantClock(start = Date.UTC(2026, 10, 11, 12)) → {now, setTimeout, clearTimeout}`, whose `setTimeout(fn, ms)` runs `fn` on `setImmediate` after adding `ms` to `now` (a cleared timer adds nothing), and `readFixture(path) → string`, which reads `tests/fixtures/http/<path>` as UTF-8.
+- Produces: `createIaClient({http, cache, clock}) → IaClient`, where `IaClient = {search({q, fl, sort, rows, page}, opts) → Promise<{numFound, docs}>, count(q, opts) → Promise<number>, metadata(id, opts) → Promise<object|null>, wayback(url, timestamp, opts) → Promise<{url, timestamp}|null>}` and every `opts` is the optional `{urgent = false} = {}`. An urgent call goes ahead of every waiting call that is not urgent, still under the same pacing (contract, "Urgent lane"). Failures reject with `NetError`; the circuit pause rejects with `kind: 'circuit'`. `sharedIaClient({http, cache, clock}) → IaClient` returns one client per `http` object. Test helpers `fakeFetch(routes, {clock}?) → {fetch(url, init) → Promise<Response>, calls: Array<{url, init, at}>}` (routes are `[RegExp, (url, init) => ({status?, body?, headers?}) | Promise<…>]`; the first match answers; an object body is sent as JSON and a string as text; a responder that throws makes `fetch` reject; unmatched URLs get 404), `instantClock(start = Date.UTC(2026, 10, 11, 12)) → {now, setTimeout, clearTimeout}`, whose `setTimeout(fn, ms)` runs `fn` on `setImmediate` after adding `ms` to `now` (a cleared timer adds nothing), and `readFixture(path) → string`, which reads `tests/fixtures/http/<path>` as UTF-8.
 
 - [ ] **Step 1: Write the helpers, then the failing tests**
 
@@ -118,6 +120,13 @@ test('at most 2 requests run at once', async () => {
   ['a', 'b', 'c'].forEach((q) => ia.count(q).catch(() => {}));
   await flush(); clock.advance(5000); await flush();
   assert.equal(net.calls.length, 2);
+});
+test('urgent calls go ahead of waiting calls, in their own order, still 1000 ms apart', async () => {
+  const p = ['a', 'b', 'c'].map((q) => ia.count(q));
+  p.push(ia.count('d', { urgent: true }), ia.count('e', { urgent: true }));
+  for (let i = 0; i < 4; i++) { await flush(); clock.advance(1000); }
+  await Promise.all(p);
+  assert.deepEqual(net.calls.map((c) => [new URL(c.url).searchParams.get('q'), c.at]), [['a', 0], ['d', 1000], ['e', 2000], ['b', 3000], ['c', 4000]]);
 });
 test('two 429s in a row pause the queue for 5 minutes', async () => {
   // responder: status 429 (no Retry-After) until `ok = true`, then 200
@@ -165,10 +174,12 @@ Expected: FAIL with "Cannot find module '…/src/core/ia/client.js'".
 
 - [ ] **Step 3: Implement `createIaClient` and `sharedIaClient` in `src/core/ia/client.js`**
 
-It sends every request as `http.request(url, {source: 'ia'})` with no headers, and never calls `http.register('ia', …)`: Plan 01's `Http` pauses a registered source for 60 s on a 429 or 503 without `Retry-After`, so this queue alone owns Archive pacing and backoff. Base URL `https://archive.org`. Build query strings with `URLSearchParams.append`, one `fl[]` and one `sort[]` per value. `metadata` and a `{}` or `{result: {}}` reply both give `null`. `wayback` returns `null` unless `closest.available` is true, and rewrites a leading `http://web.archive.org/` to `https://web.archive.org/`. Cache keys: `ia:s:<url>` for 86400000 ms, `ia:m:<id>` and `ia:w:<url>|<timestamp>` for 604800000 ms. A cache hit answers without joining the queue. Only successful replies are cached; errors never are. `sharedIaClient` keeps a `WeakMap` keyed by `http`. `Http` throws a `NetError` for any status of 400 or more, so the queue reads statuses from thrown errors:
+It sends every request as `http.request(url, {source: 'ia'})` with no headers, and never calls `http.register('ia', …)`: Plan 01's `Http` pauses a registered source for 60 s on a 429 or 503 without `Retry-After`, so this queue alone owns Archive pacing and backoff. For the same reason Plan 02's engine and test kit register no rate for the ids in `SELF_PACED` (`sources/index.js`), which holds `ia` and `vault`. Base URL `https://archive.org`. Build query strings with `URLSearchParams.append`, one `fl[]` and one `sort[]` per value. `metadata` and a `{}` or `{result: {}}` reply both give `null`. `wayback` returns `null` unless `closest.available` is true, and rewrites a leading `http://web.archive.org/` to `https://web.archive.org/`. Cache keys: `ia:s:<url>` for 86400000 ms, `ia:m:<id>` and `ia:w:<url>|<timestamp>` for 604800000 ms. A cache hit answers without joining the queue. Only successful replies are cached; errors never are. `sharedIaClient` keeps a `WeakMap` keyed by `http`. `Http` throws a `NetError` for any status of 400 or more, so the queue reads statuses from thrown errors:
 
 ```js
 // state: lastStart = -Infinity, holdUntil = 0, active = 0, waiting = [], streak = 0, pausedUntil = 0, timer = null
+// enqueue(job, urgent): an urgent job goes in right after the last urgent job in `waiting` (at the front when there is none);
+//         any other job goes at the end. Then pump(). Urgency changes only the order, never the pacing below.
 // pump(): if (clock.now() < pausedUntil) { reject every waiting job with new NetError('circuit', 'Archive paused after two 429s in a row', {source: 'ia'}); return }
 //         if (active >= 2 || !waiting.length || timer) return
 //         wait = max(lastStart + 1000, holdUntil) - clock.now(); if (wait > 0) { timer = clock.setTimeout(() => { timer = null; pump() }, wait); return }
@@ -180,7 +191,7 @@ It sends every request as `http.request(url, {source: 'ia'})` with no headers, a
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/ia-client.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -199,7 +210,7 @@ git commit -m "Add the shared Archive client and request queue"
 
 **Interfaces:**
 - Consumes: `IaClient` (Task 1); `makeFind(partial)`; `toPlainText(html)`.
-- Produces: `VAULT_COLLECTIONS = {verified: string[], likely: string[], shelves: Array<{id, label, collections: string[], keyboard: boolean}>}`; `CURATED_COLLECTIONS: Set<string>`; `gemQuery(id, page) → {q, fl, sort, rows, page}`; `gemScore(doc, {currentYear, curated}) → number`; `gemWhy(doc) → string[]`; `iaDocToFind(doc, {kind, safety = 'curated', why}) → Find|null`; `validateCollections(ia, cache, ids = [...verified, ...likely]) → Promise<string[]>`; `shelfGems(ia, shelf, {rand, currentYear, skip = new Set(), valid}) → Promise<Find[]>`; `vaultFate(ia, rand, collections) → Promise<Find|null>`.
+- Produces: `VAULT_COLLECTIONS = {verified: string[], likely: string[], shelves: Array<{id, label, collections: string[], keyboard: boolean}>}`; `CURATED_COLLECTIONS: Set<string>`; `gemQuery(id, page) → {q, fl, sort, rows, page}`; `gemScore(doc, {currentYear, curated}) → number`; `gemWhy(doc) → string[]`; `iaDocToFind(doc, {kind, safety = 'curated', why}) → Find|null`; `validateCollections(ia, cache, ids = [...verified, ...likely], {urgent = false} = {}) → Promise<string[]>`; `shelfGems(ia, shelf, {rand, currentYear, skip = new Set(), valid, urgent = false}) → Promise<Find[]>`; `vaultFate(ia, rand, collections) → Promise<Find|null>`. The two functions with `urgent` pass `{urgent}` as the last argument of every `ia` call they make (the Vault's **More gems** sets it, Task 9); `vaultFate` runs in the background and never does.
 
 Values (verbatim from §10.1):
 
@@ -211,7 +222,7 @@ Values (verbatim from §10.1):
 
 - [ ] **Step 1: Write the failing tests**
 
-`seq = (...v) => () => v.shift()`. Each test gets a fresh `cache = createCache(await openStore(memoryBackend()), fakeClock(0))` and a stub `ia = {metadata, count, search}` that answers as the test's comment says and records `metadataCalls` (a count), `countArgs` (each `q`) and `searchArgs` (each params object).
+`seq = (...v) => () => v.shift()`. Each test gets a fresh `cache = createCache(await openStore(memoryBackend()), fakeClock(0))` and a stub `ia = {metadata, count, search}` that answers as the test's comment says and records `metadataCalls` (a count), `countArgs` (each `q`), `searchArgs` (each params object) and `optsArgs` (the second argument of every call, in call order).
 
 ```js
 test('collections match the spec and leave out the dropped ids', () => {
@@ -279,6 +290,12 @@ test('shelfGems takes a random page and sorts by gem score', async () => {
   assert.ok(searchArgs[0].q.startsWith('collection:(softwarelibrary_msdos_shareware)'));
   assert.deepEqual(finds.map((f) => f.title), ['Tiny', 'Mid']);
 });
+test('validateCollections and shelfGems pass {urgent} to every Archive call', async () => {
+  // stub metadata → {mediatype: 'collection'}; count → 250; search → the docs of the test above
+  await validateCollections(ia, cache, ['softwarelibrary_c64_games'], { urgent: true });
+  await shelfGems(ia, VAULT_COLLECTIONS.shelves[2], { rand: seq(0, 0.5), currentYear: 2026, urgent: true });
+  assert.deepEqual(optsArgs, [{ urgent: true }, { urgent: true }, { urgent: true }]);
+});
 test('vaultFate counts, then fetches one item at a random offset', async () => {
   // stub count → 250
   const f = await vaultFate(ia, seq(0, 0.5), ['softwarelibrary_c64_games']);
@@ -307,14 +324,14 @@ Expected: FAIL with "Cannot find module '…/src/core/ia/vault.js'".
 - Field rules (shared by every function): a value that is an array uses its first item; `year` counts only when it matches `/^\d{4}$/`; the identifier must match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, or `iaDocToFind` returns `null`; a missing title falls back to the identifier.
 - `gemWhy`: first the pool chip, `'Internet Archive: ' + <label of the first known collection>` or `'Internet Archive'` (Plan 02's first-chip rule, and the §5.3 example "Internet Archive: MS-DOS Shareware · 312 downloads"); then downloads as `n.toLocaleString('en-US') + ' download' + (n === 1 ? '' : 's')`; the year; and `★<avg rounded to 1 decimal, trailing .0 dropped> (<num_reviews>)` when `avg_rating > 0` and `num_reviews ≥ 1`. Leave out any chip after the first whose field is missing.
 - `iaDocToFind`: source `'vault'` for `kind: 'game'`, else `'ia'`. Tags `['retro']` for games, else `[]`. `why` defaults to `gemWhy(doc)` for games and `['Internet Archive']` otherwise. `meta.platform` is the label of the shelf that holds `meta.collection`, or `null`.
-- `validateCollections`: check ids one at a time with `ia.metadata(id)`, and keep an id when `mediatype === 'collection'`. Cache the list under `'ia:valid:' + ids.join(',')` for 604800000 ms. If any call throws, return the passing ids plus the verified ids among those that threw, and cache nothing.
-- `shelfGems`: use the shelf's collections (filtered by `valid` when it is given), pick one with `rand()`, `N = ia.count(gemQuery(id, 1).q)`, and return `[]` when N is 0. Then `page = 1 + floor(rand() · ceil(min(N, 10000) / 100))`. Drop docs whose `'ia:' + identifier` is in `skip`, sort by `gemScore` (highest first, `curated: CURATED_COLLECTIONS`) and map with `iaDocToFind(doc, {kind: 'game'})`.
+- `validateCollections`: check ids one at a time with `ia.metadata(id, {urgent})`, and keep an id when `mediatype === 'collection'`. Cache the list under `'ia:valid:' + ids.join(',')` for 604800000 ms. If any call throws, return the passing ids plus the verified ids among those that threw, and cache nothing.
+- `shelfGems`: use the shelf's collections (filtered by `valid` when it is given), pick one with `rand()`, `N = ia.count(gemQuery(id, 1).q, {urgent})`, and return `[]` when N is 0. Then `page = 1 + floor(rand() · ceil(min(N, 10000) / 100))` and `ia.search(gemQuery(id, page), {urgent})`. Drop docs whose `'ia:' + identifier` is in `skip`, sort by `gemScore` (highest first, `curated: CURATED_COLLECTIONS`) and map with `iaDocToFind(doc, {kind: 'game'})`.
 - `vaultFate`: pick a collection with `rand()`, base query `collection:(<id>) AND mediatype:software`. If N > 10000, `y = 1980 + 5 · floor(rand() · 6)`, add ` AND year:[y TO y+4]` and count again. N = 0 → `null`. `offset = floor(rand() · min(N, 10000))`, then `search({q, fl: gemQuery(id, 1).fl, sort: ['identifier asc'], rows: 1, page: offset + 1})`, and map the doc.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/ia-vault.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -434,63 +451,66 @@ git commit -m "Add the Daily Fate seed, backup recipe and file loader"
 
 ---
 
-### Task 4: Generated data files: `dataUrl`, `readSnapshot` and placeholders
+### Task 4: Generated data files: `readSnapshot`, the embed-broken set and placeholders
 
 **Files:**
 - Create: `tests/fixtures/http/pages/empty.json` (`{"v":1}`)
-- Modify: `src/ui/boot.js`, `src/core/sources/index.js`, `tools/build.js`, `tests/fixtures/routes.js`
+- Modify: `src/core/data.js`, `src/core/sources/index.js`, `tools/build.js`, `tests/fixtures/routes.js`
 - Test: `tests/unit/data-files.test.js`
 
 **Interfaces:**
-- Consumes: `SHARE_BASE` (Plan 02 `share.js`); `build({target, outRoot, id})` (Plan 01); `createHttp`, `createCache`, `openStore(memoryBackend())`, `fakeClock`; `fakeFetch` (Task 1).
-- Produces: `dataUrlFor(platformName) → (file) => string` exported from `boot.js`, and `app.dataUrl = dataUrlFor(platform.name)`, the contract's `dataUrl` (listed under Plan 01, whose boot does not define it; if it exists when this runs, keep it and add only the test); the `pages` limiter (`app.http.register('pages', {perMinute: 30, concurrent: 2})`); `readSnapshot(ctx, file) → Promise<object|null>` from `sources/index.js`, used by every snapshot reader in this plan; `{"v":1}` placeholders for the five generated files in `dist/pwa/data/`.
+- Consumes: `dataUrlFor(platformName, file) → string` and `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities}>` (Plan 01, `src/core/data.js`; `app.dataUrl` wraps `dataUrlFor`, and `loadAppData` registers the `pages` Http source); `build({target, outRoot, id})` (Plan 01); `createHttp`, `createCache`, `openStore(memoryBackend())`, `fakeClock`; `fakeFetch` (Task 1).
+- Produces: `readSnapshot(ctx, file) → Promise<object|null>` from `sources/index.js`, used by every snapshot reader in this plan; `embedBroken: Set<string>` (find ids) in the object `loadAppData` returns, so `app.data.embedBroken` exists in the app and in Plan 07's background engine; `{"v":1}` placeholders for the five generated files in `dist/pwa/data/`. This task defines no `dataUrlFor` and registers no `pages` source: both are Plan 01's (contract).
 
 - [ ] **Step 1: Write the failing tests**
 
-`DATA = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/'`. The `readSnapshot` test uses `clock = fakeClock(0)`, `net = fakeFetch([[/data\/itch\.json$/, () => ({ body: { v: 1, feeds: [] } })]], {clock})` and `ctx = {http: createHttp({transport: net, clock}), cache: createCache(await openStore(memoryBackend()), clock), clock, dataUrl: (f) => DATA + f}`.
+`DATA = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/'`. Each test gets a fresh `clock = fakeClock(0)`, `net = fakeFetch([[/data\/itch\.json$/, () => ({ body: { v: 1, feeds: [] } })]], {clock})` and `ctx = {http: createHttp({transport: net, clock}), cache: createCache(await openStore(memoryBackend()), clock), clock, dataUrl: (f) => dataUrlFor('extension', f)}`, so the reader runs on Plan 01's own address function.
 
 ```js
-test('dataUrl is relative in the web app and the Pages URL elsewhere', () => {
-  assert.equal(dataUrlFor('pwa')('daily.json'), 'data/daily.json');
-  for (const p of ['extension', 'android']) assert.equal(dataUrlFor(p)('itch.json'), DATA + 'itch.json');
-});
 test('readSnapshot reads through dataUrl, caches for an hour and gives null on any error', async () => {
   assert.deepEqual(await readSnapshot(ctx, 'itch.json'), { v: 1, feeds: [] });
   await readSnapshot(ctx, 'itch.json');
   assert.deepEqual(net.calls.map((c) => c.url), [DATA + 'itch.json']);
   clock.advance(3600001); await readSnapshot(ctx, 'itch.json'); assert.equal(net.calls.length, 2);
   assert.equal(await readSnapshot(ctx, 'neocities.json'), null);
-  assert.equal(await readSnapshot({ ...ctx, dataUrl: undefined }, 'itch.json'), null);
+  assert.equal(await readSnapshot({ ...ctx, dataUrl: undefined }, 'webrings.json'), null);   // not cached, so the missing dataUrl is reached
 });
 test('the pwa build ships {"v":1} placeholders for the generated data files', async () => {
   const out = await mkdtemp(join(tmpdir(), 'bw-')); await build({ target: 'pwa', outRoot: out, id: 't' });
   for (const f of ['daily.json', 'itch.json', 'vault-index.json', 'webrings.json', 'neocities.json'])
     assert.deepEqual(JSON.parse(readFileSync(join(out, 'dist/pwa/data', f), 'utf8')), { v: 1 }, f);
 });
+test('loadAppData gives the embed-broken ids from the health store', async () => {
+  const store = await openStore(memoryBackend());
+  await store.put('health', 'embed-broken:ia:msdos_Whizz_1994', { at: 1 }); await store.put('health', 'probe:pwa', { at: 1, results: {} });
+  const load = (s) => loadAppData({ fetchFn: async () => new Response('', { status: 404 }), base: 'http://localhost:4321/Game-Dev-Resources/byways/', dataUrl: ctx.dataUrl, http: createHttp({ transport: net, clock }), store: s });
+  assert.deepEqual([...(await load(store)).embedBroken], ['ia:msdos_Whizz_1994']);
+  assert.equal((await load(await openStore(memoryBackend()))).embedBroken.size, 0);
+});
 ```
 
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `node --test tests/unit/data-files.test.js`
-Expected: FAIL with "SyntaxError: The requested module '../../src/ui/boot.js' does not provide an export named 'dataUrlFor'" (the test imports `boot.js` first).
+Expected: FAIL with "SyntaxError: The requested module '../../src/core/sources/index.js' does not provide an export named 'readSnapshot'".
 
 - [ ] **Step 3: Implement the four changes**
 
-- `boot.js`: `dataUrlFor(name)` gives `(file) => 'data/' + file` for `'pwa'` and `(file) => SHARE_BASE + 'data/' + file` otherwise. Set `app.dataUrl` and register `pages` with the other Plan 01 fields, before the engine is created.
+- `data.js`: `loadAppData` also returns `embedBroken`, a `Set` of the find ids after `embed-broken:` in `await store.keys('health')`, and an empty `Set` when the store throws. Task 10 writes those keys, and the `ia` and `vault` adapters skip the ids (Task 5). Boot and Plan 07's background both take `data` from `loadAppData`, and the engine's `ctx.data` is that same object, so a game marked later in the session goes into this same `Set`.
 - `readSnapshot(ctx, file)`: `ctx.http.getJson(ctx.dataUrl(file), {source: 'pages'})`, cached in `ctx.cache` under `snap:<file>` for 3600000 ms. Any throw (a 404, bad JSON, a missing `ctx.dataUrl` or `ctx.cache`) gives `null`, and `null` is never cached. Readers treat a missing or wrongly typed field in a snapshot as empty.
 - `build.js`: the `pwa` target writes `{"v":1}` to `daily.json`, `itch.json`, `vault-index.json`, `webrings.json` and `neocities.json` under `dist/pwa/data/`, and the data job overwrites them on Pages. The extension and Android outputs get none, because they read Pages. Without the placeholders, every e2e page that reads a snapshot would log a 404, which Plan 01's `test` fixture reports through `pageProblems`.
 - `routes.js`: add `{match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\//, file: 'pages/empty.json'}`, so the extension and Android e2e runs read empty snapshots instead of making unmocked requests.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
-Run: `node --test tests/unit/data-files.test.js tests/unit/boot-data.test.js`
-Expected: PASS, 3 tests plus Plan 01's.
+Run: `node --test tests/unit/data-files.test.js`
+Expected: PASS, 3 tests. Then run `npm run build && npm test`; expected: every unit test passes, Plan 01's data loader tests among them.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/boot.js src/core/sources/index.js tools/build.js tests/fixtures/routes.js tests/fixtures/http/pages tests/unit/data-files.test.js
-git commit -m "Read generated data files through dataUrl, with build placeholders"
+git add src/core/data.js src/core/sources/index.js tools/build.js tests/fixtures/routes.js tests/fixtures/http/pages tests/unit/data-files.test.js
+git commit -m "Add the snapshot reader, the embed-broken set and data file placeholders"
 ```
 
 ---
@@ -504,7 +524,7 @@ git commit -m "Read generated data files through dataUrl, with build placeholder
 
 **Interfaces:**
 - Consumes: `sharedIaClient`, `VAULT_COLLECTIONS`, `validateCollections`, `vaultFate`, `shelfGems`, `iaDocToFind` (Tasks 1–2); `readSnapshot` (Task 4); the adapter shape and `ctx = {http, rand, clock, cache, settings, secrets, data, platformName, caps, dataUrl}` (contract; Plan 02's engine builds it); `getSource`.
-- Produces: default-exported adapters `ia` and `vault`; `IA_COLLECTIONS: Array<{id, label, kind, safety}>` from `sources/ia.js`; `luceneEscape(text) → string` from `ia/client.js`. Both adapters drop finds whose id is in `ctx.data.embedBroken: Set<string>`, which Task 9 adds to `app.data`.
+- Produces: default-exported adapters `ia` and `vault`; `IA_COLLECTIONS: Array<{id, label, kind, safety}>` from `sources/ia.js`; `luceneEscape(text) → string` from `ia/client.js`. Both adapters drop finds whose id is in `ctx.data.embedBroken: Set<string>`, which `loadAppData` returns (Task 4). A `ctx.data` without it (Plan 02's test kit builds one) drops nothing and does not throw.
 
 `IA_COLLECTIONS` (in this order): `prelinger` "Prelinger Archives" video; `feature_films` "Feature Films" video, safety `mixed`; `georgeblood` "Great 78 Project" audio; `78rpm` "78 RPMs and Cylinder Recordings" audio; `oldtimeradio` "Old Time Radio" audio; `librivoxaudio` "LibriVox" audio; `etree` "Live Music Archive" audio; `computermagazines` "Computer Magazines" book. Safety is `mostly` unless stated.
 
@@ -559,6 +579,8 @@ test('vault random returns a Vault Fate find and skips embed-broken games', asyn
   assert.deepEqual((await vault.random(ctx)).map((f) => f.id), ['ia:msdos_Whizz_1994']);
   ctx.data.embedBroken.add('ia:msdos_Whizz_1994'); ctx.rand = seq(0, 0.5);
   assert.deepEqual(await vault.random(ctx), []);
+  ctx.data = {}; ctx.rand = seq(0, 0.5);   // a ctx built without loadAppData
+  assert.deepEqual((await vault.random(ctx)).map((f) => f.id), ['ia:msdos_Whizz_1994']);
 });
 test('vault random falls back to the vault-index snapshot when the Archive fails', async () => {
   // every archive.org responder throws; rand = () => 0.9
@@ -587,8 +609,9 @@ Expected: FAIL with "Cannot find module '…/src/core/sources/ia.js'".
 - [ ] **Step 3: Implement both adapters, `luceneEscape` and the registration**
 
 - `luceneEscape` puts a backslash before each of `+ - & | ! ( ) { } [ ] ^ " ~ * ? : \ /` and leaves spaces alone.
-- `ia`: `name: 'Internet Archive'`, `kinds: ['video','audio','book']`, `tier: 'probe'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`, `probeUrl: 'https://archive.org/advancedsearch.php?q=identifier%3Aprelinger&fl%5B%5D=identifier&rows=1&output=json'`. Every method gets its client from `sharedIaClient({http: ctx.http, cache: ctx.cache, clock: ctx.clock})`, and its collections from `validateCollections(ia, ctx.cache, IA_COLLECTIONS.map(c => c.id))`, minus the `mixed` ones while `ctx.settings.familyFilter` is on. Every method drops a find whose id is in `ctx.data.embedBroken`. `random`: pick a collection with `ctx.rand()`, count `collection:(<id>)`, `offset = floor(ctx.rand() · min(N, 10000))`, then one `rows: 1` search sorted `identifier asc`, with `fl` `identifier,title,creator,year,description,collection,mediatype`. Map it with `iaDocToFind(doc, {kind, safety, why: ['Internet Archive: ' + label]})`. `search(query)`: `q = '(' + luceneEscape(query) + ') AND collection:(' + ids.join(' OR ') + ')'`, 20 rows, no sort; each doc's kind and label come from its first collection in `IA_COLLECTIONS`. `more(find)`: `random` limited to `find.meta.collection` when that is one of the current ids, else plain `random`.
+- `ia`: `name: 'Internet Archive'`, `kinds: ['video','audio','book']`, `tier: 'probe'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`, `probeUrl: 'https://archive.org/advancedsearch.php?q=identifier%3Aprelinger&fl%5B%5D=identifier&rows=1&output=json'`. Every method gets its client from `sharedIaClient({http: ctx.http, cache: ctx.cache, clock: ctx.clock})`, and its collections from `validateCollections(ia, ctx.cache, IA_COLLECTIONS.map(c => c.id))`, minus the `mixed` ones while `ctx.settings.familyFilter` is on. Every method drops a find whose id is in `ctx.data.embedBroken` (read as `ctx.data?.embedBroken?.has(id)`, so a missing set drops nothing; `vault` reads it the same way). `random`: pick a collection with `ctx.rand()`, count `collection:(<id>)`, `offset = floor(ctx.rand() · min(N, 10000))`, then one `rows: 1` search sorted `identifier asc`, with `fl` `identifier,title,creator,year,description,collection,mediatype`. Map it with `iaDocToFind(doc, {kind, safety, why: ['Internet Archive: ' + label]})`. `search(query)`: `q = '(' + luceneEscape(query) + ') AND collection:(' + ids.join(' OR ') + ')'`, 20 rows, no sort; each doc's kind and label come from its first collection in `IA_COLLECTIONS`. `more(find)`: `random` limited to `find.meta.collection` when that is one of the current ids, else plain `random`.
 - `vault`: `name: 'Internet Archive games'`, `kinds: ['game']`, `tier: 'snapshot'`, `key: 'none'`, `safety: 'curated'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: true`, no `probeUrl`. `random`: `vaultFate(client, ctx.rand, await validateCollections(client, ctx.cache))`, dropping a find whose id is in `ctx.data.embedBroken`. On any thrown error it uses `readSnapshot(ctx, 'vault-index.json')` instead: it flattens every collection's `gems`, drops broken ids, picks one with `ctx.rand()` (an empty list gives `[]`), and maps it with `iaDocToFind(gem, {kind: 'game'})`. `search(query)`: `(<escaped>) AND mediatype:software AND collection:(<valid ids joined by ' OR '>)`, 20 rows. `more(find)`: `shelfGems` on the shelf holding `find.meta.collection`, with `skip` set to the broken ids and `currentYear` from `ctx.clock.now()` in UTC, first 10.
+- Both ids are in Plan 02's `SELF_PACED`, so the `rate` each one declares (the adapter shape needs one) is never registered with `Http`: the Archive queue (Task 1) paces every call they make.
 - `sources/index.js`: import both default exports and append them to `ADAPTERS` (Plan 02).
 
 - [ ] **Step 4: Run the tests to see them pass**
@@ -715,7 +738,7 @@ test('itch random reads a feed live through privileged fetch when the platform c
 });
 ```
 
-Add the `TABLE` row `itch: ['open','none','mostly',10,false]` to `tests/unit/sources-index.test.js` and remove `'itch'`, the last id, so the `undefined` loop goes.
+Add the `TABLE` row `itch: ['privileged','none','mostly',10,false]` to `tests/unit/sources-index.test.js` and remove `'itch'`, the last id, so the `undefined` loop goes.
 
 - [ ] **Step 2: Run the tests to see them fail**
 
@@ -725,7 +748,7 @@ Expected: FAIL with "Cannot find module '…/src/core/sources/itch.js'".
 - [ ] **Step 3: Implement `parseItchRss`, the adapter and the registration**
 
 - `parseItchRss`: split on `<item>`, read `plainTitle` (else `title`), `link`, `pubDate`, `imageurl` and `description`, unwrap CDATA, and turn HTML into text with `toPlainText`. `imageUrl` is `imageurl`, else the first `<img src>` in the description, else `null`. Keep only `https://<name>.itch.io/…` links; `author` is `<name>`. `published` is `new Date(pubDate).toISOString()`, or `null` when the date is invalid.
-- `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'open'` (the contract's tier: Plan 02's `enabledSources` drops `privileged` sources in the web app, which has the snapshot), `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.caps?.privilegedFetch` is true (the extension and Android): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `readSnapshot(ctx, 'itch.json')`, and `null` gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`, with `author`, `imageUrl` and `meta.published`. `search(query)` filters every item by title or description. `more` is `random`.
+- `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'privileged'` (the contract's tier, §7.2 "Privileged only"; Plan 02's `enabledSources` keeps a `privileged` source on every platform, and in the web app it reads the snapshot), `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.caps?.privilegedFetch` is true (the extension and Android): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `readSnapshot(ctx, 'itch.json')`, and `null` gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`, with `author`, `imageUrl` and `meta.published`. `search(query)` filters every item by title or description. `more` is `random`.
 - `sources/index.js`: append the adapter to `ADAPTERS`.
 
 - [ ] **Step 4: Run the tests to see them pass**
@@ -819,8 +842,8 @@ git commit -m "Add the Vault starter list and GeoCities seeds"
 - Test: `tests/e2e/vault.spec.js`
 
 **Interfaces:**
-- Consumes: `registerView`, `navigate`, `h`, `clear`, `announce`, `renderCard`, `makeActionHandler(app, {advance, whyLine})`, `createCache`, `getSource`; `readSnapshot` (Task 4); `libraryEntryToFind` (Task 3); the `app` fields `store`, `http`, `clock`, `rand`, `platform`, `data`, `engine`, `secrets`, `getSettings`, `dataUrl`; Tasks 1–7.
-- Produces: `app.ia: IaClient`; `app.data.embedBroken: Set<string>` of find ids, persisted in the `health` store under `embed-broken:<find id>`; `renderCard(find, {onAction, compact, whyLine, headingLevel = 2})`, which also shows, for a find with `embedUrl`, a **Details on archive.org** link and, on a coarse pointer, a **Keyboard needed** badge.
+- Consumes: `registerView`, `navigate`, `h`, `clear`, `announce`, `renderCard`, `makeActionHandler(app, {advance, whyLine})`, `createCache`, `getSource`; `readSnapshot` (Task 4); `libraryEntryToFind` (Task 3); the `app` fields `store`, `http`, `clock`, `rand`, `platform`, `data` (with `data.embedBroken`, Task 4), `engine`, `secrets`, `getSettings`, `dataUrl`; Tasks 1–7.
+- Produces: `app.ia: IaClient`; `renderCard(find, {onAction, compact, whyLine, headingLevel = 2})`, which also shows, for a find with `embedUrl`, a **Details on archive.org** link and, on a coarse pointer, a **Keyboard needed** badge.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
@@ -831,6 +854,7 @@ const LABELS = ['DOS', 'Windows 3.x', 'C64', 'Apple II', 'ZX Spectrum', 'Amiga',
 test('shows a shelf per platform plus Indie web', async ({ page }) => {
   await gotoApp(page, '#/vault');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Vault');
+  await expect(page.locator('h1')).toHaveCount(1);   // the router's; the view adds none
   await expect(page.locator('main section > h2')).toHaveText([...LABELS, 'Indie web']);
   await expect(shelf('DOS').getByRole('heading', { level: 3, name: 'Whizz' })).toBeVisible();
 });
@@ -890,7 +914,7 @@ Expected: FAIL: no shelves (Plan 01's placeholder view says "Nothing here yet.")
 
 - [ ] **Step 3: Wire `boot.js`, `views/index.js` and the axe list**
 
-In `boot.js`, before `createEngine` is called: set `app.ia = sharedIaClient({http: app.http, cache: createCache(app.store, app.clock), clock: app.clock})`, and add `embedBroken` to the existing `app.data` object, filled from the `health` keys that start with `embed-broken:`. Do not replace `app.data`, because the engine's `ctx.data` is the same object. In `views/index.js`, add `import './vault.js';`. If `tests/e2e/axe.spec.js` exists, append `'#/vault'` to its `VIEWS`; the axe test above covers the view either way.
+In `boot.js`, before `createEngine` is called, set `app.ia = sharedIaClient({http: app.http, cache: createCache(app.store, app.clock), clock: app.clock})`, so the app and the engine's adapters share one Archive queue. `app.data.embedBroken` already comes from `loadAppData` (Task 4). In `views/index.js`, add `import './vault.js';`. If `tests/e2e/axe.spec.js` exists, append `'#/vault'` to its `VIEWS`; the axe test above covers the view either way.
 
 - [ ] **Step 4: Add the Archive extras to `renderCard` in `card.js`**
 
@@ -899,11 +923,11 @@ In `boot.js`, before `createEngine` is called: set `app.ia = sharedIaClient({htt
 
 - [ ] **Step 5: Implement the shelves in `src/ui/views/vault.js`**
 
-`registerView('vault', {title: 'Vault', render})`. The view renders:
+`registerView('vault', {title: 'Vault', render})`. The router's `h1` already says "Vault", so the view renders no `h1` (contract UI conventions). It renders:
 
-- `h1` "Vault" and the line "Hidden games from the Internet Archive. They play in the Archive's own player."
+- The line "Hidden games from the Internet Archive. They play in the Archive's own player."
 - One `<section aria-labelledby>` per `VAULT_COLLECTIONS.shelves` entry, with an `h2` label and a `<ul>` of `<li>` items. Each item holds `renderCard(find, {compact: true, headingLevel: 3, onAction})`, plus a badge "Not working here" when `app.data.embedBroken` has the id. Snapshot gems come from `readSnapshot(ctx, 'vault-index.json')` for the shelf's collections. They are mapped with `iaDocToFind(gem, {kind: 'game'})`, sorted by `gemScore` (`currentYear` is the UTC year from `app.clock.now()`) and capped at 12. An empty shelf shows "No gems loaded yet."
-- A **More gems** button per shelf. It calls `validateCollections(app.ia, cache, shelf.collections)`, then `shelfGems(app.ia, shelf, {rand: app.rand, currentYear, skip: app.data.embedBroken, valid})`, and adds up to 12 finds that are not shown yet. It loads nothing until it is pressed.
+- A **More gems** button per shelf. It calls `validateCollections(app.ia, cache, shelf.collections, {urgent: true})`, then `shelfGems(app.ia, shelf, {rand: app.rand, currentYear, skip: app.data.embedBroken, valid, urgent: true})`, and adds up to 12 finds that are not shown yet. The press is a user action, so its Archive calls take the urgent lane and go ahead of background pulls. It loads nothing until it is pressed.
 - When a live load throws, it stops and shows (once, above the shelves) an `h2` "Archive unavailable" and the line "The Internet Archive is not answering right now. Gems from the last snapshot are still here, and the other modes keep working." Then it calls `announce('Archive unavailable')`.
 - An "Indie web" section: the first 6 library entries with `kind: 'game'` and `added` on or before today's UTC date, newest `added` first (ties by `id`), mapped with `libraryEntryToFind`, plus up to 6 finds from `getSource('itch').random(ctx)`. Its **More gems** button adds the `kind: 'game'` finds from `getSource('github').random(ctx)` and `getSource('hn').search('game', ctx)`, and skips a source the user turned off (`settings.sources[id]?.enabled === false`). Errors are ignored.
 - The footer line "Games and media courtesy of the Internet Archive."
@@ -934,7 +958,7 @@ Before committing, also `git add tests/e2e/axe.spec.js` if Step 3 changed it.
 - Test: `tests/e2e/vault-play.spec.js`
 
 **Interfaces:**
-- Consumes: `app.ia.metadata`, `app.data.embedBroken`, `app.store`, `app.handsFree` (Plan 03, may be absent), `announce`, `h`; Task 9's card and view.
+- Consumes: `app.ia.metadata(id, {urgent})` (Task 1), `app.data.embedBroken` (Task 4), `app.store`, `app.handsFree` (Plan 03, may be absent), `announce`, `h`; Task 9's card and view.
 - Produces: `mountPlayer(slot, find, app) → Promise<{unmount()}|null>` exported from `card.js`. Plan 02's `makeActionHandler` hands `play` to it, so **Play** mounts the Archive player in Stumble, Feed, Saved, the Vault and Daily Fate alike (§10.1). `renderCard` gives a find with `embedUrl` an empty `div.player` and calls `onAction('play', find, {slot})` with it.
 
 `embed.html` is `<!doctype html><title>Archive player stub</title><p>Player stub</p>`.
@@ -1008,13 +1032,13 @@ test('Play works the same on a saved Archive find', async ({ page }) => {
   await page.getByRole('main').getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('iframe')).toHaveAttribute('src', 'https://archive.org/embed/msdos_Whizz_1994');
 });
-test('Play pauses a running lean-back', async ({ page }) => {   // runs once Plan 03's hands-free bar exists
+test('Play pauses a running lean-back', async ({ page }) => {   // runs once Plan 03 fills Plan 01's empty #hf-bar
   await installFakeSpeech(page); await gotoApp(page, '#/stumble');
-  const start = page.locator('#handsfree').getByRole('button', { name: 'Start' });
+  const bar = page.locator('#hf-bar'), start = bar.getByRole('button', { name: 'Start' });
   test.skip(!(await start.count()), 'hands-free comes with Plan 03');
   await start.click(); await page.goto('#/vault');
   await whizz().getByRole('button', { name: 'Play' }).click();
-  await expect(page.locator('#handsfree').getByRole('button', { name: 'Play' })).toBeVisible();
+  await expect(bar.getByRole('button', { name: 'Play' })).toBeVisible();
 });
 ```
 
@@ -1027,7 +1051,7 @@ Expected: FAIL: no iframe after Play (Plan 02's `play` still opens a tab).
 
 - `mountPlayer(slot, find, app)` keeps the pending mount promise per slot (a `WeakMap`) from before its first `await`, and returns it to a second call, so pressing **Play** twice mounts one frame. If `find.embedUrl` is not `https://archive.org/embed/<id>`, it returns `null`.
 - It first calls `app.handsFree.pause()` when `app.handsFree?.state === 'active'` (Plan 03's rule), so lean-back stops while a game runs and resumes only on an explicit resume.
-- For `kind: 'game'`, it calls `app.ia.metadata(find.meta?.identifier ?? <id from embedUrl>)`. If that throws (the Archive is paused or down), it shows "The Internet Archive is not answering right now." and an **Open on archive.org** link, with no frame and no embed-broken mark. A `null` reply, or one with no `emulator`, shows "This game has no player on the Archive." and the link. Otherwise it shows `<platform> · <hint>`: `dosbox` → "MS-DOS" / "Click the game, then use the keyboard."; `ruffle*` → "Flash" / "Use the mouse."; `mame*` → "Arcade" / "Press 5 to add a coin and 1 to start."; anything else → the emulator value / "Click the game, then use the keyboard."
+- For `kind: 'game'`, it calls `app.ia.metadata(find.meta?.identifier ?? <id from embedUrl>, {urgent: true})`, so a **Play** press goes ahead of background Archive calls. If that throws (the Archive is paused or down), it shows "The Internet Archive is not answering right now." and an **Open on archive.org** link, with no frame and no embed-broken mark. A `null` reply, or one with no `emulator`, shows "This game has no player on the Archive." and the link. Otherwise it shows `<platform> · <hint>`: `dosbox` → "MS-DOS" / "Click the game, then use the keyboard."; `ruffle*` → "Flash" / "Use the mouse."; `mame*` → "Arcade" / "Press 5 to add a coin and 1 to start."; anything else → the emulator value / "Click the game, then use the keyboard."
 - It mounts `h('iframe', {src: find.embedUrl, allow: 'fullscreen; autoplay; gamepad', allowfullscreen: '', title: find.title + ', Internet Archive player'})` and a **Not working** button.
 - It starts a 15000 ms `setTimeout`, cleared by the frame's `load` event. If the slot has left the document when it fires (the user left the view, or the card was replaced), it does nothing more. When the watchdog fires or **Not working** is pressed, it shows (once) "This one is not loading here." and an **Open on archive.org** link to `https://archive.org/details/<id>` (`target="_blank"`, `rel="noopener"`). Then `app.store.put('health', 'embed-broken:' + find.id, {at: Date.now()})`, add `find.id` to `app.data.embedBroken`, and `announce('Marked as not working on this device')`. **Not working** also removes the frame.
 - `makeActionHandler`'s `play` branch calls `mountPlayer(extra.slot, find, app)` in place of Plan 02's `openFind`, and `renderCard` passes the card's `div.player` as `extra.slot`.
@@ -1084,6 +1108,7 @@ test('falls back to the backup pick with its label', async ({ page }) => {
   await page.route(/\/data\/daily\.json(\?|$)/, (r) => r.fulfill({ json: { v: 1 } }));   // the build's placeholder
   await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
+  await expect(page.locator('h1')).toHaveCount(1);   // the router's heading, relabelled in place
   for (const t of ['Comet Hopper', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
 });
 test('rolls over at UTC midnight while open', async ({ page }) => {   // Review Focus 3
@@ -1093,6 +1118,13 @@ test('rolls over at UTC midnight while open', async ({ page }) => {   // Review 
   await expect(page.getByText('Picks for 2026-11-12 (UTC)')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
   await expect(page.getByText('Moth Radio').first()).toBeVisible();
+});
+test('the rollover drops the backup label when the new day has its file', async ({ page }) => {
+  await at(page, '2026-11-10T23:59:50Z'); await gotoApp(page, '#/daily');   // the routed file is for 2026-11-11
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
+  await page.clock.runFor(15000);
+  await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate');
 });
 test('the game pick links to its details page and plays in place', async ({ page }) => {
   await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
@@ -1138,7 +1170,7 @@ Expected: FAIL: no picks (Plan 01's placeholder view says "Nothing here yet.").
 
 - **Date.** Take it from `render(container, app, params)`'s `params.id`, which the router has decoded. Accept it only when it matches `/^\d{4}-\d{2}-\d{2}$/`, `Date.parse(date + 'T00:00:00Z')` is not `NaN`, the result round-trips through `utcDate`, and it is not after today. Otherwise use today, `utcDate(app.clock.now())`.
 - **Loading.** `loadDaily({date, fetchDailyFile, backup})`. `fetchDailyFile` is `app.http.getJson(app.dataUrl('daily.json') + '?d=' + date, {source: 'pages'})`. The date in the query gets past a service worker's or browser's copy of yesterday's file, since data files are stale-while-revalidate (§13.2). `backup` is `backupDaily({date, library: app.data.library, vaultStarter: app.data.vaultStarter, fetchWikiFeatured, fetchApod})`. `fetchWikiFeatured(d)` gets `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` with `{source: 'wikipedia', headers: {'Api-User-Agent': IDENT}}` and returns `.tfa`. `fetchApod(d)` gets `https://api.nasa.gov/planetary/apod?api_key=<key>&date=<d>&thumbs=true` with `{source: 'apod'}`, where the key is `await app.secrets.get('src:datagov')` or `DEMO_KEY`. With `DEMO_KEY` it follows Plan 02's APOD counter (`apod:count:<today>` in the app cache: no request at 45 or more, one more per request, 50 after a 429). Both fetchers cache their reply per date for 7 days in `createCache(app.store, app.clock)`.
-- **Page.** `h1` "Daily Fate", or "Daily Fate (backup pick)" when `backup` is true. Then the lines `Picks for <date> (UTC)` and, for a backup, "This is the backup pick. Friends on another version may see a different game or web pick." Then one `<section aria-labelledby>` per pick with an `h2` "Game", "Web" or "Wonder", holding `renderCard(find, {headingLevel: 3, onAction})` with the Vault's `onAction` rule (Task 9), so **Play** mounts the player in place (Task 10).
+- **Page.** The view renders no `h1`: the router's `h1` shows the title "Daily Fate". Every render, the rollover's included, sets that heading's text through `container.closest('.view').querySelector('h1').textContent`: `'Daily Fate (backup pick)'` when `backup` is true, else `'Daily Fate'`, so a day that has its file drops the backup label (contract UI conventions). The body starts with the lines `Picks for <date> (UTC)` and, for a backup, "This is the backup pick. Friends on another version may see a different game or web pick." Then one `<section aria-labelledby>` per pick with an `h2` "Game", "Web" or "Wonder", holding `renderCard(find, {headingLevel: 3, onAction})` with the Vault's `onAction` rule (Task 9), so **Play** mounts the player in place (Task 10).
 - **Rollover.** For today only, show `Next Daily Fate: <time> your time`, where `<time>` is `new Date(nextUtcMidnight(now)).toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})`. When `params.id` is absent, set a `setTimeout` for `nextUtcMidnight(now) − now + 1000` ms that renders the view again. `leave()` clears it; a mounted player's watchdog stops by itself once its card has left the document (Task 10).
 - **Share.** A button "Share today's Fate" calls `app.platform.share({title: 'Byways Daily Fate', text: 'My Byways Daily Fate for <date>. No spoilers: open it to see the three picks.', url: SHARE_BASE + '#/daily/' + date})`, so links shared from the extension or Android open on Pages. Then it calls `announce('Link copied')` for `'copied'` and `announce('Shared')` for `'shared'`.
 - **Streak.** Keep the UTC dates of visits on today's view in `health` under `daily:visits` (unique, last 60). Count the run of consecutive days that ends today. When it is 2 or more, show `<n> days in a row.` Show no prompts and no reminders.
@@ -1146,7 +1178,7 @@ Expected: FAIL: no picks (Plan 01's placeholder view says "Nothing here yet.").
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/daily.spec.js`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1163,7 +1195,7 @@ Before committing, also `git add tests/e2e/axe.spec.js` if this task changed it.
 
 **Files:**
 - Create: `tools/linkcheck.js`
-- Modify: `tools/build.js` (add `excludeDeadLinks` and the `--linkcheck <file>` option)
+- Modify: `tools/build.js` (add `excludeDeadLinks` and the `--linkcheck <file>` option), `package.json` (the script `"linkcheck": "node tools/linkcheck.js"`)
 - Test: `tests/unit/linkcheck.test.js`, `tests/unit/build-linkcheck.test.js`
 
 **Interfaces:**
@@ -1201,6 +1233,9 @@ test('sends the descriptive User-Agent and stamps checkedAt', async () => {
   assert.equal(USER_AGENT, 'Byways-data-job/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)');
   assert.equal(r.checkedAt, '2026-11-11T00:07:00.000Z');
 });
+test('npm run linkcheck runs this tool', () => {
+  assert.equal(JSON.parse(readFileSync('package.json', 'utf8')).scripts.linkcheck, 'node tools/linkcheck.js');
+});
 // tests/unit/build-linkcheck.test.js
 test('excludeDeadLinks drops entries that failed two checks in a row', () => {
   const lib = { v: 1, entries: [{ id: 'lib-a' }, { id: 'lib-b' }, { id: 'lib-c' }] };
@@ -1218,18 +1253,18 @@ Expected: FAIL with "Cannot find module '…/tools/linkcheck.js'" and "SyntaxErr
 - [ ] **Step 3: Implement `tools/linkcheck.js` and the `build.js` change**
 
 - `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`. `failStreak` is 0 when ok. For a dead link it is the previous streak plus 1 when `previous.checkedAt` falls on an earlier UTC date than `now` (or there is no previous result or `checkedAt`), and `max(previous streak, 1)` on the same date, because `pages.yml` also runs on pushes and by hand ("fails two days in a row", §7.5). It runs at most `concurrency` checks at once.
-- The CLI writes the result to `--out` and prints `Checked <n> links; <m> dead; <k> flagged for review (failStreak ≥ 2).`
+- The CLI writes the result to `--out` and prints `Checked <n> links; <m> dead; <k> flagged for review (failStreak ≥ 2).` `package.json` gains `"linkcheck": "node tools/linkcheck.js"` (Plan 01 leaves the script to this plan).
 - `build.js --linkcheck <file>`: when the file exists and parses, every target's `data/library.json` is written through `excludeDeadLinks`, and the build prints `Left out <n> library entries that failed two link checks in a row.` A missing file changes nothing. Plan 01's `build.test.js` already imports `tools/build.js`, so its CLI runs only when the file is run directly; keep that.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js`
-Expected: PASS, 6 tests. Then run `npm test`; expected: all unit tests pass.
+Expected: PASS, 7 tests. Then run `npm test`; expected: all unit tests pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/linkcheck.js tools/build.js tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js
+git add tools/linkcheck.js tools/build.js package.json tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js
 git commit -m "Add the daily link check and leave out links that failed twice"
 ```
 
@@ -1239,11 +1274,12 @@ git commit -m "Add the daily link check and leave out links that failed twice"
 
 **Files:**
 - Create: `tools/data-job.js`, `tests/fixtures/http/datajob/smallweb.txt`, `tests/fixtures/http/datajob/webring.html`
+- Modify: `package.json` (the script `"data": "node tools/data-job.js"`)
 - Test: `tests/unit/data-job.test.js`
 
 **Interfaces:**
 - Consumes: `createHttp`, `createCache`, `openStore(memoryBackend())`, `mulberry32`, `fnv1a32`, `utcDate`, `makeFind`, `toPlainText`, `isHttpUrl`, `siteOrigin`, `domainOf`; `createIaClient` (Task 1); `VAULT_COLLECTIONS`, `gemQuery`, `gemScore`, `CURATED_COLLECTIONS`, `iaDocToFind`, `validateCollections` (Task 2); `dailySeed`, `wikiFeaturedToFind`, `apodToFind`, `libraryEntryToFind` (Task 3); `ITCH_FEEDS`, `parseItchRss` (Task 7); `USER_AGENT`, `checkLibrary` (Task 12) and `excludeDeadLinks` (Task 12, `tools/build.js`).
-- Produces: `runDataJob({fetch, clock, date, outDir, srcDir = 'src/data', liveBase, apodKey = 'DEMO_KEY'}) → Promise<{written: string[], kept: string[], failed: string[]}>`; the `webrings.json` and `neocities.json` shapes below (read by Task 14). CLI: `node tools/data-job.js [--out dist/pwa/data] [--live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/] [--date YYYY-MM-DD]` (`npm run data`), with those defaults. The date defaults to today in UTC, and `apodKey` comes from `NASA_API_KEY` or `DEMO_KEY`.
+- Produces: `runDataJob({fetch, clock, date, outDir, srcDir = 'src/data', liveBase, apodKey = 'DEMO_KEY'}) → Promise<{written: string[], kept: string[], failed: string[]}>`. After every run all six files (`daily.json`, `itch.json`, `vault-index.json`, `linkcheck.json`, `webrings.json`, `neocities.json`) are in `outDir`, and each name is in exactly one list: `written` (built this run), `kept` (the live copy) or `failed` (its empty shape). Also the `webrings.json` and `neocities.json` shapes below (read by Task 14). CLI: `node tools/data-job.js [--out dist/pwa/data] [--live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/] [--date YYYY-MM-DD]` (`npm run data`), with those defaults. The date defaults to today in UTC, and `apodKey` comes from `NASA_API_KEY` or `DEMO_KEY`.
 
 Fixtures: `smallweb.txt` has these lines: `[DEBUG] Cross-domain redirect from x`, `https://alpha.example/feed.xml`, `https://beta.example/rss`, `https://alpha.example/atom.xml`, `https://gamma.example/index.xml`, `not a url`. `webring.html` has six `<li data-lang="en" id="ring<n>"><a href="https://ring<n>.example/">ring<n></a></li>` lines for n = 1–6.
 
@@ -1255,6 +1291,8 @@ Fixtures: `smallweb.txt` has these lines: `[DEBUG] Cross-domain redirect from x`
 test('writes the data files for a date with the main recipe', async () => {
   const r = await job();
   assert.deepEqual(r.written.sort(), ['daily.json', 'itch.json', 'linkcheck.json', 'vault-index.json', 'webrings.json']);
+  assert.deepEqual([r.kept, r.failed], [[], ['neocities.json']]);   // its list is a 404 here, and there is no live copy
+  assert.deepEqual(read('neocities.json'), { v: 1, generatedAt: '2026-11-11T00:07:00.000Z', sites: [] });
   const d = read('daily.json');
   assert.deepEqual([d.v, d.date, d.picks.map((p) => p.slot)], [1, '2026-11-11', ['game', 'web', 'wonder']]);
   assert.deepEqual(d.picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth']);
@@ -1287,6 +1325,12 @@ test("a live daily.json for the same date is final for the day", async () => {
   assert.equal(read('daily.json').picks[0].find.title, 'Kept');
   assert.deepEqual(r.kept, ['daily.json']);
 });
+test('an empty live daily.json for the same date does not lock the day', async () => {
+  // /byways\/data\/daily\.json$/ → {v: 1, date: '2026-11-11', picks: []}, the empty shape an earlier failed run wrote
+  const r = await job();
+  assert.deepEqual(read('daily.json').picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth']);
+  assert.ok(r.written.includes('daily.json'));
+});
 test('every request carries the descriptive User-Agent', async () => {
   await job();
   for (const c of net.calls) assert.equal(new Headers(c.init.headers).get('user-agent'), USER_AGENT, c.url);
@@ -1297,22 +1341,28 @@ test('a failing step keeps the last good file from the live site', async () => {
   assert.deepEqual(read('itch.json'), JSON.parse(readFileSync('tests/fixtures/http/itch/itch.json', 'utf8')));
   assert.deepEqual(r.kept, ['itch.json']);
 });
-test('a failing step with no live copy writes nothing and reports it', async () => {
+test('a failing step with no live copy writes its empty shape and reports it', async () => {
   // every archive.org responder throws
   const r = await job();
-  assert.ok(!existsSync(join(tmp, 'vault-index.json')));
+  assert.deepEqual(read('vault-index.json'), { v: 1, generatedAt: '2026-11-11T00:07:00.000Z', collections: {} });
+  assert.deepEqual(read('daily.json'), { v: 1, date: '2026-11-11', picks: [] });
   assert.ok(r.failed.includes('vault-index.json') && r.failed.includes('daily.json'));
 });
-test('the snapshot extras are dropped quietly when their lists cannot be read', async () => {
-  // /raw\.githubusercontent\.com\/XXIIVV/ → 500
+const LIVE_NEO = { v: 1, generatedAt: '2026-11-10T00:07:00.000Z', sites: [{ url: 'https://moss.neocities.org/' }] };
+test('a snapshot extra whose list cannot be read keeps its live copy, else writes its empty shape', async () => {
+  // /raw\.githubusercontent\.com\/XXIIVV/ → 500; /byways\/data\/neocities\.json$/ → LIVE_NEO (its own list is a 404, as in DEFAULTS)
   const r = await job();
-  assert.ok(!existsSync(join(tmp, 'webrings.json')));
-  assert.ok(!r.failed.includes('webrings.json'));
+  assert.deepEqual(read('webrings.json'), { v: 1, generatedAt: '2026-11-11T00:07:00.000Z', ring: 'xxiivv', sites: [] });
+  assert.deepEqual(read('neocities.json'), LIVE_NEO);
+  assert.deepEqual([r.failed, r.kept], [['webrings.json'], ['neocities.json']]);
 });
 test('the link check carries fail streaks from the live file', async () => {
   // /paper-toy-garden\.example/ → 404; /byways\/data\/linkcheck\.json$/ → {v: 1, checkedAt: '2026-11-10T00:07:00.000Z', results: {'lib-0001': {ok: false, status: 404, failStreak: 1}}}
   await job();
   assert.equal(read('linkcheck.json').results['lib-0001'].failStreak, 2);
+});
+test('npm run data runs this tool', () => {
+  assert.equal(JSON.parse(readFileSync('package.json', 'utf8')).scripts.data, 'node tools/data-job.js');
 });
 ```
 
@@ -1323,29 +1373,29 @@ Expected: FAIL with "Cannot find module '…/tools/data-job.js'".
 
 - [ ] **Step 3: Implement `tools/data-job.js`**
 
-Every request goes through one transport that adds `User-Agent: USER_AGENT` to the caller's headers. That transport feeds `createHttp`, then `createIaClient` with a memory-backed cache. Each output is built on its own:
+Every request goes through one transport that adds `User-Agent: USER_AGENT` to the caller's headers. That transport feeds `createHttp`, then `createIaClient` with a memory-backed cache. The job reads `startedAt = new Date(clock.now()).toISOString()` once, before its first request: every `generatedAt` and `checkedAt` it writes is `startedAt`, and the link check gets `now: Date.parse(startedAt)`. Each output is built on its own:
 
-- **`daily.json`.** First fetch `<liveBase>data/daily.json`. When it parses with `v === 1` and `date === <date>`, write it unchanged and add it to `kept`: the first good file of a day is final, because `pages.yml` also runs on pushes and by hand. Otherwise `rand = mulberry32(dailySeed(date))`, and draw `rCol, rOff, rWebSrc, rWebIdx, rWonder` in that order before any other request.
+- **`daily.json`.** First fetch `<liveBase>data/daily.json`. When it parses with `v === 1`, `date === <date>` and a non-empty `picks` array, write it unchanged and add it to `kept`: the first good file of a day is final, because `pages.yml` also runs on pushes and by hand. An empty shape left by an earlier failed run is not final, so a later run can still build the day. Otherwise `rand = mulberry32(dailySeed(date))`, and draw `rCol, rOff, rWebSrc, rWebIdx, rWonder` in that order before any other request.
   - Game: `cols = [...VAULT_COLLECTIONS.verified].sort()`, `col = cols[floor(rCol · 4)]`, and `q = gemQuery(col, 1).q + ' AND publicdate:[* TO <date>T00:00:00Z]'`. Count it, take `offset = floor(rOff · min(N, 10000))`, fetch one doc (`rows: 1`, `page: offset + 1`, `sort: ['identifier asc']`) and map it with `iaDocToFind(doc, {kind: 'game'})`.
   - Web: when `rWebSrc < 0.5`, the starter library after `excludeDeadLinks(library, previous)` (`previous` as in `linkcheck.json` below), with entries `added ≤ date` sorted by `id`, at `floor(rWebIdx · n)`, mapped with `libraryEntryToFind`. Otherwise use `https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt`: keep the lines that pass `isHttpUrl`, map them to `siteOrigin`, dedupe and sort, then take `floor(rWebIdx · n)`. `HEAD` that origin through the job's transport; while it fails (a network error, 404, 410 or a status of 500 or more), move to the next index, wrapping, at most 5 tries in all (§7.6 checks Kagi finds before they are shown). Build it with `makeFind({source: 'kagi', kind: 'site', url: origin + '/', title: domainOf(origin), description: 'A personal site from the Kagi Small Web list.', attribution: 'Kagi Small Web (MIT)', why: ['Kagi Small Web'], tags: ['web'], safety: 'mostly'})`.
   - Wonder: `rWonder < 1/3` → `wikiFeaturedToFind(feed.tfa)`. `rWonder < 2/3` → the picture of the day, with Plan 02's Commons rules: `makeFind({source: 'commons', kind: 'image', title: image.title without 'File:' and the extension, url: image.file_page, imageUrl: image.thumbnail.source, description: toPlainText(image.description.text), author: toPlainText(image.artist.text), licence: image.license.type, tags: ['photography'], why: ['Wikimedia Commons: picture of the day'], safety: 'curated'})`. Otherwise `apodToFind` of `https://api.nasa.gov/planetary/apod?api_key=<apodKey>&date=<date>&thumbs=true`. The feed URL is `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD`. When the chosen wonder throws or gives `null`, the featured article fills the slot.
   - Any slot that still throws or gives `null` fails the whole file.
 - **`itch.json`.** Fetch every `ITCH_FEEDS` URL as text and parse it with `parseItchRss`. A feed with no items fails the file. The output is `{v: 1, generatedAt, feeds: [{feed, items}]}`.
 - **`vault-index.json`.** Run `validateCollections(ia, cache)`. For each id, use `rand = mulberry32(fnv1a32('vault-index-' + date + '-' + id))` and count `gemQuery(id, 1).q`. Then fetch `gemQuery(id, 1 + floor(rand() · ceil(min(N, 10000) / 100)))`, sort the docs by `gemScore` (`curated: CURATED_COLLECTIONS`, `currentYear` from `date`), and keep the top 24 with the contract's gem fields. A collection that throws is left out. If none succeeds, the file fails.
-- **`linkcheck.json`.** `checkLibrary({entries: library.entries, fetch, previous, now: clock.now()})`, where `previous` is the live `data/linkcheck.json` (or `null`), fetched once before any output is built.
-- **Extras.** `webrings.json` = `{v: 1, generatedAt, ring: 'xxiivv', sites: [{url, title}]}` from `https://raw.githubusercontent.com/XXIIVV/webring/main/index.html`, matching `<li … id="<title>"…>` followed by its first `<a href="<url>">`. `neocities.json` = `{v: 1, generatedAt, sites: [{url}]}` from the unique `https://<name>.neocities.org/` links on `https://neocities.org/browse?sort_by=featured`. Each is written only with 5 or more sites. Otherwise it is skipped, and it is never reported as failed.
-- **Fallback.** When one of the four main files fails, fetch `<liveBase>data/<name>`. If it parses with `v === 1`, write it unchanged and add it to `kept`; otherwise add the name to `failed`. `generatedAt` and `checkedAt` come from `clock.now()`.
-- **CLI.** Print the three lists. When `GITHUB_STEP_SUMMARY` is set, append `## Byways data job (<date>)`, the lists and a "Flagged for review" list of library ids with `failStreak ≥ 2`. Always exit 0, so the deploy still runs.
+- **`linkcheck.json`.** `checkLibrary({entries: library.entries, fetch, previous, now: Date.parse(startedAt)})`, where `previous` is the live `data/linkcheck.json` (or `null`), fetched once before any output is built.
+- **Extras.** `webrings.json` = `{v: 1, generatedAt, ring: 'xxiivv', sites: [{url, title}]}` from `https://raw.githubusercontent.com/XXIIVV/webring/main/index.html`, matching `<li … id="<title>"…>` followed by its first `<a href="<url>">`. `neocities.json` = `{v: 1, generatedAt, sites: [{url}]}` from the unique `https://<name>.neocities.org/` links on `https://neocities.org/browse?sort_by=featured`. An extra whose list cannot be read, or that finds fewer than 5 sites, fails like any other file. Its fallback is how §7.2's "dropped quietly" reaches the app: with the empty shape, the `webring` adapter (Task 14) simply has no sites.
+- **Fallback.** The contract has the job ALWAYS write all six files. When a file fails, fetch `<liveBase>data/<name>` (for `daily.json`, reuse the copy fetched first). If it parses with `v === 1`, write it unchanged and add it to `kept`. Otherwise write its empty shape and add it to `failed`: `daily.json` `{v: 1, date, picks: []}`, `itch.json` `{v: 1, generatedAt, feeds: []}`, `vault-index.json` `{v: 1, generatedAt, collections: {}}`, `linkcheck.json` `{v: 1, checkedAt, results: {}}`, `webrings.json` `{v: 1, generatedAt, ring: 'xxiivv', sites: []}` and `neocities.json` `{v: 1, generatedAt, sites: []}`. The app then never requests a missing file, and every reader already treats empty lists as nothing to show.
+- **CLI.** Print the three lists. When `GITHUB_STEP_SUMMARY` is set, append `## Byways data job (<date>)`, the lists and a "Flagged for review" list of library ids with `failStreak ≥ 2`. Always exit 0, so the deploy still runs. `package.json` gains `"data": "node tools/data-job.js"` (Plan 01 leaves the script to this plan).
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/data-job.test.js`
-Expected: PASS, 10 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/data-job.js tests/fixtures/http/datajob tests/unit/data-job.test.js
+git add tools/data-job.js package.json tests/fixtures/http/datajob tests/unit/data-job.test.js
 git commit -m "Add the daily data job with live fallbacks"
 ```
 
@@ -1410,6 +1460,7 @@ git commit -m "Add the webring and Neocities snapshot source"
 
 **Files:**
 - Create: `tools/probe-live.js`
+- Modify: `package.json` (the script `"probe": "node tools/probe-live.js"`)
 - Test: `tests/unit/probe-live.test.js`
 
 **Interfaces:**
@@ -1420,7 +1471,7 @@ git commit -m "Add the webring and Neocities snapshot source"
 
 ```js
 const SRC = { a: { id: 'a', tier: 'open', probeUrl: 'https://a.example/x' }, wikipedia: { id: 'wikipedia', tier: 'open' }, w: { id: 'w', tier: 'open' },
-  library: { id: 'library', tier: 'open' }, vault: { id: 'vault', tier: 'snapshot' }, itch: { id: 'itch', tier: 'open' } };
+  library: { id: 'library', tier: 'open' }, vault: { id: 'vault', tier: 'snapshot' }, itch: { id: 'itch', tier: 'privileged' } };
 const PROV = { anthropic: { id: 'anthropic', baseURL: 'https://api.anthropic.com', modelsPath: '/v1/models?limit=1000', auth: { header: 'x-api-key', prefix: '' } },
   ollamaweb: { id: 'ollamaweb', baseURL: 'https://ollama.com/api', modelsPath: null, auth: { header: 'Authorization', prefix: 'Bearer ' } },
   ollama: { id: 'ollama', baseURL: 'http://127.0.0.1:11434/v1', modelsPath: '/api/tags', auth: null } };
@@ -1499,9 +1550,12 @@ test('toMarkdown writes the report', () => {
   const md = toMarkdown([{ check: 'cors', name: 'a', url: 'u', pass: true, detail: 'ok' }, { check: 'framing', name: 'b', url: 'v', pass: false, detail: 'x|y' }], { date: '2026-11-11' });
   assert.equal(md, '# Byways live probe, 2026-11-11\n\n1 passed, 1 failed.\n\n| Check | Name | Result | Detail |\n|---|---|---|---|\n| cors | a | pass | ok |\n| framing | b | **FAIL** | x\\|y |\n');
 });
+test('npm run probe runs this tool', () => {
+  assert.equal(JSON.parse(readFileSync('package.json', 'utf8')).scripts.probe, 'node tools/probe-live.js');
+});
 ```
 
-(`readFixture` comes from Task 1's helper file.)
+(`readFixture` comes from Task 1's helper file, and `readFileSync` from `node:fs`.)
 
 - [ ] **Step 2: Run the tests to see them fail**
 
@@ -1525,17 +1579,17 @@ Expected: FAIL with "Cannot find module '…/tools/probe-live.js'".
   - Endpoints: Kagi passes on a JSON `url` string; itch passes on at least one parsed item; Pages files pass on ACAO `*`; `archive-img` passes on a 200 with an `image/*` content type, because it loads through `<img>` and needs no CORS.
   - A thrown error gives `network error: <message>`.
 - **`toMarkdown`.** Escape `|` in details as `\|`.
-- **CLI.** Load `PROVIDERS` with `import('../src/core/ai/providers.js')`. If that fails, add one failing row `cors | providers | not built yet`. Write the report to `--out` and append it to `GITHUB_STEP_SUMMARY` when that is set. Always exit 0. After a run, a maintainer applies the CORS rows to each adapter's `tier` field in `src/core/sources/<id>.js` by hand (§17.4); Plan 09's README describes that routine.
+- **CLI.** Load `PROVIDERS` with `import('../src/core/ai/providers.js')`. If that fails, add one failing row `cors | providers | not built yet`. Write the report to `--out` and append it to `GITHUB_STEP_SUMMARY` when that is set. Always exit 0. After a run, a maintainer applies the CORS rows to each adapter's `tier` field in `src/core/sources/<id>.js` by hand (§17.4); Plan 09's README describes that routine. `package.json` gains `"probe": "node tools/probe-live.js"` (Plan 01 leaves the script to this plan).
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/probe-live.test.js`
-Expected: PASS, 9 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add tools/probe-live.js tests/unit/probe-live.test.js
+git add tools/probe-live.js package.json tests/unit/probe-live.test.js
 git commit -m "Add the live probe for CORS, framing, collections and endpoints"
 ```
 
