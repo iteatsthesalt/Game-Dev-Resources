@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add the Internet Archive client and Vault (hidden games, gem score, Play with a watchdog), Daily Fate (file plus backup recipe), the old-web and itch.io sources, the daily data job with link check, and the weekly live probe.
+**Goal:** Add the Internet Archive client and Vault (hidden games, gem score, Play with a watchdog), Daily Fate (file plus backup recipe), the old-web, itch.io and webring sources, the daily data job with link check, and the weekly live probe.
 
-**Architecture:** One shared Archive queue (`ia/client.js`) sits on Plan 01's `Http` and serves every Archive caller: the `ia`, `vault` and `oldweb` adapters, the Vault view and the Node tools. Gem logic (`ia/vault.js`) and the Daily recipe (`daily.js`) are pure core modules with injected fetchers, so the browser and `tools/data-job.js` run the same code. The UI adds two views through Plan 01's registries, and the CI jobs run the Node tools with a descriptive User-Agent.
+**Architecture:** One shared Archive queue (`ia/client.js`) sits on Plan 01's `Http` and serves every Archive caller: the `ia`, `vault` and `oldweb` adapters, the card's **Play** (in every view) and the Node tools. Gem logic (`ia/vault.js`) and the Daily recipe (`daily.js`) are pure core modules with injected fetchers, so the browser and `tools/data-job.js` run the same code. Generated data files are read through `app.dataUrl`, so the extension and Android read them from Pages. The UI adds two views through Plan 01's registries, and the CI jobs run the Node tools with a descriptive User-Agent.
 
 **Tech Stack:** JavaScript ES2022 modules (no framework, no bundler), `node:test`, `@playwright/test@1.63.0` (Chromium), GitHub Actions on `ubuntu-24.04`.
 
@@ -20,7 +20,7 @@
 - "If the game has not loaded after 15 s, or you tap **Not working**, Byways offers **Open on archive.org** (`/details/<id>`) and marks the item embed-broken on this device. Fate then skips it."
 - "Byways never downloads Archive files into the Lab." "Every Archive card shows Archive attribution and links to its details page. Byways never rehosts Archive files."
 - Archive thumbnails load only through `<img src="https://archive.org/services/img/<id>">`, never through `fetch` or canvas.
-- `feature_films` is `mixed`, so the Family filter keeps it out of Fate and lean-back.
+- `feature_films` is `mixed`, so while the Family filter is on the `ia` adapter leaves it out of every call (Fate and lean-back included).
 - Daily Fate: "The day rolls over at UTC midnight. The view shows the next rollover in local time." The backup is labelled **Daily Fate (backup pick)**. "**Share today's Fate** gives spoiler-free text with a link to `#/daily/YYYY-MM-DD`. Streaks are gentle and never nag."
 - Data job: "it sends a descriptive User-Agent with no personal data, and makes light, low-volume requests." "If a data step fails, it keeps the last good file from the live site." Schedule: 00:07 UTC (`'7 0 * * *'`).
 - Link check: "A link that fails two days in a row is left out of the next build, and its entry is flagged for review."

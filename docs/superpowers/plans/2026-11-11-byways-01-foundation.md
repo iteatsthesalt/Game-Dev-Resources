@@ -1832,7 +1832,15 @@ Expected: FAIL with `ENOENT` for `byways.yml`.
 
 - [ ] **Step 4: Write `.github/workflows/pages.yml`**
 
-`name: Pages`. Triggers are `push` with `branches: [main]` and `paths: ['Apps/Byways/**', '.github/workflows/pages.yml']`, plus `workflow_dispatch:`. Top-level `permissions: contents: read` and `concurrency: { group: pages, cancel-in-progress: false }`. Job `build` (`ubuntu-24.04`, working directory `Apps/Byways`) runs: checkout@v7; setup-node@v4 (22, npm cache); `npm ci`; `node tools/build.js --target pwa`; `mkdir -p "$RUNNER_TEMP/_site/byways"`; `cp shells/pwa/landing/index.html "$RUNNER_TEMP/_site/index.html"`; `cp -R dist/pwa/. "$RUNNER_TEMP/_site/byways/"`; `actions/configure-pages@v6`; and `actions/upload-pages-artifact@v5` with `path: ${{ runner.temp }}/_site`. Job `deploy` has `needs: build`, runs on `ubuntu-24.04`, and sets `permissions: { pages: write, id-token: write }` and `environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }`. Its one step is `id: deployment`, `uses: actions/deploy-pages@v5`.
+`name: Pages`. Triggers are `push` with `branches: [main]` and `paths: ['Apps/Byways/**', '.github/workflows/pages.yml']`, plus `workflow_dispatch:`. Top-level `permissions: contents: read` and `concurrency: { group: pages, cancel-in-progress: false }`. Job `build` (`ubuntu-24.04`, working directory `Apps/Byways`) runs: checkout@v7; setup-node@v4 (22, npm cache); `npm ci`; `node tools/build.js --target pwa`; `mkdir -p "$RUNNER_TEMP/_site/byways"`; `cp shells/pwa/landing/index.html "$RUNNER_TEMP/_site/index.html"`; `cp -R dist/pwa/. "$RUNNER_TEMP/_site/byways/"`; `actions/configure-pages@v6`; and `actions/upload-pages-artifact@v5` with `path: ${{ runner.temp }}/_site`. Job `deploy` has `needs: build`, runs on `ubuntu-24.04`, and sets `permissions: { pages: write, id-token: write }`. Its `environment` is a block mapping, because `${{ … }}` cannot sit inside a flow mapping:
+
+```yaml
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+```
+
+Its one step is `id: deployment`, `uses: actions/deploy-pages@v5`.
 
 Add to `README.md` the §17.5 one-time step, verbatim: "In **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**."
 
@@ -1841,6 +1849,9 @@ Add to `README.md` the §17.5 one-time step, verbatim: "In **Settings → Pages 
 Run: `node --test tests/unit/workflows.test.js`
 Expected: PASS, 2 tests.
 
+Run: `npx --yes js-yaml@4.1.0 ../../.github/workflows/byways.yml > /dev/null && npx --yes js-yaml@4.1.0 ../../.github/workflows/pages.yml > /dev/null && echo ok`
+Expected: `ok`. A parse error prints the line and column instead.
+
 - [ ] **Step 6: Commit**
 
 ```bash
@@ -1848,13 +1859,14 @@ git add ../../.github/workflows/byways.yml ../../.github/workflows/pages.yml tes
 git commit -m "Add the Byways CI and Pages deploy workflows"
 ```
 
-### Task 16: End-to-end smoke test
+### Task 17: End-to-end smoke test
 
 **Files:**
 - Test: `tests/e2e/smoke.spec.js`
+- Modify (only if axe flags colour contrast): `src/ui/styles/app.css`, `src/ui/styles/themes.css`
 
 **Interfaces:**
-- Consumes: `test`, `expect` (Task 10), `expectNoSeriousA11y` (Task 10), the shell (Tasks 9–14).
+- Consumes: `test`, `expect` (Task 10), `expectNoSeriousA11y` (Task 10), the shell (Tasks 9–15).
 - Produces: nothing new. This is the Plan 01 acceptance test.
 
 - [ ] **Step 1: Write the smoke spec** `tests/e2e/smoke.spec.js`
@@ -1889,12 +1901,12 @@ test('the manifest is served with relative scope', async ({ page }) => {
 });
 ```
 
-The `test` fixture from `helpers/net.js` fails either test on any unmocked request, CSP violation or page error.
+The spec imports `test`, `expect` from `./helpers/net.js` and `expectNoSeriousA11y` from `./helpers/axe.js`. The `test` fixture fails either test on any unmocked request, console error (CSP violations included) or page error.
 
 - [ ] **Step 2: Run it**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/smoke.spec.js`
-Expected: PASS, 2 tests. If axe reports a colour-contrast issue in one theme, fix the token in `themes.css` (Task 9), not the test.
+Expected: PASS, 2 tests. If axe reports colour contrast in a theme, fix the colour rule in Task 9's `app.css` (the `a` rule) or the token in `themes.css`, not the test, and add that file to this commit.
 
 - [ ] **Step 3: Run the whole suite**
 

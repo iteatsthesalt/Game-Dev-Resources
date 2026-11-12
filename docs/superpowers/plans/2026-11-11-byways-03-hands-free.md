@@ -1783,9 +1783,9 @@ The Accessibility section (`id:'access'`, `label:'Accessibility'`, `order:40`). 
 | Control | Setting |
 |---|---|
 | `Text size`, range 100–200 step 10, with an `<output>` showing `<n>%` | `textScale = n / 100` |
-| `Theme` select: `Match my device`, `Light`, `Dark`, `High contrast` | `theme`: `system`, `light`, `dark`, `contrast` |
+| `Theme` select: `Match my device`, `Light`, `Dark`, `High contrast` | `theme`: `system`, `light`, `dark`, `high-contrast` |
 | `Easy-read font (Atkinson Hyperlegible)` checkbox | `font`: `atkinson` or `system` |
-| `Motion` select: `Match my device`, `Reduce motion`, `Full motion` | `motion`: `system`, `reduce`, `full` |
+| `Motion` select: `Match my device`, `Reduce motion`, `Full motion` | `motion`: `system`, `reduced`, `full` |
 | `Screen-reader mode` checkbox, hint `Byways stops reading aloud and sends text to your screen reader instead.` | `screenReaderMode` |
 | `Single-key shortcuts` checkbox | `singleKeyShortcuts` |
 | Fieldset `Lean-back`: `Seconds on each find` (number, 5–300, saved through `clampDwell` on `change`, the field then shows the clamped value) and `Wait for me` checkbox | `dwellSec`, `dwellWaitForMe` |
@@ -1793,7 +1793,7 @@ The Accessibility section (`id:'access'`, `label:'Accessibility'`, `order:40`). 
 | `Remind me after 45 minutes` checkbox | `exploringCue` |
 | `Let AI refill lean-back` checkbox | `leanBackAI` |
 
-CSS: `app.css` gets `@font-face { font-family: 'Atkinson Hyperlegible'; src: url('../../assets/fonts/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }`, the same for 700, and `html[data-font="atkinson"] body { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }`. `themes.css` gets an `html[data-theme="contrast"]` block that sets Plan 01's colour custom properties to background `#000000`, text `#ffffff`, links and focus ring `#ffff00`, and borders `#ffffff`.
+CSS: `app.css` gets `@font-face { font-family: 'Atkinson Hyperlegible'; src: url('../../assets/fonts/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }`, the same for 700, and `html[data-font="atkinson"] body { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }`. `themes.css` is not touched: Plan 01 owns the theme tokens.
 
 - [ ] **Step 1: Write the failing tests**
 

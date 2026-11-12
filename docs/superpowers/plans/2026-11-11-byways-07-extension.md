@@ -350,12 +350,12 @@ The rules, in this order, each adding the exact message from the tests:
 3. No `lab/` or `vendor/` folder at the root: `<name>/: must not be in the extension build`.
 4. Every `.html` file: each `<script … src=…>` whose value matches `/^(?:https?:)?\/\//i` gives `<file>: remote script <src>`.
 
-`runChecks` calls `checkExtensionDir` for each output folder whose last segment is `chrome` or `firefox`, and adds its errors to the list. `checkHtml` expects `EXT_PAGE_CSP` instead of `APP_CSP` for HTML files inside those two folders.
+`checkHtml(file, html, {csp} = {})`: with `csp` given, the page must carry exactly that string, and a mismatch reads `<file>: CSP differs from <name of the constant given>` (`APP_CSP`, `LAB_CSP` or `EXT_PAGE_CSP`). Without it, Plan 01's path rule applies unchanged. `runChecks` calls `checkExtensionDir(dir, <last segment>)` for each output folder whose last segment is `chrome` or `firefox`, adds its strings unchanged, and passes `{csp: EXT_PAGE_CSP}` to `checkHtml` for the HTML files in those folders.
 
 - [ ] **Step 5: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-check.test.js`
-Expected: PASS, 8 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 6: Run the whole check**
 
