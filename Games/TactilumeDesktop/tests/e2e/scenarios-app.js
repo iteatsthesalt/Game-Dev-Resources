@@ -12,7 +12,7 @@ const classicReady = () => location.pathname.endsWith('/classic/index.html') && 
 
 export default [
   {
-    name: 'app boots on WebGPU and reads back its picture',
+    name: 'app boot: it runs on WebGPU and reads back its picture',
     async run(page, h) {
       await h.open(page);
       const t = await page.evaluate(({ parts, actions }) => {
@@ -44,11 +44,18 @@ export default [
       await h.waitFrames(page, 2);
       const after = await h.capture(page, { region: CENTRE });
       checks.push(h.check('a pulse at the centre lights up the centre', after.mean > before.mean + 2, { before: before.mean, after: after.mean }));
+
+      // Headless Chromium breaks the device of anything that presents, and the engine then
+      // recovers offscreen within milliseconds, so caps.presenting alone can miss a renderer
+      // that ignored present=0. A canvas never given a WebGPU context still offers a 2D one.
+      // (Last, because taking the 2D context uses the canvas up.)
+      const untouched = await page.evaluate(() => document.getElementById('stage').getContext('2d') !== null);
+      checks.push(h.check('present=0 never gives the canvas a WebGPU context', untouched));
       return checks;
     },
   },
   {
-    name: 'app falls back to the classic engine without WebGPU',
+    name: 'app fallback: without WebGPU the classic engine runs',
     async run(page, h) {
       // webgpu=0 forces the hand-over
       await page.goto(h.url({ webgpu: '0' }));
@@ -58,8 +65,8 @@ export default [
         h.check('webgpu=0 hands over to the classic engine, which starts', forced, page.url()),
         h.check('the hand-over marks it as the desktop and keeps the test settings', address.get('desktop') === '1' && address.get('test') === '1' && address.get('particles') === '20000', page.url()),
       ];
-      const f0 = await page.evaluate(() => window.TACTILUME.frames);
-      checks.push(h.check('the classic engine keeps drawing', await h.until(page, (f) => window.TACTILUME.frames >= f + 3, f0)));
+      const f0 = forced ? await page.evaluate(() => window.TACTILUME.frames) : 0;
+      checks.push(h.check('the classic engine keeps drawing', forced && await h.until(page, (f) => window.TACTILUME.frames >= f + 3, f0)));
 
       // a browser that has no WebGPU at all finds that out by itself
       const bare = await h.context.newPage();

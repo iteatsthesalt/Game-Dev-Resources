@@ -1,8 +1,11 @@
 // Gathers every scenarios-<area>.js in this folder, so each part adds its own file without
 // touching a shared list. Each file's default export is an array of scenarios:
-//   { name, async run(page, h) → checks[], timeout?: ms, viewport?: { width, height } }
+//   { name, async run(page, h) → checks[], timeout?: ms, viewport?: { width, height },
+//     allowConsole?: [RegExp] }
 // `h` is the helpers object from helpers.js. A scenario opens the page itself, usually with
 // `await h.open(page)`, so it can set up fake gamepads or other init scripts first.
+// allowConsole lists console messages the scenario causes on purpose (say, a scenario that
+// tries present=1 headless), so they are not counted as faults.
 //
 // A file that cannot be loaded (mid-edit, say) becomes one failing scenario named after it:
 // the other files still run, and the run as a whole still fails.

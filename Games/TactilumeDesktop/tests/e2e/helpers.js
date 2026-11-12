@@ -159,6 +159,9 @@ export function createHelpers({ baseUrl, context }) {
     const t0 = Date.now();
     await page.goto(url(params));
     if (!(await until(page, ready, undefined, timeout))) {
+      if (page.url().includes('/classic/')) {
+        throw new Error(`the renderer handed over to the classic engine: this browser offered no WebGPU adapter (${page.url()})`);
+      }
       const why = await page.evaluate(() => document.getElementById('fatal')?.textContent || '').catch(() => '');
       throw new Error(`the renderer was not ready within ${timeout / 1000} s at ${page.url()}${why ? `: "${why}"` : ''}`);
     }

@@ -25,8 +25,11 @@ const SCENARIO_TIMEOUT_MS = 90000;
 const VIEWPORT = { width: 800, height: 500 };
 const BROWSER_ARGS = ['--enable-unsafe-webgpu', '--enable-unsafe-swiftshader'];
 
-// Warnings that are real faults: WebGPU reports validation errors as console warnings.
-const GPU_FAULTS = [/GPUValidationError/i, /\bWhile (calling|validating|encoding)\b/, /\[Invalid \w+/];
+// Warnings that are real faults. WebGPU reports validation errors as console warnings, and
+// the last one here means something tried to present a WebGPU canvas, which headless
+// Chromium cannot do: the renderer did not keep to present=0. A scenario that means to
+// cause one of these lists it in `allowConsole`.
+const GPU_FAULTS = [/GPUValidationError/i, /\bWhile (calling|validating|encoding)\b/, /\[Invalid \w+/, /external Instance reference no longer exists/];
 
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8',
@@ -61,13 +64,15 @@ function withTimeout(promise, ms, what) {
 const firstLines = (text, n = 6) => String(text).split('\n').slice(0, n).join('\n');
 
 // Every page in the context is watched; requests may only go to the local server.
-async function watch(context, origin, errors) {
+// `allowed`: console messages the scenario expects, which therefore are not faults.
+async function watch(context, origin, errors, allowed = []) {
   context.on('page', (page) => {
     const where = () => { try { return ` [${new URL(page.url()).pathname}]`; } catch { return ''; } };
     page.on('pageerror', (e) => errors.push(`page error${where()}: ${firstLines(e.stack || e.message, 5)}`));
     page.on('crash', () => errors.push(`the page crashed${where()}`));
     page.on('console', (m) => {
       const text = m.text();
+      if (allowed.some((re) => re.test(text))) return;
       if (m.type() === 'error' || (m.type() === 'warning' && GPU_FAULTS.some((re) => re.test(text)))) {
         errors.push(`console ${m.type()}${where()}: ${firstLines(text, 5)}`);
       }
@@ -88,7 +93,7 @@ async function runScenario(browser, s, baseUrl) {
   let checks = [];
   let crash = null;
   try {
-    await watch(context, baseUrl, errors);
+    await watch(context, baseUrl, errors, s.allowConsole);
     const page = await context.newPage();
     checks = await withTimeout(s.run(page, h), s.timeout || SCENARIO_TIMEOUT_MS, 'the scenario');
     if (!Array.isArray(checks)) throw new Error('the scenario did not return a list of checks');
