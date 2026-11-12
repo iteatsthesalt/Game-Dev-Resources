@@ -1207,4 +1207,203 @@ git add src/ui/keymap.js tests/unit/keymap.test.js
 git commit -m "Add the single-key map with a text-field guard"
 ```
 
+### Task 9: Hands-free bar, help card and wiring
+
+**Files:**
+- Create: `src/ui/handsfree-ui.js`
+- Modify: `src/ui/boot.js`, `src/platform/pwa.js`, `src/ui/views/stumble.js`, `src/ui/styles/app.css`
+- Modify: `tests/e2e/helpers/fakes.js`
+- Test: `tests/e2e/handsfree.spec.js`
+
+**Interfaces:**
+- Consumes: `createHandsFree`, `effectiveListenMode` (Tasks 4–5); `createListener` (Task 2); `createReader`, `cardScript` (Task 3); `COMMANDS`, `commandPhrases` (Task 1); `installKeymap` (Task 8); `createWebVoice` (Task 6); `createWebMedia` (Task 7); `showResult` from `ui/views/stumble.js`; `announce` (`ui/a11y.js`); `h`, `clear` (`ui/dom.js`); `navigate` (`ui/router.js`); `app.search`, `app.collections.has`, `app.platform`, `app.getSettings`, `app.clock`.
+- Produces:
+  - `installHandsFreeUi(app) → void`. It sets `app.handsFree` at once (with `listener: null`) and replaces it with a freshly wired controller and listener on every **Start** press, so voice settings apply from the next Start.
+  - `describeEngine(status: VoiceStatus) → string` and `VENDOR_NAMES = {google:'Google', apple:'Apple', microsoft:'Microsoft', mozilla:'Mozilla', android:'Android'}`, used by Task 10.
+  - `SILENT_AUDIO_FALLBACK = false`, exported from `pwa.js` and passed as `createWebMedia(navigator, {silentAudio: SILENT_AUDIO_FALLBACK})`. `pwa.js` also switches `voice` to `createWebVoice(window, {lang: 'en-US'})`.
+  - `installFakeSpeech(page, {available = 'available', holdSpeech = false} = {})`, keeping Plan 01's behaviour and adding:
+    - the static `SpeechRecognition.available()` resolving `available` (no static when `available` is `null`), and `install()` resolving `true`;
+    - a recogniser that fires `start` on `start()` and `end` on `stop()`/`abort()`; `window.__say(text, final = true)`; `window.__voiceError(code)` (fires `error`, then `end`);
+    - `window.__spoken` (texts), `window.__speechCancels`, and `window.__endSpeech()`. With `holdSpeech` an utterance ends only on `__endSpeech()` or `cancel()`; otherwise it ends after a microtask. `cancel()` fires `onerror` with `interrupted`;
+    - `getVoices()` returning `Local English` (`local-en`, local) and `Online English` (`net-en`, not local), both `en-US`;
+    - `window.__wake = {requests, releases}`, `window.__media` (the handlers given to `navigator.mediaSession.setActionHandler`, by action name), and `window.__announcements`: `[regionId, text]` for every text written to `#live-polite` or `#live-assertive`.
+
+Bar contents. `#handsfree` is a `<section aria-label="Hands-free">` outside the routed view, so it is on every screen. Every button is at least 56 px tall.
+
+| Element | Visible text and behaviour |
+|---|---|
+| Start button | `Start`, shown while idle. The press: probe with `allowCloud: settings.voice.cloudOptIn`, build listener and controller, `wakeLock.on()`, `media.setActive(true)`, `hf.start()` |
+| Turn off button | `Turn off hands-free`, shown when not idle; calls `stop()` |
+| Listening indicator `#hf-listening` | `Listening`, `Not listening`, `Hold V to talk` (push mode) or `No voice` (off) |
+| Pause/Play | `Pause` while active, `Play` while paused; hidden while idle |
+| Stop | text `Stop`, `aria-label="Stop reading"`; calls `command('stop')`. Always visible |
+| Mute | `Mute` with `aria-pressed`; calls `setMuted`. Always visible |
+| Countdown `#hf-countdown` | `Next find in <n> s`; empty when `countdown(null)` |
+| Caption `#hf-caption` | `Heard: <label>` for each voice command, with an 80 ms 660 Hz tone at gain 0.05 from an `AudioContext` made on the Start press |
+| Tap to resume | `Tap to resume`, shown when `wake()` returns `false`; calls `wake()` |
+
+Wiring rules:
+- `ui.show` navigates to `stumble` first when needed, then calls `showResult`. `ui.act(id)` clicks the first button in `main` whose trimmed text equals the command's label (for `open`, `Open` or `Play`), else announces `No <label> button here`. `ui.recap(shown)` opens a dialog headed `This session` with `You saw <n> finds and saved <m>.` and the saved titles, where saved means `(await app.collections.has(find.id)).length > 0`.
+- `ui.openHelp()` opens `<dialog>` headed `What you can say`: one row per `COMMANDS` entry with columns `Say` (the label), `Also` (the other words), `Key` (`Space` for `' '`, `Esc` for `Escape`, else the key in upper case, `—` for none), then the line `Hold V to talk when push to talk is on.` and a `Close` button. It holds `'help'` until closed.
+- The keymap dispatches to `app.handsFree.command(id)`, except `search`, which focuses `main input[type="search"]` when there is one, or else opens a dialog with a field labelled `Search for` and a `Search` button that calls `command('search', text)`.
+- `hashchange` to any route other than `stumble` calls `hold('view')`; back on `stumble` calls `release('view')`.
+- `visibilitychange` to hidden calls `suspend()` when active or paused; to visible calls `wake()`.
+- Capture-phase `pointerdown` and `keydown` on `document`, outside `#handsfree`, call `input()`.
+- Media handlers: `next` → `command('next')`, `previous` → `command('back')`, `playPause` → `command('pause')`.
+- `ui.setState('active')` calls `wakeLock.on()` and `media.setActive(true)`; any other state calls `off()` and `setActive(false)`.
+- `stumble.js`: keep the `app` it was rendered with; `showResult` calls `app?.handsFree?.showing(result.find)` after rendering a find; the `open` and `play` actions call `app.handsFree.pause()` when its state is `'active'`; the `read` action calls `app.handsFree.command('read')`.
+- `boot.js` imports `handsfree-ui.js` and calls `installHandsFreeUi(app)` after the engine and router start.
+
+- [ ] **Step 1: Write the failing e2e tests**
+
+```js
+import { test, expect } from '@playwright/test';
+import { mockNet } from './helpers/net.js';
+import { installFakeSpeech } from './helpers/fakes.js';
+
+const title = (page) => page.getByRole('main').getByRole('heading', { level: 2 }).first();
+const announced = (page, region, text) => page.evaluate(([r, t]) =>
+  window.__announcements.filter(([id, x]) => id === r && x === t).length, [region, text]);
+async function skipFirstRun(page) {
+  const skip = page.getByRole('button', { name: 'Skip' });
+  while (await skip.isVisible()) await skip.click();
+}
+async function start(page, opts) {
+  await mockNet(page); await installFakeSpeech(page, opts);
+  await page.goto('./#/stumble'); await skipFirstRun(page);
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.locator('#hf-listening')).toHaveText('Listening');
+}
+
+test('voice "next" shows a new find and captions it', async ({ page }) => {
+  await start(page);
+  const t1 = await title(page).textContent();
+  await page.evaluate(() => window.__say('next'));
+  await expect(title(page)).not.toHaveText(t1);
+  await expect(page.locator('#hf-caption')).toHaveText('Heard: Next');
+});
+
+test('"search for pixel art" reaches app.search', async ({ page }) => {
+  const urls = []; page.on('request', (r) => urls.push(r.url()));
+  await start(page);
+  await page.evaluate(() => window.__say('search for pixel art'));
+  await expect.poll(() => announced(page, 'live-polite', 'Searching for pixel art')).toBe(1);
+  await expect.poll(() => urls.some((u) => /pixel(%20|\+| )art/.test(u))).toBe(true);
+});
+
+test('Esc stops reading', async ({ page }) => {
+  await start(page, { holdSpeech: true });
+  await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
+  await page.keyboard.press('Escape');
+  await expect.poll(() => page.evaluate(() => window.__speechCancels)).toBeGreaterThan(0);
+  await page.evaluate(() => window.__endSpeech());
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(1);
+});
+
+test('Pause and Play', async ({ page }) => {
+  await page.clock.install();
+  await start(page);
+  const t1 = await title(page).textContent();
+  await page.getByRole('button', { name: 'Pause' }).click();
+  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+  await page.clock.runFor(60000);
+  await expect(title(page)).toHaveText(t1);
+  await page.getByRole('button', { name: 'Play' }).click();
+  await page.clock.runFor(21000);
+  await expect(title(page)).not.toHaveText(t1);
+  expect(await announced(page, 'live-polite', 'Lean-back paused')).toBe(1);
+  expect(await announced(page, 'live-polite', 'Lean-back on')).toBe(1);
+});
+
+test('the countdown announcement is made once per find', async ({ page }) => {
+  await page.clock.install();
+  await start(page);
+  await page.clock.runFor(15000);
+  expect(await announced(page, 'live-polite', 'Next find in 10 seconds')).toBe(1);
+  await page.keyboard.press('x');
+  await page.clock.runFor(15000);
+  expect(await announced(page, 'live-polite', 'Next find in 10 seconds')).toBe(1);
+  await expect(page.locator('#hf-countdown')).toHaveText('Next find in 5 s');
+});
+
+test('headset next track shows a new find', async ({ page }) => {
+  await start(page);
+  const t1 = await title(page).textContent();
+  await page.evaluate(() => window.__media.nexttrack());
+  await expect(title(page)).not.toHaveText(t1);
+});
+
+test('a blocked mic is announced assertively', async ({ page }) => {
+  await start(page);
+  await page.evaluate(() => window.__voiceError('not-allowed'));
+  await expect(page.locator('#live-assertive')).toHaveText('Microphone blocked');
+  await expect(page.locator('#hf-listening')).toHaveText('Not listening');
+});
+
+test('Start takes a wake lock; hiding the page stops the mic', async ({ page }) => {
+  await start(page);
+  expect(await page.evaluate(() => window.__wake.requests)).toBeGreaterThan(0);
+  const setVis = (v) => page.evaluate((v) => {
+    Object.defineProperty(document, 'visibilityState', { value: v, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, v);
+  await setVis('hidden');
+  await expect(page.locator('#hf-listening')).toHaveText('Not listening');
+  await setVis('visible');
+  await expect(page.locator('#hf-listening')).toHaveText('Listening');
+});
+
+test('Stop and Mute are on every screen', async ({ page }) => {
+  await mockNet(page); await installFakeSpeech(page);
+  await page.goto('./#/stumble'); await skipFirstRun(page);
+  for (const r of ['stumble', 'feed', 'saved', 'settings']) {
+    await page.goto(`./#/${r}`);
+    await expect(page.getByRole('button', { name: 'Stop reading' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Mute' })).toBeVisible();
+  }
+});
+
+test('? opens the help card with every on-screen label', async ({ page }) => {
+  await start(page);
+  await page.keyboard.press('?');
+  const help = page.getByRole('dialog', { name: 'What you can say' });
+  await expect(help).toBeVisible();
+  for (const label of ['Next', 'Back', 'Like', 'Not for me', 'Save', 'Share', 'Open', 'More like this', 'Read it',
+    'Pause', 'Play', 'Stop', 'Stop listening', 'Search', 'Surprise me', 'Daily Fate', 'Help'])
+    await expect(help.getByRole('cell', { name: label, exact: true }).first()).toBeVisible();
+  await help.getByRole('button', { name: 'Close' }).click();
+  await expect(help).toBeHidden();
+});
+
+test('/ opens search when the page has no search field', async ({ page }) => {
+  await start(page);
+  await page.keyboard.press('/');
+  await page.getByLabel('Search for').fill('maps');
+  await page.getByRole('button', { name: 'Search', exact: true }).click();
+  await expect.poll(() => announced(page, 'live-polite', 'Searching for maps')).toBe(1);
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/handsfree.spec.js`
+Expected: FAIL. Each test times out waiting for `getByRole('button', { name: 'Start' })` (or `Stop reading`).
+
+- [ ] **Step 3: Implement the fakes, `handsfree-ui.js` and the four modifications**
+
+Build every node with `h()`; all text goes through `textContent`. Add `#handsfree` styles to `app.css`: a sticky bar, 56 px minimum button height, a visible `:focus-visible` ring, and no animation when `html[data-motion="reduce"]`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/handsfree.spec.js`
+Expected: PASS, 11 tests. Then run `npm test`; expected: PASS, with `--check` finding no forbidden APIs.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/handsfree-ui.js src/ui/boot.js src/platform/pwa.js src/ui/views/stumble.js src/ui/styles/app.css tests/e2e/helpers/fakes.js tests/e2e/handsfree.spec.js
+git commit -m "Add the hands-free bar, help card and wiring"
+```
+
 <!-- PLAN CONTINUES -->

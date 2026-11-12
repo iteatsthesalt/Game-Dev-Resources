@@ -977,4 +977,211 @@ git add shells/pwa src/ui/styles src/assets/icons/icon.svg src/ui/boot.js src/da
 git commit -m "Add the PWA shell, base styles and the build with its check"
 ```
 
+### Task 10: End-to-end harness
+
+**Files:**
+- Create: `tests/e2e/playwright.config.js`, `tests/e2e/helpers/net.js`, `tests/e2e/helpers/fakes.js`, `tests/e2e/helpers/axe.js`
+- Create: `tests/fixtures/routes.js`, `tests/fixtures/http/ping.json` (`{"pong": true}`)
+- Test: `tests/e2e/harness.spec.js`
+
+**Interfaces:**
+- Consumes: the built `dist/pwa/` (Task 9) and `tools/serve.js` (Task 8).
+- Produces: `mockNet(page, {overrides?}) → Promise<void>`, `unmocked(page) → string[]`, `pageProblems(page) → string[]`, and `test` / `expect` from `helpers/net.js`. `test` is `@playwright/test`'s `test` extended so that its `page` fixture calls `mockNet(page)` first and, after the test, asserts that `unmocked(page)` and `pageProblems(page)` are both `[]`. Later specs import `test` and `expect` from here. A route or override entry is `{match: RegExp, file?: string, body?: string, json?: any, status?: number, headers?: object}`, where `file` is relative to `tests/fixtures/http/`. Also `installFakeSpeech(page) → Promise<void>` (`helpers/fakes.js`) and `expectNoSeriousA11y(page, {exclude = []} = {}) → Promise<void>` (`helpers/axe.js`).
+
+- [ ] **Step 1: Write `tests/e2e/playwright.config.js`**
+
+```js
+import { defineConfig, devices } from '@playwright/test';
+import { fileURLToPath } from 'node:url';
+const appRoot = fileURLToPath(new URL('../..', import.meta.url));
+const baseURL = 'http://localhost:4321/Game-Dev-Resources/byways/';
+export default defineConfig({
+  testDir: '.', testMatch: '**/*.spec.js', retries: 0, forbidOnly: !!process.env.CI, reporter: 'list',
+  use: { baseURL, trace: 'off', serviceWorkers: 'block' },
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  webServer: { command: 'node tools/serve.js --root dist/pwa --base /Game-Dev-Resources/byways/ --port 4321', cwd: appRoot, url: baseURL, reuseExistingServer: !process.env.CI },
+});
+```
+
+Service workers are blocked by default because `page.route` cannot see requests a service worker makes. Only `sw.spec.js` turns them on.
+
+- [ ] **Step 2: Write the failing spec** `tests/e2e/harness.spec.js`
+
+```js
+import { test as base, expect } from '@playwright/test';
+import { mockNet, unmocked, pageProblems } from './helpers/net.js';
+import { installFakeSpeech } from './helpers/fakes.js';
+import { expectNoSeriousA11y } from './helpers/axe.js';
+base('mockNet serves fixtures, aborts the rest and lists them', async ({ page }) => {
+  await mockNet(page); await page.goto('./');
+  expect(await page.evaluate(() => fetch('https://example.test/ping').then(r => r.json()))).toEqual({ pong: true });
+  expect(await page.evaluate(() => fetch('https://unmatched.test/x').then(() => 'ok', () => 'failed'))).toBe('failed');
+  expect(unmocked(page)).toEqual(['https://unmatched.test/x']);
+});
+base('overrides win over routes.js', async ({ page }) => {
+  await mockNet(page); await mockNet(page, { overrides: [{ match: /example\.test\/ping/, json: { pong: 'override' } }] });
+  await page.goto('./');
+  expect(await page.evaluate(() => fetch('https://example.test/ping').then(r => r.json()))).toEqual({ pong: 'override' });
+});
+base('pageProblems catches CSP violations', async ({ page }) => {
+  await mockNet(page); await page.goto('./');
+  await page.evaluate(() => document.body.setAttribute('style', 'color: red'));
+  await expect.poll(() => pageProblems(page).join('\n')).toMatch(/Content Security Policy/);
+});
+base('installFakeSpeech drives recognition, records speech and fakes the wake lock', async ({ page }) => {
+  await mockNet(page); await installFakeSpeech(page); await page.goto('./');
+  expect(await page.evaluate(() => new Promise(res => {
+    const r = new webkitSpeechRecognition(); r.onresult = e => res([e.results[0][0].transcript, e.results[0].isFinal, e.resultIndex]);
+    r.start(); window.__say('next please');
+  }))).toEqual(['next please', true, 0]);
+  expect(await page.evaluate(() => new Promise(res => {
+    const u = new SpeechSynthesisUtterance('Hello'); u.onend = () => res(window.__spoken); speechSynthesis.speak(u);
+  }))).toEqual(['Hello']);
+  expect(await page.evaluate(async () => {
+    const s = await navigator.wakeLock.request('screen'); const a = window.__wakeLock.active; await s.release(); return [a, window.__wakeLock.active];
+  })).toEqual([true, false]);
+});
+base('axe finds no serious issues on the bare shell', async ({ page }) => {
+  await mockNet(page); await page.goto('./'); await expectNoSeriousA11y(page);
+});
+```
+
+- [ ] **Step 3: Run it and see it fail**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/harness.spec.js`
+Expected: FAIL with `Cannot find module` for `./helpers/net.js`.
+
+- [ ] **Step 4: Implement the helpers**
+
+`net.js`: per page, keep `{unmocked: [], problems: []}` in a `WeakMap`. The first `mockNet` call adds a `console` listener (push errors whose text matches `/Content Security Policy/`) and a `pageerror` listener (push `pageerror: <message>`). It also adds a `page.route` for every http(s) URL whose host is not `localhost:4321`: fulfil from the first matching `tests/fixtures/routes.js` entry, or else record the URL and `route.abort('blockedbyclient')`. A call with `overrides` adds another route that fulfils a matching override or calls `route.fallback()`. Playwright runs the newest route first. Fulfil `OPTIONS` with 204. Every fulfilled response gets `access-control-allow-origin: *`, `access-control-allow-headers: *` and `access-control-allow-methods: *`, because the browser still applies CORS to mocked cross-origin responses. The content type comes from the file extension (`.json` `application/json`, `.xml` `application/xml`, `.html` `text/html`, `.txt` `text/plain`, otherwise `application/octet-stream`) or `application/json` for `json`. Entry `headers` override all of these.
+
+`routes.js`: `export default [{ match: /^https:\/\/example\.test\/ping$/, file: 'ping.json' }];`. Later plans append entries.
+
+`fakes.js`: `installFakeSpeech(page)` calls `page.addInitScript` once to define:
+- `SpeechRecognition` and `webkitSpeechRecognition`: one `EventTarget` class with `lang`, `continuous`, `interimResults`, `maxAlternatives` and `on<event>` properties. `start()` throws `InvalidStateError` when already started and fires `start`; `stop()` and `abort()` fire `end`. `window.__say(text, {final = true} = {})` fires `result` on every started recogniser with `{resultIndex: 0, results}`, where `results[0]` is `[{transcript: text, confidence: 0.9}]` with `isFinal`. `window.__sayError(code)` fires `error` `{error: code}` then `end`. `window.__recognizers` lists instances.
+- `SpeechSynthesisUtterance`: an `EventTarget` class with `text`, `voice`, `rate`, `volume`, `pitch`, `lang` and `on<event>` properties.
+- `speechSynthesis` (through `Object.defineProperty` on `window`): it queues utterances and pushes each `text` to `window.__spoken` when it starts. It fires `start` after 0 ms and `end` after 10 ms. `cancel()` empties the queue and fires `error` `{error: 'canceled'}` on the current one. It has `speaking`, `pending`, `paused`, `pause()` and `resume()`, and `getVoices()` returns `[{voiceURI: 'fake-en-US', name: 'Fake English', lang: 'en-US', localService: true, default: true}]`.
+- `navigator.wakeLock.request(type)` resolves to an `EventTarget` sentinel with `type`, `released` and `release()`. `window.__wakeLock = {active, requests}` tracks it.
+
+Plan 03 may add the on-device availability methods to the fake.
+
+`axe.js`: run `new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'])`, applying `exclude` selectors, and then `expect` the list of `"<id>: <targets>"` for violations with impact `serious` or `critical` to equal `[]`.
+
+- [ ] **Step 5: Run it and see it pass**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/harness.spec.js`
+Expected: PASS, 5 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tests/e2e/playwright.config.js tests/e2e/helpers tests/fixtures/routes.js tests/fixtures/http/ping.json tests/e2e/harness.spec.js
+git commit -m "Add the Playwright harness with network mocks, speech fakes and axe"
+```
+
+### Task 11: DOM builder, live regions, theme and toasts
+
+**Files:**
+- Create: `src/ui/dom.js`, `src/ui/a11y.js`, `src/ui/theme.js`, `src/ui/toast.js`
+- Test: `tests/unit/theme.test.js`, `tests/e2e/dom.spec.js`
+
+**Interfaces:**
+- Consumes: `test`, `expect` (Task 10).
+- Produces: `h(tag, props?, ...children) → HTMLElement`, `clear(el)`; `announce(text, {assertive = false} = {})`, `focusMain()`; `applyAccessSettings(settings, root = document.documentElement)`; `showToast(message, {undo, ms = 5000, action} = {}) → {close()}`, where `action = {label, run}`, and `ms: 0` means the toast stays until it is closed.
+
+In e2e specs, page modules are loaded with `await import(new URL('ui/dom.js', document.baseURI).href)` inside `page.evaluate`. This gives the same module instance the app uses.
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/unit/theme.test.js`:
+
+```js
+test('applyAccessSettings sets data attributes and the text scale', () => {
+  const root = { dataset: {}, style: { props: {}, setProperty(k, v) { this.props[k] = v; } } };
+  applyAccessSettings({ theme: 'high-contrast', font: 'atkinson', motion: 'reduced', textScale: 1.5 }, root);
+  assert.deepEqual({ ...root.dataset }, { theme: 'high-contrast', font: 'atkinson', motion: 'reduced' });
+  assert.equal(root.style.props['--text-scale'], '1.5');
+  applyAccessSettings({ theme: 'neon', font: 'comic', motion: 'wild', textScale: 5 }, root);
+  assert.deepEqual({ ...root.dataset }, { theme: 'system', font: 'system', motion: 'system' });
+  assert.equal(root.style.props['--text-scale'], '2');
+});
+```
+
+`tests/e2e/dom.spec.js` (imports `test`, `expect` from `./helpers/net.js`; each test starts with `await page.goto('./')`):
+
+```js
+test('h sets text, attributes and handlers without parsing HTML', async ({ page }) => {
+  expect(await page.evaluate(async () => {
+    const { h } = await import(new URL('ui/dom.js', document.baseURI).href); let clicks = 0;
+    const el = h('button', { class: 'big', text: '<b>hi</b>', 'aria-label': 'Say hi', 'data-id': '7', type: 'button', onClick: () => clicks++ });
+    el.click(); const div = h('div', null, 'a', h('span', { text: 'b' }), null, false, ['c', 'd']);
+    return [el.className, el.textContent, el.children.length, el.getAttribute('aria-label'), el.dataset.id, clicks, div.textContent, div.childNodes.length];
+  })).toEqual(['big', '<b>hi</b>', 0, 'Say hi', '7', 1, 'abcd', 4]);
+});
+test('h drops unsafe link schemes', async ({ page }) => {
+  expect(await page.evaluate(async () => {
+    const { h } = await import(new URL('ui/dom.js', document.baseURI).href);
+    const bad = ['javascript:alert(1)', 'JaVaScRiPt:alert(1)', ' javascript:alert(1)', 'java\tscript:alert(1)', 'data:text/html,<b>x</b>', 'vbscript:x']
+      .map(u => h('a', { href: u }).hasAttribute('href'));
+    return [...bad, h('a', { href: 'https://x.org/' }).getAttribute('href'), h('a', { href: '#/feed' }).hasAttribute('href'),
+      h('img', { src: 'data:image/png;base64,AA' }).hasAttribute('src'), h('iframe', { src: 'data:text/html,x' }).hasAttribute('src')];
+  })).toEqual([false, false, false, false, false, false, 'https://x.org/', true, true, false]);
+});
+test('h refuses a style prop', async ({ page }) => {
+  expect(await page.evaluate(async () => {
+    const { h } = await import(new URL('ui/dom.js', document.baseURI).href);
+    try { h('div', { style: 'color:red' }); return 'allowed'; } catch (e) { return e.message; }
+  })).toBe('h: style is blocked by the CSP; use a class');
+});
+test('announce writes the polite or the assertive region', async ({ page }) => {
+  await page.evaluate(async () => { const { announce } = await import(new URL('ui/a11y.js', document.baseURI).href);
+    announce('Saved'); announce('Microphone blocked', { assertive: true }); });
+  await expect(page.locator('#live-polite')).toHaveText('Saved');
+  await expect(page.locator('#live-assertive')).toHaveText('Microphone blocked');
+});
+test('showToast offers Undo for 5 seconds and announces politely', async ({ page }) => {
+  await page.clock.install(); await page.goto('./');
+  await page.evaluate(async () => { const { showToast } = await import(new URL('ui/toast.js', document.baseURI).href);
+    showToast('Saved', { undo: async () => { window.__undone = true; } }); });
+  await expect(page.locator('#toasts')).toContainText('Saved'); await expect(page.locator('#live-polite')).toHaveText('Saved');
+  await page.getByRole('button', { name: 'Undo' }).click();
+  expect(await page.evaluate(() => window.__undone)).toBe(true); await expect(page.locator('#toasts')).toBeEmpty();
+  await page.evaluate(async () => (await import(new URL('ui/toast.js', document.baseURI).href)).showToast('Liked'));
+  await page.clock.runFor(5000); await expect(page.locator('#toasts')).toBeEmpty();
+  await page.evaluate(async () => (await import(new URL('ui/toast.js', document.baseURI).href)).showToast('Update available, reload', { ms: 0, action: { label: 'Reload', run: () => {} } }));
+  await page.clock.runFor(60000); await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+});
+test('nav links are at least 56 px and show a 3 px focus ring', async ({ page }) => {
+  for (const link of await page.getByRole('navigation', { name: 'Main' }).getByRole('link').all())
+    expect((await link.boundingBox()).height).toBeGreaterThanOrEqual(56);
+  await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
+  expect(await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, s.outlineWidth]; })).toEqual(['solid', '3px']);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/theme.test.js`, then `npm run build` and `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/dom.spec.js`
+Expected: FAIL with `Cannot find module` (unit) and failed dynamic imports of `ui/dom.js` (e2e).
+
+- [ ] **Step 3: Implement `dom.js` and `a11y.js`**
+
+`h`: props `class` → `className`; `text` → `textContent`; `on<Event>` → `addEventListener(lowercased event, fn)`; `style` → throw `Error('h: style is blocked by the CSP; use a class')`; `null`, `undefined` and `false` values are skipped; `true` sets an empty attribute; anything else uses `setAttribute`. For `href`, `src`, `action`, `formaction` and `poster`, it removes ASCII whitespace and control characters, resolves the value against `document.baseURI`, and sets it only when the result has the page's origin, or uses the `http:`, `https:` or `blob:` protocol, or is `data:` on an `img`. Otherwise it skips the attribute and calls `console.warn('h: dropped unsafe URL')`. Children: arrays flatten, strings and numbers become text nodes, and `null`/`false` are skipped. `announce` sets the region's `textContent` to `''`, then sets `text` 50 ms later, so a repeated message is spoken again. `focusMain` calls `document.getElementById('main').focus()`.
+
+- [ ] **Step 4: Implement `theme.js` and `toast.js`**
+
+`applyAccessSettings`: `theme` in `system|light|dark|high-contrast`, `font` in `system|atkinson` and `motion` in `system|reduced|full`, where any other value gives `'system'`. It sets `--text-scale` to `String(clamp(textScale, 1, 2))`. `showToast` replaces any open toast in `#toasts` with a `div.toast` that holds the message, then an **Undo** button when `undo` is given and an `action.label` button when `action` is given. It calls `announce(message)`. Undo awaits `undo()` and closes. Action calls `run()` and closes. It closes after `ms` unless `ms` is `0`. Never pass `Infinity` to `setTimeout`, because it fires at once.
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run: `node --test tests/unit/theme.test.js`, then `npm run build` and `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/dom.spec.js`
+Expected: PASS, 1 unit test and 6 e2e tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ui/dom.js src/ui/a11y.js src/ui/theme.js src/ui/toast.js tests/unit/theme.test.js tests/e2e/dom.spec.js
+git commit -m "Add the DOM builder, live regions, access attributes and toasts"
+```
+
 <!-- PLAN CONTINUES -->

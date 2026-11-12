@@ -858,4 +858,189 @@ git add shells/extension/panel.html shells/extension/app.html shells/extension/p
 git commit -m "Show the tab's find, a mini feed and Grant access in the side panel"
 ```
 
-<!-- PLAN CONTINUES -->
+### Task 7: Mic grant page and voice messages
+
+**Files:**
+- Create: `shells/extension/permission.html`, `shells/extension/permission.js`
+- Modify: `shells/extension/panel.js`
+- Test: `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}` (Task 3); `app.handsFree.state`, `.start()` and `.command(id)` (`handsfree.js`); `announce`; `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`); the Task 5 spec helpers and the `extArgs` fixture option.
+- Produces: the `micGranted` message `{type: 'micGranted', granted: boolean}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('the mic page grants, tells the open pages and closes', async ({ context, extId }) => {
+  const app = await extPage(context, extId, 'app.html');
+  const perm = await extPage(context, extId, 'permission.html');
+  const closed = perm.waitForEvent('close');
+  await expect(perm.locator('#status')).toHaveText('Microphone ready. This tab will close.');
+  await closed;
+  await expect(app.locator('#live-polite')).toHaveText('Microphone ready. Press Start.');
+});
+
+test.describe('mic blocked', () => {
+  test.use({ extArgs: ['--deny-permission-prompts'] });
+  test('the mic page says the mic is blocked and stays open', async ({ context, extId }) => {
+    const perm = await extPage(context, extId, 'permission.html');
+    await expect(perm.getByRole('heading', { level: 1 })).toHaveText('Enable hands-free');
+    await expect(perm.locator('#status')).toHaveText('Microphone blocked. Allow it for Byways in your browser settings, then press Start again.');
+    expect(perm.isClosed()).toBe(false);
+  });
+});
+
+test('the first Start opens the mic page when the mic is not granted', async ({ context, extId }) => {
+  const app = await context.newPage();
+  await installFakeSpeech(app);
+  await app.goto(`chrome-extension://${extId}/app.html`);
+  await onlyLibrary(app);
+  const [perm] = await Promise.all([context.waitForEvent('page', (p) => p.url().endsWith('/permission.html')),
+    app.getByRole('button', { name: 'Start' }).click()]);
+  expect(perm.url()).toBe(`chrome-extension://${extId}/permission.html`);
+});
+
+test('the toggle-listening command stops listening in the Byways tab', async ({ context, sw, extId }) => {
+  const perm = await extPage(context, extId, 'permission.html');
+  await perm.waitForEvent('close');
+  const app = await context.newPage();
+  await installFakeSpeech(app);
+  await app.goto(`chrome-extension://${extId}/app.html#/stumble`);
+  await onlyLibrary(app);
+  await app.getByRole('button', { name: 'Start' }).click();
+  await sw.evaluate(() => chrome.runtime.sendMessage({ type: 'toggleListening' }));
+  await expect(app.locator('#live-polite')).toHaveText('Listening paused');
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "mic|Start|toggle"`
+Expected: FAIL. `permission.html` is missing, so `#status` times out, and the toggle test never sees `Listening paused`.
+
+- [ ] **Step 3: Write `permission.html`**
+
+It has the Task 5 CSP `<meta>`, `<title>Enable hands-free</title>`, the `ui/styles/app.css` link, `<h1>Enable hands-free</h1>`, `<p>Byways needs the microphone once, so it can hear voice commands in the side panel and the Byways tab. Byways does not record or keep any audio.</p>`, `<p id="status" role="status"></p>` and `<script type="module" src="permission.js"></script>`.
+
+- [ ] **Step 4: Write `permission.js`**
+
+It calls `navigator.mediaDevices.getUserMedia({audio: true})` on load and stops every track at once.
+- On success: `#status` reads `Microphone ready. This tab will close.` It sends `{type: 'micGranted', granted: true}`, and after 1500 ms it closes its own tab with `ext.tabs.getCurrent()` and `ext.tabs.remove(id)`.
+- On any rejection: `#status` gets `role="alert"` and reads `Microphone blocked. Allow it for Byways in your browser settings, then press Start again.` It sends `{type: 'micGranted', granted: false}` and stays open.
+
+- [ ] **Step 5: Handle the voice messages in `panel.js`** (both surfaces)
+
+- `micGranted`: `announce('Microphone ready. Press Start.')` when granted, else `announce('Microphone blocked.', {assertive: true})`.
+- `toggleListening`: `app.handsFree.start()` when `app.handsFree.state === 'idle'`, else `app.handsFree.command('stopListening')`.
+
+- [ ] **Step 6: Run them and see them pass**
+
+Run the Step 2 command.
+Expected: PASS, 4 tests.
+
+- [ ] **Step 7: Run the whole suite**
+
+Run: `npm test && npm run e2e`
+Expected: both exit with code 0.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add shells/extension/permission.html shells/extension/permission.js shells/extension/panel.js tests/e2e/extension.spec.js
+git commit -m "Add the one-time mic grant page and the extension voice messages"
+```
+
+### Task 8: CI: extension zips and the extension spec
+
+**Files:**
+- Modify: `.github/workflows/byways.yml` (web job), and, only if the Task 5 spike recorded "fail", `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: `dist/chrome/` and `dist/firefox/` from `npm run e2e` (Task 2); the spike line at the top of `tests/e2e/extension.spec.js` (Task 5).
+- Produces: the `byways-extension` workflow artifact, holding `byways-chrome.zip` and `byways-firefox.zip`.
+
+- [ ] **Step 1: Add the zip and upload steps after the e2e step**
+
+```yaml
+      - name: Zip the extension builds
+        working-directory: Apps/Byways/dist
+        run: |
+          (cd chrome && zip -qr ../byways-chrome.zip .)
+          (cd firefox && zip -qr ../byways-firefox.zip .)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: byways-extension
+          path: |
+            Apps/Byways/dist/byways-chrome.zip
+            Apps/Byways/dist/byways-firefox.zip
+          if-no-files-found: error
+```
+
+- [ ] **Step 2: Only if the spike line says "fail", run the extension spec under `xvfb-run`**
+
+Add `test.skip(process.env.BYWAYS_SKIP_EXT === '1', 'This spec runs in its own xvfb-run step.');` at the top level of `tests/e2e/extension.spec.js`. Set `BYWAYS_SKIP_EXT: '1'` in the `env:` of the existing e2e step. Then add this step after it:
+
+```yaml
+      - name: Extension e2e (headed, under xvfb)
+        working-directory: Apps/Byways
+        env:
+          BYWAYS_EXT_HEADED: '1'
+        run: xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js
+```
+
+- [ ] **Step 3: Check the workflow parses**
+
+Run (from the repo root): `npx --yes js-yaml@4.1.0 .github/workflows/byways.yml > /dev/null && echo ok`
+Expected: `ok`.
+
+- [ ] **Step 4: Check the zip command locally**
+
+Run: `npm run build && cd dist/chrome && zip -qr ../byways-chrome.zip . && unzip -l ../byways-chrome.zip | grep -c manifest.json`
+Expected: `1`. (`dist/` is gitignored.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add .github/workflows/byways.yml tests/e2e/extension.spec.js
+git commit -m "Upload the extension zips from CI and run the extension spec there"
+```
+
+Expected on the next CI run: the web job passes and lists the `byways-extension` artifact with two zips.
+
+### Task 9: Firefox manual checks
+
+Playwright cannot drive Firefox extensions, so these checks are done by hand before each release.
+
+**Files:**
+- Create or modify: `CHECKLIST.md` (add a section; Plan 09 owns the rest of the file)
+
+**Interfaces:**
+- Consumes: `dist/firefox/` (Task 2).
+- Produces: the `## Firefox extension (manual)` section.
+
+- [ ] **Step 1: Write the section**
+
+A short numbered list, each item one check with its expected result:
+1. Run `npm run build`. In Firefox 140 or later, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on…** and pick `dist/firefox/manifest.json`. It loads with no errors. The only expected warning is about `background.service_worker`.
+2. The module background starts (spec §20, "Firefox module background"). `about:debugging` → **Inspect** shows `bg.js` with no errors.
+3. The toolbar button loads a find in the current tab.
+4. Alt+Shift+B opens the sidebar, which shows that find's card.
+5. Alt+Shift+M on a web page opens the sidebar and starts a Rabbit Hole. On `about:addons` the sidebar says "More like this page works only on web pages."
+6. In `about:addons` → Byways → Permissions, turn off one site, then restart Firefox. The toolbar badge shows `!`, and the sidebar shows **Grant access**. Pressing it brings the access back and hides the banner.
+7. **Start** in the sidebar opens `permission.html` once when the mic is not granted. After the grant, press **Start** again and say "next". This works on Firefox 160 or later. On older versions, Settings → Voice says why there is no voice.
+8. In the Byways tab, **Open** uses a new tab, and lean-back moves on by itself after the dwell time.
+9. The Lab button opens `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/`.
+10. The install prompt shows no required data collection. Check `data_collection_permissions` against AMO's current list.
+
+- [ ] **Step 2: Check the section is there**
+
+Run: `grep -c "Load Temporary Add-on" CHECKLIST.md`
+Expected: `1`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add CHECKLIST.md
+git commit -m "Add the Firefox extension manual checks"
+```

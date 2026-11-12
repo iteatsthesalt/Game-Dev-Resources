@@ -791,4 +791,310 @@ git add src/platform/android.js tests/unit/platform-android.test.js
 git commit -m "Add native voice, speech and media to the Android platform"
 ```
 
+### Task 8: Native voice and the first-run consent
+
+**Files:**
+- Create: `…/byways/SpeechErrors.kt`, `…/byways/SpeechBridge.kt`
+- Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/SpeechErrorsTest.kt`
+
+**Interfaces:**
+- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5); the `VoiceStatus` and `VoiceErrorCode` shapes (overview).
+- Produces:
+
+```kotlin
+object SpeechErrors { fun toCode(error: Int): String }     // always a VoiceErrorCode name
+class SpeechBridge(private val activity: ComponentActivity, private val emit: (event: String, data: Any?) -> Unit) : ChannelHandler {
+  fun stopNow()                                            // called from onPause
+}
+```
+
+- [ ] **Step 1: Write the failing tests**
+
+```kotlin
+class SpeechErrorsTest {
+  @Test fun mapsEveryNativeCode() {
+    val r = SpeechRecognizer::class.java   // constants are inlined, so no Android runtime is needed
+    val table = mapOf(
+      SpeechRecognizer.ERROR_NO_MATCH to "no-speech", SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "no-speech",
+      SpeechRecognizer.ERROR_RECOGNIZER_BUSY to "busy", SpeechRecognizer.ERROR_TOO_MANY_REQUESTS to "too-many-requests",
+      SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS to "not-allowed", SpeechRecognizer.ERROR_NETWORK to "network",
+      SpeechRecognizer.ERROR_NETWORK_TIMEOUT to "network", SpeechRecognizer.ERROR_SERVER to "network",
+      SpeechRecognizer.ERROR_SERVER_DISCONNECTED to "network", SpeechRecognizer.ERROR_LANGUAGE_NOT_SUPPORTED to "language-not-supported",
+      SpeechRecognizer.ERROR_LANGUAGE_UNAVAILABLE to "language-not-supported", SpeechRecognizer.ERROR_AUDIO to "audio-capture",
+      SpeechRecognizer.ERROR_CLIENT to "aborted", SpeechRecognizer.ERROR_CANNOT_CHECK_SUPPORT to "service-not-allowed",
+      SpeechRecognizer.ERROR_CANNOT_LISTEN_TO_DOWNLOAD_EVENTS to "service-not-allowed")
+    for ((code, name) in table) assertEquals("code $code", name, SpeechErrors.toCode(code))
+  }
+  @Test fun unknownCodesAreAborted() = assertEquals("aborted", SpeechErrors.toCode(999))
+  @Test fun onlyContractNames() {
+    val names = setOf("no-speech", "aborted", "audio-capture", "network", "not-allowed", "service-not-allowed",
+      "language-not-supported", "phrases-not-supported", "busy", "too-many-requests")
+    for (c in -1..20) assertTrue(SpeechErrors.toCode(c) in names)
+  }
+}
+```
+
+Drop the unused `val r` line when writing it. Add to `tests/unit/android-shell.test.js`:
+
+```js
+test('speech uses the spec extras and stops in onPause', () => {
+  const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
+  for (const s of ['EXTRA_PREFER_OFFLINE', 'EXTRA_SEGMENTED_SESSION', 'EXTRA_AUDIO_SOURCE', 'LANGUAGE_MODEL_WEB_SEARCH',
+    'EXTRA_BIASING_STRINGS', 'createOnDeviceSpeechRecognizer', 'Looper.getMainLooper()']) assert.ok(k('SpeechBridge.kt').includes(s), s);
+  assert.match(k('MainActivity.kt'), /override fun onPause\(\)[\s\S]*stopNow\(\)/);
+  assert.ok(k('MainActivity.kt').includes('Manifest.permission.RECORD_AUDIO'));
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/android-shell.test.js` and `gradle -p shells/android testDebugUnitTest --tests '*SpeechErrorsTest'` (or the CI job).
+Expected: Node fails with `ENOENT` on `SpeechBridge.kt`; Gradle fails with `Unresolved reference 'SpeechErrors'`.
+
+- [ ] **Step 3: Implement `SpeechErrors.toCode`** as the table above, with every other value giving `aborted`.
+
+- [ ] **Step 4: Implement `SpeechBridge`**
+
+Every recogniser call is posted to `Handler(Looper.getMainLooper())`.
+
+- `probe {allowCloud}`:
+  - Without `RECORD_AUDIO`: `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'Microphone permission is off. Turn it on in Android settings.'}`.
+  - `onDevice` = API ≥ 31 and `SpeechRecognizer.isOnDeviceRecognitionAvailable(ctx)`. Neither that nor `isRecognitionAvailable(ctx)`: kind `none`, reason `This phone has no speech recogniser.`
+  - `onDevice`: `{kind:'native', vendor:'android', needsDownload, continuous: API ≥ 33, reason:null}`. On API 33+, `needsDownload` is true when `checkRecognitionSupport` (3 s limit) does not list the language as installed.
+  - Cloud only: `vendor` is `'google'` when the first `RecognitionService` package starts with `com.google`, else `'android'`. With `allowCloud`: kind `native`, `continuous:false`. Without it: kind `none`, reason `This phone only has cloud voice. Turn on cloud voice in Settings → Voice.`
+- `install {}`: API ≥ 33 calls `triggerModelDownload(intent)` and replies true; otherwise false.
+- `start {lang, phrases, allowCloud}`: no permission → error `not-allowed`; cloud only without `allowCloud` → error `service-not-allowed`. Create `createOnDeviceSpeechRecognizer` when `onDevice`, else `createSpeechRecognizer`. The intent sets `EXTRA_LANGUAGE_MODEL = LANGUAGE_MODEL_WEB_SEARCH`, `EXTRA_LANGUAGE = lang`, `EXTRA_PARTIAL_RESULTS = true`, `EXTRA_MAX_RESULTS = 1`, and `EXTRA_PREFER_OFFLINE = true` when `onDevice`. On API 33+ it adds `EXTRA_BIASING_STRINGS = ArrayList(phrases)`. When also `onDevice`, it adds `EXTRA_SEGMENTED_SESSION = RecognizerIntent.EXTRA_AUDIO_SOURCE`, `EXTRA_AUDIO_SOURCE` (the read end of `ParcelFileDescriptor.createPipe()`), `EXTRA_AUDIO_SOURCE_CHANNEL_COUNT = 1`, `EXTRA_AUDIO_SOURCE_ENCODING = AudioFormat.ENCODING_PCM_16BIT` and `EXTRA_AUDIO_SOURCE_SAMPLING_RATE = 16000`. A thread copies an `AudioRecord(MediaRecorder.AudioSource.VOICE_RECOGNITION, 16000, CHANNEL_IN_MONO, ENCODING_PCM_16BIT, …)` into the write end until stop. Confirm the `EXTRA_SEGMENTED_SESSION` value type against the API 33 `RecognizerIntent` docs.
+- Listener: `onReadyForSpeech` replies to `start` once and emits `state {listening:true}`. `onPartialResults` emits `result {text, final:false}`. `onResults` and `onSegmentResults` emit `result {text, final:true}` with the first `RESULTS_RECOGNITION` entry. `onResults`, `onEndOfSegmentedSession` and `onError` emit `state {listening:false}`. `onError(code)` emits `error {code: SpeechErrors.toCode(code)}` (and rejects a pending `start`), except `ERROR_CLIENT` right after our own stop.
+- `stop {}` and `stopNow()`: `cancel()`, close the pipe and `AudioRecord`, `destroy()` the recogniser, emit `state {listening:false}`.
+
+- [ ] **Step 5: Add the consent screen and lifecycle to `MainActivity`**
+
+- On first launch (SharedPreferences `byways`, `consentShown` false), before `loadUrl`, show a non-cancelable `AlertDialog`. Title: `Hands-free voice`. Message: `Byways can listen for commands like “next one” and “save it”, and read finds aloud. It needs the microphone for that. You can change this later in Android settings.` Buttons: **Allow microphone** (runs `registerForActivityResult(ActivityResultContracts.RequestPermission())` for `Manifest.permission.RECORD_AUDIO`, then stores `micConsent` = granted) and **Not now** (stores `micConsent` false). Both set `consentShown` true and then load `APP_URL`.
+- Register `"voice" to speechBridge` in the bridge handlers, with `emit = { e, d -> bridge.emit("voice", e, d) }`.
+- `override fun onPause()` calls `speechBridge.stopNow()` after `super.onPause()`.
+
+- [ ] **Step 6: Run them to see them pass**
+
+Run: the Step 2 commands. Expected: PASS (Node: 9 tests; Gradle: 3 new tests).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/SpeechErrorsTest.kt tests/unit/android-shell.test.js
+git commit -m "Add native voice commands and the microphone consent screen"
+```
+
+### Task 9: Native read-aloud, media session, share and file save
+
+**Files:**
+- Create: `…/byways/TtsBridge.kt`, `…/byways/MediaBridge.kt`, `…/byways/ShareBridge.kt`, `…/byways/FilesBridge.kt`
+- Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
+
+**Interfaces:**
+- Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5).
+- Produces: `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('speech, media, share and files use the native APIs', () => {
+  const k = f => R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/${f}`);
+  for (const s of ['UtteranceProgressListener', 'isNetworkConnectionRequired', 'KEY_PARAM_VOLUME', 'setSpeechRate'])
+    assert.ok(k('TtsBridge.kt').includes(s), s);
+  for (const s of ['MediaSession', 'onSkipToNext', 'onSkipToPrevious', 'ACTION_PLAY_PAUSE']) assert.ok(k('MediaBridge.kt').includes(s), s);
+  for (const s of ['Intent.ACTION_SEND', 'Intent.createChooser', '"text/plain"']) assert.ok(k('ShareBridge.kt').includes(s), s);
+  assert.ok(k('FilesBridge.kt').includes('CreateDocument'));
+  for (const s of ['"tts" to', '"media" to', '"share" to', '"files" to']) assert.ok(k('MainActivity.kt').includes(s), s);
+});
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `node --test tests/unit/android-shell.test.js`
+Expected: FAIL with `ENOENT` on `TtsBridge.kt`.
+
+- [ ] **Step 3: Implement `TtsBridge`**
+
+- Create `TextToSpeech(ctx) { status -> … }` once. Requests that arrive before init finishes wait for it. Init failure replies `service-not-allowed`.
+- `speak {text, voiceURI, rate, volume}`: when `voiceURI` is set, `setVoice` to the voice with that `name`. `setSpeechRate(rate)`, a params `Bundle` with `KEY_PARAM_VOLUME = volume`, then `speak(text, QUEUE_ADD, params, <request id>)`. The `UtteranceProgressListener` `onDone`, `onError` and `onStop` for that id reply `true` on the main thread.
+- `cancel {}`: `stop()`, reply `true` to every pending `speak`, then reply `true`.
+- `voices {}`: `voices` sorted by name, as `{uri: name, name, lang: locale.toLanguageTag(), local: !isNetworkConnectionRequired}`.
+
+- [ ] **Step 4: Implement `MediaBridge`, `ShareBridge` and `FilesBridge`**
+
+- `MediaBridge`: one `android.media.session.MediaSession(ctx, "Byways")`. The callback's `onSkipToNext`, `onSkipToPrevious`, and both `onPlay` and `onPause`, emit `next`, `previous` and `playPause`. `setActive {on}` sets `isActive` and a `PlaybackState` with `ACTION_SKIP_TO_NEXT or ACTION_SKIP_TO_PREVIOUS or ACTION_PLAY_PAUSE or ACTION_PLAY or ACTION_PAUSE`, in `STATE_PLAYING` when on and `STATE_PAUSED` when off.
+- `ShareBridge.send {title, text, url}`: an `Intent.ACTION_SEND` of type `"text/plain"` whose `EXTRA_TEXT` is the non-null parts of `text` and `url` joined by a space, with `EXTRA_SUBJECT = title`. Start `Intent.createChooser(intent, "Share")` and reply `'shared'`.
+- `FilesBridge.save {name, mime, base64}`: a `CreateDocument("*/*")` subclass whose `createIntent` sets the intent type to the requested `mime`. A `null` result replies `'cancelled'`. Otherwise decode and write on a background thread, then reply `'saved'`. A second save while one is open replies `busy`.
+
+- [ ] **Step 5: Wire them in `MainActivity`**
+
+Add `"tts" to tts`, `"media" to media`, `"share" to share` and `"files" to files` to the handler map. `onDestroy` calls `tts.shutdown()` and `media.release()`.
+
+- [ ] **Step 6: Run it to see it pass**
+
+Run: `node --test tests/unit/android-shell.test.js`
+Expected: PASS (10 tests). CI `assembleDebug` compiles the new files.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways tests/unit/android-shell.test.js
+git commit -m "Add native read-aloud, media buttons, share and file save"
+```
+
+### Task 10: Link and asset rules, and the site view
+
+**Files:**
+- Create: `…/byways/LinkPolicy.kt`, `…/byways/SiteView.kt`
+- Modify: `…/byways/MainActivity.kt`
+- Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/LinkPolicyTest.kt`
+
+**Interfaces:**
+- Consumes: `Bridge.emit` (Task 5); `MainActivity.APP_HOST` (Task 2); `BridgeGate.LAB_ORIGIN` (Task 5).
+- Produces:
+
+```kotlin
+object LinkPolicy {
+  enum class Action { LOAD, SITE, EXTERNAL, BLOCK }
+  fun forMainView(url: String): Action   // app or Lab origin → LOAD; other http(s) → SITE
+  fun forSiteView(url: String): Action   // http(s) → LOAD
+}                                         // both: intent, market, mailto, tel, sms, geo → EXTERNAL; anything else → BLOCK
+object AssetRules {
+  fun mimeFor(path: String): String
+  fun safeAssetPath(dir: String, suffix: String): String?   // "<dir>/<suffix>", or null for "", "..", "\" or a leading "/"
+}
+fun openOutside(activity: ComponentActivity, url: String, fallback: (String) -> Unit)   // in SiteView.kt
+class SiteView(private val activity: ComponentActivity, private val host: FrameLayout, private val onNext: () -> Unit,
+               private val onClosed: () -> Unit) {
+  val isOpen: Boolean
+  fun open(url: String, title: String)   // the same URL as the one showing does not reload
+  fun close()
+  fun goBack(): Boolean                  // true when the site view went back a page
+}
+```
+
+- [ ] **Step 1: Write the failing test**
+
+```kotlin
+class LinkPolicyTest {
+  @Test fun mainViewKeepsOnlyItsOwnOrigins() {
+    assertEquals(LOAD, LinkPolicy.forMainView("https://appassets.androidplatform.net/assets/www/index.html#/feed"))
+    assertEquals(LOAD, LinkPolicy.forMainView("https://lab.appassets.androidplatform.net/assets/lab/index.html"))
+    assertEquals(SITE, LinkPolicy.forMainView("https://appassets.androidplatform.net.evil.com/"))
+    assertEquals(SITE, LinkPolicy.forMainView("http://appassets.androidplatform.net/assets/www/index.html"))
+    assertEquals(SITE, LinkPolicy.forMainView("https://example.org/"))
+    assertEquals(EXTERNAL, LinkPolicy.forMainView("mailto:a@b.example"))
+    assertEquals(BLOCK, LinkPolicy.forMainView("javascript:alert(1)"))
+  }
+  @Test fun siteViewLoadsWebAndSendsAppLinksOut() {
+    assertEquals(LOAD, LinkPolicy.forSiteView("https://example.org"))
+    assertEquals(LOAD, LinkPolicy.forSiteView("http://old.example/"))
+    assertEquals(EXTERNAL, LinkPolicy.forSiteView("intent://scan/#Intent;scheme=zxing;end"))
+    assertEquals(EXTERNAL, LinkPolicy.forSiteView("market://details?id=x"))
+    for (u in listOf("javascript:alert(1)", "file:///sdcard/x", "content://x/y", "data:text/html,hi", "about:blank"))
+      assertEquals(u, BLOCK, LinkPolicy.forSiteView(u))
+  }
+  @Test fun assetTypes() {
+    val t = mapOf("a.wasm" to "application/wasm", "a.js" to "text/javascript", "a.mjs" to "text/javascript",
+      "index.html" to "text/html", "a.css" to "text/css", "d.json" to "application/json", "i.svg" to "image/svg+xml",
+      "i.png" to "image/png", "f.woff2" to "font/woff2", "x.zip" to "application/zip", "x.weird" to "application/octet-stream")
+    for ((p, m) in t) assertEquals(p, m, AssetRules.mimeFor(p))
+  }
+  @Test fun assetPathsStayInTheirFolder() {
+    assertEquals("lab/vendor/js-dos/js-dos.js", AssetRules.safeAssetPath("lab", "vendor/js-dos/js-dos.js"))
+    for (s in listOf("", "../www/index.html", "a/../../x", "/etc/hosts", "a\\b")) assertNull(s, AssetRules.safeAssetPath("lab", s))
+  }
+}
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `gradle -p shells/android testDebugUnitTest --tests '*LinkPolicyTest'` (or the CI job).
+Expected: FAIL to compile with `Unresolved reference 'LinkPolicy'`.
+
+- [ ] **Step 3: Implement `LinkPolicy` and `AssetRules`**
+
+Parse with `java.net.URI`; compare scheme and host exactly (lower-cased). A URL that does not parse is `BLOCK`. `safeAssetPath` rejects any `..` segment.
+
+- [ ] **Step 4: Implement `SiteView` and `openOutside`**
+
+- The site view is a vertical `LinearLayout` over the main WebView: a 56 dp toolbar with three buttons, **Back to Byways** (`close()`), **Next** (`onNext()`) and **Open in browser** (`openOutside` with the current URL); then a one-line `TextView` showing the current host; then a `WebView` created on the first `open`.
+- Its settings: JavaScript and DOM storage on, `allowFileAccess = false`, `allowContentAccess = false`, `MIXED_CONTENT_NEVER_ALLOW`, `setSupportMultipleWindows(false)`. It has no message listener, no file chooser and no download listener, and `onPermissionRequest` calls `request.deny()`.
+- `shouldOverrideUrlLoading` acts on main-frame requests only: `LOAD` → false; `EXTERNAL` → `openOutside`, true; `BLOCK` → true.
+- `close()` destroys the WebView, removes the layout and calls `onClosed()`.
+- `openOutside`: `intent:` URLs go through `Intent.parseUri(url, Intent.URI_INTENT_SCHEME)`, others through `Intent(ACTION_VIEW, Uri.parse(url))`. Add `CATEGORY_BROWSABLE` and set `component = null` and `selector = null`. On `ActivityNotFoundException`, an `https` `browser_fallback_url` extra goes to `fallback`; otherwise show the toast `No app on this phone can open this link.`
+
+- [ ] **Step 5: Wire it in `MainActivity`**
+
+- The `app` handler gains `openSite {url, title}` (`http(s)` only, else error `scheme`; replies `true`) and `closeSite {}`.
+- `onNext` emits `app` `siteNext {}`, and `onClosed` emits `app` `siteClosed {}`.
+- The main WebView's `shouldOverrideUrlLoading` (main frame only) uses `LinkPolicy.forMainView`: `LOAD` → false; `SITE` → `siteView.open(url, "")`, true; `EXTERNAL` → `openOutside`, true; `BLOCK` → true.
+
+- [ ] **Step 6: Run it to see it pass**
+
+Run: the Step 2 command. Expected: PASS (4 tests).
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/LinkPolicyTest.kt
+git commit -m "Add the in-app site view with link rules"
+```
+
+### Task 11: System behaviour: full screen, file chooser, Back, insets and share-in
+
+**Files:**
+- Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
+
+**Interfaces:**
+- Consumes: `Bridge.emit` and the handler map (Task 5); `SiteView.isOpen`, `goBack`, `close` (Task 10); `MainActivity.APP_URL` (Task 2); `BridgeGate.LAB_ORIGIN` (Task 5).
+- Produces: the `back` channel (`result {token, handled}`) and the events `back` `request {token}` and `app` `shared {text}`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('activity handles full screen, files, back, insets and share-in', () => {
+  const m = R(`${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainActivity.kt`);
+  for (const s of ['onShowCustomView', 'onHideCustomView', 'onShowFileChooser', '"*/*"', 'EXTRA_ALLOW_MULTIPLE',
+    'OnBackPressedCallback', 'enableEdgeToEdge', 'setOnApplyWindowInsetsListener', 'onNewIntent', 'Intent.EXTRA_TEXT', '"back" to'])
+    assert.ok(m.includes(s), s);
+});
+test('WebView permission requests are always denied', () => {
+  const dir = `${S}/app/src/main/kotlin/io/github/iteatsthesalt/byways`;
+  for (const f of readdirSync(dir)) assert.doesNotMatch(R(`${dir}/${f}`), /\.grant\(/, f);
+});
+```
+
+- [ ] **Step 2: Run it to see it fail**
+
+Run: `node --test tests/unit/android-shell.test.js`
+Expected: FAIL with `onShowCustomView`.
+
+- [ ] **Step 3: Implement the behaviours in `MainActivity`**
+
+- **Full screen:** `onShowCustomView(view, callback)` adds `view` to a black, match-parent `FrameLayout` above everything and hides the system bars with `WindowInsetsControllerCompat(window, view)` (`BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE`). `onHideCustomView` removes it, shows the bars and calls `callback.onCustomViewHidden()`.
+- **File chooser:** `onShowFileChooser(view, callback, params)` first sends `null` to any earlier callback still waiting, then keeps the new one. It launches `ACTION_GET_CONTENT` with `CATEGORY_OPENABLE`, type `"*/*"`, and `EXTRA_ALLOW_MULTIPLE = params.mode == FileChooserParams.MODE_OPEN_MULTIPLE`, through a `StartActivityForResult` launcher registered in `onCreate`. The result's `clipData` URIs, else its `data` URI, else `null`, go to the callback. Return `true`.
+- **Back:** an `OnBackPressedCallback(true)` handles, in order:
+  1. a custom view showing → hide it;
+  2. the site view open → `goBack()`, or else `close()`;
+  3. the main WebView on the Lab origin → `goBack()` when it can, else `loadUrl(APP_URL)`;
+  4. otherwise increment `backToken`, emit `back` `request {token}` and wait up to 500 ms for the `back` `result {token, handled}` with that token.
+
+  When `handled` is false or the wait times out, set `isEnabled = false`, call `onBackPressedDispatcher.onBackPressed()`, then set `isEnabled = true`.
+- **Insets:** `enableEdgeToEdge()`, then `ViewCompat.setOnApplyWindowInsetsListener(root)` pads `root` with the union of `systemBars()`, `ime()` and `displayCutout()` and returns `WindowInsetsCompat.CONSUMED`.
+- **Share-in:** `handleShare(intent)` runs from `onCreate` and `onNewIntent`. For `ACTION_SEND` with type `text/plain`, it emits `app` `shared {text}` with `EXTRA_TEXT` (or `EXTRA_SUBJECT` when the text is missing), cut to 10,000 characters. `Bridge.emit` queues it until the page says `hello`.
+
+- [ ] **Step 4: Run it to see it pass**
+
+Run: `node --test tests/unit/android-shell.test.js`
+Expected: PASS (12 tests). CI `assembleDebug` compiles the activity.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways/MainActivity.kt tests/unit/android-shell.test.js
+git commit -m "Add full screen, file picking, predictive back, insets and share-in"
+```
+
 <!-- PLAN CONTINUES -->

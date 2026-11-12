@@ -81,7 +81,7 @@ All paths are under `Apps/Byways/`.
 | `tests/e2e/helpers/fakes.js` (modify) | `skipFirstRun(page)` |
 | `tests/fixtures/http/library/small.json` | Three-entry library for e2e |
 
-**Adapter conventions (every `sources/<id>.js`).** Each file default-exports one adapter in the contract shape. Methods a source does not support return `[]`. Network failures propagate as `NetError` (the engine skips that source silently). Every find is built with `makeFind`, with `source: id`, the adapter's base tags (Task 5 table) and a first `why` chip naming the pool, for example `'Wikipedia: random article'`. Every request goes through `ctx.http` with `source: id`. Search responses are cached in `ctx.cache` for 24 h and item details for 7 days, keyed by the request URL.
+**Adapter conventions (every `sources/<id>.js`).** Each file default-exports one adapter in the contract shape and is added to `ADAPTERS` in `sources/index.js` in the same task. Its fixtures live in `tests/fixtures/http/<id>/`, and `tests/fixtures/routes.js` gets one route per endpoint pattern it calls, including its `probeUrl`, so that the e2e `mockNet` covers every request the app makes. Methods a source does not support return `[]`. Network failures propagate as `NetError` (the engine skips that source silently). Every find is built with `makeFind`, with `source: id`, the adapter's base tags (Task 5 table) and a first `why` chip naming the pool, for example `'Wikipedia: random article'`. Every request goes through `ctx.http` with `source: id`. Search responses are cached in `ctx.cache` for 24 h and item details for 7 days, keyed by the request URL.
 
 ### Task 1: The Find model
 

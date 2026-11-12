@@ -559,7 +559,7 @@ test('itch random reads the snapshot on the web app', async () => {
   assert.deepEqual([finds[0].source, finds[0].kind, finds[0].why[0]], ['itch', 'game', 'itch.io: Free web games']);
 });
 test('itch random reads a feed live through privileged fetch elsewhere', async () => {
-  // /itch\.io\/games/ → platform-web.xml as text; rand = seq(0, 0.1, 0.2)
+  // /itch\.io\/games/ → platform-web.xml as text
   await itch.random({ ...ctx, platformName: 'extension' });
   assert.equal(net.calls[0].url, ITCH_FEEDS[0].url);
   assert.equal(net.calls[0].init.privileged, true);
