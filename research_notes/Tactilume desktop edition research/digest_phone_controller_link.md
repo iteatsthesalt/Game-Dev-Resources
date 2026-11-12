@@ -29,7 +29,7 @@ This is the fact-checked digest of phone_controller_link.md, covering the link f
 - **DataChannel `{ordered:false, maxRetransmits:0}`** is in iOS Safari, Chrome Android and WebView, and it is not secure-context-gated. [Verified: MDN; RTC; Measured] Safari 26.4 enforces `[EnforceRange]` on `maxRetransmits`, and Safari 27 fixed the SCTP buffered-amount check. [Verified: APPLE]
 - **LAN ICE with no STUN.**
   - The peer-reflexive path works between two Chromium 153 peers: the channel opened in about 8 ms, with a `prflx` remote candidate. [Measured]
-  - WebKit exposes host candidates only as `<UUID>.local` names, and it ignores remote `.local` names that are not v4 UUIDs. So the desktop must advertise raw host IPs. [Verified correction: WK]
+  - By default (candidate filtering on), WebKit exposes host candidates only as `<UUID>.local` names, and it ignores remote `.local` names that are not v4 UUIDs. So the desktop must advertise raw host IPs. [Verified correction: WK]
   - Prototype on real phones.
 - **WebTransport.** Chrome 97, Firefox 114 and Safari 26.4 (2026-03-24). It is secure-context-only and off in iOS Lockdown Mode. [Verified: BCD; WK]
   - `serverCertificateHashes`: validity of at most two weeks; the algorithm list must include ECDSA P-256 and exclude RSA; it cannot be combined with `allowPooling`. [Verified correction: WT]
