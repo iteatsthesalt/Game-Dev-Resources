@@ -25,8 +25,10 @@
 //   Scene.buffers()              the buffers of the last frame, for tests: {sink (see Rigs.sink), decals, decalN,
 //                                billboards, billboardN, lights, lightN, discs, discN, bars, barN}
 //   Scene.decal(buffer, n, x, y, radius, r, g, b, a, fill, shape, angle, arc) -> n + 1   writes one decal record at
-//                                record n. shape (Scene.DISC, RING, SECTOR, BAR), angle and arc (radians) are kept
-//                                for the wider record to come and written only once Gfx.DECAL_STRIDE has room.
+//                                record n. shape (Scene.DISC, RING, SECTOR, BAR), angle (radians: which way a
+//                                sector or bar points) and arc (a sector's opening in radians, a bar's width in
+//                                metres, as 66-gfx-gl.js reads them) are kept for the wider record to come and
+//                                written only once Gfx.DECAL_STRIDE has room.
 //   Scene.DISC = 0, Scene.RING = 1, Scene.SECTOR = 2, Scene.BAR = 3
 //   Scene.BAR_STRIDE = 6         a bar for Vfx.overlay: x, y, z (where above the ground it sits), life (0..1), rank,
 //                                alpha

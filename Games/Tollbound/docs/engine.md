@@ -210,11 +210,15 @@ Every pooled object has one fixed set of fields and is sealed, so a field that w
 | **`53-sound`** | presentation | sound effects from code recipes: per-effect gap, voice cap and priority; 32 voices (24 on touch); panning by screen place; suspended when hidden; offline rendering | `Sound.define(id, recipe, limits)`, `Sound.has(id)`, `Sound.list()`, `Sound.info(id)`, `Sound.sfx(id, {x, y, level, pitch, key, wet}) -> handle`, `Sound.stop(handle, fade)`, `Sound.stopAll(fade)`, `Sound.render(id \| recipe, opts, seconds)`, `Sound.bake(...)`, `Sound.suspend()`, `Sound.resume()`, `Sound.state`, `Sound.bus(name)`, `Sound.stats(id?)`; recipe helpers `env, tone, noise, bell, replay, click, creak, crackle, water, note, rand, vary` |
 | **`54-music`** | presentation | music scheduled ahead from the frame loop; change-ringing rows | `Music.define(id, piece)`, `Music.has(id)`, `Music.list()`, `Music.play(id, {fade, intensity})`, `Music.stop({fade})`, `Music.intensity(v, glide)`, `Music.tick()`, `Music.toll(opts)`, `Music.changes(n, method, rows)` |
 | **`55-sound-core`** | presentation | the first effects, and what plays them: the run's events, the gate, the menus | adds to no namespace: `Sound.define` calls and listeners only |
-| `60-mesh`, `61-rigs`, `62-glyphs`, `63-ground` | presentation | primitive shapes and matrix maths; rig animation; icon painter; ground textures | `Rigs.register(name, fn)`, `Glyphs.icon(spec) -> canvas` |
+| **`60-mesh`** | presentation | the five unit shapes as flat-shaded meshes; matrix helpers that allocate nothing | `Mesh.SHAPES`, `Mesh.FLOATS`, `Mesh.shape(id \| name) -> {name, data, count}`; 4x4: `mat4()`, `identity`, `multiply`, `invert`, `perspective`, `ortho`, `view`, `apply`; 3x4 part matrices: `part(out, o, x, y, z, sx, sy, sz, yaw, pitch, roll)` (a simulation facing a is yaw -a), `chain(out, o, a, ao, b, bo)` |
+| **`61-rigs`** | presentation | rigs that pose a puppet's parts straight into the part buffers: walk by distance covered, wind-up, blow, flinch, fall and sink | `Rigs.register(name, rig)` (rig `{joints, core, anim, prepare?, stride?, pose(fig, st, P)}`), `Rigs.figure(puppetId) -> fig \| null`, `Rigs.state()`, `Rigs.advance(fig, st, metres)`, `Rigs.sink(cap)`, `Rigs.clear(out)`, `Rigs.draw(fig, st, out) -> parts written`, `Rigs.joints(name)`, `Rigs.names()`, `Rigs.NONE`, `WINDUP`, `STRIKE`, `CAST`; rigs `biped`, `quadruped`, `floater`, `crawler`, `winged`, `serpent`, `static` |
+| `62-glyphs` | presentation | icon painter | `Glyphs.icon(spec) -> canvas` |
+| **`63-ground`** | presentation | seamless ground textures painted by code from a seeded generator | `Ground.texture(id) -> canvas` (512x512, cached), `Ground.span(id) -> metres`, `Ground.color(id, out?)`, `Ground.pixels(id)`, `Ground.recipe(name, spec)`, `Ground.recipes()`, `Ground.SIZE`, `Ground.DEFAULT`; recipes `flags`, `cobbles`, `silt` |
 | **`65-gfx`** | presentation | the list of views; the instance records all views share; world to screen | `Gfx.register(name, factory, isSupported)`, `Gfx.backends`, `Gfx.create(canvas, prefer) -> backend`, `Gfx.active`, `Gfx.worldToScreen(x, y, z?, out?)`, `Gfx.screenToWorld(sx, sy, out?)`, `Gfx.DISC_STRIDE`, `Gfx.DECAL_STRIDE`, `Gfx.BILLBOARD_STRIDE` |
-| `66-gfx-gl` | presentation | the 3D view | registers the view `'gl'` with `Gfx.register` |
+| **`66-gfx-gl`** | presentation | the 3D view (see the renderer contract) | registers the view `'gl'`; adds `Gfx.SHAPES`, `Gfx.PART_STRIDE`, `Gfx.LIGHT_STRIDE` |
 | **`67-gfx-2d`** | presentation | the compatibility view: discs on the ground seen from above | registers the view `'2d'` |
-| `68-scene`, `69-vfx` | presentation | sim state to instance buffers; particles, numbers overlay, shake | `Scene.draw(S, alpha)`, `Vfx.consume(events)` |
+| **`68-scene`** | presentation | the run into instance buffers: the camera, culling, figures through the rigs, decals, billboards, lights; budgets of 10 000 parts and 32 lights | `Scene.draw(S, alpha)`, `Scene.camera`, `Scene.look(look \| null)`, `Scene.quality(level?)`, `Scene.limits`, `Scene.stats`, `Scene.buffers()`, `Scene.decal(buffer, n, x, y, radius, r, g, b, a, fill, shape, angle, arc) -> n + 1`, `Scene.DISC`, `RING`, `SECTOR`, `BAR`, `Scene.BAR_STRIDE`, `Scene.ATTACK` |
+| **`69-vfx`** | presentation | pooled particles (1500; 400 at 'low'), damage numbers merged per target, life bars on the overlay canvas, shake and flash from the settings | `Vfx.consume(S)` (it also listens to live 'step' and 'command' itself), `Vfx.update`, `Vfx.harm(uid, x, y, z, amount, kind)`, `Vfx.burst`, `Vfx.billboards`, `Vfx.decals`, `Vfx.offset`, `Vfx.post`, `Vfx.overlay(bars, count)`, `Vfx.clear`, `Vfx.quality`; `Vfx.shake`, `Vfx.flash`, `Vfx.numbers` read `fx.*` from Settings |
 | **`70-ui-core`** | presentation | element builder, screen stack, confirm dialog, toasts, focus by keys and pad | `UI.h(tag, attrs, ...children)`, `UI.button(label, onClick, attrs)`, `UI.screen(id, {open, close, pause, back, scrim})`, `UI.has(id)`, `UI.isOpen(id)`, `UI.open(id, args)`, `UI.close(id?)`, `UI.replace(id, args)`, `UI.clear()`, `UI.top()`, `UI.pausing()`, `UI.confirm(text, {yes, no})` (a promise of a boolean), `UI.toast(text, ms)`, `UI.nav(dx, dy)`, `UI.activate()`, `UI.back()`, `UI.setKeys(on)` |
 | `71` to `77-ui-meta` | presentation | HUD; offers; hub; gear; tree; sigils; deeds, Carillon, memorial, onboarding | screens registered with `UI.screen` |
 | **`90-game`** | presentation | the states title, run and results; the frame loop with its 60 Hz steps (at most 4 a frame), paused when hidden; stand-in title, results and picture | `Game.boot()`, `Game.start(cfg)` (the run, or `null`), `Game.title()`, `Game.command(cmd) -> boolean`, `Game.sim(seconds, {bot, policy}) -> steps`, `Game.S`, `Game.state`, `Game.debug`, `Game.VERSION` |
@@ -263,6 +267,7 @@ Files that load before `90-game` cannot call it while they load. They hear from 
 | `'frame'` | `S, alpha, dt` | once a frame, after drawing; `S` is `null` while there is no run |
 | `'resize'` | `cssW, cssH, dpr` | the view was fitted to a new size |
 | `'device'` | `name` | posted by `52-input`: the player switched to `'keys'`, `'mouse'`, `'pad'` or `'touch'` |
+| `'quality'` | `level` | posted by `66-gfx-gl` when it stepped itself down after slow frames |
 | `'ui'` | `what, id` | posted by `70-ui-core`: `'move'` (focus moved), `'press'` (a control was activated), `'open'`, `'close'` or `'back'`; `id` is the screen's id, or `null` |
 
 What `55-sound-core` reads from the events: `'pickup'` with `a` = kind and `b` = value (a big pickup when `a` is not 0 or `b` is 10 or more); `'gate'` at the place where a gate opened; `'telegraph'` at the place an attack will land; `'kill'` with `a` = rank. It plays the gate's hold sound while `S.gate.hold` grows. An emitter that gives these fields another meaning changes `55-sound-core` in the same change.
@@ -275,17 +280,28 @@ The screens `'title'` and `'results'` of `90-game` are stand-ins, registered at 
 Gfx.register(name, factory, isSupported)   factory(canvas) -> b; isSupported() -> boolean
 Gfx.create(canvas, 'gl'|'2d') -> b         the view asked for, else the next that starts, '2d' last. Use b.canvas from then on.
 b.name   b.canvas   b.caps {puppets, shadows, lights, bloom, maxInstances}   b.stats {drawCalls, instances}
-b.resize(cssW, cssH, dpr)   b.quality('high'|'medium'|'low')
-b.begin(cam {x, y, zoom}, env {ambient, sun:{dir, color}, fog, ground:[r, g, b]} | null)
-b.parts(shape, buffer, count)       solid instances: 3x4 matrix, colour, flash, emissive (the 3D view gives the stride)
+b.resize(cssW, cssH, dpr)   b.quality('high'|'medium'|'low') -> level   b.quality() -> the level now
+b.begin(cam {x, y, zoom}, env {ambient, sun:{dir, color}, fog:{color, near, far}, ground:[r, g, b] | tilesetId} | null)
+b.parts(shape, buffer, count)       solid instances of one shape (an index of Gfx.SHAPES): Gfx.PART_STRIDE floats each
 b.decals(buffer, count)             flat on the ground: telegraphs, scorch, pickup glow
 b.billboards(buffer, count)         facing the camera: particles, bolts (alpha or additive)
-b.discs(buffer, count)              compatibility view only: one disc per entity (b.caps.puppets is false)
-b.lights(buffer, count)             x, y, z, radius, colour (the 3D view gives the stride)
-b.end(post {bloom, flash, vignette, dither} | null)
+b.discs(buffer, count)              one disc per entity: the plain view's figures; the 3D view draws each as a cylinder
+b.lights(buffer, count)             point lights: Gfx.LIGHT_STRIDE floats each
+b.end(post {outline, bloom, flash, vignette, dither} | null)      each 0 to 1
 b.worldToScreen(x, y, z, out)   b.screenToWorld(sx, sy, out)
+b.visibleRadius() -> metres         3D view: from the point looked at to the farthest ground on screen; under 24 at zoom 1
+b.readPixels(x, y, w, h) -> bytes   3D view, for tests: the finished low-resolution picture, rows from the top
 Gfx.active   Gfx.worldToScreen(x, y, z?, out?) -> {x, y}   Gfx.screenToWorld(sx, sy, out?) -> {x, y}     in CSS pixels
 ```
+
+The 3D view (`66-gfx-gl`) in brief; its header comment is the full contract.
+- Axes: the ground point (x, y) is the 3D point (x, 0, y); Y is up and +Z runs toward the viewer.
+- `Gfx.SHAPES = ['box', 'taper', 'cyl', 'sphere', 'cone']`, the same array as `Mesh.SHAPES`. Every unit shape stands on the ground and fills (-0.5, 0, -0.5) to (0.5, 1, 0.5): the taper's top is 0.6 of its base; cyl and cone have 8 sides; the sphere is 8 facets round and 6 bands high, so it spans ±0.462 across.
+- The camera is tilted 52° with a 28° lens along the longer side. At zoom 1 the larger ground span (across or up the screen) is 30 m, and the camera comes nearer if a corner would show ground beyond 23.5 m.
+- The scene is drawn into a low-resolution target (short side about 300 to 432 px) and scaled up by a whole number with hard pixels; the canvas holds at most about 2.5 million pixels.
+- Quality: 'high' (shadow map 1024, bloom, outline), 'medium' (shadow map 512, no bloom), 'low' (no shadows, bloom or outline). After about two seconds of frames over 20 ms the view steps down one level by itself and posts the notice `'quality'`; it never steps up by itself. `caps.shadows` and `caps.bloom` follow the level.
+- `env.sun.dir` is the direction the light travels, kept above the horizon; `env.fog.near` and `far` are metres up the screen beyond the point looked at. The defaults of `post`: outline 1, bloom 1, dither 0, vignette 0, flash 0.
+- A lost WebGL context stops drawing and a restored one rebuilds everything. A shader that fails throws with its log, and `Gfx.create` falls back to the next view.
 
 Instance buffers are `Float32Array`s of whole records, and `count` is a number of records. Lengths are metres; colours and alpha run from 0 to 1.
 
@@ -293,7 +309,13 @@ Instance buffers are `Float32Array`s of whole records, and `count` is a number o
 Gfx.DISC_STRIDE = 7        x, y, radius, red, green, blue, alpha
 Gfx.DECAL_STRIDE = 8       x, y, radius, red, green, blue, alpha, fill      fill: the share of the radius filled in, 0 to 1
 Gfx.BILLBOARD_STRIDE = 9   x, y, z, size, red, green, blue, alpha, glow     glow above 0.5: it adds its light, else it covers
+Gfx.PART_STRIDE = 18       a 3x4 matrix in rows (m00 m01 m02 m03 m10 ... m23) taking a unit-shape point to the world,
+                           then red, green, blue, flash (toward white, for a hit), glow (shines by itself, feeds the
+                           bloom), alpha (below 1: drawn with a screen-door pattern, so nothing needs sorting)
+Gfx.LIGHT_STRIDE = 8       x, y on the ground, z height, radius, red, green, blue, strength
 ```
+
+The decal record will widen to 11 floats: after `fill` come `shape` (0 disc, 1 ring, 2 sector, 3 bar: `Scene.DISC` to `Scene.BAR`), `angle` (radians: which way a sector or a bar points) and `arc` (a sector's opening in radians, a bar's width in metres). The 3D view and `Scene.decal` read and write those three already, whenever `Gfx.DECAL_STRIDE` is 11 or more; until then every decal is drawn as a ring filled in by `fill`.
 
 In the plain view the longer side of the canvas shows 30 m of ground at zoom 1, and a metre of height lifts a point half a metre up the screen.
 
@@ -362,9 +384,12 @@ Zone   = {id, name, kind:'campaign'|'rite'|'chart'|'debug', level, tollSeconds:7
 
 Puppet = {id, rig:'biped'|'quadruped'|'floater'|'crawler'|'winged'|'serpent'|'static', scale,
           parts:[{key, shape:'box'|'taper'|'cyl'|'sphere'|'cone', size:[x,y,z], at:[x,y,z], parent?:key,
-                  joint?:string, color:paletteKey, emissive?:number}],
-          palette:{[key]:hex}, anim:{stride, swing, bob}}
-Prop   = {id, puppet, radius, light?:{radius, color}, breakable?:{loot}}
+                  joint?:string, color:paletteKey, emissive?:number, glow?:0..1, detail?:bool}],
+          palette:{[key]:hex|[r,g,b]}, anim:{stride, swing, bob}}
+          // a part is one unit shape scaled to size (metres), its base centre at "at" from its joint's origin;
+          // detail parts are left out first when many figures are on screen. A person is about 1.7 m tall.
+Prop   = {id, puppet, radius, light?:{radius, color, height?, strength?}, breakable?:{loot}}
+Tileset = {id, recipe?:'flags'|'cobbles'|'silt'|..., span?:metres, colors?:{[name]:hex|[r,g,b]}}   // open: more fields allowed
 
 Base     = {id, name, slot, family, tags:[string], level, req:Req, twoHanded,
             weapon:{damage:{[Type]:[min,max]}, aps, crit}|null, defence:{armour,evasion,hush}|null,

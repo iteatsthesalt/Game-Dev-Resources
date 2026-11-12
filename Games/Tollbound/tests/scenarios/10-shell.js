@@ -354,8 +354,9 @@ const menus = async function () {
   spare.id = 'spare';
   document.body.appendChild(spare);
   const fallback = Gfx.create(spare, 'test.broken');
-  T.check('Gfx.create falls back to the plain view, on a fresh canvas in place of the spoiled one',
-    fallback.name === '2d' && fallback.canvas !== spare && fallback.canvas.id === 'spare' && fallback.canvas.isConnected && !spare.isConnected && Gfx.active === fallback, fallback.name);
+  // The next view that starts: the 3D view where it is in the build and the browser has WebGL2, else the plain one.
+  T.check('Gfx.create falls back to the next view that starts, on a fresh canvas in place of the spoiled one',
+    fallback.name === (Gfx.backends.gl ? 'gl' : '2d') && fallback.canvas !== spare && fallback.canvas.id === 'spare' && fallback.canvas.isConnected && !spare.isConnected && Gfx.active === fallback, fallback.name);
   const other = Gfx.create(fallback.canvas, 'constructor');
   T.check('a view nobody registered is passed over, whatever its name', other.name === '2d' && other.canvas.isConnected);
   Gfx.register('test.fine', (c) => ({ name: 'test.fine', canvas: c }));
