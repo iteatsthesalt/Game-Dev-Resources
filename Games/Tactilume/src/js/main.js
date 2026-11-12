@@ -31,8 +31,8 @@ const MAX_FRAME_ERRORS = 600; // frames failing in a row (about 10 s) before the
 const SILENCE = Object.freeze({ level: 0, bass: 0, mid: 0, high: 0, onset: 0 });
 
 // A full-screen message for when the light cannot be shown; `action` ({label, onClick})
-// adds one button.
-function showFatal(title, detail, action) {
+// adds one button, and `report` a block of plain text to copy into a message.
+function showFatal(title, detail, action, report) {
   const el = document.getElementById('fatal');
   el.hidden = false;
   el.replaceChildren();
@@ -41,6 +41,12 @@ function showFatal(title, detail, action) {
   const p = document.createElement('p');
   p.textContent = detail;
   el.append(h, p);
+  if (report) {
+    const pre = document.createElement('pre');
+    pre.className = 'fatal-report';
+    pre.textContent = report;
+    el.append(pre);
+  }
   if (action) {
     const b = document.createElement('button');
     b.type = 'button';
@@ -50,6 +56,52 @@ function showFatal(title, detail, action) {
     el.append(b);
     b.focus({ preventScroll: true });
   }
+}
+
+// Copies the fatal message's report; where the clipboard is refused, selects it instead.
+async function copyReport(button) {
+  const pre = document.querySelector('#fatal .fatal-report');
+  if (!pre) return;
+  let ok = false;
+  try { await navigator.clipboard.writeText(pre.textContent); ok = true; } catch { /* below */ }
+  if (!ok) {
+    const range = document.createRange();
+    range.selectNodeContents(pre);
+    const sel = getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+  button.textContent = ok ? 'Copied' : 'Selected: copy it from here';
+}
+
+// The graphics would not start. Only a missing WebGL 2 is called that: a GPU that has it but
+// refuses a shader (as some phone compilers do) gets its real error and its name, to send on.
+// Inside the Android app no other browser can be picked, so the advice there is to update.
+function showStartFailure(e, canvas, native) {
+  const advice = native
+    ? 'Update Android System WebView and Chrome from the Play Store, then open Tactilume again.'
+    : 'An up-to-date Chrome, Edge, Firefox or Safari will work.';
+  if (e && e.message === 'webgl2') {
+    showFatal('This device cannot draw Tactilume', `Tactilume needs WebGL 2, which ${native ? 'this device' : 'this browser'} does not offer, or has switched off. ${advice}`);
+    return;
+  }
+  let gpu = '?';
+  try {
+    const gl = canvas.getContext('webgl2');
+    const dbg = gl && gl.getExtension('WEBGL_debug_renderer_info');
+    if (gl) gpu = `${gl.getParameter(dbg ? dbg.UNMASKED_RENDERER_WEBGL : gl.RENDERER)} | ${gl.getParameter(dbg ? dbg.UNMASKED_VENDOR_WEBGL : gl.VENDOR)}`;
+  } catch { /* the context itself may be broken; the error says enough then */ }
+  const report = [
+    `Tactilume ${VERSION}${native ? ' (Android app)' : ''}`,
+    // the error's first lines: a compile failure's name, then the start of the GPU's own log
+    `Error: ${String((e && e.message) || e).split('\n').filter((l) => l.trim()).slice(0, 3).join('\n').slice(0, 400)}`,
+    `GPU: ${gpu}`,
+    `Device: ${navigator.userAgent}`,
+  ].join('\n');
+  showFatal('The light could not start on this device\'s graphics',
+    `The graphics refused part of Tactilume. ${native ? advice : 'Updating the browser may help.'} If it still fails, these details help find out why:`,
+    { label: 'Copy the details', onClick: (ev) => copyReport(ev.currentTarget) },
+    report);
 }
 
 function hideFatal() {
@@ -97,6 +149,9 @@ function boot() {
   if (TEST) store.setSettings({ introSeen: true, autopilot: 'off', haptics: false });
   // a microphone or a song never survives a reload, so neither may the setting that says it is on
   if (store.settings.react !== 'off') store.setSettings({ react: 'off' }, { source: 'boot' });
+
+  // before the graphics, so a failure to start them can give the app's own advice
+  const platform = createPlatform();
 
   // ---- graphics -------------------------------------------------------------
   // A lost graphics context normally comes back within moments. One that does not (or
@@ -146,7 +201,7 @@ function boot() {
     });
   } catch (e) {
     console.warn(e);
-    showFatal('This device cannot draw Tactilume', 'Tactilume needs WebGL 2, which this browser does not offer, or has switched off. An up-to-date Chrome, Edge, Firefox or Safari will work.');
+    showStartFailure(e, canvas, platform.native);
     return;
   }
 
@@ -164,13 +219,15 @@ function boot() {
   else if (!TEST && governor.mode === 'max') governor.setMode('max');
   const capOf = (s) => (s.fpsCap === '30' ? 30 : s.fpsCap === '60' ? 60 : 0);
   governor.setCap(capOf(store.settings));
+  // in the Android app the screen's refresh rate follows the cap (see platform.setFrameCap)
+  platform.setFrameCap(capOf(store.settings));
   engine.setQuality({ particles: governor.particles, renderScale: governor.renderScale });
 
   // ---- everything else -----------------------------------------------------
-  const platform = createPlatform();
   let ui = null;
   const audio = createAudio({
     getSettings: () => store.settings,
+    native: platform.native,
     // the microphone or song stopped by itself: say so, and stop claiming it is on
     onSourceEnded: (kind) => {
       store.setSettings({ react: 'off' }, { source: 'audio' });
@@ -188,12 +245,27 @@ function boot() {
   const capture = createCapture({ engine, audio, platform });
 
   // A clip's video cannot change size halfway: an MP4 player loses the picture from there
-  // on. So before the drawing changes size (a phone turned, the on-screen keyboard), a
+  // on. So before the drawing changes size (a phone turned, split screen), a
   // recording ends and is saved. The recorder stops at once, before a frame of the new size.
+  //
+  // The on-screen keyboard is not a new shape for the light: it shrinks the window in the
+  // Android app (and the visual viewport in some browsers), and a new aspect would re-frame
+  // the light and wipe its trails, once as it opens and again as it closes. So the size is
+  // the layout viewport's, and while a text field has focus a window that only got shorter
+  // keeps the drawing as it is (the canvas keeps its size; the keyboard covers its bottom).
+  // Letting go of the field catches up with whatever the window is by then.
+  let drawn = null; // the size last given to the engine
+  function typing() {
+    const a = document.activeElement;
+    if (!a) return false;
+    if (a.isContentEditable || a.tagName === 'TEXTAREA') return true;
+    return a.tagName === 'INPUT' && !/^(button|checkbox|radio|range|color|file|submit|reset|image|hidden)$/i.test(a.type || '');
+  }
   function resize() {
-    const vv = window.visualViewport;
-    const w = Math.round(vv ? vv.width : innerWidth);
-    const h = Math.round(vv ? vv.height : innerHeight);
+    const w = Math.round(innerWidth);
+    const h = Math.round(innerHeight);
+    if (drawn && typing() && w === drawn.w && h < drawn.h) return;
+    drawn = { w, h };
     const ratio = Math.min(window.devicePixelRatio || 1, tier === 'ultra' ? 2 : tier === 'low' ? 1.25 : 2);
     if (capture.recording && engine.changesSize(w, h, ratio)) {
       // the result is shown by the UI's 'finished' listener, like every other clip's
@@ -205,6 +277,8 @@ function boot() {
   resize();
   addEventListener('resize', resize);
   window.visualViewport?.addEventListener('resize', resize);
+  // typing ended (the keyboard is going): catch up with the window, after focus has moved on
+  addEventListener('focusout', () => setTimeout(resize, 0), true);
 
   // A Quality change resizes the drawing too, so during a recording it waits for the end
   // (the governor holds still while recording anyway).
@@ -277,7 +351,7 @@ function boot() {
     },
     clearPins() { pointers.clearPins(); },
     toggleFullscreen() { platform.setFullscreen(!platform.isFullscreen()); },
-    // the UI can also restore itself (three fingers held), so its own state is the truth
+    // the UI can also restore itself (a three-finger double tap), so its own state is the truth
     toggleUI() { uiHidden = !ui.hidden; ui.setHidden(uiHidden); },
     async setReact(mode, file) {
       audio.unlock();
@@ -383,7 +457,9 @@ function boot() {
     },
   };
 
-  ui = createUI({ root: uiRoot, store, actions, platform, audio, capture });
+  // a link's scene says it is the one shared, once the welcome (if any) has closed
+  const welcome = linked ? `Playing ${linked.name ? `“${linked.name}”` : 'the scene'}, shared with you` : null;
+  ui = createUI({ root: uiRoot, store, actions, platform, audio, capture, welcome });
   // Keys go through the UI's versions of photo and record (so results are shown), and
   // every key that changes what plays says what it did (seen, and heard by screen readers).
   const keyboard = createKeyboard({
@@ -411,6 +487,12 @@ function boot() {
         return on;
       },
     },
+  });
+  // S and M change the scene directly (source 'keyboard'): say what they did, too
+  store.on('scene', (s, keys, source) => {
+    if (source !== 'keyboard') return;
+    if (keys.includes('symmetry')) ui.toast(s.symmetry > 1 ? `Symmetry ${s.symmetry}×` : 'Symmetry off', undefined, 'symmetry');
+    if (keys.includes('mirror')) ui.toast(s.mirror ? 'Mirror on' : 'Mirror off', undefined, 'mirror');
   });
 
   // ---- reacting to input and settings ---------------------------------------
@@ -448,15 +530,19 @@ function boot() {
       governor.setMode(s.quality);
       applyQuality();
     }
-    if (keys.includes('fpsCap')) { governor.setCap(capOf(s)); due = 0; }
+    if (keys.includes('fpsCap')) { governor.setCap(capOf(s)); due = 0; platform.setFrameCap(capOf(s)); }
     if (keys.includes('tilt') && !s.tilt) tilt.disable();
     if (keys.includes('sound') || keys.includes('react')) audio.unlock();
   });
 
+  // A link whose code does not read (a messaging app cut it short, or a newer version made
+  // it) says so; otherwise the scene on screen would be taken for the shared one.
+  const BROKEN_LINK = 'That link’s scene could not be read. It may have been cut short.';
+  if (code && !linked) ui.toast(BROKEN_LINK);
   addEventListener('hashchange', () => {
     const c = sceneCodeFromHash(location.hash);
     if (!c) return;
-    if (store.loadShareCode(c)) ui.toast('Scene loaded from the link');
+    ui.toast(store.loadShareCode(c) ? 'Scene loaded from the link' : BROKEN_LINK);
     forgetLinkCode();
   });
 

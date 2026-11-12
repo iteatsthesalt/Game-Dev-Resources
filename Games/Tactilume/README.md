@@ -103,9 +103,10 @@ Android app and keeps the APK as a download.
 `android/` is a small Kotlin app: one full-screen, immersive WebView that loads `Tactilume.html` from
 the app's own assets, over a private `https://appassets.androidplatform.net` origin so the
 microphone and other secure-context features work. It asks for the highest refresh rate the screen
-offers. It keeps the system's edge gestures away from the lower part of each side, saves photos and
-clips to the gallery (Pictures/Tactilume, Movies/Tactilume), shares them, and handles Back. The web
-page is copied in at build time; it is never duplicated in the repository.
+offers, or, under a Frame rate cap, the lowest one the cap divides evenly. It keeps the system's edge
+gestures away from the lower part of each side, saves photos and clips to the gallery
+(Pictures/Tactilume, Movies/Tactilume; share them from there), and handles Back. The web page is
+copied in at build time; it is never duplicated in the repository.
 
 ```
 tools/setup-android-sdk.sh         # once: installs the Android SDK (or set ANDROID_HOME to yours)

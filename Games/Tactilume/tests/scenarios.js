@@ -6,10 +6,12 @@
 //
 // Only what CONTRACTS.md and main.js promise is asserted here, so a module can change
 // how it works inside without breaking these.
+import fs from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { SCHEMA, sanitizeScene, encodeScene } from '../src/js/core/scene.js';
 import { presetScene, DEFAULT_PRESET } from '../src/js/core/presets.js';
-import { behaviourFor } from '../src/js/core/behaviours.js';
+import { behaviourFor, behaviourByKey } from '../src/js/core/behaviours.js';
 
 const STORAGE_KEY = 'tactilume.v1';
 const b64url = (text) => Buffer.from(text, 'utf8').toString('base64url');
@@ -1288,4 +1290,698 @@ export default [
       return c;
     },
   },
+
+  {
+    // The Android app lets in WebViews from Chromium 100, but dvh only arrived in 108. An
+    // engine without it must still get a bottom sheet that fits the screen and scrolls.
+    name: 'the bottom sheet fits in an engine without dvh',
+    viewport: { width: 412, height: 860 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const measure = () => page.evaluate(async () => {
+        window.TACTILUME.ui.open('settings');
+        await new Promise((r) => setTimeout(r, 900));
+        const p = document.getElementById('tl-panel');
+        const r = p.getBoundingClientRect();
+        const body = p.querySelector('.tl-panel-body');
+        return { top: Math.round(r.top), bottom: Math.round(r.bottom), height: Math.round(r.height), h: innerHeight, scrolls: body.scrollHeight > body.clientHeight + 1 };
+      });
+      const fits = (m) => m.top >= 0 && m.bottom <= m.h && m.height > 0.5 * m.h && m.scrolls;
+      const now = await measure();
+      c.push(h.check('the sheet fits and scrolls here', fits(now), now));
+      // what a pre-108 engine sees: dvh is an unknown unit, also inside any @supports test
+      await page.evaluate(() => {
+        window.TACTILUME.ui.close();
+        for (const s of document.querySelectorAll('style')) s.textContent = s.textContent.replace(/(\d)dvh\b/g, '$1dvq');
+      });
+      await h.wait(900);
+      const old = await measure();
+      c.push(h.check('without dvh the sheet still fits on screen and scrolls', fits(old), old));
+      return c;
+    },
+  },
+
+  {
+    // Phones with WebGL 2 whose GPU compiler rejects a shader must not be told they lack
+    // WebGL 2: they get the real error and the GPU, to copy into a message. In the Android
+    // app, where no other browser can be picked, the advice is to update the WebView.
+    name: 'a graphics failure is named, not blamed on WebGL 2',
+    open: false,
+    viewport: { width: 360, height: 780 },
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const fatal = (p) => p.evaluate(() => {
+        const el = document.getElementById('fatal');
+        const r = el.getBoundingClientRect();
+        const btn = el.querySelector('button');
+        return {
+          shown: !el.hidden, text: el.innerText, button: btn ? btn.textContent : '',
+          inside: r.left >= 0 && r.top >= 0 && r.right <= innerWidth + 0.5 && r.bottom <= innerHeight + 0.5,
+          scrollable: el.scrollHeight <= el.clientHeight + 1 || getComputedStyle(el).overflowY !== 'visible',
+        };
+      });
+      // the first shader the engine compiles is refused, as some phone compilers do
+      await page.addInitScript(() => {
+        const original = WebGL2RenderingContext.prototype.getShaderParameter;
+        let refused = false;
+        WebGL2RenderingContext.prototype.getShaderParameter = function getShaderParameter(shader, pname) {
+          if (pname === this.COMPILE_STATUS && !refused) { refused = true; return false; }
+          return original.call(this, shader, pname);
+        };
+      });
+      await page.goto(h.url());
+      await h.until(page, () => { const el = document.getElementById('fatal'); return el && !el.hidden; }, undefined, 10000);
+      const f = await fatal(page);
+      c.push(h.check('a refused shader is not called missing WebGL 2', f.shown && !/needs WebGL 2/.test(f.text), f.text));
+      c.push(h.check('it says the graphics could not start, with the error', /could not start/.test(f.text) && /failed to compile/.test(f.text), f.text));
+      c.push(h.check('it names the GPU', /GPU: \S/.test(f.text), f.text));
+      c.push(h.check('it offers to copy the details', /Copy/.test(f.button), f.button));
+      c.push(h.check('the message is on screen (scrolling if long)', f.inside && f.scrollable, f));
+
+      // in the Android app (its private origin and its bridge), without WebGL 2
+      const html = fs.readFileSync(fileURLToPath(h.url({ query: '' })), 'utf8');
+      const app = await h.newContext();
+      await app.route('https://appassets.androidplatform.net/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      const ap = await app.newPage();
+      await ap.addInitScript(() => {
+        window.TactilumeNative = { postMessage() {}, addEventListener() {}, onmessage: null };
+        const original = HTMLCanvasElement.prototype.getContext;
+        HTMLCanvasElement.prototype.getContext = function getContext(type, ...rest) {
+          return type === 'webgl2' ? null : original.call(this, type, ...rest);
+        };
+      });
+      await ap.goto('https://appassets.androidplatform.net/assets/Tactilume.html?test=1');
+      await h.until(ap, () => { const el = document.getElementById('fatal'); return el && !el.hidden; }, undefined, 10000);
+      const a = await fatal(ap);
+      c.push(h.check('in the app the advice is to update the WebView, not to change browsers', /Android System WebView/.test(a.text) && !/Firefox|Safari/.test(a.text), a.text));
+      return c;
+    },
+  },
+
+  {
+    // Seven tabs on a narrow phone (or a large Display size, or a large Control size): every
+    // tab stays inside the strip, Settings included, and no two names run into each other.
+    name: 'every tab fits on narrow screens and with large controls',
+    viewport: { width: 320, height: 700 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      // in the device's own font, then in the wide DejaVu Sans (see 'large controls')
+      for (const font of ['', "'DejaVu Sans'"]) {
+        const style = font ? await page.addStyleTag({ content: `#ui#ui { --font: ${font}, sans-serif !important; }` }) : null;
+        for (const width of [412, 360, 320, 280]) {
+          await page.setViewportSize({ width, height: 700 });
+          for (const uiScale of [1, 1.3, 1.6]) {
+            const r = await tabStrip(page, { uiScale });
+            c.push(h.check(`${width} px, Control size ${Math.round(uiScale * 100)}%${font ? ` in ${font}` : ''}: every tab inside the strip, no names overlapping or cut`, !r.problems.length, r));
+          }
+        }
+        if (style) await style.evaluate((el) => el.remove());
+      }
+      return c;
+    },
+  },
+
+  {
+    // Android's Font size: the app turns the WebView's own text zoom off (it grew the text
+    // but not the boxes around it) and tells the page the font scale instead, which then
+    // grows the controls as a whole, as Control size does, up to twice their size.
+    name: 'the system font size grows the controls in the app',
+    open: false,
+    viewport: { width: 360, height: 780 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const html = fs.readFileSync(fileURLToPath(h.url({ query: '' })), 'utf8');
+      await context.route('https://appassets.androidplatform.net/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      // a stand-in for the app's bridge: it answers hello with a font scale of 1.5
+      await page.addInitScript(() => {
+        let listener = null;
+        window.__appSend = (msg) => listener && listener({ data: JSON.stringify(msg) });
+        window.TactilumeNative = {
+          addEventListener(type, fn) { if (type === 'message') listener = fn; },
+          postMessage(text) {
+            const m = JSON.parse(text);
+            if (m.t === 'hello') setTimeout(() => window.__appSend({ t: 'hello', version: 'test', sdk: 35, device: 'Test', fontScale: 1.5 }), 0);
+          },
+        };
+      });
+      await page.goto('https://appassets.androidplatform.net/assets/Tactilume.html?test=1&particles=24000');
+      await h.ready(page);
+      const scale = () => page.evaluate(() => parseFloat(getComputedStyle(document.getElementById('ui')).getPropertyValue('--ui-scale')));
+      c.push(h.check('a font scale of 1.5 makes the controls 1.5 times their size', await h.until(page, () => Math.abs(parseFloat(getComputedStyle(document.getElementById('ui')).getPropertyValue('--ui-scale')) - 1.5) < 0.01, undefined, 5000), await scale()));
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ uiScale: 1.6 }, { source: 'test' }));
+      c.push(h.check('with Control size 160% too, they stop at twice their size', Math.abs(await scale() - 2) < 0.01, await scale()));
+      const strip = await tabStrip(page, { uiScale: 1.6 });
+      c.push(h.check('every tab still fits at twice the size', !strip.problems.length, strip));
+      const clipped = await page.evaluate(async () => {
+        const t = window.TACTILUME;
+        const out = [];
+        for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
+          t.ui.open(tab);
+          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+          for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
+            if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+          }
+        }
+        t.ui.close();
+        return out;
+      });
+      c.push(h.check('no option name is cut short at twice the size', !clipped.length, clipped.join('; ')));
+      // the person changes Font size while the app is open
+      await page.evaluate(() => { window.TACTILUME.store.setSettings({ uiScale: 1 }, { source: 'test' }); window.__appSend({ t: 'font', scale: 1 }); });
+      c.push(h.check('a new font scale from the app applies at once', Math.abs(await scale() - 1) < 0.01, await scale()));
+      await page.evaluate(() => window.__appSend({ t: 'font', scale: 'huge' }));
+      c.push(h.check('a font scale that is not a number changes nothing', Math.abs(await scale() - 1) < 0.01, await scale()));
+      return c;
+    },
+  },
+
+  {
+    // The behaviour name card is how players learn what each number of fingers does: it
+    // must stay readable for its whole hold, not start fading halfway through.
+    name: 'the behaviour name card stays readable for its hold',
+    viewport: { width: 360, height: 780 },
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      // steps the paused card animation and reads its opacity and blur at each time (ms)
+      const sample = (withBlurb) => page.evaluate(async (withBlurb) => {
+        const ui = window.TACTILUME.ui;
+        ui.showBehaviour({ key: withBlurb ? 'weave' : 'storm', name: withBlurb ? 'Weave' : 'Storm', blurb: 'Light streams from one touch to the next.' }, { autopilot: !withBlurb });
+        await new Promise((r) => requestAnimationFrame(r));
+        const cards = document.querySelectorAll('.tl-namecard');
+        const el = cards[cards.length - 1];
+        const anim = el.getAnimations().find((a) => a.playState !== 'finished');
+        anim.pause();
+        const total = anim.effect.getTiming().duration;
+        const at = (ms) => {
+          anim.currentTime = ms;
+          const s = getComputedStyle(el);
+          const blur = /blur\(([\d.]+)px\)/.exec(s.filter);
+          return { ms, opacity: +(+s.opacity).toFixed(3), blur: blur ? +blur[1] : 0 };
+        };
+        const shown = !!el.querySelector('.tl-namecard-blurb');
+        // full strength from 0.5 s after it appears until 0.55 s before its end
+        const held = [];
+        for (let ms = 500; ms <= total - 550; ms += 100) held.push(at(ms));
+        anim.finish();
+        return { total, shown, held: held.filter((x) => x.opacity < 0.97 || x.blur > 0.3) };
+      }, withBlurb);
+      const explained = await sample(true);
+      c.push(h.check('the card with an explanation shows it', explained.shown, explained));
+      c.push(h.check('a card with an explanation stays at full strength through its hold', !explained.held.length, explained));
+      c.push(h.check('an explanation is held long enough to read (at least 2.3 s)', explained.total - 900 >= 2300, explained.total));
+      const named = await sample(false);
+      c.push(h.check('a name-only card stays at full strength through its hold', !named.held.length, named));
+      return c;
+    },
+  },
+
+  {
+    // Typing a scene name or pasting a code brings up the on-screen keyboard, which shrinks
+    // the window (the Android app) or the visual viewport (some browsers). That must not
+    // re-frame the light and wipe its trails, neither when it opens nor when it closes.
+    name: 'the on-screen keyboard leaves the light alone',
+    viewport: { width: 420, height: 900 },
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const read = () => page.evaluate(() => ({ aspect: +window.TACTILUME.engine.aspect.toFixed(4), ...window.TACTILUME.engine.stats }));
+      await page.evaluate(() => window.TACTILUME.ui.open('scenes'));
+      await h.wait(500);
+      await page.focus('#ui input.tl-text');
+      const before = await read();
+      await page.setViewportSize({ width: 420, height: 520 }); // the keyboard comes up
+      await h.wait(300);
+      await h.waitFrames(page, 3);
+      const open = await read();
+      c.push(h.check('the drawing keeps its shape while the keyboard is up', open.aspect === before.aspect && open.height === before.height, { before, open }));
+      await page.setViewportSize({ width: 420, height: 900 }); // and goes away
+      await h.wait(300);
+      await h.waitFrames(page, 3);
+      const closed = await read();
+      c.push(h.check('and after it goes away', closed.aspect === before.aspect && closed.height === before.height, { before, closed }));
+      // not typing: the window really changed shape (split screen), so the drawing follows
+      await page.evaluate(() => document.activeElement.blur());
+      await page.setViewportSize({ width: 420, height: 520 });
+      const follows = await h.until(page, () => Math.abs(window.TACTILUME.engine.aspect - 420 / 520) < 0.01, undefined, 5000);
+      c.push(h.check('a window that changes shape while nobody types is followed', follows, await read()));
+      // typing in a window that then grows taller: also followed
+      await page.focus('#ui input.tl-text');
+      await page.setViewportSize({ width: 420, height: 900 });
+      const grows = await h.until(page, () => Math.abs(window.TACTILUME.engine.aspect - 420 / 900) < 0.01, undefined, 5000);
+      c.push(h.check('a window that grows while typing is followed', grows, await read()));
+      // the keyboard up, then the field let go: the drawing catches up with the window
+      await page.setViewportSize({ width: 420, height: 520 });
+      await h.wait(300);
+      await page.evaluate(() => document.activeElement.blur());
+      const caught = await h.until(page, () => Math.abs(window.TACTILUME.engine.aspect - 420 / 520) < 0.01, undefined, 5000);
+      c.push(h.check('when typing ends, a window still short is followed', caught, await read()));
+      return c;
+    },
+  },
+
+  {
+    // A share link a messaging app cut short must say so, rather than quietly play the
+    // person's last scene, which they would take for the shared one.
+    name: 'a broken share link says so',
+    open: false,
+    async run(page, context, h) {
+      const c = [];
+      const toasts = () => page.evaluate(() => (document.querySelector('.tl-toasts') || {}).textContent || '');
+      // base64 of '{"pa":"ab': the start of a real code, cut off
+      await page.goto(h.url({ hash: '#s=1eyJwYSI6ImFi' }));
+      await h.ready(page);
+      c.push(h.check('opening a cut-short link says its scene could not be read', await h.until(page, () => /could not be read/.test((document.querySelector('.tl-toasts') || {}).textContent || ''), undefined, 5000), await toasts()));
+      c.push(h.check('the broken code leaves the address', !(await page.evaluate(() => location.hash)), await page.evaluate(() => location.hash)));
+      // the same link arriving while the app is open
+      await page.evaluate(() => {
+        const ui = window.TACTILUME.ui, toast = ui.toast;
+        window.__toasts = [];
+        ui.toast = (text, ms) => { window.__toasts.push(text); return toast.call(ui, text, ms); };
+        location.hash = '#s=1eyJwYSI6ImFi';
+      });
+      c.push(h.check('a cut-short link arriving later says so too', await h.until(page, () => window.__toasts.some((t) => /could not be read/.test(t)), undefined, 5000), await page.evaluate(() => window.__toasts)));
+      // a good link still plays, with its own message
+      const good = encodeScene(sanitizeScene({ palette: 'koi', name: 'Good link' }));
+      await page.evaluate((code) => { location.hash = '#s=' + code; }, good);
+      c.push(h.check('a good link still loads', await h.until(page, () => window.TACTILUME.store.scene.name === 'Good link', undefined, 5000), await toasts()));
+      return c;
+    },
+  },
+
+  {
+    // S and M change what plays like ] and N do, so they say what they did too (seen, and
+    // heard: the toasts are a polite live region); a running value replaces its last toast.
+    name: 'S and M say what they did',
+    async run(page, context, h) {
+      const c = [];
+      const shown = () => page.evaluate(() => [...document.querySelectorAll('.tl-toasts .tl-toast:not(.is-out)')].map((el) => el.textContent));
+      const live = await page.evaluate(() => { const el = document.querySelector('.tl-toasts'); return { role: el.getAttribute('role'), live: el.getAttribute('aria-live') }; });
+      await page.mouse.move(450, 300);
+      const sym = await page.evaluate(() => window.TACTILUME.store.scene.symmetry);
+      await page.keyboard.press('s');
+      const first = await h.until(page, (want) => [...document.querySelectorAll('.tl-toasts .tl-toast')].some((el) => el.textContent === want), `Symmetry ${sym + 1}×`, 3000);
+      c.push(h.check('S says the new symmetry', first, await shown()));
+      await page.keyboard.press('s');
+      await h.wait(400);
+      const two = await shown();
+      c.push(h.check('S again replaces that toast instead of stacking another', two.filter((t) => /^Symmetry/.test(t)).length === 1 && two.includes(`Symmetry ${sym + 2}×`), two));
+      const mirror = await page.evaluate(() => window.TACTILUME.store.scene.mirror);
+      await page.keyboard.press('m');
+      const said = await h.until(page, (want) => [...document.querySelectorAll('.tl-toasts .tl-toast')].some((el) => el.textContent === want), mirror ? 'Mirror off' : 'Mirror on', 3000);
+      c.push(h.check('M says whether mirror is on', said, await shown()));
+      c.push(h.check('the toasts are read out (a polite status region)', live.role === 'status' && live.live === 'polite', live));
+      // a change from the panel or a preset is not a key: it says nothing here
+      const before = (await shown()).length;
+      await page.evaluate(() => window.TACTILUME.store.setScene({ symmetry: 1 }, { source: 'panel' }));
+      await h.wait(300);
+      c.push(h.check('a symmetry change from the panel adds no toast', !(await shown()).some((t) => t === 'Symmetry off') && (await shown()).length <= before, await shown()));
+      return c;
+    },
+  },
+
+  {
+    // ui.toast(text, ms) keeps a toast up as long as it was asked: the GPU-repair warning
+    // (8 s) is the only pointer to Settings > Device check.
+    name: 'a toast stays as long as it was asked',
+    async run(page, context, h) {
+      const text = 'The light keeps hitting a graphics problem on this device. Settings > Device check shows the details.';
+      await page.evaluate((t) => window.TACTILUME.ui.toast(t, 8000), text);
+      await h.wait(6500);
+      const still = await page.evaluate((t) => [...document.querySelectorAll('.tl-toasts .tl-toast:not(.is-out)')].some((el) => el.textContent === t), text);
+      return [h.check('an 8 s toast is still up after 6.5 s', still)];
+    },
+  },
+
+  {
+    // The one way into the controls stays findable: dimmed, it keeps 3:1 against the dark
+    // (WCAG 1.4.11; 0.25 measured 2.2:1).
+    name: 'the dimmed open button stays visible',
+    viewport: { width: 360, height: 780 },
+    async run(page, context, h) {
+      await h.until(page, () => document.querySelector('.tl-open').classList.contains('is-dim'), undefined, 6000);
+      await h.wait(800); // its fade
+      const opacity = await page.evaluate(() => Number(getComputedStyle(document.querySelector('.tl-open')).opacity));
+      return [h.check('dimmed, the open button keeps at least 0.4 opacity', opacity >= 0.4 - 1e-6, opacity)];
+    },
+  },
+
+  {
+    // With reduced motion there is no beckoning ring after the intro; a still cue takes its
+    // place: the open button stays bright for a while instead of dimming at once.
+    name: 'with reduced motion the open button stays bright after the intro',
+    open: false,
+    viewport: { width: 360, height: 780 },
+    async run(page, context, h) {
+      const c = [];
+      await page.emulateMedia({ reducedMotion: 'reduce' });
+      // not test mode, so the first-run welcome shows
+      await page.goto(h.url({ query: '?particles=24000' }));
+      await h.ready(page);
+      const intro = await h.until(page, () => !!document.querySelector('.tl-intro-begin'), undefined, 5000);
+      c.push(h.check('the welcome shows', intro));
+      await page.click('.tl-intro-begin');
+      await h.wait(5000); // past the beckon (0.9 s) and the usual 3 s dim
+      const dim = await page.evaluate(() => document.querySelector('.tl-open').classList.contains('is-dim'));
+      c.push(h.check('5 s after Begin the open button is still bright', !dim));
+      return c;
+    },
+  },
+
+  {
+    // Hidden controls come back with a gesture play never makes. Holding three fingers still
+    // is how Nova gathers a star, so that must not bring them back; a three-finger double tap does.
+    name: 'hidden controls: a three-finger hold keeps playing, a double tap brings them back',
+    viewport: { width: 390, height: 844 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const cdp = await context.newCDPSession(page);
+      const hidden = () => page.evaluate(() => window.TACTILUME.ui.hidden);
+      await page.evaluate(() => window.TACTILUME.actions.toggleUI());
+      c.push(h.check('the controls hide', await hidden()));
+      // the touches carry their own times: the software renderer can hold an event back for
+      // longer than a tap lasts, and the gesture is timed by when the fingers moved
+      const three = h.ring(3, 195, 500, 90).map(({ x, y, id }) => ({ x, y, id, radiusX: 8, radiusY: 8, force: 0.5 }));
+      const t0 = Date.now() / 1000;
+      const send = (type, touchPoints, ms) => cdp.send('Input.dispatchTouchEvent', { type, touchPoints, timestamp: t0 + ms / 1000 });
+      await send('touchStart', three, 0);
+      for (let i = 1; i <= 8; i++) await send('touchMove', three.map((p) => ({ ...p, x: p.x + (i % 2 ? 2 : -2) })), i * 200);
+      const fingers = await page.evaluate(() => window.TACTILUME.fingers);
+      await send('touchEnd', [], 1700);
+      c.push(h.check('three fingers held still for 1.7 s play on, the controls stay hidden', await hidden() && fingers === 3, { fingers }));
+      // and the same twice in quick succession (a hold, lift, hold) is not a double tap either
+      await send('touchStart', three, 2000);
+      await send('touchEnd', [], 3200);
+      await send('touchStart', three, 3400);
+      await send('touchEnd', [], 4600);
+      c.push(h.check('two long holds in a row do not bring them back', await hidden()));
+      // a three-finger double tap: down and up within 80 ms, twice, 170 ms apart
+      await send('touchStart', three, 5000);
+      await send('touchEnd', [], 5080);
+      await send('touchStart', three, 5250);
+      await send('touchEnd', [], 5330);
+      c.push(h.check('a three-finger double tap brings them back', await h.until(page, () => !window.TACTILUME.ui.hidden, undefined, 3000)));
+      return c;
+    },
+  },
+
+  {
+    // In the app the screen's refresh rate follows Frame rate: the page tells the app the cap.
+    name: 'the app hears the frame-rate cap',
+    open: false,
+    viewport: { width: 360, height: 780 },
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const html = fs.readFileSync(fileURLToPath(h.url({ query: '' })), 'utf8');
+      await context.route('https://appassets.androidplatform.net/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      await page.addInitScript(() => {
+        window.__sent = [];
+        window.TactilumeNative = { addEventListener() {}, postMessage(text) { window.__sent.push(JSON.parse(text)); } };
+      });
+      await page.goto('https://appassets.androidplatform.net/assets/Tactilume.html?test=1&particles=24000');
+      await h.ready(page);
+      const caps = () => page.evaluate(() => window.__sent.filter((m) => m.t === 'fps').map((m) => m.cap));
+      c.push(h.check('at start the app is told there is no cap', (await caps())[0] === 0, await caps()));
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ fpsCap: '60' }, { source: 'test' }));
+      c.push(h.check('choosing 60 tells the app 60', (await caps()).at(-1) === 60, await caps()));
+      await page.evaluate(() => window.TACTILUME.store.setSettings({ fpsCap: '30' }, { source: 'test' }));
+      c.push(h.check('choosing 30 tells the app 30', (await caps()).at(-1) === 30, await caps()));
+      return c;
+    },
+  },
+
+  {
+    // A touch screen cannot show the rest of a cut-short card, so every scene card shows its
+    // whole description (Lantern Walk's is the one that says it suits every kind of colour vision).
+    name: 'every scene card shows its whole description',
+    viewport: { width: 360, height: 780 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      for (const width of [412, 393, 360, 320]) {
+        await page.setViewportSize({ width, height: 780 });
+        for (const uiScale of [1, 1.3]) {
+          const cut = await page.evaluate(async (uiScale) => {
+            const t = window.TACTILUME;
+            t.store.setSettings({ uiScale }, { source: 'test' });
+            t.ui.open('scenes');
+            await new Promise((r) => setTimeout(r, 400));
+            const out = [];
+            for (const el of document.querySelectorAll('.tl-preset-blurb')) {
+              const card = el.closest('.tl-preset').getBoundingClientRect();
+              if (el.scrollHeight > el.clientHeight + 1 || el.getBoundingClientRect().bottom > card.bottom + 0.5) out.push(el.closest('.tl-preset').dataset.name);
+            }
+            t.ui.close();
+            return out;
+          }, uiScale);
+          c.push(h.check(`${width} px, Control size ${Math.round(uiScale * 100)}%: no scene description is cut short`, !cut.length, cut.join(', ')));
+        }
+      }
+      return c;
+    },
+  },
+
+  {
+    // A pill button's name stays on one line, inside its row, at every phone width: a row
+    // whose second button is hidden (Device check's Copy, before the check) gives the first
+    // the whole row, and two that do not fit side by side go one under the other.
+    name: 'action buttons keep their names on one line',
+    viewport: { width: 360, height: 780 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const measure = (tab, showCopy) => page.evaluate(async ({ tab, showCopy }) => {
+        const t = window.TACTILUME;
+        t.ui.open(tab);
+        await new Promise((r) => setTimeout(r, 400));
+        for (const b of document.querySelectorAll('.tl-actions-row .tl-btn')) {
+          if (b.textContent.trim() === 'Copy') b.hidden = !showCopy;
+        }
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        const out = [];
+        for (const row of document.querySelectorAll(`#tl-tabpanel-${tab} .tl-actions-row`)) {
+          const rr = row.getBoundingClientRect();
+          for (const b of row.querySelectorAll('.tl-btn')) {
+            if (!b.getClientRects().length) continue;
+            const name = b.textContent.trim();
+            const r = b.getBoundingClientRect();
+            const text = b.querySelector('.tl-btn-text');
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const tops = new Set([...range.getClientRects()].map((x) => Math.round(x.top)));
+            if (tops.size > 1) out.push(`"${name}" runs to ${tops.size} lines`);
+            if (r.left < rr.left - 0.5 || r.right > rr.right + 0.5) out.push(`"${name}" sticks out of its row`);
+          }
+        }
+        for (const b of document.querySelectorAll('.tl-actions-row .tl-btn')) {
+          if (b.textContent.trim() === 'Copy') b.hidden = true;
+        }
+        t.ui.close();
+        return out;
+      }, { tab, showCopy });
+      for (const width of [412, 393, 360, 320, 300, 280]) {
+        await page.setViewportSize({ width, height: 780 });
+        const scenes = await measure('scenes', false);
+        c.push(h.check(`${width} px: Surprise me and Share link stay on one line each`, !scenes.length, scenes.join('; ')));
+        const before = await measure('settings', false);
+        c.push(h.check(`${width} px: Check this device stays on one line`, !before.length, before.join('; ')));
+        const after = await measure('settings', true);
+        c.push(h.check(`${width} px: with Copy shown, both stay on one line`, !after.length, after.join('; ')));
+      }
+      return c;
+    },
+  },
+
+  {
+    // Opposite actions do not share a glyph: Open (bring a scene in) is not Share link (send
+    // one out), Copy is not Share, and Check this device is not Surprise me.
+    name: 'each action has its own glyph',
+    async run(page, context, h) {
+      const glyphs = await page.evaluate(async () => {
+        const t = window.TACTILUME;
+        const svgOf = (pred) => {
+          const b = [...document.querySelectorAll('#ui button')].find((x) => pred(x.textContent.trim()));
+          const s = b && b.querySelector('svg');
+          return s ? s.innerHTML : null;
+        };
+        t.ui.open('scenes');
+        await new Promise((r) => setTimeout(r, 300));
+        const out = { share: svgOf((x) => x === 'Share link' || x === 'Share scene code'), open: svgOf((x) => x === 'Open'), surprise: svgOf((x) => x === 'Surprise me') };
+        t.ui.open('settings');
+        await new Promise((r) => setTimeout(r, 300));
+        Object.assign(out, { copy: svgOf((x) => x === 'Copy'), check: svgOf((x) => x === 'Check this device') });
+        t.ui.close();
+        return out;
+      });
+      const all = Object.values(glyphs).every(Boolean);
+      return [
+        h.check('every one of these buttons shows a glyph', all, Object.keys(glyphs).filter((k) => !glyphs[k])),
+        h.check('Open does not show the share glyph', all && glyphs.open !== glyphs.share),
+        h.check('Copy does not show the share glyph', all && glyphs.copy !== glyphs.share),
+        h.check('Check this device does not show the Surprise me glyph', all && glyphs.check !== glyphs.surprise),
+      ];
+    },
+  },
+
+  {
+    // The name card is hidden from screen readers; what it says reaches them through the
+    // live region, explanation included, for as long as the card explains it.
+    name: 'a screen reader hears what a new behaviour does',
+    async run(page, context, h) {
+      const c = [];
+      const nova = behaviourByKey('nova');
+      const said = () => page.evaluate(() => document.querySelector('#ui .tl-sr-only[aria-live]').textContent.trim());
+      const reads = (w) => h.until(page, (want) => document.querySelector('#ui .tl-sr-only[aria-live]').textContent.trim() === want, w, 4000);
+      const show = () => page.evaluate((b) => window.TACTILUME.ui.showBehaviour(b, { autopilot: false }), { key: nova.key, name: nova.name, blurb: nova.blurb });
+      await show();
+      c.push(h.check('the first time, its name and what it does are read out', await reads(`${nova.name}. ${nova.blurb}`), await said()));
+      await h.wait(1700);
+      await show();
+      await h.wait(1700);
+      await show();
+      c.push(h.check('once the card stops explaining it, only its name is read', await reads(nova.name), await said()));
+      return c;
+    },
+  },
+
+  {
+    // How hidden controls come back is said in the device's own terms: a phone has no H key,
+    // and in the app Back is the easiest way. The microphone's refusal in the app names the
+    // place to allow it again (Android asks only once), not a browser the app does not have.
+    name: 'hints name the ways this device has',
+    open: false,
+    viewport: { width: 360, height: 780 },
+    dpr: 2,
+    mobile: true,
+    async run(page, context, h) {
+      const c = [];
+      const html = fs.readFileSync(fileURLToPath(h.url({ query: '' })), 'utf8');
+      await context.route('https://appassets.androidplatform.net/**', (route) => route.fulfill({ status: 200, contentType: 'text/html', body: html }));
+      await page.addInitScript(() => {
+        window.TactilumeNative = { addEventListener() {}, postMessage() {} };
+        if (navigator.mediaDevices) navigator.mediaDevices.getUserMedia = () => Promise.reject(new DOMException('refused', 'NotAllowedError'));
+      });
+      const toasts = () => page.evaluate(() => document.querySelector('.tl-toasts').textContent);
+      const hiddenToast = async () => {
+        await page.evaluate(() => window.TACTILUME.actions.toggleUI());
+        await h.until(page, () => /Controls hidden/.test(document.querySelector('.tl-toasts').textContent), undefined, 3000);
+        return toasts();
+      };
+      const captureHelp = () => page.evaluate(async () => {
+        window.TACTILUME.ui.open('capture');
+        await new Promise((r) => setTimeout(r, 300));
+        const p = [...document.querySelectorAll('#tl-tabpanel-capture .tl-help')].find((x) => /bring them back/.test(x.textContent));
+        window.TACTILUME.ui.close();
+        return p ? p.textContent : '';
+      });
+      const micError = () => page.evaluate(async () => (await window.TACTILUME.audio.startMic()).error || '');
+
+      await page.goto(h.url());
+      await h.ready(page);
+      const phone = await hiddenToast();
+      c.push(h.check('on a phone the toast says to tap the faint button, not to press H', /tap the faint button/.test(phone) && !/press H/.test(phone), phone));
+      c.push(h.check('in a browser it does not offer Back', !/Back/.test(phone), phone));
+      const phoneHelp = await captureHelp();
+      c.push(h.check('Capture > Clean screen says the same', /tap the faint button/.test(phoneHelp) && !/press H/.test(phoneHelp), phoneHelp));
+      const browserMic = await micError();
+      c.push(h.check('in a browser a refused microphone points to the browser', /browser/.test(browserMic) && !/Android/.test(browserMic), browserMic));
+
+      await page.goto('https://appassets.androidplatform.net/assets/Tactilume.html?test=1&particles=24000');
+      await h.ready(page);
+      const app = await hiddenToast();
+      c.push(h.check('in the app the toast offers Back too', /press Back/.test(app) && /tap the faint button/.test(app) && !/press H/.test(app), app));
+      const appMic = await micError();
+      c.push(h.check('in the app a refused microphone names Android Settings, not a browser', /Android Settings/.test(appMic) && !/browser/.test(appMic), appMic));
+      return c;
+    },
+  },
+
+  {
+    // With a keyboard and a mouse, H is the quick way back.
+    name: 'on a computer the way back names H',
+    async run(page, context, h) {
+      await page.evaluate(() => window.TACTILUME.actions.toggleUI());
+      await h.until(page, () => /Controls hidden/.test(document.querySelector('.tl-toasts').textContent), undefined, 3000);
+      const text = await page.evaluate(() => document.querySelector('.tl-toasts').textContent);
+      return [h.check('the toast says press H, and not Back', /press H/.test(text) && !/Back/.test(text), text)];
+    },
+  },
+
+  {
+    // Someone opening a shared link is told the scene is the one shared with them: at once
+    // for a returning visitor, and after Begin for a first one.
+    name: 'a shared link says whose scene is playing',
+    open: false,
+    async run(page, context, h) {
+      const c = [];
+      const name = 'Sam’s aurora';
+      const hash = '#s=' + encodeScene(sanitizeScene({ palette: 'aurora', name }));
+      const want = `Playing “${name}”, shared with you`;
+      const toastsOf = (p) => p.evaluate(() => (document.querySelector('.tl-toasts') || {}).textContent || '');
+      const told = (p) => h.until(p, (w) => ((document.querySelector('.tl-toasts') || {}).textContent || '').includes(w), want, 4000);
+      await page.goto(h.url({ hash }));
+      await h.ready(page);
+      c.push(h.check('a returning visitor is told at once', await told(page), await toastsOf(page)));
+
+      const fresh = await (await h.newContext()).newPage();
+      await fresh.goto(h.url({ query: '?particles=24000', hash }));
+      await h.ready(fresh);
+      await h.until(fresh, () => !!document.querySelector('.tl-intro-begin'), undefined, 5000);
+      await h.wait(1200);
+      const early = await toastsOf(fresh);
+      c.push(h.check('a first visitor is not told behind the welcome', !early.includes(want), early));
+      await fresh.click('.tl-intro-begin');
+      c.push(h.check('and is told once Begin is tapped', await told(fresh), await toastsOf(fresh)));
+      return c;
+    },
+  },
 ];
+
+// Opens the panel with `uiScale` and reports what is wrong with the tab strip: a tab outside
+// it, a shown name cut short or running into the next, a tab without its name for screen
+// readers, an icon shrunk to nothing.
+async function tabStrip(page, { uiScale = 1, tab = 'settings' } = {}) {
+  return page.evaluate(async ({ uiScale, tab }) => {
+    const t = window.TACTILUME;
+    t.store.setSettings({ uiScale }, { source: 'test' });
+    t.ui.open(tab);
+    await new Promise((r) => setTimeout(r, 500));
+    const strip = document.querySelector('.tl-tabs').getBoundingClientRect();
+    const problems = [];
+    const shown = [];
+    for (const b of document.querySelectorAll('.tl-tab')) {
+      const r = b.getBoundingClientRect();
+      const name = b.dataset.tab;
+      if (r.left < strip.left - 0.5 || r.right > strip.right + 0.5) problems.push(`${name} outside the strip (${Math.round(r.left)}-${Math.round(r.right)} of ${Math.round(strip.left)}-${Math.round(strip.right)})`);
+      const label = b.querySelector('.tl-tab-label');
+      if (!label || !label.textContent.trim()) problems.push(`${name} has no name`);
+      const icon = b.querySelector('.tl-icon').getBoundingClientRect();
+      if (icon.width < 16) problems.push(`${name} icon ${Math.round(icon.width)} px`);
+      const lr = label.getBoundingClientRect();
+      // a name is shown when it has a real box; shown names must fit their tab whole
+      if (lr.width > 2 && getComputedStyle(label).clip === 'auto') {
+        if (label.scrollWidth > label.clientWidth + 1) problems.push(`${name} name cut (${label.scrollWidth} > ${label.clientWidth})`);
+        if (lr.left < r.left - 0.5 || lr.right > r.right + 0.5) problems.push(`${name} name spills out of its tab`);
+        shown.push({ name, left: lr.left, right: lr.right });
+      }
+    }
+    for (let i = 1; i < shown.length; i++) {
+      if (shown[i].left < shown[i - 1].right - 0.5) problems.push(`${shown[i - 1].name} and ${shown[i].name} names overlap`);
+    }
+    if (!shown.some((s) => s.name === tab)) problems.push(`the chosen tab (${tab}) shows no name`);
+    t.ui.close();
+    return { problems, strip: Math.round(strip.width), shown: shown.map((s) => s.name).join(' ') };
+  }, { uiScale, tab });
+}

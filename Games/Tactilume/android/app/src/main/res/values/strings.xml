@@ -22,5 +22,4 @@
     <string name="save_incomplete">Part of the file went missing. Please try again.</string>
     <string name="save_needs_permission">Tactilume needs permission to save to your photos.</string>
     <string name="save_busy">The phone was too busy to save that. Please try again.</string>
-    <string name="share_failed">Saved to %1$s, but sharing could not open.</string>
 </resources>

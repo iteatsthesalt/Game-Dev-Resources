@@ -166,6 +166,19 @@ export function createPlatform() {
     Promise.resolve(result).then((handled) => send({ t: 'back', handled: !!handled }), () => send({ t: 'back', handled: false }));
   }
 
+  // Android's Font size. The app keeps the WebView's own text zoom off (it grows the text but
+  // not the boxes around it) and tells the page the scale, so the UI can grow as a whole.
+  let fontScale = 1;
+  const fontListeners = new Set();
+  function setFontScale(value) {
+    const v = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
+    if (!Number.isFinite(v) || v <= 0 || v === fontScale) return;
+    fontScale = Math.min(4, v);
+    for (const fn of fontListeners) {
+      try { fn(fontScale); } catch (e) { console.warn('Tactilume: a font scale listener failed', e); }
+    }
+  }
+
   function onAppMessage(event) {
     let msg = event && event.data;
     if (typeof msg === 'string') {
@@ -181,6 +194,9 @@ export function createPlatform() {
         device: optionalString(msg.device),
       });
       if (helloDone) helloDone(info);
+      setFontScale(msg.fontScale);
+    } else if (msg.t === 'font') {
+      setFontScale(msg.scale);
     } else if (msg.t === 'done') {
       const transfer = transfers.get(String(msg.id));
       if (!transfer) return;
@@ -196,7 +212,8 @@ export function createPlatform() {
   // Streams one file to the app: begin, the bytes as base64 chunks in order, end, then
   // waits for the app's done. Slices are read one at a time so a long video never sits
   // in memory as one huge string.
-  function transfer(blob, name, mime, action, text) {
+  // Sends a file to the app, which saves it to the gallery.
+  function transfer(blob, name, mime) {
     const id = `f${Date.now().toString(36)}${(++transferCount).toString(36)}`;
     return new Promise((resolve) => {
       let settled = false;
@@ -221,9 +238,7 @@ export function createPlatform() {
           if (settled) return; // the app answered early, for example to refuse the file
           if (!send({ t: 'chunk', id, seq, data: toBase64(bytes) })) return fail('Could not reach the app.');
         }
-        const end = { t: 'end', id, action };
-        if (text) end.text = String(text);
-        if (!send(end)) return fail('Could not reach the app.');
+        if (!send({ t: 'end', id })) return fail('Could not reach the app.');
         timer = setTimeout(() => fail('The app did not answer in time.'), DONE_WAIT_MS + (blob.size / 1e6) * DONE_WAIT_PER_MB);
       })().catch((e) => {
         console.warn('Tactilume: could not read the file for the app', e);
@@ -308,33 +323,7 @@ export function createPlatform() {
     async saveFile(blob, name, mime) {
       if (!isBlob(blob)) return { ok: false, error: 'There was nothing to save.' };
       const type = mime || blob.type || 'application/octet-stream';
-      if (native) return queued(() => transfer(blob, name, type, 'save'));
-      return download(blob, name);
-    },
-
-    async shareFile(blob, name, mime, text) {
-      if (!isBlob(blob)) return { ok: false, error: 'There was nothing to share.' };
-      const type = mime || blob.type || 'application/octet-stream';
-      if (native) return queued(() => transfer(blob, name, type, 'share', text));
-      let file = null;
-      try {
-        file = new File([blob], name, { type });
-      } catch {
-        // very old browsers have no File constructor; saving still works
-      }
-      if (file) {
-        const data = { files: [file], title: 'Tactilume' };
-        if (text) data.text = String(text);
-        if (canShare(data)) {
-          try {
-            await navigator.share(data);
-            return { ok: true };
-          } catch (e) {
-            if (e && e.name === 'AbortError') return { ok: false, error: 'cancelled' };
-            // anything else (no tap to go on, a refusing share target): save instead
-          }
-        }
-      }
+      if (native) return queued(() => transfer(blob, name, type));
       return download(blob, name);
     },
 
@@ -370,6 +359,13 @@ export function createPlatform() {
       } catch {
         return false;
       }
+    },
+
+    // The page's frame-rate cap (0: the display's own rate). The app picks the screen's
+    // refresh rate to suit it: a cap that divides it evenly, at the lowest such rate.
+    setFrameCap(fps) {
+      const cap = fps === 30 || fps === 60 ? fps : 0;
+      return native ? send({ t: 'fps', cap }) : false;
     },
 
     keepAwake(on) {
@@ -431,6 +427,14 @@ export function createPlatform() {
       if (!native) return () => {};
       backHandler = fn;
       return () => { if (backHandler === fn) backHandler = null; };
+    },
+
+    // the system font scale the app reported (1 in a browser, where the browser itself
+    // scales the text); fn(scale) is called whenever it changes
+    get fontScale() { return fontScale; },
+    onFontScale(fn) {
+      fontListeners.add(fn);
+      return () => fontListeners.delete(fn);
     },
 
     // opens a web page outside Tactilume; returns false when the address is not allowed

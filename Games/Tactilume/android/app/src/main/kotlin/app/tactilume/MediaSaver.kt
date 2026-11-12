@@ -55,16 +55,38 @@ internal object MediaSaver {
             put(MediaStore.MediaColumns.DATE_TAKEN, System.currentTimeMillis())
             put(MediaStore.MediaColumns.IS_PENDING, 1)
         }
-        val uri = resolver.insert(collection, values) ?: throw IOException("MediaStore did not create an entry")
-        try {
-            val out = resolver.openOutputStream(uri, "w") ?: throw IOException("MediaStore gave no stream")
-            out.use { sink -> received.file.inputStream().use { it.copyTo(sink, COPY_BUFFER) } }
-            resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+        return insertThenWrite(
+            insert = { resolver.insert(collection, values) },
+            write = { uri ->
+                val out = resolver.openOutputStream(uri, "w") ?: throw IOException("MediaStore gave no stream")
+                out.use { sink -> received.file.inputStream().use { it.copyTo(sink, COPY_BUFFER) } }
+                resolver.update(uri, ContentValues().apply { put(MediaStore.MediaColumns.IS_PENDING, 0) }, null, null)
+            },
+            remove = { uri -> resolver.delete(uri, null, null) },
+        )
+    }
+
+    /**
+     * Creates an entry with [insert], fills it with [write], and [remove]s it again if filling
+     * fails. Whatever MediaStore throws (it can throw IllegalArgumentException, IllegalStateException
+     * or SQLiteException as well as IOException, from any of the three) comes out as an
+     * IOException, and a failed clean-up never hides the first problem.
+     */
+    @Throws(IOException::class)
+    internal fun <T : Any> insertThenWrite(insert: () -> T?, write: (T) -> Unit, remove: (T) -> Unit): T {
+        val inserted = try {
+            insert()
         } catch (e: Exception) {
-            resolver.delete(uri, null, null)
             throw e as? IOException ?: IOException(e)
         }
-        return uri
+        val entry = inserted ?: throw IOException("MediaStore did not create an entry")
+        try {
+            write(entry)
+        } catch (e: Exception) {
+            runCatching { remove(entry) }
+            throw e as? IOException ?: IOException(e)
+        }
+        return entry
     }
 
     // Android 8 and 9: write the file into the shared folder, then register it with MediaStore

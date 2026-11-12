@@ -3,7 +3,6 @@ package app.tactilume
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
-import android.content.ClipData
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.res.ColorStateList
@@ -25,6 +24,7 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import android.util.Log
 import android.view.Gravity
+import android.view.HapticFeedbackConstants
 import android.view.View
 import android.view.ViewGroup.LayoutParams.MATCH_PARENT
 import android.view.ViewGroup.LayoutParams.WRAP_CONTENT
@@ -60,7 +60,7 @@ import java.util.Locale
 
 /**
  * The whole app: one full-screen WebView showing Tactilume.html from the APK, with the
- * native pieces a browser tab cannot offer (saving to the gallery, sharing, haptics, the
+ * native pieces a browser tab cannot offer (saving to the gallery, haptics, the
  * screen staying on, Back) reached through [NativeBridge].
  */
 class MainActivity : ComponentActivity(), WebHost, BridgeHost {
@@ -92,6 +92,9 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
 
     private var cutout = Insets.NONE
     private var cutoutOnPage = Insets.NONE
+
+    // the page's Frame rate setting (0: the display's own); the refresh rate follows it
+    private var frameCap = 0
 
     private var backPending = false
     private var lastUnhandledBack = 0L
@@ -138,7 +141,7 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         // after enableEdgeToEdge, which picks short edges only
         DisplayTuning.drawIntoCutouts(window)
         DisplayTuning.hideSystemBars(window)
-        DisplayTuning.preferHighestRefreshRate(this)
+        DisplayTuning.preferRefreshRate(this, frameCap)
         // the hardware volume keys set the volume of Tactilume's sound, even before it plays
         volumeControlStream = AudioManager.STREAM_MUSIC
 
@@ -183,7 +186,9 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         // a foldable can move the app to another panel with other refresh rates
-        DisplayTuning.preferHighestRefreshRate(this)
+        DisplayTuning.preferRefreshRate(this, frameCap)
+        // Font size changed while the app was open (fontScale is in configChanges)
+        bridge?.setFontScale(newConfig.fontScale)
     }
 
     override fun onDestroy() {
@@ -212,6 +217,7 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         }
         configure(view)
         val pageBridge = bridge ?: NativeBridge(applicationContext, this).also { bridge = it }
+        pageBridge.setFontScale(resources.configuration.fontScale)
         if (!pageBridge.attach(view)) Log.w(TAG, "This WebView cannot talk to the app; saving and sharing are off")
         // invisible until the page has drawn its first frame, so no blank flash shows through
         view.alpha = 0f
@@ -245,14 +251,20 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
             displayZoomControls = false
             useWideViewPort = true
             loadWithOverviewMode = false
+            // By default WebView scales every font by Android's Font size but none of the boxes
+            // around them, so the controls' names overflowed. The page is told the scale instead
+            // (NativeBridge's hello and 'font' messages) and grows its controls as a whole.
+            textZoom = 100
             // Safe Browsing is left at its default, which is on
         }
         // the page is designed dark already; Android must not try to darken it again
         if (WebViewFeature.isFeatureSupported(WebViewFeature.ALGORITHMIC_DARKENING)) {
             WebSettingsCompat.setAlgorithmicDarkeningAllowed(view.settings, false)
         }
-        // the page is the app: Android should not kill its process before the app's own
-        view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, true)
+        // the page is the app: Android should not kill its process before the app's own, also
+        // while the app is out of sight (waivedWhenNotVisible = true would make the renderer the
+        // first thing reclaimed then, losing a clip being recorded and the live state)
+        view.setRendererPriorityPolicy(WebView.RENDERER_PRIORITY_IMPORTANT, false)
         view.webViewClient = TactilumeWebViewClient(assetLoader, this)
         view.webChromeClient = TactilumeChromeClient(this)
         view.isVerticalScrollBarEnabled = false
@@ -415,6 +427,14 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
     // ---- BridgeHost -----------------------------------------------------------------------------------
 
     override fun vibrate(ms: Long) {
+        when (val play = Haptics.choose(ms)) {
+            // the system's own touch feedback: it follows the Touch feedback switch on every version
+            Haptics.Play.Tick -> webView?.performHapticFeedback(HapticFeedbackConstants.VIRTUAL_KEY)
+            is Haptics.Play.Buzz -> buzz(play.ms)
+        }
+    }
+
+    private fun buzz(ms: Long) {
         val v = vibrator?.takeIf { it.hasVibrator() } ?: return
         val effect = VibrationEffect.createOneShot(ms, VibrationEffect.DEFAULT_AMPLITUDE)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -423,6 +443,12 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         } else {
             v.vibrate(effect)
         }
+    }
+
+    override fun setFrameCap(fps: Int) {
+        if (fps == frameCap) return
+        frameCap = fps
+        DisplayTuning.preferRefreshRate(this, fps)
     }
 
     override fun setKeepAwake(on: Boolean) {
@@ -437,23 +463,6 @@ class MainActivity : ComponentActivity(), WebHost, BridgeHost {
         if (!url.scheme.equals("https", ignoreCase = true) || url.host.isNullOrEmpty() || AppWeb.isAppUrl(url)) return false
         return try {
             startActivity(Intent(Intent.ACTION_VIEW, url).addCategory(Intent.CATEGORY_BROWSABLE))
-            true
-        } catch (e: ActivityNotFoundException) {
-            false
-        }
-    }
-
-    override fun shareSaved(uri: Uri, mime: String, text: String?): Boolean {
-        val send = Intent(Intent.ACTION_SEND).apply {
-            type = mime
-            putExtra(Intent.EXTRA_STREAM, uri)
-            if (!text.isNullOrBlank()) putExtra(Intent.EXTRA_TEXT, text)
-            // ClipData carries the read grant through the chooser to the app picked
-            clipData = ClipData.newRawUri(null, uri)
-            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-        }
-        return try {
-            startActivity(Intent.createChooser(send, null))
             true
         } catch (e: ActivityNotFoundException) {
             false

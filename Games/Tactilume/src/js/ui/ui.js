@@ -8,15 +8,18 @@
 // ui.update runs every frame, so it only counts time; text changes a few times a second.
 
 import { PALETTES, paletteCSS } from '../core/palettes.js';
-import { createHUD, RESTORE_HINT } from './hud.js';
+import { createHUD, restoreHint } from './hud.js';
 import { createPanel, SIDE_QUERY } from './panel.js';
 import { createIntro } from './intro.js';
 
 const BLURB_TIMES = 2;       // a behaviour's card explains it the first times it is played
 const HUD_EVERY = 0.25;      // s between recording-time updates
 const STATS_EVERY = 0.5;     // s between stats updates in Settings
-const RESTORE_HOLD_MS = 1000; // three fingers held this long bring hidden controls back
-const RESTORE_SLOP_PX = 28;   // ...as long as they stay roughly still
+// Hidden controls come back with a three-finger double tap: a gesture play never makes
+// (holding fingers still is how some behaviours are played, Nova's hold-to-gather among them).
+const RESTORE_TAP_MS = 350;   // a tap: three or more fingers down and all up again within this
+const RESTORE_GAP_MS = 600;   // the second tap starts within this of the first one's end
+const RESTORE_SLOP_PX = 28;   // ...as long as the fingers stay roughly still
 
 const isTyping = (el) => !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
 
@@ -47,13 +50,20 @@ function where(r) {
   return '';
 }
 
-export function createUI({ root, store, actions, platform, audio, capture }) {
+export function createUI({ root, store, actions, platform, audio, capture, welcome }) {
   const reduceQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
   const reducedMotion = () => !!(reduceQuery && reduceQuery.matches);
 
   root.classList.add('tl-ui');
 
-  function applyScale(v) { root.style.setProperty('--ui-scale', String(v)); }
+  // Control size times the system font scale the Android app reports (1 elsewhere), so the
+  // text and the boxes around it grow together; never more than twice the size, and a
+  // smaller system font never shrinks the controls (or their touch targets) below Control size.
+  const MAX_SCALE = 2;
+  const fontScale = () => Math.max(1, (platform && Number(platform.fontScale)) || 1);
+  function applyScale(v) {
+    root.style.setProperty('--ui-scale', String(+Math.min(Math.max(MAX_SCALE, v), v * fontScale()).toFixed(3)));
+  }
   function applyAccent(key) {
     const p = PALETTES.find((x) => x.key === key) || PALETTES[0];
     root.style.setProperty('--accent', accentOf(p));
@@ -63,6 +73,12 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
   applyAccent(store.scene.palette);
   store.on('scene', (scene, keys) => { if (keys.includes('palette')) applyAccent(scene.palette); });
   store.on('settings', (settings, keys) => { if (keys.includes('uiScale')) applyScale(settings.uiScale); });
+  if (platform && typeof platform.onFontScale === 'function') {
+    platform.onFontScale(() => {
+      applyScale(store.settings.uiScale);
+      if (panel) panel.refit();
+    });
+  }
 
   // ---- the floating parts -------------------------------------------------------------
   const hud = createHUD(root, {
@@ -167,8 +183,11 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
         store.setSettings({ introSeen: true });
         root.classList.remove('is-intro');
         setTimeout(() => hud.beckon(), 900);
+        if (welcome) hud.toast(welcome);
       },
     });
+  } else if (welcome) {
+    hud.toast(welcome);
   }
   const introOpen = () => !!(intro && intro.isOpen());
 
@@ -176,27 +195,35 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
   let hidden = false;
   let toldHidden = false;
   const touches = new Map(); // pointerId -> where it went down
-  let holdTimer = 0;
-  function cancelHold() { clearTimeout(holdTimer); holdTimer = 0; }
+  // the touches since the screen was last empty: when they began, how many at most, and
+  // whether one moved; `lastTap` is when the last three-finger tap ended
+  let group = null;
+  let lastTap = -Infinity;
+  // when the finger moved (a busy frame can run the handler much later than that)
+  const when = (e) => (e.timeStamp > 0 ? e.timeStamp : performance.now());
   function onHoldDown(e) {
     if (e.pointerType !== 'touch') return;
+    if (!touches.size) group = { at: when(e), most: 0, moved: false };
     touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (touches.size >= 3 && !holdTimer) {
-      holdTimer = setTimeout(() => {
-        holdTimer = 0;
-        if (touches.size < 3) return;
-        restore();
-        if (store.settings.haptics && platform && typeof platform.vibrate === 'function') platform.vibrate(12);
-      }, RESTORE_HOLD_MS);
-    }
+    if (group) group.most = Math.max(group.most, touches.size);
   }
   function onHoldMove(e) {
     const t = touches.get(e.pointerId);
-    if (t && Math.hypot(e.clientX - t.x, e.clientY - t.y) > RESTORE_SLOP_PX) cancelHold();
+    if (t && group && Math.hypot(e.clientX - t.x, e.clientY - t.y) > RESTORE_SLOP_PX) group.moved = true;
   }
   function onHoldUp(e) {
-    touches.delete(e.pointerId);
-    if (touches.size < 3) cancelHold();
+    if (!touches.delete(e.pointerId) || touches.size || !group) return;
+    const g = group;
+    group = null;
+    const now = when(e);
+    if (e.type === 'pointercancel' || g.moved || g.most < 3 || now - g.at > RESTORE_TAP_MS) { lastTap = -Infinity; return; }
+    if (g.at - lastTap <= RESTORE_GAP_MS) {
+      lastTap = -Infinity;
+      restore();
+      if (store.settings.haptics && platform && typeof platform.vibrate === 'function') platform.vibrate(12);
+    } else {
+      lastTap = now;
+    }
   }
   const HOLD_EVENTS = [['pointerdown', onHoldDown], ['pointermove', onHoldMove], ['pointerup', onHoldUp], ['pointercancel', onHoldUp]];
   function watchHold(on) {
@@ -204,7 +231,7 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       if (on) addEventListener(name, fn, { passive: true });
       else removeEventListener(name, fn);
     }
-    if (!on) { touches.clear(); cancelHold(); }
+    if (!on) { touches.clear(); group = null; lastTap = -Infinity; }
   }
 
   // main keeps its own hidden flag, so coming back goes through its action; if the two
@@ -268,13 +295,14 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       const explain = !byAuto && times < BLURB_TIMES;
       if (!byAuto) {
         seen.set(b.key, times + 1);
-        hud.announce(b.name);
+        // the card is hidden from screen readers: they hear what it says, explanation included
+        hud.announce(explain && b.blurb ? `${b.name}. ${b.blurb}` : b.name);
       }
       hud.showBehaviour(b.name, explain ? b.blurb : null);
     },
 
     // ms: how long it stays (longer messages get a little more on top)
-    toast(text, ms) { hud.toast(text, ms); },
+    toast(text, ms, group) { hud.toast(text, ms, group); },
     announce(text) { hud.announce(text); },
 
     open(tab) {
@@ -310,7 +338,7 @@ export function createUI({ root, store, actions, platform, audio, capture }) {
       if (want) {
         if (!toldHidden) {
           toldHidden = true;
-          hud.toast(`Controls hidden. ${RESTORE_HINT}`, 5200);
+          hud.toast(`Controls hidden. ${restoreHint(platform)}`, 5200);
         }
       } else {
         hud.wake();

@@ -30,6 +30,11 @@ const PATHS = {
   record: '<circle cx="12" cy="12" r="8.4"/><circle cx="12" cy="12" r="4.4" fill="currentColor" stroke="none"/>',
   stop: '<rect x="7" y="7" width="10" height="10" rx="2.4" fill="currentColor" stroke="none"/>',
   share: '<path d="M12 14.5V3.8M8 7.6l4-3.8 4 3.8"/><path d="M8.5 10.5H7a2.5 2.5 0 0 0-2.5 2.5v5A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-5a2.5 2.5 0 0 0-2.5-2.5h-1.5"/>',
+  // the opposite of share: an arrow coming down into the tray
+  receive: '<path d="M12 3.8v10.7M8 10.7l4 3.8 4-3.8"/><path d="M8.5 10.5H7a2.5 2.5 0 0 0-2.5 2.5v5A2.5 2.5 0 0 0 7 20.5h10a2.5 2.5 0 0 0 2.5-2.5v-5a2.5 2.5 0 0 0-2.5-2.5h-1.5"/>',
+  copy: '<rect x="8.5" y="8.5" width="11" height="11.5" rx="2.2"/><path d="M15.5 8.5V6.2A2.2 2.2 0 0 0 13.3 4H6.7a2.2 2.2 0 0 0-2.2 2.2v7.1a2.2 2.2 0 0 0 2.2 2.2h1.8"/>',
+  // the Device check: a pulse across a screen
+  pulse: '<rect x="3.5" y="5" width="17" height="12.5" rx="2.4"/><path d="M6.5 11.5h2.6l1.5-3 2.6 6 1.6-3h2.7M9 20.5h6"/>',
   surprise: '<path d="M12 3.5l1.7 5.1 5.3 1.7-5.3 1.7L12 17.1l-1.7-5.1L5 10.3l5.3-1.7z"/>'
     + '<path d="M18.5 15.5l.7 2 2 .7-2 .7-.7 2-.7-2-2-.7 2-.7z" fill="currentColor" stroke="none"/>',
   save: '<path d="M7 3.8h10a1.5 1.5 0 0 1 1.5 1.5v15l-6.5-4-6.5 4v-15A1.5 1.5 0 0 1 7 3.8z"/><path d="M12 7.6v5.2M9.4 10.2h5.2"/>',

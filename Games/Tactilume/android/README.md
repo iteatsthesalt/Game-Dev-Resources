@@ -1,8 +1,9 @@
 # Tactilume for Android
 
 A small native app that shows `../Tactilume.html` full screen in a WebView and adds what a
-browser tab cannot: saving photos and clips to the gallery, sharing them, haptics, keeping the
-screen on, the highest refresh rate, drawing under the camera cutout, and Android Back.
+browser tab cannot: saving photos and clips to the gallery (share them from there), haptics, keeping the
+screen on, the refresh rate that suits the Frame rate setting (the highest without a cap),
+drawing under the camera cutout, and Android Back.
 
 The page is not copied into this folder. Every build copies the current `../Tactilume.html`
 into the APK, so build the web app first.

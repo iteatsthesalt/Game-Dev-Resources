@@ -87,4 +87,38 @@ class MediaSaverTest {
         assertFails { MediaSaver.copyThenRegister<String>(source, target) { null } }
         assertArrayEquals(byteArrayOf(1, 2, 3), earlier.readBytes())
     }
+
+    // ---- the Android 10+ path: create the MediaStore entry, fill it, remove it on failure ----
+
+    @Test
+    fun `an entry that is filled stays`() {
+        val removed = mutableListOf<String>()
+        val written = mutableListOf<String>()
+        assertEquals("content://media/7", MediaSaver.insertThenWrite({ "content://media/7" }, { written += it }, { removed += it }))
+        assertEquals(listOf("content://media/7"), written)
+        assertTrue(removed.isEmpty())
+    }
+
+    @Test
+    fun `an insert that throws comes out as an IOException`() {
+        val thrown = IllegalArgumentException("Volume external_primary not found")
+        val e = assertFails { MediaSaver.insertThenWrite<String>({ throw thrown }, { }, { }) }
+        assertSame(thrown, e.cause)
+    }
+
+    @Test
+    fun `no entry at all is an IOException`() {
+        assertFails { MediaSaver.insertThenWrite<String>({ null }, { }, { }) }
+    }
+
+    @Test
+    fun `a failed write removes the entry, and a failed removal does not hide why`() {
+        val thrown = IllegalStateException("database is full")
+        var removed: String? = null
+        val e = assertFails {
+            MediaSaver.insertThenWrite<String>({ "content://media/8" }, { throw thrown }) { removed = it; throw IllegalStateException("delete failed too") }
+        }
+        assertSame(thrown, e.cause)
+        assertEquals("content://media/8", removed)
+    }
 }

@@ -59,7 +59,9 @@ A released touch keeps its flick velocity and glides while it fades.
 
 ## gfx/engine.js — `createEngine(canvas, opts)`
 
-Throws `Error('webgl2')` when WebGL2 is missing. `opts`: `{ maxParticles, onLost, onRestored,
+Throws `Error('webgl2')` when WebGL2 is missing; main says "needs WebGL 2" for that error only.
+Any other error (a shader or program the GPU refuses) is shown as such, with its first lines and
+the GPU's name to copy (in the Android app, with the advice to update the WebView). `opts`: `{ maxParticles, onLost, onRestored,
 onRestoreFailed }`. After a context loss the engine counts as lost until its rebuild has
 succeeded; `onRestoreFailed(err)` says the context came back but could not be rebuilt. main
 shows a "light stopped" notice with a fresh-start button when a lost context has not come back
@@ -165,7 +167,9 @@ its poles fade back in (the gap starts them afresh).
 
 ---
 
-## audio/audio.js — `createAudio({ getSettings })`
+## audio/audio.js — `createAudio({ getSettings, onSourceEnded?, native? })`
+
+`native` (the Android app) only changes wording: a refused microphone names Android Settings.
 
 Nothing makes a sound until settings say so. No microphone prompt unless the person
 picks the microphone.
@@ -199,9 +203,9 @@ Hides the difference between a browser tab and the Android app.
 
 - `platform.native` (bool), `platform.info` → `{ native, version?, sdk?, device? }`.
 - `platform.saveFile(blob, name, mime)` → `Promise<{ok, where?, error?}>`.
-- `platform.shareFile(blob, name, mime, text)` → `Promise<{ok, error?}>`.
 - `platform.shareLink(url, text)` → `Promise<{ok, copied?, error?}>`.
-- `platform.vibrate(ms)`, `platform.keepAwake(on)`.
+- `platform.vibrate(ms)`, `platform.keepAwake(on)`, `platform.setFrameCap(fps)` (30, 60, or 0 for
+  the display's own rate; the Android app picks the screen's refresh rate to suit it).
 - `platform.canFullscreen()`, `platform.isFullscreen()`, `platform.setFullscreen(on)`.
 - `platform.onBack(fn)` → `off()`: Android back; `fn()` returns true (or a promise of true)
   when it handled it.
@@ -209,17 +213,23 @@ Hides the difference between a browser tab and the Android app.
   `platform.open(url)` → bool, `platform.onFullscreenChange(fn)` → `off()`;
   `setFullscreen(on)` returns `Promise<boolean>`. In a browser `where` is `'downloads'`.
   A share the person dismissed returns `{ ok: false, error: 'cancelled' }`.
+  `platform.fontScale` (Android's Font size as the app reports it; 1 in a browser) and
+  `platform.onFontScale(fn)` → `off()`. The UI multiplies Control size by it (never below
+  Control size, never above 2), because the app keeps the WebView's own text zoom at 100%.
 
 Android bridge (WebView, `WebViewCompat.addWebMessageListener`, object name
 `TactilumeNative`, allowed origin `https://appassets.androidplatform.net` only). JSON
 string messages, page to app:
 `{t:'hello'}`, `{t:'begin', id, name, mime, size?}`, `{t:'chunk', id, seq?, data}` (base64,
 ≤ 512 KiB; the app checks `seq` when present and refuses a declared size over 512 MB),
-`{t:'end', id, action: 'save'|'share', text?}`, `{t:'abort', id}`, `{t:'vibrate', ms}` (the
-app clamps to 1..60 ms), `{t:'awake', on}`, `{t:'open', url}` (https only, opens the browser).
-App to page (`reply` on the listener's proxy): `{t:'hello', version, sdk, device, webview?}`,
-`{t:'done', id, ok, where?, error?}` (for `'share'` the file is saved first; if the share
-sheet cannot open, `done` is `{ok:false, where, error}`), `{t:'back'}` (Back was pressed;
+`{t:'end', id}` (the app saves the file to the gallery), `{t:'abort', id}`, `{t:'vibrate', ms}` (the
+app clamps to 1..60 ms; up to 8 ms it plays the system's touch feedback instead, which follows
+Android's Touch feedback switch), `{t:'awake', on}`, `{t:'open', url}` (https only, opens the browser), `{t:'fps', cap}` (30, 60
+or 0; sent at start and when Frame rate changes: the app asks for the lowest refresh rate the
+cap divides evenly, and for the highest with 0).
+App to page (`reply` on the listener's proxy): `{t:'hello', version, sdk, device, webview?, fontScale?}`,
+`{t:'font', scale}` (Android's Font size changed while the app was open),
+`{t:'done', id, ok, where?, error?}`, `{t:'back'}` (Back was pressed;
 the page answers `{t:'back', handled}`).
 Files go one at a time; the page queues transfers.
 
@@ -240,14 +250,17 @@ style.css therefore defines those four on `:root`, never on a descendant.
 
 ---
 
-## ui/ui.js — `createUI({ root, store, actions, platform, audio, capture })`
+## ui/ui.js — `createUI({ root, store, actions, platform, audio, capture, welcome? })`
+
+`welcome`: a message (a shared link's scene) shown as a toast once the first-run welcome has
+closed, or at once when there is none.
 
 All DOM for controls lives under `root` (`#ui`). Text from scenes is inserted as text,
 never as HTML.
 
 - `ui.update(dt, { fingers, behaviour, fps, particles, recording, autopilot })`
 - `ui.showBehaviour(behaviour)`: brief name card when the behaviour changes.
-- `ui.toast(text, ms?)`, `ui.announce(text)` (screen-reader live region, rate-limited).
+- `ui.toast(text, ms?, group?)` (a new toast of the same `group` replaces the one on screen), `ui.announce(text)` (screen-reader live region, rate-limited).
 - `ui.open(tab?)`, `ui.close()`, `ui.isOpen()`, `ui.back()` → bool, `ui.setHidden(bool)`.
 - `ui.hidden`, `ui.tab`, and `ui.run.photo() / record() / shareLink()`: the actions with their
   results shown as toasts (the keyboard goes through these).

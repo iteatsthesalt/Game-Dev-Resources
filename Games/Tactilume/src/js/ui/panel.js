@@ -14,7 +14,7 @@ import {
   h, uid, roving, slider, toggle, segmented, chips, stepper, select, button, confirmButton, section, fitLabels,
 } from './controls.js';
 import { icon } from './icons.js';
-import { formatClock, RESTORE_HINT } from './hud.js';
+import { formatClock, restoreHint } from './hud.js';
 
 export const TABS = [
   { id: 'scenes', label: 'Scenes', icon: 'scenes' },
@@ -132,6 +132,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     if (fitQueued) return;
     fitQueued = requestAnimationFrame(() => {
       fitQueued = 0;
+      fitTabs();
       const t = tabs.get(current);
       if (t && t.built && !t.panel.hidden) fitLabels(t.panel);
     });
@@ -211,6 +212,16 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     tabs.set(t.id, { btn, panel, built: false });
   }
   const tabButtons = [...tabs.values()].map((t) => t.btn);
+  // The tabs share the strip's width (style.css). Where any name does not fit its share,
+  // only the chosen tab shows its name; the others keep theirs for screen readers.
+  function fitTabs() {
+    tablist.removeAttribute('data-compact');
+    const cut = tabButtons.some((b) => {
+      const label = b.querySelector('.tl-tab-label');
+      return label && label.scrollWidth > label.clientWidth + 1;
+    });
+    if (cut) tablist.setAttribute('data-compact', '');
+  }
   const tabRove = roving(tabButtons, { onPick: (b) => selectTab(b.dataset.tab) });
 
   const el = h('div', {
@@ -234,8 +245,6 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
       BUILDERS[id](t.panel);
     }
     body.scrollTop = 0;
-    // with large controls the tabs scroll sideways: keep the chosen one in view
-    if (tablist.scrollWidth > tablist.clientWidth) t.btn.scrollIntoView({ block: 'nearest', inline: 'nearest' });
     if (focus) t.btn.focus({ preventScroll: true });
     queueFit();
   }
@@ -661,7 +670,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     const openForm = h('form', { class: 'tl-save' },
       h('label', { class: 'tl-label', for: openId }, 'Open a shared scene'),
       h('div', { class: 'tl-save-row' }, openInput,
-        h('button', { type: 'submit', class: 'tl-btn' }, icon('share'), h('span', { class: 'tl-btn-text' }, 'Open'))));
+        h('button', { type: 'submit', class: 'tl-btn' }, icon('receive'), h('span', { class: 'tl-btn-text' }, 'Open'))));
     openForm.addEventListener('submit', (e) => {
       e.preventDefault();
       const r = actions.openShared(openInput.value);
@@ -776,7 +785,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     clean.body.append(
       h('div', { class: 'tl-field' },
         button('Hide controls', { iconName: 'hide', onClick: () => actions.toggleUI() }),
-        h('p', { class: 'tl-help' }, RESTORE_HINT)));
+        h('p', { class: 'tl-help' }, restoreHint(platform))));
     panel.append(sec.el, clean.el);
     setRecording(recording.on, recording.elapsed);
   }
@@ -835,7 +844,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     const check = section('Device check');
     const report = h('pre', { class: 'tl-diag', hidden: true, tabindex: '0', 'aria-label': 'Device check results' });
     const copy = button('Copy', {
-      iconName: 'share',
+      iconName: 'copy',
       onClick: async () => {
         let ok = false;
         try { await navigator.clipboard.writeText(report.textContent); ok = true; } catch { /* below */ }
@@ -852,7 +861,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     });
     copy.hidden = true;
     const run = button('Check this device', {
-      iconName: 'surprise',
+      iconName: 'pulse',
       onClick: async () => {
         report.hidden = false;
         report.textContent = 'Checking…';
@@ -906,5 +915,7 @@ export function createPanel(root, { store, actions, platform, audio, run, toast,
     selectTab: (id) => selectTab(id, { focus: true }),
     setRecording,
     setStats,
+    // the controls changed size for another reason than Control size (the system font scale)
+    refit: queueFit,
   };
 }

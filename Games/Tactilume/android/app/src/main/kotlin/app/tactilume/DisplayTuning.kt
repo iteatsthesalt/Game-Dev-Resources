@@ -12,7 +12,29 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 
-/** Making the most of the screen: every pixel, the fastest refresh, and no bars in the way. */
+/** Which of a screen's refresh rates suits a frame-rate cap. Plain Kotlin, unit-tested. */
+internal object RefreshChoice {
+    // how far a rate may be from a whole multiple of the cap (59.94 Hz panels count as 60)
+    private const val TOLERANCE_HZ = 1f
+
+    /**
+     * The index in [rates] to ask for: with [capFps] 0 (none) the highest rate; with a cap the
+     * lowest rate that is a whole multiple of it (60 Hz for a 30 or 60 cap on a 60/90/120 Hz
+     * panel, 120 Hz where 60 is not offered), else the highest. Null when [rates] is empty.
+     */
+    fun pick(rates: List<Float>, capFps: Int): Int? {
+        if (rates.isEmpty()) return null
+        val highest = rates.indices.maxByOrNull { rates[it] }
+        if (capFps <= 0) return highest
+        val even = rates.indices.filter { i ->
+            val k = Math.round(rates[i] / capFps)
+            k >= 1 && kotlin.math.abs(rates[i] - k * capFps) <= TOLERANCE_HZ
+        }
+        return even.minByOrNull { rates[it] } ?: highest
+    }
+}
+
+/** Making the most of the screen: every pixel, the right refresh rate, and no bars in the way. */
 internal object DisplayTuning {
     // Android honours at most 200 dp of back-gesture exclusion per side edge
     private const val EXCLUDED_EDGE_HEIGHT_DP = 200
@@ -44,15 +66,17 @@ internal object DisplayTuning {
     }
 
     /**
-     * Asks for the display's fastest refresh rate at the current resolution (90, 120 or 144 Hz
-     * where the panel has it), because flowing light is where a high refresh rate shows most.
+     * Asks for the refresh rate that suits the page's frame-rate cap ([capFps], 0 for none) at
+     * the current resolution: with no cap the fastest (90, 120 or 144 Hz where the panel has
+     * it), because flowing light is where a high refresh rate shows most; with a cap the
+     * slowest one the cap divides evenly, so frames are paced evenly and the panel saves power.
      */
-    fun preferHighestRefreshRate(activity: Activity) {
+    fun preferRefreshRate(activity: Activity, capFps: Int) {
         val display = currentDisplay(activity) ?: return
         val current = display.mode
-        val best = display.supportedModes
+        val modes = display.supportedModes
             .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
-            .maxByOrNull { it.refreshRate } ?: return
+        val best = RefreshChoice.pick(modes.map { it.refreshRate }, capFps)?.let { modes[it] } ?: return
         val window = activity.window
         val attrs = window.attributes
         if (attrs.preferredDisplayModeId == best.modeId && attrs.preferredRefreshRate == best.refreshRate) return

@@ -25,7 +25,9 @@ internal enum class WebViewProblem { MISSING, OUTDATED }
 
 internal object WebViewCheck {
     // Tactilume leans on WebGL 2, modern JavaScript and WebMessageListener; all are solid from
-    // Chromium 100 on, and anything older is years out of date anyway.
+    // Chromium 100 on, and anything older is years out of date anyway. A few things the page
+    // uses came later (dvh in 108, inert, container queries); the page falls back for each of
+    // them, so the controls still fit from 100 on (see style.css, --sheet-h).
     private const val MIN_MAJOR_VERSION = 100
     private const val GOOGLE_WEBVIEW = "com.google.android.webview"
     private val CHROME_VERSION = Regex("Chrome/(\\d+)")

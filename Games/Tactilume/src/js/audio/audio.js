@@ -50,12 +50,16 @@ export function createSoundGraph(ctx) {
   return { synth, gate, limiter, master, songLevel, analyser };
 }
 
-function micError(e) {
+// `inApp`: inside the Android app, which has no browser settings, and where Android stops
+// asking once the permission has been refused, so the message says exactly where to allow it.
+function micError(e, inApp) {
   switch (e && e.name) {
     case 'NotAllowedError':
     case 'PermissionDeniedError':
     case 'SecurityError':
-      return 'The microphone is not allowed. You can turn it on in your browser or app settings.';
+      return inApp
+        ? 'Tactilume may not use the microphone. Allow it in Android Settings > Apps > Tactilume > Permissions.'
+        : 'The microphone is not allowed. You can turn it on in your browser settings.';
     case 'NotFoundError':
     case 'DevicesNotFoundError':
     case 'OverconstrainedError':
@@ -112,7 +116,8 @@ const cleanName = (name) => String(name || 'Song').replace(/[\u0000-\u001f\u007f
 
 // `onSourceEnded(kind)`: the microphone ('mic') or the song ('file') stopped by itself
 // (unplugged, permission taken back, a broken file), so the setting can say so too.
-export function createAudio({ getSettings, onSourceEnded = () => {} }) {
+// `native`: running inside the Android app (platform.native), for its own wording.
+export function createAudio({ getSettings, onSourceEnded = () => {}, native = false }) {
   const ended = (kind) => { try { onSourceEnded(kind); } catch (e) { console.warn('Tactilume: onSourceEnded failed', e); } };
   let ctx = null;
   let graph = null;
@@ -357,7 +362,7 @@ export function createAudio({ getSettings, onSourceEnded = () => {} }) {
       try {
         stream = await devices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false }, video: false });
       } catch (e) {
-        return { ok: false, error: micError(e) };
+        return { ok: false, error: micError(e, native) };
       } finally {
         pending--;
       }

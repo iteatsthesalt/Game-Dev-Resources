@@ -23,13 +23,42 @@ import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import kotlin.math.roundToLong
 
+/**
+ * Android's Font size, as the page is told it. The WebView's own text zoom is switched off
+ * (MainActivity.configure): it grows every font but none of the boxes around them, so the
+ * page's controls overflowed. The page grows its controls as a whole by this scale instead.
+ */
+internal object FontScale {
+    private const val MIN = 0.5
+    private const val MAX = 4.0
+
+    /** The scale to send: rounded to hundredths, 1 when the system reports nothing usable. */
+    fun forPage(scale: Float): Double {
+        if (!scale.isFinite() || scale <= 0f) return 1.0
+        return (Math.round(scale.toDouble().coerceIn(MIN, MAX) * 100) / 100.0)
+    }
+}
+
+/** Background work that may fail without taking the app down. Plain Kotlin, unit-tested. */
+internal object IoGuard {
+    /** [work], with any RuntimeException it throws handed to [onError] instead of escaping. */
+    fun guarded(work: () -> Unit, onError: (RuntimeException) -> Unit): Runnable = Runnable {
+        try {
+            work()
+        } catch (e: RuntimeException) {
+            runCatching { onError(e) }
+        }
+    }
+}
+
 /** What the bridge asks of the Activity. Always called on the main thread. */
 internal interface BridgeHost {
     fun vibrate(ms: Long)
     fun setKeepAwake(on: Boolean)
     fun openExternal(url: Uri): Boolean
     fun onBackAnswer(handled: Boolean)
-    fun shareSaved(uri: Uri, mime: String, text: String?): Boolean
+    /** The page's frame-rate cap: 30, 60, or 0 for the display's own rate. */
+    fun setFrameCap(fps: Int)
     /** Android 8 and 9 only: asks for the storage permission if needed, then calls back. */
     fun withStorageAccess(then: (Boolean) -> Unit)
 }
@@ -70,6 +99,18 @@ internal class NativeBridge(
         lastReply = null
         // nobody is left to finish what that page was sending
         onIo { files.failAll() }
+    }
+
+    /** Android's Font size, from the Activity's configuration; the page hears of each change. */
+    var fontScale: Double = 1.0
+        private set
+
+    /** Main thread: the system font scale is [scale] now; a page that has said hello is told. */
+    fun setFontScale(scale: Float) {
+        val next = FontScale.forPage(scale)
+        if (next == fontScale) return
+        fontScale = next
+        lastReply?.let { post(it, JSONObject().put("t", "font").put("scale", next)) }
     }
 
     /** Tells the page Back was pressed. False when no page is listening. */
@@ -113,6 +154,7 @@ internal class NativeBridge(
                 host.vibrate(it.roundToLong().coerceIn(MIN_VIBRATE_MS, MAX_VIBRATE_MS))
             }
             "awake" -> host.setKeepAwake(msg.optBoolean("on", true))
+            "fps" -> host.setFrameCap(msg.optInt("cap", 0).takeIf { it == 30 || it == 60 } ?: 0)
             "open" -> host.openExternal(msg.optString("url").toUri())
             "back" -> host.onBackAnswer(msg.optBoolean("handled", false))
         }
@@ -124,6 +166,7 @@ internal class NativeBridge(
         .put("sdk", Build.VERSION.SDK_INT)
         .put("device", deviceName())
         .put("webview", WebViewCheck.version(context) ?: JSONObject.NULL)
+        .put("fontScale", fontScale)
 
     // ---- files: from here on, everything runs on the io thread unless it says otherwise -----
 
@@ -169,13 +212,11 @@ internal class NativeBridge(
             is FileTransfers.Finished.AlreadyAnswered -> Unit
             is FileTransfers.Finished.Failed -> done(proxy, id, finished.problem)
             is FileTransfers.Finished.Ready -> {
-                val share = msg.optString("action") == "share"
-                val text = msg.optString("text").takeIf { it.isNotBlank() }
                 if (MediaSaver.needsPermission(context)) {
                     onMain {
                         host.withStorageAccess { granted ->
                             if (granted) {
-                                onIo { save(finished.received, id, share, text, proxy) }
+                                onIo { save(finished.received, id, proxy) }
                             } else {
                                 onIo { finished.received.file.delete() }
                                 done(proxy, id, SaveProblem.NEEDS_PERMISSION)
@@ -183,13 +224,13 @@ internal class NativeBridge(
                         }
                     }
                 } else {
-                    save(finished.received, id, share, text, proxy)
+                    save(finished.received, id, proxy)
                 }
             }
         }
     }
 
-    private fun save(received: ReceivedFile, id: String, share: Boolean, text: String?, proxy: JavaScriptReplyProxy) {
+    private fun save(received: ReceivedFile, id: String, proxy: JavaScriptReplyProxy) {
         val saved = try {
             MediaSaver.save(context, received)
         } catch (e: IOException) {
@@ -198,17 +239,16 @@ internal class NativeBridge(
         } catch (e: SecurityException) {
             Log.w(TAG, "Not allowed to save ${received.mime}", e)
             null
+        } catch (e: RuntimeException) {
+            // MediaStore can throw others (a storage volume gone, its database failing)
+            Log.w(TAG, "Could not save ${received.mime}", e)
+            null
         } finally {
             received.file.delete()
         }
         onMain {
-            when {
-                saved == null -> done(proxy, id, SaveProblem.FAILED)
-                share && !host.shareSaved(saved.uri, received.mime, text) ->
-                    post(proxy, doneMessage(id, false).put("where", saved.where)
-                        .put("error", context.getString(R.string.share_failed, saved.where)))
-                else -> post(proxy, doneMessage(id, true).put("where", saved.where))
-            }
+            if (saved == null) done(proxy, id, SaveProblem.FAILED)
+            else post(proxy, doneMessage(id, true).put("where", saved.where))
         }
     }
 
@@ -225,9 +265,12 @@ internal class NativeBridge(
         main.post { if (!closed) work() }
     }
 
-    /** Runs [work] on the io thread; false once the bridge has closed. */
+    /**
+     * Runs [work] on the io thread; false once the bridge has closed. Nothing [work] throws
+     * reaches the thread's uncaught-exception handler, which would end the app.
+     */
     private fun onIo(work: () -> Unit): Boolean = try {
-        io.execute(work)
+        io.execute(IoGuard.guarded(work) { e -> Log.w(TAG, "A file task failed", e) })
         true
     } catch (e: RejectedExecutionException) {
         false
