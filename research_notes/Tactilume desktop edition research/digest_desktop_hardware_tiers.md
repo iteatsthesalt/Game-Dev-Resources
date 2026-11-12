@@ -21,14 +21,9 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 
 **Adapter identity**
 - **Default `GPUAdapterInfo`** carries `vendor`, `architecture`, subgroup sizes and `isFallbackAdapter`. [Verified: CRMAIN/third_party/blink/renderer/modules/webgpu/gpu_adapter.cc; CR156/gpu/config/gpu_switches.cc; CR156/content/child/runtime_features.cc]
-  - `device`/`description` stay empty unless `--enable-webgpu-developer-features` is set. That flag is off by default and adds the PCI ID, driver name and heaps.
-  - Do not ship that flag: it adds fingerprinting surface, and Electron already supplies PCI IDs.
-  - Measured: "google" / "swiftshader" / true / empty description.
+  `device`/`description` stay empty unless `--enable-webgpu-developer-features` (off by default) adds the PCI ID, driver name and heaps. Do not ship that flag: it adds fingerprinting surface, and Electron already supplies PCI IDs. Measured: "google" / "swiftshader" / true / empty description.
 - `isFallbackAdapter` arrived in Chrome 136. [Verified: BCD/GPUAdapterInfo.json]
-- **Dawn architecture strings** by PCI-ID range: [Verified: DAWN]
-  - NVIDIA `turing`…`blackwell`; AMD `gcn-1`…`rdna-4`; Intel `gen-9`…`gen-12-hp`, `xe-lpg`, `xe-2-lpg`, `xe-2-hpg`, `xe-3-lpg`; Qualcomm `adreno-6xx/7xx/8xx`.
-  - Software: SwiftShader 0x1AE0, WARP 0x1414, Mesa 0x10005.
-  - Apple reports no device ID, only the Metal family `common-N`.
+- **Dawn architecture strings** by PCI-ID range: NVIDIA `turing`…`blackwell`; AMD `gcn-1`…`rdna-4`; Intel `gen-9`…`gen-12-hp`, `xe-lpg`, `xe-2-lpg`, `xe-2-hpg`, `xe-3-lpg`; Qualcomm `adreno-6xx/7xx/8xx`; software SwiftShader 0x1AE0, WARP 0x1414, Mesa 0x10005. Apple reports no device ID, only the Metal family `common-N`. [Verified: DAWN]
 - The unmasked WebGL renderer string (`WEBGL_debug_renderer_info`) is available. Measured.
 - **`app.getGPUInfo('basic')`** returns each GPU's decimal PCI vendorId/deviceId with `active`, plus `optimus`/`amdSwitchable` and `machineModelName`. It rejects if the GPU is disabled, and changes fire `gpu-info-update`. [Verified: EDOCS/app.md]
 - Electron can disable GPU access after repeated crashes. [Verified: https://github.com/electron/electron/pull/52072]
@@ -47,25 +42,13 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
 **Memory, display, power, HDR**
 - `navigator.deviceMemory` on desktop reports 2/4/8/16/32 from Chrome 147; before that it was capped at 8. 24 GB reads as 16 and 64 GB+ as 32 (calc). Measured 16 on 16 GB. Prefer `process.getSystemMemoryInfo().total` (KB, exact). [Verified: BCD/Navigator.json; CRMAIN/third_party/blink/common/device_memory/approximated_device_memory.cc; EDOCS/process.md]
 - `Display` exposes `displayFrequency`, `colorDepth`, `depthPerComponent`, `colorSpace`, `scaleFactor`, `size` and `internal`. No web refresh-rate API exists, so read `displayFrequency`. [Verified: EDOCS/structures/display.md]
-- **`powerMonitor`:** [Verified: EDOCS/power-monitor.md]
-  - `isOnBatteryPower()`.
-  - `on-ac`/`on-battery` on macOS and Windows only; Linux must poll.
-  - `thermal-state-change` on macOS.
-  - `speed-limit-change` on macOS and Windows; below 100 means throttling.
-- **HDR:**
-  - A canvas with `rgba16float` + `toneMapping: {mode: "extended"}` is in Chrome 129+. [Verified: BCD/GPUCanvasContext.json]
-  - Measured: accepted and echoed by `getConfiguration()`. This proves the API only: WebGPU canvas presentation fails in this container, so no frame was shown.
-  - `dynamic-range: high` reports capability, not active HDR. [Untagged: MDN]
-  - Electron does not document which `colorSpace`/`depthPerComponent` values mean HDR is on.
+- **`powerMonitor`:** `isOnBatteryPower()`; `on-ac`/`on-battery` on macOS and Windows only (Linux must poll); `thermal-state-change` on macOS; `speed-limit-change` on macOS and Windows (below 100 means throttling). [Verified: EDOCS/power-monitor.md]
+- **HDR:** a canvas with `rgba16float` + `toneMapping: {mode: "extended"}` is in Chrome 129+ [Verified: BCD/GPUCanvasContext.json]. Measured: accepted and echoed by `getConfiguration()`, which proves the API only, because WebGPU canvas presentation fails in this container and no frame was shown. `dynamic-range: high` reports capability, not active HDR [Untagged: MDN]. Electron does not document which `colorSpace`/`depthPerComponent` values mean HDR is on.
 
 ## 2. Tier model
 
 - **Tier keys (Inference):** bandwidth first, then single-issue FP32, then VRAM. Halve RDNA 3/4 dual-issue TFLOPS: the 780M is only 5–10% faster than the 680M despite 2× the paper figure. Benchmark laptops: iGPU bandwidth follows RAM (two "780M" laptops differ by about 30%), and dGPUs vary with TGP.
-- **Floors (Inference):**
-  - Minimum: ≥ ~60 GB/s, 2 TFLOPS, 2 GB.
-  - Recommended: ≥ 250 GB/s, 10 TFLOPS, 8 GB.
-  - High: ≥ 440 GB/s, 20 TFLOPS, 12 GB.
-  - Ultra: ≥ 880 GB/s, 40 TFLOPS, 16 GB.
+- **Floors (Inference):** Minimum ≥ ~60 GB/s, 2 TFLOPS, 2 GB; Recommended ≥ 250 GB/s, 10 TFLOPS, 8 GB; High ≥ 440 GB/s, 20 TFLOPS, 12 GB; Ultra ≥ 880 GB/s, 40 TFLOPS, 16 GB.
 - **Representative GPUs** (peak GB/s · FP32 · VRAM). [Unverified: secondary spec sites; nvidia.com and apple.com unreachable]
   - Minimum: GTX 1650 (128–192 · 2.9 · 4 GB); Iris Xe (~51–68 calc · ~2); Radeon 680M/780M (~90–120 calc · 3.4–4.5); 890M (~1.2–1.3× 780M); Arc 140V (~136 · 4.2); Arc B390 (74 vs 153.6, disputed · 7.7); Apple M1–M5 base (68–153.6); Adreno X2-90 (152–228 · 7.0–7.6).
   - Recommended: RTX 3060 12 GB (360 · 12.7); RTX 4060 (272 · 15.1 · 8); RTX 4060 Laptop (256–272); RX 7600 (288 · 10.9 · 8); RX 9060 XT (~320 · 13); Arc B570 (380 · 10 GB); Arc B580 (456 · 13.7–14.6 · 12); Arc A750 (512 · 17.2 · 8); Radeon 8060S (256 · 14.85); M4 Pro (273); M5 Pro (307).
@@ -80,12 +63,7 @@ Source: `desktop_hardware_tiers.md`, fact-checked 2026-11-12, plus one later cor
   - Usable = η·φ·peak = 0.8 × 0.5 × peak. Both factors are unsourced; calibrate them in the app.
   - Bytes per particle: lean 80, typical 128, heavy 256.
 - **Overhead** (RGBA16F post, ~64 B/px/frame), in GB/s at 60/144/240 Hz: 1080p 8.0/19.1/31.9; 1440p 14.2/34.0/56.6; 4K 31.9/76.4/127.4.
-- **N_max at 128 B.** [Verified: arithmetic recomputed; inputs assumed, peak bandwidths unverified]
-  - Iris Xe: ~2.5M at 1080p60, close to the mobile edition's 2M.
-  - RTX 4060: ~4.9M at 1080p144, ~12M at 1440p60.
-  - RTX 5070: ~12.7M at 1440p144, ~6.9M at 1440p240.
-  - RTX 5080: ~16.7M at 4K144.
-  - RTX 5090: ~35M at 4K144, ~89M at 4K60.
+- **N_max at 128 B:** Iris Xe ~2.5M at 1080p60 (close to the mobile edition's 2M); RTX 4060 ~4.9M at 1080p144, ~12M at 1440p60; RTX 5070 ~12.7M at 1440p144, ~6.9M at 1440p240; RTX 5080 ~16.7M at 4K144; RTX 5090 ~35M at 4K144, ~89M at 4K60. [Verified: arithmetic recomputed; inputs assumed, peak bandwidths unverified]
 - **What fits at 128 B:** 1M at 240 Hz fits all but the weakest iGPUs. 10M at 144 Hz needs RTX 5070 class. 50M at 60 Hz needs an RTX 5080/5090, and 50M at 144 Hz only an RTX 5090 with the lean layout. 50M at 240 Hz fits no single GPU.
 - **Fill on immediate-mode GPUs:** about 16 B of DRAM per blended RGBA16F fragment. 1M glow sprites × 64 px × 60 Hz is about 61 GB/s, more than Iris Xe's whole usable budget.
   - Apple TBDR blends in tile memory, so fill mostly vanishes on Macs. [Verified: METAL/tailor-your-apps-for-apple-gpus-and-tile-based-deferred-rendering]
