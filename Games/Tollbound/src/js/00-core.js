@@ -16,6 +16,8 @@
 //   Core.hashStr(text) -> uint32
 //   Core.hashMix(h, number) -> uint32 one step of a running hash, for checksums: h = Core.hashMix(h, value).
 //                                     Start from any number (0 will do). The order of the values matters.
+//                                     Any number counts in full (0.1 and 0.1000001 differ); true and false
+//                                     count as 1 and 0, -0 as 0, and every NaN alike. Allocates nothing.
 //   new Core.RNG(seed)                a seeded random stream; seed is a number (its low 32 bits count) or a string
 //     rng.next() -> [0, 1)            rng.u32() -> uint32
 //     rng.range(a, b) -> [a, b)       rng.int(a, b) -> whole number in a..b, both ends included

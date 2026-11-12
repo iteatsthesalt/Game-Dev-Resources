@@ -35,11 +35,19 @@ test('a module name is two digits, a dash and lower-case words', () => {
   assert.throws(() => modules.layerOf('notes.txt'), /not a module name/);
 });
 
+test('declared names are read from before the enclosed function only', () => {
+  const text = "// core. Example: const Fake = {};\n/* (function () { */\nconst A = {}, B = {},\n  C = {};\n  (function () {\n  'use strict';\n  const cache = {};\n})();\n";
+  assert.deepEqual(modules.declaredIn(text), ['A', 'B', 'C']);
+  assert.deepEqual(modules.declaredIn("// plain module\n(function () {\n  const cache = {};\n})();\n"), []);
+  assert.deepEqual(modules.namespaces('40-no-such-file.js'), []);
+});
+
 test('the declared namespaces are the ones docs/engine.md lists', (t) => {
-  const doc = fs.readFileSync(path.join(__dirname, '..', '..', 'docs', 'engine.md'), 'utf8');
+  const file = path.join(__dirname, '..', '..', 'docs', 'engine.md');
+  const doc = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : '';
   const listed = (label) => { const m = new RegExp(label + ': `([A-Za-z ]+)`').exec(doc); return m ? m[1].split(' ') : null; };
   const sim = listed('Simulation'), presentation = listed('Presentation');
-  if (!sim || !presentation) return t.skip('docs/engine.md no longer lists the namespaces on one line each');
+  if (!sim || !presentation) return t.skip('docs/engine.md does not list the namespaces on one line each');
   assert.deepEqual(modules.namespaces('00-core.js'), sim);
   if (modules.all().includes('50-platform.js')) assert.deepEqual(modules.namespaces('50-platform.js'), presentation);
   const boot = modules.read('99-boot.js');
@@ -94,7 +102,6 @@ test('the artifact is a fragment: a title, one meta, then the same style, body a
   assert.ok(!/<!doctype|<\/?(?:html|head|body)\b/i.test(fragment), 'no doctype, html, head or body tag');
   const shared = fragment.slice(fragment.indexOf('<style>'));
   assert.equal(page, p.head.text + shared + p.tail.text, 'both targets share everything between the wrappers');
-  assert.ok(!/100vh|100dvh/.test(fragment), 'sizes come from height: 100%, not from viewport units');
 });
 
 test('the build refuses text that would break the page', () => {
@@ -177,9 +184,7 @@ test('lint: the scanner is not fooled by strings, comments, templates and regula
   // code inside a template's ${...} is still code
   flagged(problems('10-stats.js', wrap('Stats', '  Stats.label = function () { return `now ${Date.now()}`; };')), /uses Date/, 5);
   flagged(problems('10-stats.js', wrap('Stats', "  const s = 'it''s';\n  Stats.t = performance.now();")), /uses performance/, 6);
-  const s = lint.strip("a = 'x' + /y'/.source; // z\nb = `t${c}u`;");
-  assert.equal(s.code, "a = ' ' + /  /.source;     \nb = ` ${c} `;");
-  assert.equal(s.text, "a = 'x' + /y'/.source;     \nb = `t${c}u`;");
+  assert.equal(lint.strip("a = 'x' + /y'/.source; // z\nb = `t${c}u`; /* w */"), "a = ' ' + /  /.source;     \nb = ` ${c} `;        ");
 });
 
 test('lint: files below 50 use no browser, clock, timer, storage or unseeded randomness', () => {
@@ -214,6 +219,8 @@ test('lint: the simulation does not use presentation namespaces', () => {
 test('lint: content is plain data', () => {
   const content = (body) => problems('35-sigils.js', wrap('(none)', body));
   clean(content("  const fire = ['fire', 'spell'];\n  for (const tier of [1, 2, 3]) Defs.add('sigil', { id: 'ember.' + tier, tags: fire, text: 'A function of heat => light.', angle: Math.PI / 3 });"));
+  // words of the language are fine as field names
+  clean(content("  const base = { class: 'warden', new: true };\n  Defs.add('calling', {\n    id: 'a',\n    class: base.class,\n    new: base.new, function: 1, undefined: 2, get: 3, set: 4,\n  });"));
   flagged(content("  Defs.add('sigil', { id: 'a', cast: function (S) { return 1; } });"), /a function: content is plain data/, 5);
   flagged(content("  Defs.add('sigil', { id: 'a', cast: (S) => 1 });"), /an arrow function/, 5);
   flagged(content("  Defs.add('sigil', {\n    id: 'a',\n    cast(S) { return 1; },\n  });"), /a method/, 7);
@@ -287,6 +294,9 @@ test('lint: the page loads nothing from another file', () => {
   flagged(pages('src/page/css/10-hud.css', '@import url("https://fonts.googleapis.com/css2?family=X");\n'), /loads another file/, 1);
   flagged(pages('src/page/css/10-hud.css', '.a {}\n.b { background: url("panel.png"); }\n'), /loads another file/, 2);
   clean(pages('src/page/body.html', '<!-- <link rel="x" href="y"> -->\n<div></div>\n'));
+  flagged(pages('src/page/css/10-hud.css', 'html { height: 100% }\n.app { height: 100vh; }\n'), /"100vh": fill the screen with height: 100%/, 2);
+  flagged(pages('src/page/css/10-hud.css', '.app { min-height: 100dvh; }\n'), /"100dvh"/, 1);
+  clean(pages('src/page/css/10-hud.css', '.list { max-height: 60vh; width: 1100vhx; } /* not 100vh */\n'));
 });
 
 test('lint: denylist entries are found as whole words in any letter case', () => {

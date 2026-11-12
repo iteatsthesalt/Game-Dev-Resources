@@ -38,7 +38,7 @@ function layerOf(file) {
 // The declarations sit between the header comment and the enclosed function, as "const A = {}, B = {};".
 // tools/lint.js checks that nothing else is there, so reading the names needs no parser.
 function declaredIn(text) {
-  const top = text.split(/^\(function/m)[0].replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  const top = text.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '').split(/\(\s*function\b/)[0];
   return Array.from(top.matchAll(/([A-Za-z_$][\w$]*)\s*=\s*\{\s*\}/g), (m) => m[1]);
 }
 const namespaces = (file) => (fs.existsSync(path.join(DIR, path.basename(file))) ? declaredIn(read(file)) : []);

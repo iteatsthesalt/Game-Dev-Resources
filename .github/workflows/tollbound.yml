@@ -1,0 +1,21 @@
+name: Tollbound
+on:
+  push:
+    paths: ['Games/Tollbound/**', '.github/workflows/tollbound.yml']
+  pull_request:
+    paths: ['Games/Tollbound/**', '.github/workflows/tollbound.yml']
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: Games/Tollbound
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - run: npx playwright install --with-deps chromium
+      - run: npm test

@@ -8,15 +8,16 @@
 //                          copy of the simulation, so tests cannot disturb each other.
 //   loadSim({boot: true})  then does what 99-boot.js does when the page starts: Defs.finalize(), where an
 //                          error in the content throws, and Core.seal(), after which no namespace can change
-//   plain(value)           a copy of a simulation value built from this side's own objects and arrays
+//   plain(value)           a JSON copy of a simulation value, built from this side's own objects and arrays
 //
 // Three things to know:
 //   - In that context Math.random and Date throw. The simulation takes its randomness from seeded streams and
 //     its time from the step count; a file that reaches for either fails its tests here.
-//   - Values that come out of the simulation belong to another context. assert.deepStrictEqual compares
-//     prototypes, so it calls a simulation array different from a test array with the same content. Compare
-//     plain(value), or use assert.deepEqual. For the same reason check a thrown error by its message,
-//     assert.throws(fn, /text/), not with instanceof.
+//   - Objects and arrays that come out of the simulation belong to another context. assert.deepStrictEqual
+//     (which is also the deepEqual of node:assert/strict) compares prototypes, so it calls a simulation array
+//     different from a test array with the same content: compare plain(value) instead. For the same reason
+//     "value instanceof Array" is false (Array.isArray works) and assert.throws(fn, Error) fails: check a
+//     thrown error by its message, assert.throws(fn, /text/).
 //   - Each module runs as its own script under its own file name, so a stack trace names src/js/NN-name.js
 //     and the line. Top-level names are shared between the scripts of one context just as they are between
 //     the files joined into the page.
@@ -42,12 +43,17 @@ function freshContext() {
   return context;
 }
 
+// Each module is compiled once for the whole test process; every loadSim() runs the compiled scripts afresh.
+const scripts = new Map();
+function compiled(file) {
+  if (!scripts.has(file)) scripts.set(file, new vm.Script(modules.read(file), { filename: path.join(modules.DIR, file) }));
+  return scripts.get(file);
+}
+
 function loadSim(options = {}) {
   const context = freshContext();
   new vm.Script(GUARD, { filename: __filename }).runInContext(context);
-  for (const file of modules.sim()) {
-    new vm.Script(modules.read(file), { filename: path.join(modules.DIR, file) }).runInContext(context);
-  }
+  for (const file of modules.sim()) compiled(file).runInContext(context);
   const names = modules.namespaces(modules.DECLARERS[0]);
   const sim = Object.assign({}, new vm.Script(`({ ${names.join(', ')} })`, { filename: __filename }).runInContext(context));
   if (options.boot) {
@@ -58,6 +64,6 @@ function loadSim(options = {}) {
   return sim;
 }
 
-const plain = (value) => JSON.parse(JSON.stringify(value));
+const plain = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
 module.exports = { loadSim, plain };

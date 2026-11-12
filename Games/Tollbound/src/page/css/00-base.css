@@ -87,7 +87,8 @@ button, input, select, textarea {
   -webkit-tap-highlight-color: var(--clear);
 }
 
-.app input, .app textarea {
+/* Text a player types can be selected. */
+:where(.app) input, :where(.app) textarea {
   -webkit-user-select: text;
   user-select: text;
 }
@@ -127,10 +128,14 @@ button, input, select, textarea {
   pointer-events: none;
 }
 
-#ui > * { pointer-events: auto; }
+/* The defaults from here on are written with :where(), which gives a rule no weight:
+   any class rule in a later file wins over them without a fight. */
+
+/* A screen put into #ui takes input unless its own rule says otherwise. */
+:where(#ui) > * { pointer-events: auto; }
 
 /* Short messages, stacked from the top centre. 99-boot.js reports a failed start here. */
-#toast {
+:where(#toast) {
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -138,7 +143,7 @@ button, input, select, textarea {
   text-align: center;
 }
 
-#toast > * {
+:where(#toast) > * {
   max-width: min(36rem, 100%);
   padding: 8px 14px;
   border: 1px solid var(--line);
@@ -150,7 +155,7 @@ button, input, select, textarea {
 }
 
 /* An error can be selected, so a player can copy it into a report. */
-#toast > .toast-error {
+:where(#toast) > .toast-error {
   border-color: var(--bad);
   pointer-events: auto;
   -webkit-user-select: text;

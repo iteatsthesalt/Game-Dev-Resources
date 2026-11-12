@@ -22,7 +22,7 @@ const NAME = 'Tollbound';
 const ARTIFACT_HEAD = `<title>${NAME}</title>\n<meta name="claude:viewport-fit-sides" content="cover">\n`;
 
 // Text as it goes into the page: no byte-order mark, Unix line ends, exactly one newline at the end.
-const tidy = (text) => text.replace(/^﻿/, '').replace(/\r\n?/g, '\n').replace(/\s*$/, '\n');
+const tidy = (text) => (text.charCodeAt(0) === 0xfeff ? text.slice(1) : text).replace(/\r\n?/g, '\n').trimEnd() + '\n';
 const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
 function parts() {
@@ -51,7 +51,8 @@ function guard(p) {
   scan(p.js, /<!--/, '"{0}" changes how a browser reads the rest of the script; write it as "<\\!--"');
   scan(p.css, /<\/style/i, '"{0}" would end the page\'s style here');
   scan([...p.css, p.body, ...p.js], /<!doctype|<\/?(?:html|head|body)\b/i,
-    '"{0}" is a document tag: the published fragment may hold none, not even in a comment or a string');
+    '"{0}" reads as a document tag, and the published fragment may hold none: not in a comment, not in a string, ' +
+    'not in a comparison (write "a < body")');
   return found;
 }
 
@@ -74,7 +75,8 @@ function write(file, text) {
   const tmp = `${file}.tmp-${process.pid}`;
   fs.writeFileSync(tmp, text);
   fs.renameSync(tmp, file);
-  console.log(`wrote ${path.relative(ROOT, file) || file} (${(Buffer.byteLength(text) / 1024).toFixed(1)} KB)`);
+  const inGame = path.relative(ROOT, file);
+  console.log(`wrote ${inGame.startsWith('..') ? file : inGame} (${(Buffer.byteLength(text) / 1024).toFixed(1)} KB)`);
 }
 
 function main(args) {

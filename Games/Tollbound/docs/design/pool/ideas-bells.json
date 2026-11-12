@@ -1,0 +1,690 @@
+{
+ "inventor": "bells",
+ "method": "Each idea starts from one checked fact of bell acoustics, hanging and ringing, change ringing, tolling or bell-founding, turns that fact into a rule with numbers, and was then compared with known games and rewritten where it looked like one.",
+ "ideas": [
+  {
+   "id": "bells-01",
+   "area": "combat-model",
+   "name": "Stroke, Ring, Crack",
+   "idea": "Every hit is a Stroke, taken at once. A struck body then rings: it takes a further 50% of that Stroke as Ring over 3 s. Weight lowers Stroke. Muffling cancels Ring: knee-deep water, cloth armour, or 3 bodies within 1 m. But a muffled body cannot ring a heavy blow out: any single Stroke above 20% of its greatest health deals the excess again as Crack, which lowers greatest health until the vigil ends. Light hits want loose targets; heavy hits want crowded ones.",
+   "source": "A struck bell keeps sounding unless cloth, water or a hand damps it, and a bell struck while held cannot vibrate freely and cracks.",
+   "nearest": "Path of Exile armour, which is good against small hits and poor against large ones, and ordinary damage-over-time riders. Here the split comes from whether the body is muffled by water, cloth or a crowd, which the player changes by moving.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-02",
+   "area": "combat-model",
+   "name": "Clapper to Bell",
+   "idea": "Blows and bodies have Weight. A blow under 1/40 of the body's Weight is a Tap: half harm. Between 1/40 and 1/20 it is a True stroke: full harm, and the body rings, passing 30% to every body of its own weight class within 3 m. Over 1/20 it is a Breaking stroke: full harm plus 25% as Crack (greatest health lost for the vigil), and nothing rings. Size shows the five weight classes. Protection is being unlike the blows aimed at you; gear changes your Weight.",
+   "source": "A clapper is matched to its bell at a few hundredths of the bell's weight: too light gives a thin sound, too heavy cracks the bell.",
+   "nearest": "Over-penetration in tank games, where a shell too strong for its target does less. Here the fit of blow to body decides whether harm spreads by resonance to like-sized neighbours or is spent on one body.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-03",
+   "area": "attribute",
+   "name": "Copper, Tin, Rope and the Temper",
+   "idea": "Copper: +6 health and +1 Weight per point. Tin: +2% Stroke and +0.1 s Ring length per point. Rope: -1% sigil interval and +1% pickup reach per point. The share of Tin in Copper plus Tin names the character's Temper: under 15% gun-metal (Crack taken -40%), 15 to 25% bell-metal (resonance and Ring you cause reach 50% farther), over 25% mirror-metal (Stroke +25%, Crack taken +40%). Sigils and gear ask for amounts (Tin 30) or for a Temper (bell-metal only), so one point can win or lose an item.",
+   "source": "Bell metal is about four parts copper to one of tin; less tin gives tough gunmetal, more gives hard, brittle, white speculum or mirror metal.",
+   "nearest": "Attribute requirements in Diablo-style games. Differs in that the ratio between two attributes, not only their size, puts the character in a named state and decides what can be equipped.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-04",
+   "area": "condition",
+   "name": "Swing",
+   "idea": "Built by hits. Each hit arriving from the opposite side to the previous hit (directions more than 120 degrees apart) adds one Swing; a hit from the same side as the previous one removes one. Swing never fades with time. At 6 the body goes right over: it is flung 4 m along the last hit's direction, deals its own Weight as Stroke to every body it passes, and lands with Swing 0. Keepers need 12 and are flung 1 m. Catch a heavy body between two sources.",
+   "source": "A bell is raised by alternate pulls, handstroke and backstroke, over many strokes until it turns right over.",
+   "nearest": "Flanking bonuses in tactics games and stagger meters. Differs in that only alternation of sides builds it, same-side hits undo it, and it never times out.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-05",
+   "area": "condition",
+   "name": "Sent Hunting",
+   "idea": "Put on one body by certain sigils. Every 0.75 s the body trades places with the nearest body within 2.5 m that is farther from the player; it cannot attack while trading. After 6 trades, or when nobody is farther, it turns and trades forward the same number of times, then the condition ends. Any shove while hunting costs it one extra trade back. Elites make 3 trades; keepers are immune. It removes a dangerous body from the front rank for a known time.",
+   "source": "In plain hunt a bell moves one place per row to the back of the row and then returns the same way.",
+   "nearest": "Position-swap spells such as Vengeful Spirit's swap in Dota. Differs as a lasting state that walks one enemy to the back of the crowd place by place and then brings it back.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-06",
+   "area": "condition",
+   "name": "Clocked",
+   "idea": "Put on the player inside the 5 m ring of a tongueless bell or by a keeper's call; lasts while in the ring plus 2 s. No sigil casts by itself. Each time the thumb lifts so the character stops, the next sigil in order, lightest first, casts once at +50%. Stops closer together than 0.3 s do nothing. Each cast made this way has a 3% chance to crack that sigil: half harm until the next gate.",
+   "source": "Clocking is sounding a still bell by pulling its clapper against it by hand, a practice known for cracking bells.",
+   "nearest": "Silence effects that stop casting. Differs in that casting is handed to the thumb's stop-and-go rhythm instead of being taken away.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-07",
+   "area": "condition",
+   "name": "Half-muffled",
+   "idea": "Leather on one side. Every second blow the afflicted makes is an echo: 25% harm, no condition applied, and it lands where the previous blow landed instead of being aimed. Lasts 10 blows. Enemies get it from cloth and leather effects; the player gets it from mourner dead, and then every second cast of each sigil is the echo. A cast made at the same instant as two other sigils is never muffled. Two seconds in water soaks the leather off.",
+   "source": "Half-muffled ringing straps leather to one side of each clapper so that every second row is a faint echo of the first.",
+   "nearest": "Blind and weaken effects. Differs in being strictly every second blow, and the echo repeats the last place struck rather than missing at random.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-08",
+   "area": "condition",
+   "name": "Odd-struck",
+   "idea": "The afflicted speaks early on one stroke and late on the next: its attack or cast intervals alternate between half and one and a half times the normal time, so blows come in quick pairs with a long gap. The average rate is unchanged. Lasts 20 s on enemies and until the next gate on the player. On an enemy the long gap is the moment to walk in. On the player, standing still for 4 s re-hangs the bell and ends it.",
+   "source": "An odd-struck bell sounds sooner after the pull at one stroke than at the other, and its ringer has to compensate.",
+   "nearest": "Attack-speed slows and hastes. Differs in keeping the average rate and only pairing the blows, which helps or hurts depending on what the pairs are used for.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-09",
+   "area": "condition",
+   "name": "Turned",
+   "idea": "Applied by lathe-work: a keeper, turner dead, some sigils. Each application takes one turning: -8% Weight, lasting the whole vigil, impossible to cleanse or heal, up to 5. A Turned body is shoved 8% farther and rings 0.5 s longer per turning; at 3 and at 5 it drops one weight class. At 5 it is tinny: its own Strokes deal half. On the player, turnings are made good only by recasting at a gate, which costs 10% of carried loot per turning.",
+   "source": "A founder tunes a bell by turning metal off its inside on a lathe, and metal removed cannot be put back.",
+   "nearest": "Stacking armour-shred debuffs. Differs in being permanent, capped, and changing what size of body the victim counts as.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-10",
+   "area": "class",
+   "name": "Ringer",
+   "idea": "A tower ringer who kept hold of the rope. The thumb is the rope: every reversal of direction of more than 120 degrees is a pull and makes the starting sigil speak at once, at most once per 0.4 s; it also casts by itself every 3 s. Starting sigil Tenor Stroke: a heavy ring 2.5 m around the Ringer. Lifting the thumb for 1 s sets the bell mouth-up, and the next pull is doubled. The Ringer fights by rocking back and forth inside the crowd.",
+   "source": "A ringer makes the bell speak by alternate pulls, handstroke and backstroke, and can set it balanced mouth-up at rest.",
+   "nearest": "None known for reversing the movement stick as the attack trigger; the nearest is stand-still charging in survivor games.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-11",
+   "area": "class",
+   "name": "Strickler",
+   "idea": "A founder's mould-maker. Button one plants a spindle. While the Strickler is within 6 m of it a rigid strickle board joins them; the board scrapes every body it passes over (starting sigil Strickle: harm per sweep, and scraped bodies are pushed along the board toward its outer end). The thumb therefore walks circles: a faster orbit means more scrapes. A full turn closes the mould: the swept circle becomes a loam wall for 3 s that bodies cannot cross. Walking past 6 m drops the board.",
+   "source": "A bell mould is shaped in loam by a strickle board swept round a central spindle.",
+   "nearest": "Tether weapons that harm whatever crosses a line between player and anchor. Differs in that the line is a rigid sweep the player orbits, and a completed turn closes a wall.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-12",
+   "area": "class",
+   "name": "Tuner",
+   "idea": "A foundry tuner with a case of forks. How far the thumb is pushed sets the note of the starting sigil Fork. A slow walk (under 40% push) sounds tenor: a heavy ring 6 m wide every 2.4 s. A full run sounds treble: a light ring 2 m wide every 0.6 s. There are five steps between. Heavy notes shove and fit heavy bodies; light notes fit the small. The Tuner changes what is being hurt by changing pace, not by choosing a target.",
+   "source": "A ring of bells runs from the light, quick treble to the heavy, slow tenor, and a tuner works by comparing notes.",
+   "nearest": "None known for walking pace choosing the size of the weapon; the nearest is weapon-swap buttons.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-13",
+   "area": "class",
+   "name": "Quarter-jack",
+   "idea": "A clock-striker figure come down from its tower. Its starting sigil Jack's Hammer has no interval of its own: it strikes on every quarter of the toll (every 18.75 s) in a 5 m arc where the thumb points, at six times normal harm, and on the toll itself it strikes as many times as tolls have sounded this vigil. A clock hand circles the Jack. Between quarters it only ticks: one light tap per second on the nearest body. The thumb's work is being in place at known instants.",
+   "source": "Quarter-jacks are mechanical figures on clock towers that strike the quarters and the count of the hour on bells.",
+   "nearest": "Beat-locked attacks in rhythm action games. Differs in long fixed periods tied to the district bell and an hour count that grows as the vigil goes on.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-14",
+   "area": "class",
+   "name": "Conductor",
+   "idea": "The Conductor's sigils keep no separate timers: they speak one after another in a row, lightest first, one row every 4 s. Button one calls Bob: the sigil about to speak trades places with the one after it, from then on. Button two calls Single: the sigil about to speak speaks twice and the last in the row is skipped once. A sigil hitting a body already hit this row by the sigil before it deals +25%. Starting sigil Treble: a light dart at the nearest body within 8 m.",
+   "source": "Change-ringing bells sound one after another in rows, and a conductor calls bob or single to bend the pattern.",
+   "nearest": "The fixed spell order on a Noita wand. Differs in that the order is changed live by two calls and pays for consecutive places striking the same body.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-15",
+   "area": "class",
+   "name": "Roper",
+   "idea": "A rope-maker who walks backward paying out line. A rope lies along the last 12 m of the path walked. Starting sigil Sally: every body that crosses the rope pulls it, and each pull rings one stroke, a 2 m ring, at the rope's far end, its oldest point. More crossings mean more strokes, up to 8 a second. The thumb draws the rope across the horde's road and parks its far end where the crowd is thickest. Standing still for 2 s coils the rope in.",
+   "source": "A bell is rung from a distance by a rope, and ropemakers walk backward down a ropewalk laying the rope out behind them.",
+   "nearest": "Damaging trails and tripwires. Differs in that the rope does no harm: enemies crossing it are the trigger for strokes that land somewhere else.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-16",
+   "area": "calling",
+   "name": "Stander",
+   "idea": "Grows from the Ringer. New rule, the Set: when the Stander stands still for a whole second, every sigil stops and stands mouth-up, and each further second held, up to 3, stores one more stroke in each. On the next step they all come down in order, lightest first, 0.1 s apart, each cast repeated once per second held. But the stay breaks if a single blow takes more than 15% of health while set: the stored strokes are lost and no sigil casts for 3 s.",
+   "source": "A bell set mouth-up rests against a wooden stay that is made to break if the bell is pulled too hard.",
+   "nearest": "Charge-and-release attacks. Differs in holding every skill at once, releasing them in a fixed order, and a break rule tied to one heavy blow rather than to any hit.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-17",
+   "area": "calling",
+   "name": "Composer",
+   "idea": "Grows from the Conductor. New rule, Truth: every row the Composer's sigils ring is remembered until the next toll. Each row whose order has not been rung since the last toll adds 1 Truth: +3% harm and +1% pickup reach. Ringing an order already used makes the touch false: Truth drops to 0 and cannot build again until the toll. With 4 sigils there are 24 orders and about 18 rows between tolls, so the Composer must keep calling changes and never drift back to an old row.",
+   "source": "A peal must contain no repeated row; a single repetition makes the whole performance false.",
+   "nearest": "Style meters that punish repeating a move, as in Devil May Cry. Differs in that the thing not to be repeated is the whole order of the automatic casts, remembered between tolls.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-18",
+   "area": "calling",
+   "name": "Gallery-walker",
+   "idea": "Grows from the Tuner. New rule, walls carry: any sigil cast while the Gallery-walker is within 2 m of a wall does not spread outward. It runs along that wall in both directions for 20 m at 10 m/s, following corners and curves, and strikes every body within 1.5 m of the wall once at full harm with no falloff. Cast in the open, sigils behave as normal. The player fights by hugging masonry and dragging the horde along it.",
+   "source": "In a whispering gallery sound clings to a curved wall and travels its whole length with little loss.",
+   "nearest": "Wall-hugging missiles in old shooters. Differs in being a rule on every skill the character has, switched on by where the player stands.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-19",
+   "area": "calling",
+   "name": "False-bell Maker",
+   "idea": "Grows from the Strickler. New rule, the mould fills: bodies that die inside the swept circle drop nothing; each adds its Weight to the mould. When the mould holds 40 times the character's own Weight a bell is cast at the spindle. It stands 30 s, blocks movement, and answers every Stroke of the player's that lands within 4 m of it with a 5 m ring of the same harm. Then it cracks and pays out all the withheld drops at once.",
+   "source": "In the old method a clay false bell fills the gap between core and cope and is broken out so the metal can take its place.",
+   "nearest": "Kill-fuelled summons. Differs in giving up drops for a time, getting an object that answers the player's own blows, and receiving the drops back when it breaks.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-20",
+   "area": "calling",
+   "name": "Pulled-off",
+   "idea": "Grows from the Quarter-jack. New rule, the hammer can be pulled off: holding button one at a quarter holds the Jack's stroke back. The next quarter then strikes for both, and a third held quarter makes three, the most. Letting go releases at once where the thumb points. If the hammer is still pulled off when the district bell tolls, the swinging bell smashes it: the stored strokes are lost and the Jack only ticks until the following toll.",
+   "source": "Clock hammers must be pulled clear before the bells are swung, or the turning bell smashes them.",
+   "nearest": "Stored charges on abilities. Differs in the store being wiped, and the skill lost for a whole toll, if it is held across the district's own clock.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-21",
+   "area": "calling",
+   "name": "Backward-ringer",
+   "idea": "Grows from the Roper. New rule, the alarm: button two turns the ring backward. While backward, sigils speak 40% more often and all drops are worth 30% more; but the city hears an alarm, so enemies arrive 40% faster and every second spent backward takes one extra second off the time to the next toll. Turning forward again takes 6 s, during which both penalties stay and neither bonus does.",
+   "source": "Ringing the bells backward, in reverse order, was an old alarm for fire or attack on a town.",
+   "nearest": "Self-imposed difficulty such as Curse in Vampire Survivors or Heat in Hades. Differs in being flipped live during the fight, eating the toll clock, and taking strokes to undo.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-22",
+   "area": "skill",
+   "name": "Bow Wave",
+   "idea": "Every 0.8 s a ring is born at the player's feet and grows at 6 m/s to 9 m, harming each body once as it passes. Rings stay centred where they were born. Because the character moves at about 4 m/s, rings bunch up ahead and string out behind: bodies in front are struck about five times as often as bodies behind. It picks no target. The player makes it work by walking at whatever should die, and wastes it by running away.",
+   "source": "A moving source crowds its wavefronts ahead and stretches them behind, which is why its note falls as it goes past.",
+   "nearest": "Pulse and nova skills in survivor games. Differs in that rings do not follow the player, so the direction of movement sets the rate of hits.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-23",
+   "area": "skill",
+   "name": "Far Carry",
+   "idea": "Every 5 s a stroke sounds from the player and lands in two places: on every body within 3 m, and on every body between 10 and 13 m away. Nothing between 3 and 10 m is touched. Harm in the far band is 150% of the near. It picks no target. The player makes it work by keeping the pack either at arm's length or at the far edge of the screen; it is useless at the middle distance where such fights usually happen.",
+   "source": "A great sound is heard near its source and again far off, with a zone of silence between where the sound has bent overhead.",
+   "nearest": "Ring-shaped and donut-shaped areas. Differs in two bands at once, with the dead middle as the thing the player has to play around.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-24",
+   "area": "skill",
+   "name": "Beating Pair",
+   "idea": "Two forks sound from the player, one pulsing every 1.0 s and one every 1.1 s, each a 4 m ring. A pulse's harm is multiplied by how nearly the two forks are sounding together: 3 times when they coincide, almost nothing when they are half a beat apart. So the skill swells and fades once every 11 s, shown on a meter. The player walks into the crowd as it swells and out as it fades. Anything that changes one fork's rate changes the length of the beat.",
+   "source": "Two notes slightly apart beat: their loudness rises and falls at the difference between their rates.",
+   "nearest": "None known; the nearest is weapons with strong and weak phases on a fixed timer, but here the cycle comes from two rates the player can alter.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-25",
+   "area": "skill",
+   "name": "Still Points",
+   "idea": "Every 12 s a fork is planted where the player stands and lasts 12 s. A standing wave runs along the straight line from fork to player, up to 14 m. Every 2 m from the fork is a loud point, a 1 m circle that harms twice a second; halfway between loud points are still points where no body, the player included, takes harm from any sound. The pattern is measured from the fork, so stepping nearer or farther, or swinging round it, lays loud points on the pack.",
+   "source": "Waves meeting between fixed ends make a standing wave with still nodes and loud points at fixed spacing.",
+   "nearest": "Beam or tether skills between the player and a placed object. Differs in the harm being a row of points with safe gaps, moved by the player's distance and angle.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-26",
+   "area": "skill",
+   "name": "Whistle",
+   "idea": "Every 4 s the skill counts the bodies within 8 m by weight class and whistles the note of the commonest class. Every body of exactly that class within 8 m takes full harm and hums for 2 s, passing 20% of any harm it takes to like bodies within 2 m. Bodies of other classes are untouched. Elites count as a class of their own. The player makes it work by fighting crowds of one kind and leading the odd ones away first.",
+   "source": "The blind carillonneur Jacob van Eyck found a bell's separate notes by whistling each pitch until the bell answered it.",
+   "nearest": "Skills that hit every enemy of one type on screen. Differs in choosing the majority kind near the player by itself, which the player steers by herding.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-27",
+   "area": "skill",
+   "name": "Sifting Plate",
+   "idea": "Every 15 s a square of ground 8 m across under the player trembles for 3 s. Its still lines are a cross through the centre and a circle of 3 m radius. Every pickup inside, and every body lighter than the player, is drawn at 3 m/s toward the nearest still line for as long as the trembling lasts. It does no harm. Drops end up in lines that one walk collects; light enemies end up in lines that narrow sigils rake.",
+   "source": "Sand on a vibrating plate is thrown off the moving parts and gathers along the still nodal lines, drawing Chladni figures.",
+   "nearest": "Vacuum pulls and pickup magnets. Differs in sorting things onto a fixed pattern of lines instead of to a point or to the player.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-28",
+   "area": "skill",
+   "name": "Wall Answer",
+   "idea": "Every 3 s a shout leaves the player toward the nearest wall within 15 m, in a lane 2 m wide at 20 m/s, harming each body it passes. It strikes the wall and returns down the same lane at half harm. Bodies in the lane are hit twice, and a farther wall gives a longer lane and a longer wait between the two hits. With no wall in reach it does not cast. The player makes it work by keeping the horde between self and stone.",
+   "source": "An echo is a sound returned from a wall after the time it takes to travel there and back.",
+   "nearest": "Bouncing and returning projectiles. Differs in aiming at masonry instead of enemies, so the player's position against the walls is the aim.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-29",
+   "area": "skill",
+   "name": "Cope and Core",
+   "idea": "Every 10 s two loam walls rise around the player: the core at 2 m and the cope at 4.5 m. They stand 3 s and block bodies. Whatever stood in the gap between them is in the mould: after 1.5 s metal is poured and every body in the gap takes heavy harm. Bodies inside the core, next to the player, and bodies outside the cope are untouched. The player makes it work by holding the crowd two to four metres off, neither closer nor farther.",
+   "source": "A bell mould is an inner core and an outer cope, and the bell is the metal that fills the gap between them.",
+   "nearest": "Donut-shaped blasts in boss fights. Differs as a player skill whose walls hold the crowd in the band, with an inner circle that spares the enemies nearest the player.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-30",
+   "area": "skill",
+   "name": "Belled One",
+   "idea": "Every 14 s a bell is hung on the nearest ordinary body within 6 m. For 8 s it is the wether: it walks straight away from where the player stood at the cast, at 3 m/s, and every non-elite body within 6 m of it follows it instead of the player. When the bell falls off, or the wether dies, its followers stand lost for 1.5 s. The player aims it by where they stand at the cast: the flock is led directly away from that spot.",
+   "source": "A bellwether is the belled sheep that the flock follows, so that one animal leads and locates all the rest.",
+   "nearest": "Decoys, taunts and charm effects. Differs in the lure being one of the crowd, moving, and steered only by where the player stood when it was belled.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-31",
+   "area": "skill",
+   "name": "Slapback",
+   "idea": "A sigil with no stroke of its own. Every Stroke the player's other sigils land is repeated at the same spot 2 s later at 40%, and again 4 s after the first at 15%, each as a 1.5 m circle. At most 60 echoes are kept; the oldest are dropped. The player makes it work by retreating over the ground just fought on, so that the pursuing horde walks through the echoes of the last fight.",
+   "source": "An echo returns a sound after a delay, and each further return is fainter than the last.",
+   "nearest": "Repeat-cast modifiers such as Spell Echo in Path of Exile. Differs in repeating at the place after a delay, so ground already fought over becomes the weapon.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-32",
+   "area": "modifier",
+   "name": "Leather",
+   "idea": "The sigil casts twice as often, but every second cast is an echo: it is not aimed, it lands where the cast before it landed, at 30% harm, and applies no condition. On a sigil that leaves something on the ground, the echo renews that thing instead of placing a new one. Cost: the sigil's reach is cut by 20% and the binding fills two sockets. It pays only when enemies keep coming through one place.",
+   "source": "Half-muffled ringing puts leather on one side of each clapper, so every second row is a faint echo of the first.",
+   "nearest": "Faster-but-weaker supports. Differs in the weak cast being an unaimed repeat on the same ground rather than a smaller copy of a normal cast.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-33",
+   "area": "modifier",
+   "name": "Louvres",
+   "idea": "The sigil stops aiming. Its effect leaves the player in four fixed lanes along the map's compass lines, north, east, south and west, each 2 m wide and as long as the sigil's reach; whatever shape the sigil had is cut down to those lanes. Harm +50%. Cost: nothing between the lanes is touched, and the lanes stop at walls, so the player has to line the horde up on the cross.",
+   "source": "A belfry lets its sound out only through the louvred openings in its four faces.",
+   "nearest": "Fixed-direction weapons in survivor games. Differs in being a socketed change to any skill and locked to the map rather than to the way the character faces.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-34",
+   "area": "modifier",
+   "name": "Second Voice",
+   "idea": "When socketed, the binding is given a second sigil the character owns. A cast made while the character is moving is the sigil's own. A cast made while the character stands still takes the second sigil's shape and conditions, with this sigil's harm. Cost: both voices are at 75%, and the lent sigil's own interval is 25% longer. One socketed skill becomes two, chosen cast by cast by lifting the thumb.",
+   "source": "Ancient Chinese chime bells give two different notes from one bell, depending on whether they are struck at the centre or toward the side.",
+   "nearest": "Stance-switching weapons. Differs in the switch being whether the thumb is moving, and the second form being borrowed from another skill the character owns.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-35",
+   "area": "modifier",
+   "name": "Balance",
+   "idea": "The sigil's projectiles do not vanish at the end of their reach: each stops there and stands mouth-up for up to 4 s. The first body to touch a standing projectile tips it, and it falls on that body for double harm. Cost: harm on the way out is halved, and at most 12 can stand at once (the oldest falls harmlessly). The player lays a fence at the sigil's full range and backs the horde onto it.",
+   "source": "A bell rung full circle can be set at rest mouth-up, balanced, until a touch brings it over.",
+   "nearest": "Mine and trap supports in Path of Exile. Differs in the line of traps always forming at the skill's full reach, bought with a weakened outward flight.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-36",
+   "area": "modifier",
+   "name": "Open Lead",
+   "idea": "Every fourth cast of the sigil is left out: a beat of silence. For that beat (one interval long, at most 1.5 s) the player is damped: harm taken is 40% less and no condition can be put on them. Cost: a quarter of the sigil's casts. Two sigils with Open Lead whose silences fall together deepen the damping to 60%. A mark on each sigil shows its count, so the player can read when the quiet beat is coming.",
+   "source": "Ringers leave one blow's silence after every second row, the handstroke gap or open lead.",
+   "nearest": "Guard effects on a cooldown. Differs in buying the guard with missing casts on a fixed count that the player can read and line up across skills.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-37",
+   "area": "modifier",
+   "name": "Teller",
+   "idea": "The sigil's hits deal nothing when they land. Each hit is counted on the body it struck. The counts are told when the character next stands still for 0.5 s, and on every district toll: every counted hit within 12 m lands at once, with 3% more for each hit in that body's count, up to 60% more. Cost: counted bodies keep walking unharmed until told, and a count is lost if its body gets more than 20 m away. Moving builds the count; stopping spends it.",
+   "source": "The passing bell tells a death to the parish by a count of strokes.",
+   "nearest": "Mark-and-detonate skills and stored-hit effects such as Impale in Path of Exile. Differs in nothing landing until the player stands still or the district bell tolls, so the thumb decides when the debt is paid.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-38",
+   "area": "reserved",
+   "name": "Rounds",
+   "idea": "Holds 30% of the pool. While kept, the character's sigils give up their separate timers and ring in rounds: one row every 4 s, each sigil speaking once, lightest first, evenly spaced. A sigil deals +20% to a body for each earlier place in the same row that already hit it, so the fourth sigil lands at +60% on a body that took the whole row. After every second row one beat is silent. The bonus starts after 8 rows; the pool returns 8 rows after letting go.",
+   "source": "Rounds is the bells sounding one after another from lightest to heaviest, and raising or lowering a bell takes many strokes.",
+   "nearest": "Fixed cast order on a Noita wand. Differs as an optional kept state that pays for consecutive places landing on one body, with a slow raise and a slow lower.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-39",
+   "area": "reserved",
+   "name": "Hand on the Bell",
+   "idea": "Holds 25% of the pool. While kept, the character is damped: no after-harm can sound in them (harm over time of any kind ends at once and cannot be applied), and they cannot be shoved. But a damped body cannot ring a blow out: any single blow over 20% of greatest health also lowers greatest health by half the excess until the next gate. It is safe against a crowd of small dead and dangerous against one heavy stroke.",
+   "source": "A hand laid on a bell stops its ringing at once, and a bell struck while it is held is the one that cracks.",
+   "nearest": "Auras that give immunity to damage over time. Differs in the built-in price: while it is up, big hits become lasting loss.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-40",
+   "area": "reserved",
+   "name": "Curfew",
+   "idea": "Holds 20% of the pool. While kept, experience does not come to the character: each drop lies under a cover where it fell, cannot fade and cannot be picked up. When the vow is let down (8 s to lower), and at every third toll, each cover within 15 m lifts and its embers fly in worth 20% more, plus 5% for each toll they lay covered, up to 40%. Covers farther away stay. The character levels late and in lumps, and has to be standing where the fighting was.",
+   "source": "The curfew bell ordered hearth fires covered for the night, and a covered ember stays alive until it is uncovered.",
+   "nearest": "Leaving experience gems on the ground for a later vacuum pickup in Vampire Survivors. Differs as a kept state that pays interest by tolls and ties the payout to where the kills were made.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-41",
+   "area": "pick",
+   "name": "Quarter-turn",
+   "idea": "Choose one aimed sigil. For the rest of the vigil its aim is turned a quarter circle clockwise from the direction the character walks, and it strikes fresh metal: +30% harm. Taking it a second time on the same sigil turns it another quarter, so it fires behind, for 15% more. A third turn is never offered. The player decides during the vigil which sigils fire ahead, which sideways and which behind.",
+   "source": "A worn bell is quarter-turned on its headstock so the clapper strikes fresh metal, which can be done only once or twice.",
+   "nearest": "Weapons with fixed firing directions in survivor games. Differs in the player assigning directions to skills during the run, with a limit of two turns each.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-42",
+   "area": "pick",
+   "name": "Maiden Voice",
+   "idea": "Choose one sigil that has taken no chime this vigil. It becomes maiden: +60% harm and +20% reach for as long as no chime is ever taken for it. The first chime taken for it afterwards ends Maiden for good. Offered only while such a sigil exists. The player picks one sigil to leave untouched, and must then refuse its upgrades every time they are offered.",
+   "source": "A maiden bell is one that came out of the mould in tune and has never been touched by the tuning lathe.",
+   "nearest": "Bonuses for empty sockets or for having no modifiers. Differs in being a standing bet against that one skill's own later upgrades, made in the middle of a run.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-43",
+   "area": "pick",
+   "name": "The Lathe's Cut",
+   "idea": "Choose one sigil and cut it. It goes up one note for the rest of the vigil: interval 20% shorter, harm 12% less, Weight one class lighter. Each sigil shows its cuts as rings. A fourth cut on the same sigil makes it tinny, halving its harm, and the cut is still offered. Nothing can undo a cut. The player decides how thin to turn each sigil knowing that only one direction exists.",
+   "source": "Tuning turns metal off the inside of a bell, and metal removed cannot be put back.",
+   "nearest": "Attack-speed-for-damage trades. Differs in being one-way, counted per skill, with a known point of ruin that the game will still let the player reach.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-44",
+   "area": "pick",
+   "name": "Muffle the Toll",
+   "idea": "The next district toll rings muffled: danger does not rise and rewards do not rise. The toll after it rings for two: danger and rewards rise two steps at once, and if that toll is the eighth, the keeper arrives with one extra toll's strength. Only one muffle can be held at a time. The player buys 75 quiet seconds now and pays with a double step later.",
+   "source": "A muffled bell sounds faintly, and in half-muffled ringing the open stroke always follows the muffled one.",
+   "nearest": "Items that delay difficulty. Differs in moving one step of the district's clock onto the next toll instead of removing it.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-45",
+   "area": "pick",
+   "name": "Drill the Crack",
+   "idea": "Offered only when the character has lost greatest health to Crack. The crack is drilled wider so its edges no longer touch. All Crack already taken becomes permanent for the vigil and cannot be recast at a gate, but no further Crack can be taken from any source this vigil, and any sigil cracked by clocking regains its full harm. The player locks in today's loss to end the risk of more.",
+   "source": "A hairline crack buzzes because its edges touch; drilling it wider stops the buzz, which is the wide gap seen in the Liberty Bell.",
+   "nearest": "None known; the nearest is cleansing a curse, but this fixes the loss in place in order to stop it growing.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-46",
+   "area": "pick",
+   "name": "Trade Clappers",
+   "idea": "Choose two sigils. They exchange intervals for the rest of the vigil: each keeps its own shape and harm but casts as often as the other did. The one that became faster deals 15% less harm per cast; the one that became slower deals 15% more. Offered at most twice a vigil, and never for the same pair twice. A slow heavy sigil can be made the quick one, at the price of slowing something else.",
+   "source": "A clapper is matched to its own bell, and a bell hung with another bell's clapper speaks differently.",
+   "nearest": "None known for swapping the timing of two owned skills; the nearest is cooldown-reduction upgrades.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-47",
+   "area": "enemy",
+   "name": "The Wether",
+   "idea": "A risen drover with a bell at its neck (a bright cone under a sphere head). Ordinary dead within 8 m do not chase the player; they follow 2 m behind the Wether, which circles the player at 7 m and cuts in every 6 s. It harms only by leading the flock over the player. Kill it and its flock stands lost for 3 s, then hunts singly. The player kills the bright bell first, or spares it to keep thirty bodies in one readable clump.",
+   "source": "A bellwether is the belled sheep the rest of the flock follows.",
+   "nearest": "Pack-leader enemies whose death routs the pack. Differs in the flock steering by the leader's path, which can make the leader worth sparing.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-48",
+   "area": "enemy",
+   "name": "Tongueless",
+   "idea": "A risen bell on legs, mouth-down, with nothing hanging inside: a hollow tapered cylinder, dark within. It is slow and heavy, makes no sound, and a dark ring 5 m wide on the ground moves with it. Inside the ring the player is Clocked: sigils cast only when the thumb stops, one per stop. It does no harm itself; the horde around it does. The player must stay out of the ring or fight in stop-and-go steps, and should kill any Tongue heading for it.",
+   "source": "A bell blamed for a riot in Uglich in 1591 had its clapper, called its tongue, torn out before it was sent into exile.",
+   "nearest": "Silence-aura enemies. Differs in turning the player's casting manual inside the ring instead of switching it off.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-49",
+   "area": "enemy",
+   "name": "Tongue",
+   "idea": "A fallen clapper, an iron ball on a shaft, swinging end over end, 2 m a hop, lying still 0.6 s between hops. Where the ball will land is marked 0.5 s ahead and harms a 1 m circle. It ignores the player and travels toward the nearest Tongueless within 30 m; if it arrives the two join into a Tolling Bell elite that strikes a 6 m ring every 4 s. With no Tongueless about, Tongues hop at the player. Kill them while they lie still.",
+   "source": "The clapper hangs inside the bell and strikes the sound-bow, and clappers do break off and fall.",
+   "nearest": "Enemies that merge into a stronger one. Differs in two unlike halves, a silent bell and its lost clapper, seeking each other across the field.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-50",
+   "area": "enemy",
+   "name": "Overthrown",
+   "idea": "A bell on its wheel that has gone over the balance and cannot stop: a broad cylinder rolling in straight lines at 5 m/s, turning only when it meets a wall, harming and shoving every body it crosses. A line on the ground shows its path 6 m ahead. Hits from in front, against its motion, slow it one step of five; hits from behind speed it up one step. Slowed to nothing, it lies helpless for 5 s. Stay off the line; strike it head-on, never from behind.",
+   "source": "A bell pulled too hard breaks its stay and swings over and over; pulls with the swing raise a bell and pulls against it lower it.",
+   "nearest": "Charging and rolling-boulder enemies. Differs in its speed being set by which side the player's hits arrive from.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-51",
+   "area": "enemy",
+   "name": "Rattler",
+   "idea": "A tall thin risen sexton carrying a wooden plank and mallet (a long box and a small cylinder). It keeps 10 to 12 m from the player, circling, and never attacks. Every 3 s it knocks, and each knock takes 2 s off the time to the next district toll; a ring flashes on the toll clock when it does. Three Rattlers left alive bring every toll about 30 s sooner. The player must break off from the horde and run them down.",
+   "source": "When bells are silent, wooden clappers and struck planks are used to call the hours in their place.",
+   "nearest": "Enemies that attack a shared resource, such as torch-snuffers in Darkest Dungeon. Differs in attacking the vigil's clock itself, pulling the tolls nearer.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-52",
+   "area": "enemy",
+   "name": "The Row",
+   "idea": "Six dead ringers shoulder to shoulder, a wall 9 m wide that walks at the player at 1.5 m/s and harms on contact. Five are grey and cannot be harmed or pushed. One is lit, the lead, and it takes all harm for the row. Each second the lead passes to the next ringer along, to the end and back. When a ringer dies the row is one shorter; the last one alive is an ordinary body. The player backs away, keeping sigils on the lit place.",
+   "source": "In plain hunt one bell moves a place at a time along the row to the end and back while the others keep ringing.",
+   "nearest": "Enemies where only a lit weak point can be hurt. Differs in the weak point walking a line of bodies on a fixed pattern that can be learned.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-53",
+   "area": "enemy",
+   "name": "Bell-bearers",
+   "idea": "Four dead carrying a great bell mouth-down over themselves: a bell with eight legs. Strokes cannot reach the bearers and do not harm the bell. But every Stroke on the bell makes it ring over the heads beneath: the bearers take that Stroke as after-harm spread over 3 s, and heavier Strokes ring 1 s longer per weight class. Light fast sigils barely trouble them. Each dead bearer slows it; with one left, the bell drops and pins it. It wants one heavy stroke, or a detour.",
+   "source": "The sound under a struck bell is at its fiercest, and a great bell's low hum outlasts all its other notes.",
+   "nearest": "Shielded carriers that must be flanked. Differs in the shield being the way in: hitting it harder is what hurts those beneath.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-54",
+   "area": "enemy",
+   "name": "Mould-walker",
+   "idea": "A hollow figure of loam, dung and goat hair: a mould walking without its bell (dull brown boxes, visibly empty through a slot). It takes no harm. Each hit fills it instead, shown as bright metal rising in the slot; it is full after harm equal to its greatest health. When full it sets: it becomes a bronze copy that casts, once, the last sigil that struck it, back at the player at 150%, then stands inert and brittle. Finish filling it with the weakest sigil, or leave it.",
+   "source": "A bell mould is an empty shape of loam, horse dung and goat hair that gives its form to whatever metal fills it.",
+   "nearest": "Enemies that absorb and then reflect, and mimics that copy a power. Differs in the player choosing which of their own skills is copied, by which one lands last.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-55",
+   "area": "boss",
+   "name": "The Conductor of the Dead Band",
+   "idea": "Six bells hang round the arena. Each tilts mouth-up 0.6 s before sending a 40 degree wedge of harm, and they speak in a row shown as six numbered lamps. Phase one: rounds, 1 to 6. Phase two (at 70%): changes; from one row to the next a bell only keeps its place or swaps with a neighbour, so each row can be read from the last. Phase three (at 30%): firing, all six at once after 2 s; bells the player cracked earlier stay silent, leaving safe wedges.",
+   "source": "In change ringing a bell may only keep its place or swap with a neighbour from one row to the next, and firing is every bell struck at the same instant.",
+   "nearest": "Pattern-memory boss attacks. Differs in the pattern following the change-ringing rule, so it is predicted rather than memorised, and in the player preparing the last phase by cracking bells.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-56",
+   "area": "boss",
+   "name": "The Flogged Bell",
+   "idea": "A great bell carried by the dead. Phase one: tongueless, it charges along a line shown 1 s ahead, shedding four dead at each wall it hits. Phase two (at 60%): re-tongued, it tolls every 6 s after a 1.5 s swell, filling the arena; the only safe ground is the sound-shadow behind a heavy dead body, so the player spares big dead and stands in their lee. Phase three (at 25%): it tells the player's years, one stroke per character level, then lies spent 8 s.",
+   "source": "Sound casts a shadow behind a solid body, and the passing bell gives one stroke for each year of the life.",
+   "nearest": "Hiding behind pillars from an arena-wide blast in raid fights. Differs in the cover being enemies the player must spare, and the final count being as long as the character's own level.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-57",
+   "area": "boss",
+   "name": "The Tuner at the Lathe",
+   "idea": "The arena is the inside of a bell, a round floor 16 m across. Every 8 s the keeper cuts: a groove 1.5 m wide appears as a ring at the player's distance from the centre, shown 1.5 s ahead. Grooves are permanent; crossing one costs 8% health and a 1 s slow. Phase two (at 60%): two rings per cut. Phase three (at 30%): he stands at the centre and can be harmed only from uncut floor. Where the player stands at each cut decides what floor is left.",
+   "source": "A founder tunes a bell by turning rings of metal off its inside on a lathe, and metal removed cannot be put back.",
+   "nearest": "Boss arenas that crumble over time. Differs in each loss being a ring whose radius the player picks by where they stand, kept for the whole fight.",
+   "cost": "medium"
+  },
+  {
+   "id": "bells-58",
+   "area": "district",
+   "name": "The Founders' Sink",
+   "idea": "Look: soot-black ground, loam-brown furnaces (tapered boxes), cylinder chimneys, cone slag heaps and round casting pits 4 m wide with ember-orange rims, plus bronze and verdigris green. Special: each pit holds a buried bell still cooling. Any Stroke landing in a pit is answered 1 s later by a 4 m ring of the same harm that strikes the dead and the player alike. A pit answered more than 3 times in 5 s cools too fast and cracks, dead for the vigil. Use the pits without hurrying them.",
+   "source": "Bells are cast mouth down in a pit and cooled slowly for days; cooled too quickly, they crack.",
+   "nearest": "Arena hazards that both sides can set off. Differs in pits that repeat the player's own blows and are spoiled for good by overuse.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-59",
+   "area": "district",
+   "name": "The Hanging Quarter",
+   "idea": "Look: oak-brown frames (boxes), lead-grey floors, and ropes hanging everywhere with sallies as striped cylinders in wool red, white and blue. Special: about forty ropes hang at fixed spots, each tied to a bell overhead and to a marked circle on the floor 5 to 10 m away. Anything walking through a sally pulls it, and 1 s later a heavy stroke lands on that rope's circle, on whoever is there. The dead blunder through ropes and ring them. The player learns which rope strikes where.",
+   "source": "A tower bell is rung from the floor below by a rope with a woolly striped grip, the sally.",
+   "nearest": "Pressure-plate traps in dungeon games. Differs in a whole district of them that the horde sets off by itself, each with a fixed distant landing spot to learn.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-60",
+   "area": "tree",
+   "name": "The Blue Line",
+   "idea": "The tree is a page of rows, eight places wide and sixty rows deep, a node at every place. A character's path is one line down the page: each point bought must be in the next row, in the same place or a neighbouring place. Classes start in different places. Three printed lines also run down the page on fixed zigzags (the treble: place 1 to 8 and back). A node where the character's line meets a printed line is doubled, so planning means timing sideways steps to meet them.",
+   "source": "Ringers learn a method as a blue line drawn down a page of rows, and steer by where they pass the treble.",
+   "nearest": "Lattice route maps such as the one in Slay the Spire. Differs as a fixed skill grid with a keep-or-step rule and printed weaving lines to intercept.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-61",
+   "area": "tree",
+   "name": "Five Notes in Tune",
+   "idea": "The tree is drawn as the inside of a bell in five bands: hum, prime, tierce, quint, nominal. Each point cuts one node from a band for a small gain, never refunded. The number of cuts in a band is that note's pitch. When two bands stand in a true interval (hum twice the prime; tierce 6 cuts per 5 of prime; nominal equal to hum) a large harmonic bonus is on. One cut too many puts the pair flat and the bonus off until the other band catches up.",
+   "source": "A founder tunes five partials by turning metal from different bands inside the bell; true intervals between them make it sound in tune, and metal cannot be returned.",
+   "nearest": "Attribute-threshold bonuses. Differs in bonuses depending on exact ratios between counts, which one cut too far loses.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-62",
+   "area": "tree",
+   "name": "Coming Round",
+   "idea": "A rule on the shared tree: when a character's owned nodes close a ring, meaning the path returns to a node already owned by a different road, that ring has come round. Every small node on a closed ring is worth double; a node on two rings is still only doubled once. With about 100 points to spend, the plan is a choice between one wide ring through distant parts of the tree and several small ones close to home.",
+   "source": "A piece of change ringing ends when the bells come round, returning to the row they started from.",
+   "nearest": "The passive tree in Path of Exile, where doubling back is wasted points. Differs in making closed loops the thing that is rewarded.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-63",
+   "area": "gear",
+   "name": "Five Lines, One Lathe",
+   "idea": "An item is a cast bell worn on the body. It has a Weight and five lines, one per note, each a property rolled sharp of its true value by 0 to 6 steps. One lathe cut flattens a chosen line one step and takes 5% of the item's Weight. A line exactly on true is doubled; past true it is halved; no cut can be undone. Below 70% Weight every line halves. No tiers: an item is worth its distance from true and the Weight left to get there.",
+   "source": "A founder brings a bell's five partials into tune by turning metal off on a lathe; a bell needing no tuning is called a maiden bell.",
+   "nearest": "Crafting currencies that reroll modifiers. Differs in every change being chosen, one-directional and paid from a visible budget, with no rarity classes at all.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-64",
+   "area": "gear",
+   "name": "Chiselled Legends",
+   "idea": "An item's properties are its inscription: up to three clauses, each built as verb, object, condition, for example I BREAK, THE HEAVY, AT THE TOLL. The verb is the stat and amount, the object limits it to tagged things, the condition says when. A chisel only removes words: striking off the condition makes the clause always on at 60%; striking off the object widens it to everything at 60%. Letters are stamped by hand, so one clause in ten has a reversed letter and its condition is inverted.",
+   "source": "Words pressed into a bell mould come out raised on the shoulder, and old bells often carry backward or misplaced letters.",
+   "nearest": "Affix lists on Diablo-style items. Differs in properties being sentences that the player shortens word by word, trading narrowness for size.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-65",
+   "area": "gear",
+   "name": "Recast and Cool",
+   "idea": "Two or more items can be broken up and poured into one. The new item's Weight is the sum less 10% dross. Each line comes from one parent's line in that place, heavier parents likelier. One word the player owns may be pressed into the mould and comes out as a fixed clause. It must then cool: it cannot be worn until the account has heard 6 more tolls. It may be taken early, but each toll short gives a 15% chance of a void: one line left blank.",
+   "source": "A cracked bell is broken up and recast with its metal going into the new one, and a casting is cooled slowly for days.",
+   "nearest": "Item fusion with inherited traits, as in Persona fusion or gear merging. Differs in weight-weighted inheritance, one chosen stamped clause, and a wait measured in tolls survived.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-66",
+   "area": "event",
+   "name": "A Passing Told",
+   "idea": "A bell begins to tell a death: a rope appears at a marked spot 20 to 30 m off and tolls once a second. Each stroke adds one level, and 4% more loot, to an elite that will rise beside the rope. The telling stops only when the player stands at the rope for 1 s and stills it; the elite then rises at once at whatever the count has reached. Left alone, the count stops at 40. The player chooses how old to let it grow.",
+   "source": "The passing bell tells a death by a count of strokes and then one stroke for each year of the life.",
+   "nearest": "Shrines that summon an elite for a reward. Differs in the elite's strength being a running count that the player ends by arriving.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-67",
+   "area": "event",
+   "name": "The Pour",
+   "idea": "A furnace is tapped at a marked spot, and bright metal runs down a channel 15 m long to a pit, taking 12 s. Any body standing in the channel ahead of the metal stops the run, the player's own body included. If the metal reaches the pit unbroken, it leaves a gear item with all five lines. Each stop longer than 1 s leaves a cold shut: one line of the item is void. The player clears the channel just ahead of the metal without standing in it.",
+   "source": "A bell must be poured in one unbroken run; an interrupted pour leaves a seam of weakness called a cold shut.",
+   "nearest": "Escort and defend-the-point objectives. Differs in the thing protected being an advancing line that the player's own body also blocks.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-68",
+   "area": "event",
+   "name": "The Answer",
+   "idea": "A great bell is struck far across the water. Its note is one of the five weight classes, shown as a size mark on the toll clock 3 s before. For 10 s every body of that class in the district is in sympathy: a Stroke landing on one of them also lands at 50% on every other body of that class within 12 m. Every body of any other class moves 25% faster for the same 10 s. At most once between tolls; never a keeper's class.",
+   "source": "A struck bell makes another bell tuned to the same note hum without being touched.",
+   "nearest": "Shared-damage links such as Fatal Bonds in Dota. Differs as a district-wide moment announced in advance, binding one size of enemy while speeding the rest.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-69",
+   "area": "event",
+   "name": "The Silent Band",
+   "idea": "For 60 s a ring of ground between 12 and 20 m from the district's bell tower falls silent, drawn as a pale band. Inside it no sigil casts and no enemy can use anything but its bare touch; drops lying inside do not fade. Outside it, everything is as normal. The player can drag an elite into the band to strip its powers, or shelter there from powers while unable to fight back, and has to leave it to kill anything.",
+   "source": "A great sound can be heard near its source and far away while a band between, the zone of silence, hears nothing.",
+   "nearest": "Anti-magic zones. Differs in applying to both sides alike and lying as a ring at a known distance from a landmark.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-70",
+   "area": "legacy",
+   "name": "The Ring of the Dead",
+   "idea": "The Carillon is a frame of twelve bell-pits. A dead character is recast as one bell, its weight the tolls it heard in its whole life. Bells hang in order of weight. Each gives every later character one small grant fixed by its class. A true ring gives more: each neighbouring pair whose weights differ by 10 to 30% adds a step to a ring bonus. A ring needs trebles as much as tenors, so a character that died young fills a pit a veteran cannot.",
+   "source": "A ring of bells runs from the light treble to the heavy tenor, and a broken bell's metal is recast into a new one.",
+   "nearest": "Lineages of fallen heroes that grant bonuses, as in Rogue Legacy. Differs in early deaths being needed as the small bells of a graded set.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-71",
+   "area": "legacy",
+   "name": "Told on Every Voice",
+   "idea": "Echoes are earned only when a character dies or is retired. The passing bell tells it: one stroke for each character level, rung on every district bell the account has ever given back its voice by beating its keeper. Echoes earned are the strokes rung: level times voiced bells, 1 to 5. Echoes buy bell-pits in the Carillon and the words that can be stamped on the dead character's bell; each word, earned by a deed in that life, becomes a clause every later character carries.",
+   "source": "The passing bell tells a death with one stroke for each year of the life, and a bell's inscription is fixed when it is cast.",
+   "nearest": "Meta-currency paid on death in roguelites. Differs in the payout being multiplied by bells restored across the account, and spent on wording the dead character's own lasting grant.",
+   "cost": "data"
+  },
+  {
+   "id": "bells-72",
+   "area": "frame-twist",
+   "name": "Half-muffled Tolls",
+   "idea": "Twist on the tolls: they come in pairs. An odd toll is open: danger rises and the arrivals for the next 75 s are drawn fresh. The even toll after it is muffled: the same arrivals come again from the same sides in the same order at 80% strength, while rewards rise as usual. The player meets each new danger once to learn it and once to profit from it. The keeper's toll, the eighth, is muffled, so the keeper arrives with an echo of the seventh toll's horde.",
+   "source": "In half-muffled ringing every second row is a faint echo of the row before it.",
+   "nearest": "Repeating wave patterns in arcade games. Differs in strict learn-then-repeat pairs tied to the tolls of the vigil.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-73",
+   "area": "frame-twist",
+   "name": "Ringing Down",
+   "idea": "Twist on the gates: a character cannot step out at once. Standing in an open gate rings down: one stroke a second for six strokes. Each stroke banks one sixth of what is carried, in an order the player set beforehand, and each stroke also silences one sixth of the character's sigils. Driven off before the sixth, the character keeps what was banked, stays in the vigil, and raises the silenced sigils again at one per 2 s. Leaving is a retreat in stages, not a door.",
+   "source": "Lowering a bell takes many strokes, just as raising it does.",
+   "nearest": "Channelled extraction in extraction shooters. Differs in banking a share with every second and paying for it with skills falling silent.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-74",
+   "area": "frame-twist",
+   "name": "The Row of Chimes",
+   "idea": "Twist on leveling: chimes are not dealt at random. Six chimes stand in a visible row, places 1 to 6. At a level-up the player takes one from places 1 to 3, and a new one enters at place 6. After every level-up the row changes as ringing does: neighbours swap in fixed pairs, alternately 1-2, 3-4, 5-6 and then 2-3, 4-5. The player can see which chime will walk to the front in two levels and decide whether to wait for it.",
+   "source": "In plain hunt each bell walks through the row one place at a time by neighbours swapping in alternating pairs.",
+   "nearest": "Card rivers in board games, such as the sliding card row in Through the Ages. Differs in the row moving by ringing swaps, so offers walk forward and back on a path that can be read ahead.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-75",
+   "area": "boss",
+   "name": "The Half-muffled Keeper",
+   "idea": "Every attack of this keeper lands twice on the same ground. Phase one: the full stroke, then a 30% echo 2 s later, so struck ground stays dangerous. Phase two (at 60%): the leather is on the other side. The faint echo comes first and is the only warning; the full stroke follows 1.2 s later on the same ground. Phase three (at 25%): rung backward and fast. Three echoes are laid one after another, then their three full strokes land in reverse order, last-laid first.",
+   "source": "Half-muffled ringing makes every second row a faint echo, and ringing backward was the alarm.",
+   "nearest": "Delayed repeat attacks on bosses. Differs in the echo becoming the telegraph itself, and then in the order of landing being reversed from the order of warning.",
+   "cost": "small"
+  },
+  {
+   "id": "bells-76",
+   "area": "frame-twist",
+   "name": "The Touch of Five",
+   "idea": "Twist on the one-sitting run: its five districts are a row. Each new run's district order is the last run's order with exactly one neighbouring pair swapped, and the player chooses which pair before starting. The keeper of the district rung last arrives at double strength and leaves double Echoes. Every order the account has rung is kept; an order never rung before pays 25% more. There are 120 orders, and the player walks between them one swap at a time.",
+   "source": "From one row to the next a bell may only keep its place or swap with a neighbour, and a true touch never repeats a row.",
+   "nearest": "Route choice between runs in roguelites. Differs in each run's order being one neighbour-swap from the previous run, with unrepeated orders paid extra.",
+   "cost": "data"
+  }
+ ]
+}

@@ -11,9 +11,10 @@
 // A scenario file exports an array of
 //   { name, viewport: {width, height}, mobile: bool, query: 'a=1&b=2', run: async function () { ...; return T.done(); } }
 // run is sent to the page and runs there: tests/helpers.js gives it T and 99-boot.js gives it TB. It cannot
-// use anything from the file around it. Optional fields: timeout (ms for the whole scenario, default 120000)
-// and dpr (device pixel ratio, default 1). run may also be an array of such functions: the page is reloaded
+// use anything from the file around it. run may also be an array of such functions: the page is reloaded
 // between them and keeps its storage, which is how a scenario sees what survives a reload.
+// Optional fields: timeout (ms for the whole scenario, default 120000), dpr (device pixel ratio, default 1),
+// safeArea ({top, right, bottom, left} in px: what env(safe-area-inset-*) reports, as on a phone with a notch).
 //
 // Every scenario gets a fresh browser context, so storage starts empty. It passes only if nothing threw,
 // every check passed and the page stayed clean: no uncaught error, no console.error (a "Failed to load
@@ -22,8 +23,13 @@
 'use strict';
 const fs = require('fs'), path = require('path');
 const { pathToFileURL } = require('url');
-const { chromium } = require('playwright');
 const build = require('../tools/build.js');
+
+let chromium;
+try { ({ chromium } = require('playwright')); } catch (e) {
+  console.error('tests/run.js: Playwright is not installed. Run: npm install, then npx playwright install chromium');
+  process.exit(1);
+}
 
 const ROOT = path.join(__dirname, '..');
 const HELPERS = path.join(__dirname, 'helpers.js');
@@ -93,25 +99,50 @@ function locator(doc, base) {
 
 // ---- one scenario ----
 
+// Resolves when the page says it is ready. Gives up after 15 s, or at once if the page throws while starting:
+// a start that failed will not finish, and waiting out the clock for every scenario helps nobody.
+async function whenReady(page, watch) {
+  const ready = () => !!window.TB && window.TB.ready === true;
+  if (await page.evaluate(ready)) return;
+  const threw = new Error('the page threw while starting, so window.TB.ready did not turn true');
+  const waiting = page.waitForFunction(ready, null, { timeout: 15000 });
+  waiting.catch(() => {});
+  const broke = new Promise((resolve, reject) => { watch.onThrow = () => reject(threw); });
+  if (watch.threw) watch.onThrow();
+  try {
+    await Promise.race([waiting, broke]);
+  } catch (e) {
+    throw e === threw ? e : new Error('the page was not ready after 15 s (window.TB.ready did not turn true)');
+  } finally {
+    watch.onThrow = null;
+  }
+}
+
+// A stack as the page gives it, with the source line added and the test tool's own frames left out.
+const tidy = (env, text, lines) => env.source.mark(text).split('\n').filter((l) => !/\bUtilityScript\b/.test(l)).slice(0, lines).join('\n');
+
 async function play(browser, s, env) {
   const context = await browser.newContext({
     viewport: s.viewport || { width: 1280, height: 720 }, isMobile: !!s.mobile, hasTouch: !!s.mobile, deviceScaleFactor: s.dpr || 1,
   });
-  const checks = [], errors = [];
+  const checks = [], errors = [], watch = { threw: false, onThrow: null };
   const note = (text) => {
-    text = env.source.mark(text).split('\n').slice(0, 6).join('\n');
+    text = tidy(env, text, 6);
     if (!errors.includes(text)) errors.push(text);
   };
   let stopped = null;
   try {
-    if (TARGET === 'artifact') {
-      await context.addInitScript(hostRules);
-      await context.route('**/*', (route) => (route.request().url().split(/[?#]/)[0] === HOST
-        ? route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: env.doc })
-        : route.abort()));
-    }
+    // Nothing leaves the machine: the fragment is served from memory, and any other address is refused.
+    await context.route(/^https?:/, (route) => (TARGET === 'artifact' && route.request().url().split(/[?#]/)[0] === HOST
+      ? route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: env.doc })
+      : route.abort()));
+    if (TARGET === 'artifact') await context.addInitScript(hostRules);
     const page = await context.newPage();
-    page.on('pageerror', (e) => note(e.stack || e.message || e));
+    page.on('pageerror', (e) => {
+      note(e.stack || e.message || e);
+      watch.threw = true;
+      if (watch.onThrow) watch.onThrow();
+    });
     page.on('crash', () => note('the page crashed'));
     page.on('console', (m) => {
       if (m.type() !== 'error' || /Failed to load resource/.test(m.text())) return;
@@ -127,19 +158,26 @@ async function play(browser, s, env) {
       if (/^(?:data|blob|about):/.test(url) || (r.isNavigationRequest() && url.split(/[?#]/)[0] === env.base)) return;
       note(`the page asked for ${url.slice(0, 200)}: the game is one file and loads nothing else`);
     });
+    page.on('websocket', (ws) => note(`the page opened a socket to ${ws.url().slice(0, 200)}: the game talks to nobody`));
 
+    if (s.safeArea) {   // a notch or rounded corners, as env(safe-area-inset-*) reports them on a phone
+      const insets = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, s.safeArea);
+      await (await context.newCDPSession(page)).send('Emulation.setSafeAreaInsetsOverride', { insets })
+        .catch(() => { throw new Error('this browser cannot be given safe-area insets, which the scenario needs'); });
+    }
     const url = env.base + (s.query ? '?' + String(s.query).replace(/^\?/, '') : '');
     const parts = Array.isArray(s.run) ? s.run : [s.run];
     const steps = (async () => {
       for (let i = 0; i < parts.length; i++) {
         if (i === 0) await page.goto(url); else await page.reload();
-        await page.waitForFunction(() => window.TB && window.TB.ready === true, null, { timeout: 15000 })
-          .catch(() => { throw new Error('the page was not ready after 15 s (window.TB.ready did not turn true)'); });
+        await whenReady(page, watch);
         await page.addScriptTag({ path: HELPERS });
         await page.evaluate((target) => { window.T.target = target; }, TARGET);
         const got = await page.evaluate(parts[i]);
         if (!Array.isArray(got)) throw new Error('the scenario did not end with "return T.done();"');
         checks.push(...got);
+        // one more frame, so that an error the scenario set off but did not wait for still counts
+        await page.evaluate(() => new Promise((done) => { requestAnimationFrame(() => setTimeout(done, 0)); setTimeout(done, 200); }));
       }
     })();
     steps.catch(() => {});   // if the time limit wins, closing the context makes this fail later, unheard
@@ -148,7 +186,7 @@ async function play(browser, s, env) {
     const late = new Promise((resolve, reject) => { timer = setTimeout(() => reject(new Error(`no result after ${limit / 1000} s`)), limit); });
     try { await Promise.race([steps, late]); } finally { clearTimeout(timer); }
   } catch (e) {
-    stopped = env.source.mark(e.message || e).split('\n').slice(0, 8).join('\n');
+    stopped = tidy(env, e.message || e, 8);
   }
   await context.close().catch(() => {});
   return { checks, errors, stopped };
@@ -197,7 +235,7 @@ async function main() {
   if (!process.env.GAME) {
     let fresh = null;
     try { fresh = TARGET === 'artifact' ? build.artifact() : build.standalone(); } catch (e) { /* src/ does not build now: test the page as it is */ }
-    if (fresh !== null && fresh !== text) console.log(`note: ${path.relative(ROOT, GAME)} is older than src/. Run: npm run build:dev`);
+    if (fresh !== null && fresh !== text) console.log(`note: ${path.relative(ROOT, GAME)} is not what src/ builds now. Run: npm run build:dev`);
   }
 
   let failed = 0, count = list.length;
@@ -206,7 +244,7 @@ async function main() {
     count++;
     if (tag) failed++;
     console.log(`${tag ? 'FAIL' : 'PASS'}  fragment: no doctype, html, head or body tag`);
-    if (tag) console.log(`      "${tag[0]}" at line ${text.slice(0, tag.index).split('\n').length} of ${path.relative(ROOT, GAME)}`);
+    if (tag) console.log(`      "${tag[0]}" at line ${text.slice(0, tag.index).split('\n').length} of ${GAME}`);
   }
   // The flag keeps WebGL on a machine without a graphics card, where the browser draws in software.
   const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });

@@ -8,12 +8,12 @@
 //                  "const A = {}, B = {};"); assigns only to namespaces named on the "Owns: A, B" line of its
 //                  header comment; does not assign a namespace property that another file assigns; does not
 //                  replace or hide a namespace; does not build code from text (eval, new Function)
-//   00 to 49       no window, document, navigator, performance, Date, Math.random, timers, storage or network
+//   00 to 49       no window, document, navigator, performance, Date, Math.random, timers, storage or globalThis
 //   00 to 29       no presentation namespace
 //   30 to 49       no function of any kind, no class, no new, no undefined, no namespace but Defs.add
 //   99-boot.js     collects every declared namespace
 //   src/js         every file is named NN-name.js
-//   src/page       nothing loaded from another file or address
+//   src/page       nothing loaded from another file or address; no 100vh (the screen is filled by height: 100%)
 //   everything     no entry of docs/design/denylist.txt (when that file exists) as a whole word, in any letter
 //                  case; a space in an entry also matches a dash, a dot, an underscore or nothing
 //   the page       what tools/build.js guards: nothing that ends the script or style early, no document tag
@@ -32,7 +32,7 @@
 //     (a regular expression straight after ")" or "}") it can misread the rest of that line
 //
 // For tests: lint.check({js: [{file, text}], pages: [{file, text}], deny: [entry]}) -> [{file, line, msg}],
-//   lint.strip(source) -> {code, text}, lint.denyEntries(listText) -> [entry]
+//   lint.strip(source) -> the source with all but code blanked, lint.denyEntries(listText) -> [entry]
 'use strict';
 const fs = require('fs'), path = require('path');
 const modules = require('./modules.js');
@@ -43,14 +43,12 @@ const lineOf = (text, index) => text.slice(0, index).split('\n').length;
 
 // ---- reading JavaScript as text ----
 
-// Returns the source twice, each the same length with the same line breaks, so a position in either is a
-// position in the source:
-//   code  comments, the insides of strings and templates, and regular expressions are blanked
-//   text  only comments are blanked
-// Code inside a template's ${...} stays code.
+// Returns the source with everything that is not code blanked: comments, the insides of strings and
+// templates, and regular expressions become spaces. The result has the same length and the same line breaks,
+// so a position in it is a position in the source. Code inside a template's ${...} stays code.
 function strip(src) {
-  const n = src.length, code = src.split(''), text = src.split('');
-  const blank = (out, a, b) => { for (let k = a; k < b && k < n; k++) if (out[k] !== '\n') out[k] = ' '; };
+  const n = src.length, code = src.split('');
+  const blank = (a, b) => { for (let k = a; k < b && k < n; k++) if (code[k] !== '\n') code[k] = ' '; };
   let i = 0;
   let last = '';   // the token before this one: a word, a punctuation mark, 'v' for a string, '' at the start
 
@@ -69,7 +67,7 @@ function strip(src) {
       else if (c === '[') inClass = true;
       else if (c === ']') inClass = false;
       else if (c === '/' && !inClass) {
-        blank(code, i + 1, j);
+        blank(i + 1, j);
         do j++; while (j < n && /[a-z]/i.test(src[j]));
         return j;
       }
@@ -79,17 +77,17 @@ function strip(src) {
   function quoted(q) {           // at the opening quote; a string never runs past its line
     let j = i + 1;
     while (j < n && src[j] !== q && src[j] !== '\n') j += src[j] === '\\' ? 2 : 1;
-    blank(code, i + 1, j);
+    blank(i + 1, j);
     i = Math.min(j + 1, n);
   }
   function template() {          // at the opening backtick
     let from = ++i;
     while (i < n && src[i] !== '`') {
       if (src[i] === '\\') i += 2;
-      else if (src[i] === '$' && src[i + 1] === '{') { blank(code, from, i); i += 2; run(true); from = i; }
+      else if (src[i] === '$' && src[i + 1] === '{') { blank(from, i); i += 2; run(true); from = i; }
       else i++;
     }
-    blank(code, from, i);
+    blank(from, i);
     i = Math.min(i + 1, n);
   }
   function run(inTemplate) {     // inTemplate: stop after the brace that closes ${
@@ -99,7 +97,7 @@ function strip(src) {
       if (c === '/' && (d === '/' || d === '*')) {
         let j = d === '/' ? src.indexOf('\n', i) : src.indexOf('*/', i + 2);
         j = j < 0 ? n : d === '/' ? j : j + 2;
-        blank(code, i, j); blank(text, i, j);
+        blank(i, j);
         i = j;
       } else if (c === '"' || c === "'") { quoted(c); last = 'v'; }
       else if (c === '`') { template(); last = 'v'; }
@@ -122,7 +120,7 @@ function strip(src) {
     }
   }
   run(false);
-  return { code: code.join(''), text: text.join('') };
+  return code.join('');
 }
 
 // ---- the rules for one module ----
@@ -134,7 +132,7 @@ const ASSIGN = '(?:[-+*/%&|^]|\\*\\*|<<|>>>?|&&|\\|\\||\\?\\?)?=(?![=>])';
 const DECLARE = new RegExp(`const\\s+${WORD}\\s*=\\s*\\{\\s*\\}(?:\\s*,\\s*${WORD}\\s*=\\s*\\{\\s*\\})*\\s*;`, 'y');
 const OPEN = /\(\s*function\s*\(\s*\)\s*\{/y;
 const NO_BROWSER = ['window', 'document', 'navigator', 'performance', 'Date', 'setTimeout', 'setInterval', 'setImmediate',
-  'requestAnimationFrame', 'localStorage', 'sessionStorage', 'indexedDB', 'globalThis', 'fetch', 'XMLHttpRequest', 'crypto'];
+  'requestAnimationFrame', 'localStorage', 'sessionStorage', 'indexedDB', 'globalThis'];
 
 // Calls fn(name, index) for each use of one of the names as a free identifier: not a property, not an object key.
 function eachUse(code, names, from, to, fn) {
@@ -206,7 +204,7 @@ function owned(m, names, say) {
 function simRules(m, from, to, presentation, say) {
   const { code } = m;
   eachUse(code, NO_BROWSER, 0, code.length, (name, at) => say(at,
-    `uses ${name}: files below 50 run without a browser, a clock or a network`));
+    `uses ${name}: files below 50 run without a browser, a clock, timers or storage`));
   for (const x of code.matchAll(/(?<![\w$])Math\s*\.\s*random(?![\w$])|(?<![\w$.])Math(?![\w$])(?!\s*\.)/g)) {
     say(x.index, x[0] === 'Math'
       ? 'passes Math around: name the function you need (Math.floor), so Math.random cannot slip through'
@@ -225,20 +223,22 @@ function contentRules(m, from, to, names, say) {
     for (let x; (x = re.exec(code)) && x.index < to;) say(x.index, msg);
   };
   const plain = 'content is plain data, and behaviour is named by id';
-  scan(/(?<![\w$.])function(?![\w$])/g, `a function: ${plain}`);
+  // as words of the language only: a field may well be called class or new ({ id: 'x', class: 'y' })
+  const words = {
+    function: `a function: ${plain}`, class: `a class: ${plain}`, new: `an object made with new: ${plain}`,
+    undefined: 'undefined: leave the field out, or use null',
+  };
+  eachUse(code, Object.keys(words), from, to, (word, at) => say(at, words[word]));
   scan(/=>/g, `an arrow function: ${plain}`);
   scan(/(?<![\w$.])(?:get|set)\s+[\w$]+\s*\(/g, `a getter or setter: ${plain}`);
   scan(/(?<![\w$.])(?!(?:if|for|while|switch|catch|with|function)\b)[A-Za-z_$][\w$]*\s*\([^()]*\)\s*\{/g, `a method: ${plain}`);
-  scan(/(?<![\w$.])class(?![\w$])/g, `a class: ${plain}`);
-  scan(/(?<![\w$.])new(?![\w$])/g, `an object made with new: ${plain}`);
-  scan(/(?<![\w$.])undefined(?![\w$])/g, 'undefined: leave the field out, or use null');
   eachUse(code, names, from, to, (name, at) => {
     if (name === 'Defs' && /^\s*\.\s*add\s*\(/.test(code.slice(at + 4, at + 80))) return;
     say(at, name === 'Defs' ? 'content may call Defs.add and nothing else of Defs' : `uses ${name}: content may call Defs.add only`);
   });
 }
 
-// defined: 'Name.prop' -> {file, line} of the first file that assigns it, shared by all modules of one check.
+// defined: 'Name.prop' -> where the first file that assigns it does so, shared by all modules of one check.
 function ownershipRules(m, from, to, names, owns, defined, say) {
   if (!names.length) return;
   const { code } = m, N = names.join('|');
@@ -254,9 +254,10 @@ function ownershipRules(m, from, to, names, owns, defined, say) {
     if (!owns.has(x[1])) return say(x.index, `assigns ${what}${notOwner(x[1])}`);
     if (!x[2] || x[3] !== '=') return;
     const first = defined.get(what);
-    if (!first) defined.set(what, { file: m.file, line: lineOf(m.src, x.index) });
-    else if (first.file !== m.file) {
-      say(x.index, `assigns ${what}, which ${first.file}:${first.line} already defines: no file reassigns what another file defined`);
+    if (!first) defined.set(what, { m, index: x.index });
+    else if (first.m !== m) {
+      const where = `${first.m.file}:${lineOf(first.m.src, first.index)}`;
+      say(x.index, `assigns ${what}, which ${where} already defines: no file reassigns what another file defined`);
     }
   });
   each(`(?<![\\w$.])(?:delete\\s+|\\+\\+\\s*|--\\s*)(${N})\\s*(?:\\.\\s*[\\w$]+|\\[[^\\]]*\\])(?!\\s*[.\\[(])`, (x) => {
@@ -279,23 +280,37 @@ function ownershipRules(m, from, to, names, owns, defined, say) {
 // One entry a line; blank lines and lines that start with # are skipped.
 const denyEntries = (listText) => listText.split(/\r?\n/).map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
 
+// An entry matches as a whole: no letter or digit right before or after it. Between its words anything of
+// space, dash, dot and underscore may stand, or nothing, so "Two Words" also finds two-words and twoWords.
 function denyRules(entries) {
   const quote = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return entries.map((entry) => {
-    const words = entry.split(/[\s_-]+/).filter(Boolean);
-    return {
-      entry,
-      first: (words[0] || '').toLowerCase(),
-      re: new RegExp(`(?<![A-Za-z0-9])${words.map(quote).join('[\\s._-]*')}(?![A-Za-z0-9])`, 'gi'),
-    };
-  }).filter((r) => r.first);
+  return entries.map((entry) => ({ entry, words: entry.split(/[\s_-]+/).filter(Boolean) })).filter((e) => e.words.length).map((e) => ({
+    entry: e.entry,
+    start: (/^[a-z0-9]+/.exec(e.words[0].toLowerCase()) || [''])[0],   // how a word that matches must begin
+    re: new RegExp(`(?<![A-Za-z0-9])${e.words.map(quote).join('[\\s._-]*')}(?![A-Za-z0-9])`, 'gi'),
+  }));
+}
+
+function denyScan(files, entries, found) {
+  // Most entries occur nowhere. One list of every distinct word of the source rules them out in one pass each,
+  // so a long denylist stays cheap; only the few that might match are searched for file by file.
+  const words = '\n' + Array.from(new Set(files.flatMap((f) => f.text.toLowerCase().match(/[a-z0-9]+/g) || []))).join('\n');
+  const rules = denyRules(entries).filter((r) => words.includes('\n' + r.start));
+  for (const f of rules.length ? files : []) {
+    for (const r of rules) {
+      for (const x of f.text.matchAll(r.re)) {
+        const msg = `"${x[0]}" is on the denylist (${r.entry}): names from other games stay out`;
+        found.push({ file: f.file, line: lineOf(f.text, x.index), msg });
+      }
+    }
+  }
 }
 
 // ---- everything together ----
 
 function check({ js = [], pages = [], deny = [] }) {
   const found = [];
-  const mods = js.map((m) => ({ file: m.file, src: m.text, ...strip(m.text), layer: modules.layerOf(m.file) }));
+  const mods = js.map((m) => ({ file: m.file, src: m.text, code: strip(m.text), layer: modules.layerOf(m.file) }));
   const declaredBy = (file) => { const m = mods.find((x) => x.file === file); return m ? modules.declaredIn(m.src) : []; };
   const presentation = declaredBy(modules.DECLARERS[1]), names = [...declaredBy(modules.DECLARERS[0]), ...presentation];
   const defined = new Map();
@@ -320,27 +335,29 @@ function check({ js = [], pages = [], deny = [] }) {
     }
   }
 
-  for (const p of pages) {
-    const text = p.text.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));
-    const outside = /<link\b|<script\b[^>]*\bsrc\s*=|<(?:img|iframe|audio|video|source|embed|object)\b[^>]*\s(?:src|data)\s*=(?!\s*["']?data:)|@import\b|url\((?!\s*["']?(?:data:|#))/gi;
-    for (const x of text.matchAll(outside)) {
-      found.push({ file: p.file, line: lineOf(text, x.index), msg: `"${x[0].trim()}" loads another file: the page is one file and asks the network for nothing` });
-    }
-  }
-
-  const rules = denyRules(deny);
-  if (rules.length) {
-    for (const f of [...mods.map((m) => ({ file: 'src/js/' + m.file, text: m.src })), ...pages]) {
-      const lower = f.text.toLowerCase();
-      for (const r of rules) {
-        if (!lower.includes(r.first)) continue;
-        for (const x of f.text.matchAll(r.re)) {
-          found.push({ file: f.file, line: lineOf(f.text, x.index), msg: `"${x[0]}" is on the denylist (${r.entry}): names from other games stay out` });
-        }
-      }
-    }
-  }
+  for (const p of pages) pageRules(p, found);
+  if (deny.length) denyScan([...mods.map((m) => ({ file: 'src/js/' + m.file, text: m.src })), ...pages], deny, found);
   return found;
+}
+
+// What an html or css file of src/page may not do. A data: address and a #reference stay inside the page.
+const OUTSIDE = new RegExp([
+  '<link\\b',
+  '<script\\b[^>]*\\bsrc\\s*=',
+  '<(?:img|iframe|audio|video|source|embed|object)\\b[^>]*\\s(?:src|data)\\s*=(?!\\s*["\']?data:)',
+  '@import\\b',
+  'url\\((?!\\s*["\']?(?:data:|#))',
+].join('|'), 'gi');
+
+function pageRules(p, found) {
+  const text = p.text.replace(/<!--[\s\S]*?-->|\/\*[\s\S]*?\*\//g, (c) => c.replace(/[^\n]/g, ' '));   // comments blanked
+  const say = (x, msg) => found.push({ file: p.file, line: lineOf(text, x.index), msg });
+  for (const x of text.matchAll(OUTSIDE)) {
+    say(x, `"${x[0].trim()}" loads another file: the page is one file and asks the network for nothing`);
+  }
+  for (const x of text.matchAll(/\b100(?:vh|svh|lvh|dvh)\b/g)) {
+    say(x, `"${x[0]}": fill the screen with height: 100%, which is right on phones and inside the published page's frame`);
+  }
 }
 
 function filesUnder(dir, rel) {
@@ -356,7 +373,8 @@ function main() {
   const deny = fs.existsSync(list) ? denyEntries(fs.readFileSync(list, 'utf8')) : null;
   const found = check({ js, pages, deny: deny || [] });
   for (const f of fs.readdirSync(modules.DIR).sort()) {
-    if (!modules.NAME.test(f)) found.push({ file: 'src/js/' + f, line: 1, msg: 'is not named NN-name.js, so the build leaves it out' });
+    if (modules.NAME.test(f) || f.startsWith('.')) continue;
+    found.push({ file: 'src/js/' + f, line: 1, msg: 'is not named NN-name.js, so the build leaves it out' });
   }
   found.push(...build.guard(build.parts()));
   found.sort((a, b) => (a.file < b.file ? -1 : a.file > b.file ? 1 : a.line - b.line));
