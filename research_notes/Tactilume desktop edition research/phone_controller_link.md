@@ -462,10 +462,10 @@ The same binary protocol serves both routes (section 9).
 
 **Native touch and window control**
 - `MotionEvent.getPressure(int)` and `getHistoricalX(int,int)`: API 5; `TOOL_TYPE_STYLUS`: API 14. — [api-versions.xml](https://dl.google.com/android/repository/platform-37.2_r02.zip) [primary] [Verified: https://dl.google.com/android/repository/platform-37.2_r02.zip]
-- `View.setSystemGestureExclusionRects` (API 29): "the system will put a limit of `200dp` on the vertical extent of the exclusions it takes into account. The limit does not apply while the navigation bar is… stickily hidden". `WindowInsetsController`: API 30. `FLAG_KEEP_SCREEN_ON`, `View.setKeepScreenOn` and `Activity.setRequestedOrientation`: API 1. — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`View.java`); [api-versions.xml](https://dl.google.com/android/repository/platform-37.2_r02.zip) [primary]
+- `View.setSystemGestureExclusionRects` (API 29): "the system will put a limit of `200dp` on the vertical extent of the exclusions it takes into account. The limit does not apply while the navigation bar is… stickily hidden". `WindowInsetsController`: API 30. `FLAG_KEEP_SCREEN_ON`, `View.setKeepScreenOn` and `Activity.setRequestedOrientation`: API 1. — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`View.java`); [api-versions.xml](https://dl.google.com/android/repository/platform-37.2_r02.zip) [primary] [Verified: https://dl.google.com/android/repository/source-37.2_r01.zip; https://dl.google.com/android/repository/platform-37.2_r02.zip]
 
 **Haptics**
-- `Vibrator.vibrate(VibrationEffect…)` is `@RequiresPermission(android.Manifest.permission.VIBRATE)`, and "The app should be in the foreground for the vibration to happen." — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`android/os/Vibrator.java`) [primary]
+- `Vibrator.vibrate(VibrationEffect…)` is `@RequiresPermission(android.Manifest.permission.VIBRATE)`, and "The app should be in the foreground for the vibration to happen." — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`android/os/Vibrator.java`) [primary] [Verified: https://dl.google.com/android/repository/source-37.2_r01.zip]
 - API levels:
   - API 26: `VibrationEffect.createOneShot`, `createWaveform` (with amplitudes) and `Vibrator.hasAmplitudeControl`.
   - API 29: `createPredefined` with `EFFECT_CLICK`, `EFFECT_TICK`, `EFFECT_HEAVY_CLICK`.
@@ -474,10 +474,10 @@ The same binary protocol serves both routes (section 9).
   - API 33: `vibrate(VibrationEffect, VibrationAttributes)`.
   - API 34: `HapticFeedbackConstants.SEGMENT_TICK`, `SEGMENT_FREQUENT_TICK`, `DRAG_START`, `TOGGLE_ON`.
   - API 36: `VibrationEffect.BasicEnvelopeBuilder` and `Vibrator.areEnvelopeEffectsSupported`.
-  - API 36.1: `View.performHapticFeedback(HapticFeedbackRequest)`.
-  — [api-versions.xml](https://dl.google.com/android/repository/platform-37.2_r02.zip) [primary]
-- Primitive semantics: `PRIMITIVE_CLICK` gives "a sharp, crisp click sensation"; `PRIMITIVE_TICK` and `PRIMITIVE_LOW_TICK` are "intended to be used repetitively for dynamic feedback"; others are `SPIN`, `QUICK_RISE`, `SLOW_RISE`, `QUICK_FALL`. — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`VibrationEffect.java`) [primary]
-- In-page `navigator.vibrate` works in WebView from 4.4.3, with the Chrome 60 user-gesture rule. — [BCD Navigator](https://github.com/mdn/browser-compat-data/blob/main/api/Navigator.json) [primary]
+  - API 36.1: `View.performHapticFeedback(HapticFeedbackRequest)` (the class is `android.os.vibrator.HapticFeedbackRequest`).
+  — [api-versions.xml](https://dl.google.com/android/repository/platform-37.2_r02.zip) [primary] [Verified: https://dl.google.com/android/repository/platform-37.2_r02.zip]
+- Primitive semantics: `PRIMITIVE_CLICK` gives "a sharp, crisp click sensation"; `PRIMITIVE_TICK` and `PRIMITIVE_LOW_TICK` are "intended to be used repetitively for dynamic feedback"; others are `SPIN`, `QUICK_RISE`, `SLOW_RISE`, `QUICK_FALL`. — [SDK 37.2 sources](https://dl.google.com/android/repository/source-37.2_r01.zip) (`VibrationEffect.java`) [primary] [Verified: https://dl.google.com/android/repository/source-37.2_r01.zip]
+- In-page `navigator.vibrate` works in WebView from 4.4.3, with the Chrome 60 user-gesture rule. — [BCD Navigator](https://github.com/mdn/browser-compat-data/blob/main/api/Navigator.json) [primary] [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/Navigator.json]
 
 ### Inferences
 **Discovery**
@@ -546,8 +546,14 @@ Plan for a user revoking `ACCESS_LOCAL_NETWORK` in Settings: catch the failure a
   - `vibrator.areAllPrimitivesSupported(...)` and `hasAmplitudeControl()`;
   - `InputDevice` motion ranges for pressure;
   - `Sensor.getMinDelay()`.
-- **Enforcement on shipping Android 17**: does Android 17 block plain socket traffic to the LAN for targetSdk-37 apps lacking `ACCESS_LOCAL_NETWORK`? The NsdManager docs say such apps "generally require" it, while `RESTRICT_LOCAL_NETWORK` is still `@Disabled` in the 37.2 sources. Test with the compat override; the exact `adb shell am compat enable RESTRICT_LOCAL_NETWORK <pkg>` usage is unverified.
-- **Scope of the picker grant**: does it cover UDP to other ports on the same host, or only the advertised service? The docs say "communicate with that specific device", which suggests host-level. Verify.
+- **Enforcement on shipping Android 17**: answered, and it does block. Android's documentation (last updated 2026-11-03) says that for apps moving to targetSdk 37 the local network "is blocked by default", and that local network protections are "mandatory and enforced".
+  - The `@Disabled` `RESTRICT_LOCAL_NETWORK` change and its `adb shell am compat enable RESTRICT_LOCAL_NETWORK <package_name>` command are the deprecated Android 16 opt-in, so they are no test of Android 17.
+  - Still to confirm on the Moto G Stylus: a targetSdk-37 build with neither the permission nor a picker grant times out on TCP and gets `EPERM` on UDP, then works after a picker grant.
+  [Verified correction: https://developer.android.com/privacy-and-security/local-network-permission]
+- **Scope of the picker grant**: does it cover UDP to other ports on the same host, or only the advertised service?
+  - The NsdManager docs say "communicate with that specific device".
+  - Android's guide says the picker lets the user "select a single device for the app to access", and that "Connections to IP addresses obtained this way don't require the ACCESS_LOCAL_NETWORK permission". [Verified: https://developer.android.com/privacy-and-security/local-network-permission]
+  - Both point to an address-level grant that covers any port and protocol. Still check UDP on a second port on the device.
 - **WebView and LNA**: whether Android WebView enforces Chromium LNA, and which address space it assigns to a page intercepted by WebViewAssetLoader. Unverified. If it is "public", page-initiated LAN requests could be blocked, which is another reason to network in Kotlin.
 - Bridge latency (renderer → app process IPC) was not measured.
 - **Unverified** (prior knowledge; Maven Central rate-limited the source check):
