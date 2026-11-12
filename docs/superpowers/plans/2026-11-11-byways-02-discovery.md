@@ -1186,19 +1186,19 @@ git commit -m "Add the Marginalia, GitHub and Show HN adapters"
   - Met (v1.1 search only; v1 search was retired on 2026-10-01): `random` reads the total once (`GET https://collectionapi.metmuseum.org/public/collection/v1.1/search?hasImages=true&isPublicDomain=true&limit=1&offset=0`, cached 24 h as `met:total`), then the same URL with `offset=<floor(rand × min(total, 10000))>`, then `GET https://collectionapi.metmuseum.org/public/collection/v1/objects/<id>`. `search(q)`: `v1.1/search?q=<q>&hasImages=true&isPublicDomain=true&limit=5`, then each object. Objects with `isPublicDomain !== true` or no `primaryImageSmall` are dropped. Find: id `met:<objectID>`, `url = objectURL`, `imageUrl = primaryImageSmall`, `author = artistDisplayName`, `description = '<artistDisplayName>, <objectDate>'`, why `['The Met']`. `probeUrl 'https://collectionapi.metmuseum.org/public/collection/v1/objects/436535'`.
   - Cleveland: `random` reads `info.total` once (`GET https://openaccess-api.clevelandart.org/api/artworks/?cc=1&has_image=1&limit=1`, cached 7 days as `cleveland:total`), then `?cc=1&has_image=1&limit=10&skip=<floor(rand × total)>`; `search(q)`: `?q=<q>&cc=1&has_image=1&limit=20`. Only `share_license_status === 'CC0'` is kept (trust the returned value). Find: id `cma:<id>`, `url`, `imageUrl = images.web.url`, `author = creators[0].description`, `description = '<creator>, <creation_date>'`, why `['Cleveland Museum of Art']`. `probeUrl 'https://openaccess-api.clevelandart.org/api/artworks/?limit=1'`.
 
-Fixtures: `aic/search.json` (`config.iiif_url 'https://www.artic.edu/iiif/2'`; artwork 27992 'A Sunday on La Grande Jatte', `image_id '2d484387'`, `artist_display 'Georges Seurat\nFrench, 1859–1891'`, `thumbnail {lqip 'data:image/gif;base64,R0lGOD', alt_text 'A park scene.'}`; artwork 1 with `image_id null`). `met/search.json` (`{total: 5000, objectIDs: [436535]}`), `met/object.json` (436535 'Wheat Field with Cypresses', `primaryImageSmall`, `objectURL`, 'Vincent van Gogh', '1889', `isPublicDomain true`), `met/object-not-pd.json` (the same with `isPublicDomain false`). `cleveland/artworks.json` (`info.total 30000`; artwork 1 'Twilight in the Wilderness', CC0, `images.web.url`, creator 'Frederic Edwin Church (American, 1826–1900)', '1860'; artwork 2 'Copyrighted' with `share_license_status 'Copyrighted'`).
+Fixtures, beyond the values the tests assert: `aic/search.json` has `config.iiif_url 'https://www.artic.edu/iiif/2'`, `artist_display 'Georges Seurat\nFrench, 1859–1891'` and a second artwork with `image_id null`; `met/search.json` is `{total: 5000, objectIDs: [436535]}`; `met/object-not-pd.json` is `met/object.json` with `isPublicDomain false`; `cleveland/artworks.json` has `info.total 30000` and a second artwork with `share_license_status 'Copyrighted'`.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
-test('aic builds IIIF images, keeps the lqip and sends AIC-User-Agent', async () => {
+test('aic builds IIIF images and sends AIC-User-Agent', async () => {
   const { ctx, calls } = await adapterCtx(); const out = await aic.random(ctx);
   assert.equal(calls[0].headers['aic-user-agent'], IDENT);
   const u = new URL(calls[0].url); assert.equal(u.searchParams.get('query[term][is_public_domain]'), 'true'); assert.ok(+u.searchParams.get('page') <= 500);
   assert.equal(out.length, 1);
   assert.equal(out[0].imageUrl, 'https://www.artic.edu/iiif/2/2d484387/full/843,/0/default.jpg');
   assert.equal(out[0].url, 'https://www.artic.edu/artworks/27992'); assert.equal(out[0].author, 'Georges Seurat French, 1859–1891');
-  assert.ok(out[0].meta.lqip.startsWith('data:image/gif')); assert.equal(out[0].licence, 'Public domain');
+  assert.equal(out[0].licence, 'Public domain'); assert.equal(out[0].meta?.lqip, undefined);
 });
 test('met uses v1.1 search and keeps public-domain objects', async () => {
   const { ctx, calls } = await adapterCtx(); const [f] = await met.random(ctx);
@@ -1226,7 +1226,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/src-museums.test.js tests/unit/sources-index.test.js`
-Expected: PASS.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1247,7 +1247,7 @@ git commit -m "Add the Art Institute, Met and Cleveland adapters"
 - Produces: the `nasaimages`, `loc` and `smithsonian` adapters. Each `random` searches one seed word picked with `ctx.rand` from its list. `more` returns `[]`.
   - NASA Images: `search(q)`: `GET https://images-api.nasa.gov/search?q=<q>&media_type=image&page_size=20` (`random` adds `page=<1–5>`; words `['nebula','aurora','rover','launch','galaxy','eclipse','saturn','apollo','comet','earth']`). Items from `collection.items[]`: `data[0].{title, description, nasa_id, center, date_created}`, `links[0].href`. Find: id `nasa:<nasa_id>`, `url = 'https://images.nasa.gov/details/<nasa_id>'`, `imageUrl = links[0].href`, `attribution = 'NASA <center>'`, `licence 'Public domain (NASA)'`, why `['NASA Images']`. `probeUrl 'https://images-api.nasa.gov/search?q=moon&media_type=image&page_size=1'`.
   - Library of Congress: `search(q)`: `GET https://www.loc.gov/photos/?q=<q>&fo=json&c=25&sp=1` (`random` uses `sp=<1–5>`; words `['map','poster','bicycle','lighthouse','circus','garden','bridge','train','kite','harbor']`). An HTML reply (the CAPTCHA page) rejects, because `getJson` fails to parse it. Find: `url`, `title`, `description = description[0]`, **no `imageUrl`** (results carry no open-rights flag), why `['Library of Congress']`. `probeUrl 'https://www.loc.gov/photos/?q=map&fo=json&c=1'`.
-  - Smithsonian: needs secret `src:apidatagov`; without it every method returns `[]` with no request. `search(q)`: `GET https://api.si.edu/openaccess/api/v1.0/search?q=<q>&rows=20&api_key=<key>` (`random` adds `start=<0–199>`; words `['quilt','fossil','meteorite','toy','clock','mask','telescope','shell','banjo','kite']`). Rows from `response.rows[]`; `content.descriptiveNonRepeating` gives `record_link` (the url), `data_source` (the attribution) and `metadata_usage.access`; `imageUrl = online_media.media[0].thumbnail` only when access is `'CC0'`, and then `licence 'CC0'`. Why `['Smithsonian Open Access']`. `probeUrl 'https://api.si.edu/openaccess/api/v1.0/search?q=quilt&rows=1&api_key=DEMO_KEY'`.
+  - Smithsonian: needs secret `src:datagov`; without it every method returns `[]` with no request. `search(q)`: `GET https://api.si.edu/openaccess/api/v1.0/search?q=<q>&rows=20&api_key=<key>` (`random` adds `start=<0–199>`; words `['quilt','fossil','meteorite','toy','clock','mask','telescope','shell','banjo','kite']`). Rows from `response.rows[]`; `content.descriptiveNonRepeating` gives `record_link` (the url), `data_source` (the attribution) and `metadata_usage.access`; `imageUrl = online_media.media[0].thumbnail` only when access is `'CC0'`, and then `licence 'CC0'`. Why `['Smithsonian Open Access']`. `probeUrl 'https://api.si.edu/openaccess/api/v1.0/search?q=quilt&rows=1&api_key=DEMO_KEY'`.
 
 Fixtures: `nasaimages/search.json` (one item: 'Carina Nebula', 'Stars being born.', `nasa_id 'PIA123'`, `center 'GSFC'`, href `https://images-assets.nasa.gov/image/PIA123/PIA123~thumb.jpg`). `loc/photos.json` (one result: 'Map of Boston', `url 'https://www.loc.gov/item/123/'`, `description ['An old map.']`, two `image_url` entries) and `loc/captcha.html`. `smithsonian/search.json` (row 'Quilt' with CC0 access, `data_source 'National Museum of American History'`, a thumbnail; row 'Not open' with `access 'usage conditions apply'` and a thumbnail).
 

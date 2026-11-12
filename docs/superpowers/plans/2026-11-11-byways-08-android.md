@@ -1061,7 +1061,7 @@ git commit -m "Add native read-aloud, media buttons, share and file save"
 
 **Files:**
 - Create: `…/byways/LinkPolicy.kt`, `…/byways/SiteView.kt`
-- Modify: `…/byways/MainActivity.kt`
+- Modify: `…/byways/MainActivity.kt`, `tests/unit/android-shell.test.js`
 - Test: `shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/LinkPolicyTest.kt`
 
 **Interfaces:**
@@ -1073,16 +1073,18 @@ object LinkPolicy {
   enum class Action { LOAD, SITE, EXTERNAL, BLOCK }
   fun forMainView(url: String): Action   // app or Lab origin → LOAD; other http(s) → SITE
   fun forSiteView(url: String): Action   // http(s) → LOAD
+  fun isAuthCallback(url: String): Boolean   // https on the host appassets.androidplatform.net exactly
 }                                         // both: intent, market, mailto, tel, sms, geo → EXTERNAL; anything else → BLOCK
 object AssetRules {
   fun mimeFor(path: String): String
   fun safeAssetPath(dir: String, suffix: String): String?   // "<dir>/<suffix>", or null for "", "..", "\" or a leading "/"
 }
 fun openOutside(activity: ComponentActivity, url: String, fallback: (String) -> Unit)   // in SiteView.kt
-class SiteView(private val activity: ComponentActivity, private val host: FrameLayout, private val onNext: () -> Unit,
-               private val onClosed: () -> Unit) {
+class SiteView(private val activity: ComponentActivity, private val host: FrameLayout, private val emit: (event: String) -> Unit) {
   val isOpen: Boolean
   fun open(url: String, title: String)   // the same URL as the one showing does not reload
+  fun openAuth(url: String, onDone: (callbackUrl: String?) -> Unit)   // the login view
+  fun setControls(state: String)         // a hands-free state: 'idle'|'active'|'paused'|'suspended'
   fun close()
   fun goBack(): Boolean                  // true when the site view went back a page
 }
@@ -1094,7 +1096,7 @@ class SiteView(private val activity: ComponentActivity, private val host: FrameL
 class LinkPolicyTest {
   @Test fun mainViewKeepsOnlyItsOwnOrigins() {
     assertEquals(LOAD, LinkPolicy.forMainView("https://appassets.androidplatform.net/assets/www/index.html#/feed"))
-    assertEquals(LOAD, LinkPolicy.forMainView("https://lab.appassets.androidplatform.net/assets/lab/index.html"))
+    assertEquals(LOAD, LinkPolicy.forMainView("https://lab.appassets.androidplatform.net/lab/index.html"))
     assertEquals(SITE, LinkPolicy.forMainView("https://appassets.androidplatform.net.evil.com/"))
     assertEquals(SITE, LinkPolicy.forMainView("http://appassets.androidplatform.net/assets/www/index.html"))
     assertEquals(SITE, LinkPolicy.forMainView("https://example.org/"))

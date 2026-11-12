@@ -1501,17 +1501,26 @@ test('loadData falls back to empty shapes for missing or broken files', async ()
   assert.deepEqual([data.library, data.vaultStarter, data.geocities], [EMPTY_DATA.library, EMPTY_DATA.vaultStarter, EMPTY_DATA.geocities]);
   assert.notEqual(data.library, EMPTY_DATA.library);
 });
+test('dataUrlFor is relative in the PWA and the Pages URL elsewhere', () => {
+  assert.equal(dataUrlFor('pwa', 'daily.json'), 'data/daily.json');
+  for (const p of ['extension', 'android'])
+    assert.equal(dataUrlFor(p, 'itch.json'), 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/itch.json');
+});
 ```
 
 - [ ] **Step 2: Write the failing e2e spec** `tests/e2e/shell.spec.js`
 
 ```js
+import { test, expect } from './helpers/net.js';
+import { gotoApp } from './helpers/app.js';
+import { APP_VERSION } from '../../src/core/version.js';
 test('routes between the registered views', async ({ page }) => {
   await gotoApp(page); const nav = page.getByRole('navigation', { name: 'Main' });
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
   for (const label of ['Feed', 'Daily Fate', 'Vault', 'Saved', 'Settings']) {
     await nav.getByRole('link', { name: label }).click();
     await expect(page.getByRole('heading', { level: 1, name: label })).toBeVisible();
+    await expect(page.locator('h1')).toHaveCount(1);
     await expect(page).toHaveTitle(`${label} · Byways`);
     await expect(nav.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
   }
@@ -1520,16 +1529,27 @@ test('routes between the registered views', async ({ page }) => {
 test('unknown hashes land on Stumble', async ({ page }) => {
   await gotoApp(page, '#/nope'); await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
 });
-test('settings sections register and route', async ({ page }) => {
+test('settings list their sections in order and route to them', async ({ page }) => {
   await gotoApp(page, '#/settings');
   await page.evaluate(async () => {
     const s = await import(new URL('ui/views/settings/index.js', document.baseURI).href);
     s.registerSettingsSection({ id: 'test', label: 'Test section', order: 5, render: c => c.append('hello') });
     location.hash = '#/feed'; location.hash = '#/settings';
   });
+  await expect(page.locator('#app .view-body a')).toHaveText(['Test section', 'About']);
   await page.getByRole('link', { name: 'Test section' }).click();
-  await expect(page).toHaveURL(/#\/settings\/test$/); await expect(page.locator('#app')).toContainText('hello');
+  await expect(page).toHaveURL(/#\/settings\/test$/);
+  await expect(page.getByRole('heading', { level: 2, name: 'Test section' })).toBeVisible();
+  await expect(page.locator('#app')).toContainText('hello');
   await expect(page.getByRole('link', { name: 'All settings' })).toHaveAttribute('href', '#/settings');
+});
+test('About shows the version, the build and the links', async ({ page }) => {
+  const { id } = await (await page.request.get('build.json')).json();
+  await gotoApp(page, '#/settings/about');
+  await expect(page.getByText(`Version ${APP_VERSION}`, { exact: true })).toBeVisible();
+  await expect(page.getByText(`Build ${id}`, { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: 'Source code' })).toHaveAttribute('href', 'https://github.com/iteatsthesalt/Game-Dev-Resources');
+  await expect(page.getByRole('link', { name: 'Byways web app' })).toHaveAttribute('href', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/');
 });
 test('a view that throws leaves the shell working', async ({ page }) => {
   await gotoApp(page);
@@ -1537,6 +1557,7 @@ test('a view that throws leaves the shell working', async ({ page }) => {
     const r = await import(new URL('ui/router.js', document.baseURI).href);
     r.registerView('vault', { title: 'Vault', render() { throw new Error('boom'); } }); r.navigate('vault');
   });
+  await expect(page.getByRole('heading', { level: 1, name: 'Vault' })).toBeVisible();
   await expect(page.locator('#app')).toContainText('This view failed to load.');
   await expect(page.locator('#live-assertive')).toHaveText('This view failed to load.');
   await page.getByRole('link', { name: 'Feed' }).click();

@@ -1379,8 +1379,9 @@ test('"search for pixel art" reaches app.search', async ({ page }) => {
 test('Esc stops reading', async ({ page }) => {
   await start(page, { holdSpeech: true });
   await expect.poll(() => page.evaluate(() => window.__spoken.length)).toBe(1);
+  const cancels = await page.evaluate(() => window.__speechCancels);
   await page.keyboard.press('Escape');
-  await expect.poll(() => page.evaluate(() => window.__speechCancels)).toBeGreaterThan(0);
+  await expect.poll(() => page.evaluate(() => window.__speechCancels)).toBeGreaterThan(cancels);
   await page.evaluate(() => window.__endSpeech());
   await page.waitForTimeout(300);
   expect(await page.evaluate(() => window.__spoken.length)).toBe(1);
@@ -1388,22 +1389,20 @@ test('Esc stops reading', async ({ page }) => {
 
 test('Pause and Play', async ({ page }) => {
   await page.clock.install();
-  await start(page);
+  await start(page); await settle(page);
   const t1 = await title(page).textContent();
   await page.getByRole('button', { name: 'Pause' }).click();
-  await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
   await page.clock.runFor(60000);
   await expect(title(page)).toHaveText(t1);
   await page.getByRole('button', { name: 'Play' }).click();
   await page.clock.runFor(21000);
   await expect(title(page)).not.toHaveText(t1);
-  expect(await announced(page, 'live-polite', 'Lean-back paused')).toBe(1);
-  expect(await announced(page, 'live-polite', 'Lean-back on')).toBe(1);
+  expect([await announced(page, 'live-polite', 'Lean-back paused'), await announced(page, 'live-polite', 'Lean-back on')]).toEqual([1, 1]);
 });
 
 test('the countdown announcement is made once per find', async ({ page }) => {
   await page.clock.install();
-  await start(page);
+  await start(page); await settle(page);
   await page.clock.runFor(15000);
   expect(await announced(page, 'live-polite', 'Next find in 10 seconds')).toBe(1);
   await page.keyboard.press('x');
