@@ -1,0 +1,355 @@
+// The whole interface: nearly invisible while playing (one dim button in the corner),
+// rich when opened. See CONTRACTS.md for the API main.js relies on.
+//
+//   hud.js    the open button, recording badge, behaviour name card, toasts, live region
+//   panel.js  the controls panel, built from the schema the first time it opens
+//   intro.js  the first-run welcome
+//
+// ui.update runs every frame, so it only counts time; text changes a few times a second.
+
+import { PALETTES, paletteCSS } from '../core/palettes.js';
+import { createHUD, restoreHint } from './hud.js';
+import { createPanel, SIDE_QUERY } from './panel.js';
+import { createIntro } from './intro.js';
+
+const BLURB_TIMES = 2;       // a behaviour's card explains it the first times it is played
+const HUD_EVERY = 0.25;      // s between recording-time updates
+const STATS_EVERY = 0.5;     // s between stats updates in Settings
+// Hidden controls come back with a three-finger double tap: a gesture play never makes
+// (holding fingers still is how some behaviours are played, Nova's hold-to-gather among them).
+const RESTORE_TAP_MS = 350;   // a tap: three or more fingers down and all up again within this
+const RESTORE_GAP_MS = 600;   // the second tap starts within this of the first one's end
+const RESTORE_SLOP_PX = 28;   // ...as long as the fingers stay roughly still
+
+const isTyping = (el) => !!el && (el.isContentEditable || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.tagName === 'SELECT');
+
+// sRGB hex to relative luminance and a rough saturation, to pick an accent that reads
+function describeHex(hex) {
+  const n = parseInt(hex.slice(1), 16);
+  const rgb = [(n >> 16) & 255, (n >> 8) & 255, n & 255].map((c) => c / 255);
+  const lin = rgb.map((c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4));
+  const lum = 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  return { lum, sat: Math.max(...rgb) - Math.min(...rgb) };
+}
+
+// The palette's most colourful stop that is still bright enough to see on the dark glass.
+function accentOf(palette) {
+  let best = null;
+  for (const hex of palette.stops) {
+    const d = describeHex(hex);
+    if (d.lum < 0.25) continue;
+    if (!best || d.sat > best.sat) best = { hex, sat: d.sat };
+  }
+  return best ? best.hex : palette.stops[palette.stops.length - 1];
+}
+
+function where(r) {
+  const w = String((r && r.where) || '').toLowerCase();
+  if (/gallery|photo|picture|movie|video|dcim/.test(w)) return ' to your gallery';
+  if (/download/.test(w)) return ' to your downloads';
+  return '';
+}
+
+export function createUI({ root, store, actions, platform, audio, capture, welcome }) {
+  const reduceQuery = typeof matchMedia === 'function' ? matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const reducedMotion = () => !!(reduceQuery && reduceQuery.matches);
+
+  root.classList.add('tl-ui');
+
+  // Control size times the system font scale the Android app reports (1 elsewhere), so the
+  // text and the boxes around it grow together; never more than twice the size, and a
+  // smaller system font never shrinks the controls (or their touch targets) below Control size.
+  const MAX_SCALE = 2;
+  const fontScale = () => Math.max(1, (platform && Number(platform.fontScale)) || 1);
+  function applyScale(v) {
+    root.style.setProperty('--ui-scale', String(+Math.min(Math.max(MAX_SCALE, v), v * fontScale()).toFixed(3)));
+  }
+  function applyAccent(key) {
+    const p = PALETTES.find((x) => x.key === key) || PALETTES[0];
+    root.style.setProperty('--accent', accentOf(p));
+    root.style.setProperty('--accent-grad', paletteCSS(p));
+  }
+  applyScale(store.settings.uiScale);
+  applyAccent(store.scene.palette);
+  store.on('scene', (scene, keys) => { if (keys.includes('palette')) applyAccent(scene.palette); });
+  store.on('settings', (settings, keys) => { if (keys.includes('uiScale')) applyScale(settings.uiScale); });
+  if (platform && typeof platform.onFontScale === 'function') {
+    platform.onFontScale(() => {
+      applyScale(store.settings.uiScale);
+      if (panel) panel.refit();
+    });
+  }
+
+  // ---- the floating parts -------------------------------------------------------------
+  const hud = createHUD(root, {
+    onOpen: () => ui.open(),
+    onStopRecording: () => run.record(),
+    reducedMotion,
+  });
+
+  let panel = null;
+  let opener = null; // what had focus when the panel opened
+
+  // ---- results people should hear about ------------------------------------------------
+  let finishedCount = 0; // recordings that reported themselves through capture's 'finished'
+  const toast = (text, ms) => hud.toast(text, ms);
+  function report(what, r) {
+    if (r && r.ok) toast(`${what} saved${where(r)}`);
+    else if (r && r.error !== 'cancelled') toast((r && r.error) || `The ${what.toLowerCase()} could not be saved.`);
+  }
+  const attempt = async (fn) => {
+    try { return await fn(); } catch (e) { return { ok: false, error: (e && e.message) || '' }; }
+  };
+  const run = {
+    async photo() {
+      const r = await attempt(() => actions.photo());
+      report('Photo', r);
+      return r;
+    },
+    async record() {
+      const wasRecording = !!(capture && capture.recording);
+      const before = finishedCount;
+      const r = await attempt(() => actions.toggleRecord());
+      if (!wasRecording) {
+        if (r && r.ok === false) toast(r.error || 'Recording could not start here.');
+        else if (panel && panel.isOpen() && isSheetMode()) panel.close();
+      } else if (finishedCount === before) {
+        report('Video', r);
+      }
+      return r;
+    },
+    async shareLink() {
+      const r = await attempt(() => actions.shareLink());
+      if (r && r.ok) toast(r.kind === 'code' ? (r.copied ? 'Scene code copied' : 'Scene code shared') : r.copied ? 'Link copied' : 'Shared');
+      else if (r && r.error !== 'cancelled') toast((r && r.error) || 'The link could not be shared.');
+      return r;
+    },
+  };
+
+  // ---- recording state ------------------------------------------------------------
+  let recOn = false;
+  function setRecording(on, elapsed) {
+    if (on && !recOn) toast(hidden ? 'Recording. Press R to stop.' : 'Recording. Tap the red dot to stop.');
+    recOn = on;
+    hud.setRecording(on, elapsed);
+    if (panel) panel.setRecording(on, elapsed);
+  }
+  if (capture && typeof capture.on === 'function') {
+    capture.on('state', (s) => setRecording(!!(s && s.recording), (s && s.elapsed) || 0));
+    capture.on('finished', (result) => { finishedCount++; report('Video', result); });
+  }
+
+  // ---- the panel, made the first time it is needed ---------------------------------------
+  const sideQuery = typeof matchMedia === 'function' ? matchMedia(SIDE_QUERY) : null;
+  const isSheetMode = () => !(sideQuery && sideQuery.matches);
+  function ensurePanel() {
+    if (!panel) {
+      panel = createPanel(root, {
+        store, actions, platform, audio, run,
+        toast: (t) => hud.toast(t),
+        announce: (t) => hud.announce(t),
+        onClosed: ({ returnFocus }) => {
+          hud.setOpen(false);
+          hud.wake();
+          // back to the open button only if it opened the panel; otherwise to the light,
+          // where Space and the arrow keys play (a focused button would keep Space)
+          const back = opener === hud.openBtn ? hud.openBtn : document.getElementById('stage');
+          opener = null;
+          if (returnFocus && !hidden && back) back.focus({ preventScroll: true });
+        },
+      });
+      panel.setRecording(recOn, capture ? capture.elapsed || 0 : 0);
+    }
+    return panel;
+  }
+
+  // The on-screen keyboard can cover the bottom sheet: lift it by the covered height.
+  const vv = window.visualViewport;
+  function onViewport() {
+    const covered = Math.max(0, Math.round(innerHeight - vv.height - vv.offsetTop));
+    root.style.setProperty('--kb', `${covered > 80 ? covered : 0}px`);
+  }
+  if (vv) vv.addEventListener('resize', onViewport, { passive: true });
+
+  // ---- first run ----------------------------------------------------------------------
+  let intro = null;
+  if (!store.settings.introSeen) {
+    root.classList.add('is-intro');
+    intro = createIntro(root, {
+      reducedMotion,
+      onBegin: () => {
+        // still inside the tap: browsers only allow sound to start from one
+        try { actions.unlock(); } catch (e) { console.warn('Tactilume: could not unlock sound', e); }
+        store.setSettings({ introSeen: true });
+        root.classList.remove('is-intro');
+        setTimeout(() => hud.beckon(), 900);
+        if (welcome) hud.toast(welcome);
+      },
+    });
+  } else if (welcome) {
+    hud.toast(welcome);
+  }
+  const introOpen = () => !!(intro && intro.isOpen());
+
+  // ---- hidden controls ------------------------------------------------------------------
+  let hidden = false;
+  let toldHidden = false;
+  const touches = new Map(); // pointerId -> where it went down
+  // the touches since the screen was last empty: when they began, how many at most, and
+  // whether one moved; `lastTap` is when the last three-finger tap ended
+  let group = null;
+  let lastTap = -Infinity;
+  // when the finger moved (a busy frame can run the handler much later than that)
+  const when = (e) => (e.timeStamp > 0 ? e.timeStamp : performance.now());
+  function onHoldDown(e) {
+    if (e.pointerType !== 'touch') return;
+    if (!touches.size) group = { at: when(e), most: 0, moved: false };
+    touches.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (group) group.most = Math.max(group.most, touches.size);
+  }
+  function onHoldMove(e) {
+    const t = touches.get(e.pointerId);
+    if (t && group && Math.hypot(e.clientX - t.x, e.clientY - t.y) > RESTORE_SLOP_PX) group.moved = true;
+  }
+  function onHoldUp(e) {
+    if (!touches.delete(e.pointerId) || touches.size || !group) return;
+    const g = group;
+    group = null;
+    const now = when(e);
+    if (e.type === 'pointercancel' || g.moved || g.most < 3 || now - g.at > RESTORE_TAP_MS) { lastTap = -Infinity; return; }
+    if (g.at - lastTap <= RESTORE_GAP_MS) {
+      lastTap = -Infinity;
+      restore();
+      if (store.settings.haptics && platform && typeof platform.vibrate === 'function') platform.vibrate(12);
+    } else {
+      lastTap = now;
+    }
+  }
+  const HOLD_EVENTS = [['pointerdown', onHoldDown], ['pointermove', onHoldMove], ['pointerup', onHoldUp], ['pointercancel', onHoldUp]];
+  function watchHold(on) {
+    for (const [name, fn] of HOLD_EVENTS) {
+      if (on) addEventListener(name, fn, { passive: true });
+      else removeEventListener(name, fn);
+    }
+    if (!on) { touches.clear(); group = null; lastTap = -Infinity; }
+  }
+
+  // main keeps its own hidden flag, so coming back goes through its action; if the two
+  // ever disagreed, the first toggle only hid, and the second one shows
+  function restore() {
+    if (!hidden) return;
+    try {
+      actions.toggleUI();
+      if (hidden) actions.toggleUI();
+    } catch (e) {
+      console.warn('Tactilume: could not show the controls', e);
+    }
+    if (hidden) ui.setHidden(false);
+  }
+
+  // ---- keys -----------------------------------------------------------------------------
+  function onKey(e) {
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing) return;
+    if (introOpen()) { e.preventDefault(); intro.close(); return; }
+    if (panel && panel.isOpen()) { e.preventDefault(); panel.close({ returnFocus: true }); return; }
+    if (isTyping(document.activeElement)) return;
+    e.preventDefault();
+    if (hidden) restore();
+    else ui.open();
+  }
+  document.addEventListener('keydown', onKey);
+
+  // ---- behaviour names ----------------------------------------------------------------
+  const seen = new Map(); // behaviour key -> times shown while someone was playing
+  let autopilotOn = false;
+
+  // ---- per frame ----------------------------------------------------------------------
+  let hudClock = 0;
+  let statsClock = 0;
+
+  const ui = {
+    update(dt, f = {}) {
+      autopilotOn = !!f.autopilot;
+      hudClock += dt;
+      if (hudClock >= HUD_EVERY) {
+        hudClock = 0;
+        const on = !!f.recording;
+        if (on || recOn) setRecording(on, capture ? capture.elapsed || 0 : 0);
+      }
+      if (panel && panel.isOpen()) {
+        statsClock += dt;
+        if (statsClock >= STATS_EVERY) {
+          statsClock = 0;
+          panel.setStats(f.fps || 0, f.particles || 0);
+        }
+      }
+    },
+
+    // opts.autopilot, when given, says whether autoplay made this change; main knows that
+    // for this frame, while the flag from ui.update is a frame old
+    showBehaviour(b, opts) {
+      if (!b || !b.name || introOpen()) return;
+      const byAuto = opts && 'autopilot' in opts ? !!opts.autopilot : autopilotOn;
+      // autoplay changes behaviour on its own: name it, but save the explanations for people
+      const times = seen.get(b.key) || 0;
+      const explain = !byAuto && times < BLURB_TIMES;
+      if (!byAuto) {
+        seen.set(b.key, times + 1);
+        // the card is hidden from screen readers: they hear what it says, explanation included
+        hud.announce(explain && b.blurb ? `${b.name}. ${b.blurb}` : b.name);
+      }
+      hud.showBehaviour(b.name, explain ? b.blurb : null);
+    },
+
+    // ms: how long it stays (longer messages get a little more on top)
+    toast(text, ms, group) { hud.toast(text, ms, group); },
+    announce(text) { hud.announce(text); },
+
+    open(tab) {
+      if (introOpen()) return;
+      if (hidden) restore();
+      if (!ui.isOpen()) opener = document.activeElement;
+      ensurePanel().open(tab);
+      hud.setOpen(true);
+    },
+    close() { if (panel) panel.close(); },
+    isOpen: () => !!(panel && panel.isOpen()),
+
+    back() {
+      if (introOpen()) return intro.close();
+      if (panel && panel.isOpen()) return panel.close();
+      if (hidden) { restore(); return true; }
+      return false;
+    },
+
+    setHidden(on) {
+      const want = !!on;
+      if (want === hidden) return;
+      hidden = want;
+      if (want && panel && panel.isOpen()) panel.close({ returnFocus: false });
+      // focus must not stay on a control that is about to vanish, or light the faint open button
+      if (want && root.contains(document.activeElement)) document.activeElement.blur();
+      root.classList.toggle('is-hidden', want);
+      // the open button stays, faint, as a way back for one tap, a switch or a screen
+      // reader; the recording dot stays in sight, but out of the Tab order
+      hud.setHidden(want);
+      hud.recBtn.tabIndex = want ? -1 : 0;
+      watchHold(want);
+      if (want) {
+        if (!toldHidden) {
+          toldHidden = true;
+          hud.toast(`Controls hidden. ${restoreHint(platform)}`, 5200);
+        }
+      } else {
+        hud.wake();
+      }
+    },
+
+    // extras, not in the contract: for tests and the console
+    get hidden() { return hidden; },
+    get tab() { return panel ? panel.tab : null; },
+    // photo, record and share with their results shown as toasts (the keyboard uses these)
+    run,
+  };
+  return ui;
+}

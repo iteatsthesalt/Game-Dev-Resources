@@ -1,0 +1,100 @@
+# Tactilume Desktop: tests on Linux, then unsigned installers for Windows, macOS and Linux,
+# kept as build artifacts.
+#
+# The desktop edition imports the mobile edition's core modules, so changes there run this
+# workflow too. So do changes to the two other files it takes from the mobile edition: its
+# autopilot (bundled into the renderer) and its built page (shipped as the fallback engine).
+name: Tactilume Desktop
+on:
+  push:
+    paths:
+      - 'Games/TactilumeDesktop/**'
+      - 'Games/Tactilume/src/js/core/**'
+      - 'Games/Tactilume/src/js/input/autopilot.js'
+      - 'Games/Tactilume/Tactilume.html'
+      - '.github/workflows/tactilume-desktop.yml'
+  pull_request:
+    paths:
+      - 'Games/TactilumeDesktop/**'
+      - 'Games/Tactilume/src/js/core/**'
+      - 'Games/Tactilume/src/js/input/autopilot.js'
+      - 'Games/Tactilume/Tactilume.html'
+      - '.github/workflows/tactilume-desktop.yml'
+# The installers built here are what people run, so the actions are pinned to exact commits
+# (the version is in the comment beside each), and checkout keeps no token in .git/config
+# while npm runs every dependency's install scripts.
+permissions:
+  contents: read
+concurrency:
+  group: tactilume-desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Games/TactilumeDesktop
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Games/TactilumeDesktop/package-lock.json
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # build, then the unit tests, then the renderer in headless Chromium on software WebGPU
+      - run: npm test
+      # Electron 45 no longer downloads its binary at install time (no postinstall script);
+      # fetch it now, so the sandbox helper below exists (a no-op when it is already there)
+      - run: node node_modules/electron/install.js
+      # Ubuntu 24.04 stops unprivileged programs from making user namespaces, which Chromium's
+      # sandbox uses by default; its setuid helper is the sandbox's other way in, and needs to
+      # belong to root. (The sandbox stays on: never --no-sandbox.)
+      - name: Let Electron's sandbox start
+        run: |
+          sudo chown root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      # The real app under a virtual display: it boots, the renderer reports ready, the phone
+      # link answers, and it quits with 0. It prints one line saying what it ran on.
+      - run: xvfb-run -a npx electron . --smoke
+
+  package:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: Games/TactilumeDesktop
+    env:
+      # unsigned: no looking for a signing certificate on the runner
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Games/TactilumeDesktop/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      # NSIS on Windows, dmg on macOS (Apple silicon and Intel), AppImage and .deb on Linux
+      - run: npx electron-builder --publish never
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: tactilume-desktop-${{ runner.os }}
+          path: |
+            Games/TactilumeDesktop/release/*.exe
+            Games/TactilumeDesktop/release/*.dmg
+            Games/TactilumeDesktop/release/*.AppImage
+            Games/TactilumeDesktop/release/*.deb
+          if-no-files-found: error

@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Draw into the camera cutout from the launch window on; MainActivity widens this to
+         every edge on Android 11 and later. -->
+    <style name="Platform.Theme.Tactilume" parent="Base.Theme.Tactilume">
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+    </style>
+</resources>

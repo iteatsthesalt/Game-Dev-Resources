@@ -4,6 +4,10 @@ This collection contains full Git clones, including repository history. The repo
 
 This GitHub repository indexes the source projects as submodules rather than copying their histories into one large repository. When cloning, pass `--recurse-submodules` to `git clone` to check out the linked projects.
 
+## Games made here
+
+- [Tactilume](./Games/Tactilume/): a multi-touch light toy. Touch the dark and play with up to two million specks of light; each extra finger changes how they behave. One offline HTML file (WebGL2), plus an Android app that wraps it.
+
 ## Engines and game projects
 
 ### Godot

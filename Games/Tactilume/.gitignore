@@ -1,0 +1,8 @@
+node_modules/
+# Android wrapper: build output and machine-local files
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/
+*.apk

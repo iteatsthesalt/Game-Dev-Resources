@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- The system splash is the app icon, the glowing orb, on black. MainActivity holds its
+         first frame until the page has drawn, so the splash fades straight into the light. -->
+    <style name="Theme.Tactilume" parent="Platform.Theme.Tactilume">
+        <item name="android:windowSplashScreenBackground">@color/black</item>
+    </style>
+</resources>

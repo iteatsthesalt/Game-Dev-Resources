@@ -1,0 +1,913 @@
+/* Tactilume: the page and every control.
+   The light is the star: controls stay out of the way until asked for, then appear
+   as dark glass with fine light edges. Every colour and size is a custom property;
+   sizes scale with --ui-scale (the Control size setting). System fonts only, so the
+   page works offline. */
+
+/* ---- the page ------------------------------------------------------------------ */
+
+html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+body {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+  overscroll-behavior: none;
+}
+#stage { position: fixed; inset: 0; width: 100vw; height: 100vh; display: block; touch-action: none; }
+/* The light takes keyboard focus, so Space and the arrow keys play it. Arriving by key
+   shows a soft ring that settles to a faint one; a touch or a click shows none. */
+#stage:focus { outline: none; }
+#stage:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.2); outline-offset: -3px; animation: tl-stage-ring 2.4s ease-out; }
+@keyframes tl-stage-ring { from { outline-color: rgba(255, 255, 255, 0.8); } }
+#fatal:not([hidden]) {
+  position: fixed; inset: 0; z-index: 10; display: grid; place-content: center; gap: 4px;
+  padding: 24px; color: #eceef3; background: #000; text-align: center;
+  font: 16px/1.5 system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  /* a long message scrolls; centred content taller than the screen would lose its top */
+  overflow-y: auto; overscroll-behavior: contain;
+}
+#fatal:not([hidden]):has(.fatal-report) { place-content: start center; }
+#fatal .fatal-report {
+  justify-self: center; box-sizing: border-box; width: min(34em, 100%); margin: 14px 0 0; padding: 10px 12px;
+  border-radius: 10px; background: rgba(255, 255, 255, 0.07); color: #d7dae2; text-align: left;
+  font: 12px/1.45 ui-monospace, 'Roboto Mono', 'DejaVu Sans Mono', monospace;
+  white-space: pre-wrap; overflow-wrap: anywhere; user-select: text; -webkit-user-select: text;
+}
+#fatal h1 { margin: 0 0 8px; font-size: 22px; font-weight: 500; letter-spacing: 0.01em; }
+#fatal p { margin: 0 auto; max-width: 34em; color: #b9bdc8; }
+#fatal .fatal-btn {
+  justify-self: center; margin-top: 20px; min-height: 48px; padding: 0 26px; border-radius: 24px;
+  border: 1px solid rgba(255, 255, 255, 0.24); background: rgba(255, 255, 255, 0.1); color: #eceef3;
+  font: inherit; font-weight: 500; cursor: pointer; touch-action: manipulation;
+}
+#fatal .fatal-btn:hover { background: rgba(255, 255, 255, 0.16); }
+#fatal .fatal-btn:focus-visible { outline: 2px solid #eceef3; outline-offset: 3px; }
+.noscript { position: fixed; inset: 0; margin: 0; display: grid; place-content: center; color: #eceef3; font: 16px/1.5 system-ui, sans-serif; }
+
+/* ---- tokens ---------------------------------------------------------------------- */
+
+/* Safe areas live on :root, not #ui, so the Android app can override them with an inline
+   style on <html> (some WebViews do not report display cutouts to env()). */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
+#ui {
+  --ui-scale: 1;
+  --u: calc(1px * var(--ui-scale));
+  --kb: 0px;                                   /* on-screen keyboard height, set by ui.js */
+
+  --font: system-ui, -apple-system, 'Segoe UI', Roboto, 'Noto Sans', sans-serif;
+  --fs-2xs: calc(10.5 * var(--u));
+  --fs-xs: calc(11.5 * var(--u));
+  --fs-s: calc(13 * var(--u));
+  --fs-m: calc(15 * var(--u));
+  --fs-l: calc(17 * var(--u));
+  --fs-xl: calc(20 * var(--u));
+  --fs-input: max(16px, var(--fs-m));          /* below 16px, iOS zooms into a focused field */
+  --fs-name: clamp(22px, 5.6vw, 34px);
+  --fs-title: clamp(34px, 10vw, 96px);
+
+  --sp-1: calc(4 * var(--u));
+  --sp-2: calc(8 * var(--u));
+  --sp-3: calc(12 * var(--u));
+  --sp-4: calc(16 * var(--u));
+  --sp-5: calc(20 * var(--u));
+  --sp-6: calc(24 * var(--u));
+  --sp-8: calc(32 * var(--u));
+
+  --tap: calc(44 * var(--u));                  /* the smallest touch target */
+  --hit: calc(52 * var(--u));                  /* the open button's touch target */
+  --edge: calc(10 * var(--u));                 /* gap from the screen edge to floating parts */
+  --gap: calc(8 * var(--u));                   /* gap around the panel */
+  --icon: calc(20 * var(--u));
+  --icon-s: calc(16 * var(--u));
+  --thumb: calc(22 * var(--u));
+  --track-h: calc(6 * var(--u));
+  --switch-w: calc(50 * var(--u));
+  --switch-h: calc(30 * var(--u));
+  --knob: calc(26 * var(--u));
+
+  --r-xs: calc(8 * var(--u));
+  --r-s: calc(12 * var(--u));
+  --r-m: calc(16 * var(--u));
+  --r-l: calc(20 * var(--u));
+  --r-panel: calc(28 * var(--u));
+  --r-pill: 999px;
+
+  --side-w: min(calc(384 * var(--u)), calc(100vw - 2 * var(--gap) - var(--safe-l) - var(--safe-r)));
+  --sheet-max-w: calc(600 * var(--u));
+  --sheet-h: min(72vh, calc(760 * var(--u)));    /* engines without dvh; see the @supports below */
+
+  /* colour */
+  --text: #f5f6fa;
+  /* The glass lets the light through, so contrast is reckoned over the brightest it gets:
+     white light behind the panel, which the glass dims to about rgb(72, 72, 76) (a little
+     brighter under the sheen along the top edge). */
+  --text-2: #babecb;                           /* help text: 4.9:1 there, 10.7:1 over the dark */
+  --text-3: #b4b9c5;                           /* quiet labels: 4.6:1 there, 10:1 over the dark */
+  --text-ink: #0b0c11;                         /* text on light buttons */
+  --line: rgba(255, 255, 255, 0.09);
+  --line-soft: rgba(255, 255, 255, 0.06);
+  --line-2: rgba(255, 255, 255, 0.15);
+  --line-strong: rgba(255, 255, 255, 0.42);
+  --fill-1: rgba(255, 255, 255, 0.045);
+  --fill-2: rgba(255, 255, 255, 0.085);
+  --fill-3: rgba(255, 255, 255, 0.14);
+  --fill-inset: rgba(0, 0, 0, 0.28);
+  --hover: rgba(255, 255, 255, 0.11);
+  --glass: rgba(14, 15, 21, 0.6);
+  --glass-solid: #101117;
+  --glass-chip: rgba(18, 19, 26, 0.5);
+  --glass-edge: linear-gradient(180deg, rgba(255, 255, 255, 0.07), rgba(255, 255, 255, 0) 38%);
+  --glass-blur: blur(30px) saturate(1.5) brightness(0.62);
+  --glass-blur-s: blur(16px) saturate(1.4) brightness(0.7);
+  --track: #2a2b34;
+  --switch-off: #34353f;
+  --knob-off: #c9ccd5;
+  --knob-on: #ffffff;
+  --seg-on: rgba(255, 255, 255, 0.14);
+  --accent: #ffb347;                           /* follows the scene's palette (ui.js) */
+  --accent-grad: linear-gradient(90deg, #8a1405, #d2380a, #ff7a1a, #ffb347, #ffe0a0, #fff8ec);
+  --rec: #ff4747;
+  --rec-glow: rgba(255, 71, 71, 0.55);
+  --danger: #d23c3c;
+  --danger-text: #ffc0bc;
+  --danger-soft: rgba(210, 60, 60, 0.16);
+  --focus: #ffffff;
+  --focus-halo: rgba(0, 0, 0, 0.7);
+  --veil-mid: rgba(0, 0, 0, 0.5);
+  --veil-edge: rgba(0, 0, 0, 0.72);
+  --veil-out: rgba(0, 0, 0, 0.2);
+  --name-shadow: rgba(0, 0, 0, 0.7);
+  --shadow: 0 30px 80px -20px rgba(0, 0, 0, 0.7), 0 8px 24px -8px rgba(0, 0, 0, 0.5);
+  --shadow-s: 0 6px 20px -6px rgba(0, 0, 0, 0.6);
+  --shine: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+
+  /* motion */
+  --ease: cubic-bezier(0.22, 0.8, 0.24, 1);
+  --ease-out: cubic-bezier(0.4, 0, 0.6, 1);
+  --t-fast: 160ms;
+  --t: 240ms;
+  --t-slow: 380ms;
+}
+/* The visible height, where the engine knows dvh (Chromium 108 on). It must sit behind
+   @supports: a custom property keeps any tokens, so in an engine without the unit a second,
+   dvh declaration would still win, and the sheet's height would turn invalid, which is auto. */
+@supports (height: 1dvh) {
+  #ui { --sheet-h: min(72dvh, calc(760 * var(--u))); }
+}
+
+/* ---- the root ---------------------------------------------------------------------- */
+
+#ui {
+  position: fixed; inset: 0; z-index: 1;
+  pointer-events: none;                        /* the light gets every touch the controls don't */
+  font-family: var(--font); font-size: var(--fs-m); line-height: 1.4; color: var(--text);
+  -webkit-font-smoothing: antialiased; -moz-osx-font-smoothing: grayscale;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+  color-scheme: dark;
+}
+:where(#ui) *, :where(#ui) *::before, :where(#ui) *::after { box-sizing: border-box; }
+:where(#ui) [hidden] { display: none !important; }
+:where(#ui) button {
+  font: inherit; color: inherit; background: none; border: 0; margin: 0; padding: 0;
+  cursor: pointer; touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+}
+:where(#ui) button:disabled { cursor: default; }
+:where(#ui) :focus { outline: none; }
+#ui :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+:where(#ui) .tl-icon { width: var(--icon); height: var(--icon); flex: none; display: block; }
+.tl-sr-only {
+  position: absolute !important; width: 1px; height: 1px; margin: -1px; padding: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap; border: 0;
+}
+
+/* ---- the open button ---------------------------------------------------------------- */
+
+.tl-open {
+  position: absolute; z-index: 2;
+  top: calc(var(--safe-t) + var(--edge)); right: calc(var(--safe-r) + var(--edge));
+  width: var(--hit); height: var(--hit);
+  display: grid; place-items: center; border-radius: 50%;
+  pointer-events: auto; color: var(--text);
+  transition: opacity 700ms var(--ease), transform var(--t) var(--ease), visibility 0s;
+}
+.tl-open-glass {
+  position: absolute; inset: calc(5 * var(--u)); border-radius: 50%;
+  background: var(--glass-chip); border: 1px solid var(--line-2);
+  -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s);
+  box-shadow: var(--shadow-s), var(--shine);
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.tl-open-icon { position: relative; width: calc(22 * var(--u)); height: calc(22 * var(--u)); }
+/* dimmed, the button still has 3:1 against the dark (WCAG 1.4.11): 0.25 measured 2.2:1 */
+.tl-open.is-dim { opacity: 0.4; }
+/* hidden controls keep the open button, faint, as the way back for one tap, a switch or a
+   screen reader (photos and clips come from the canvas, so it never shows in them) */
+.is-hidden .tl-open { opacity: 0.12; }
+.is-hidden .tl-open:hover, .is-hidden .tl-open:focus-visible { opacity: 1; }
+.tl-open:hover .tl-open-glass { background: var(--hover); border-color: var(--line-strong); }
+.tl-open:active { transform: scale(0.92); }
+#ui .tl-open:focus-visible { outline-offset: -2px; box-shadow: 0 0 0 4px var(--focus-halo); }
+.tl-open::after {
+  content: ''; position: absolute; inset: calc(5 * var(--u)); border-radius: 50%;
+  border: 1.5px solid var(--accent); opacity: 0; pointer-events: none;
+}
+.tl-open.is-beckon::after { animation: tl-beckon 1.25s var(--ease) 2; }
+@keyframes tl-beckon {
+  0% { opacity: 0.9; transform: scale(1); }
+  100% { opacity: 0; transform: scale(1.9); }
+}
+.is-panel-open .tl-open, .is-intro .tl-open {
+  opacity: 0; visibility: hidden; pointer-events: none;
+  transition: opacity var(--t) var(--ease), visibility 0s linear var(--t);
+}
+
+/* ---- the recording badge -------------------------------------------------------------- */
+
+.tl-rec {
+  position: absolute; z-index: 2;
+  top: calc(var(--safe-t) + var(--edge) + (var(--hit) - var(--tap)) / 2); left: calc(var(--safe-l) + var(--edge));
+  min-height: var(--tap); padding: 0 var(--sp-4) 0 var(--sp-3);
+  display: flex; align-items: center; gap: var(--sp-2);
+  border-radius: var(--r-pill); pointer-events: auto;
+  background: var(--glass-chip); border: 1px solid var(--line-2);
+  -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s);
+  box-shadow: var(--shadow-s), var(--shine);
+  font-size: var(--fs-s); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+}
+.tl-rec-dot {
+  width: calc(10 * var(--u)); height: calc(10 * var(--u)); border-radius: 50%;
+  background: var(--rec); box-shadow: 0 0 0 0 var(--rec-glow);
+  animation: tl-rec-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tl-rec-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 var(--rec-glow); opacity: 1; }
+  50% { box-shadow: 0 0 0 calc(5 * var(--u)) transparent; opacity: 0.55; }
+}
+/* with the controls hidden, only a small dot says a recording is running */
+.is-hidden .tl-rec {
+  pointer-events: none; opacity: 0.6;
+  background: transparent; border-color: transparent; box-shadow: none;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
+}
+.is-hidden .tl-rec-time { display: none; }
+
+/* ---- the behaviour name card -------------------------------------------------------------- */
+
+.tl-namecard-layer {
+  position: absolute; z-index: 1; height: 0; pointer-events: none;
+  left: calc(var(--safe-l) + var(--sp-4)); right: calc(var(--safe-r) + var(--sp-4));
+  bottom: calc(var(--safe-b) + 13vh);
+  transition: bottom var(--t-slow) var(--ease), right var(--t-slow) var(--ease);
+}
+.tl-namecard {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
+  text-align: center; opacity: 0;
+}
+.tl-namecard-name {
+  font-size: var(--fs-name); font-weight: 300; line-height: 1.1;
+  letter-spacing: 0.34em; padding-left: 0.34em;  /* the tracking would push the word off centre */
+  text-transform: uppercase; color: var(--text);
+  text-shadow: 0 0 28px var(--name-shadow), 0 1px 3px var(--name-shadow);
+}
+.tl-namecard-blurb {
+  max-width: 30em; font-size: var(--fs-s); line-height: 1.45; letter-spacing: 0.01em;
+  color: var(--text); opacity: 0.86;
+  text-shadow: 0 0 18px var(--name-shadow), 0 1px 2px var(--name-shadow);
+}
+
+/* ---- toasts -------------------------------------------------------------------------------- */
+
+.tl-toasts {
+  position: absolute; z-index: 4; pointer-events: none;
+  top: calc(var(--safe-t) + var(--edge) + var(--hit) + var(--sp-2));
+  left: calc(var(--safe-l) + var(--sp-4)); right: calc(var(--safe-r) + var(--sp-4));
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-2);
+  transition: right var(--t-slow) var(--ease);
+}
+.tl-toast {
+  max-width: min(100%, calc(440 * var(--u)));
+  padding: calc(10 * var(--u)) var(--sp-5);
+  border-radius: var(--r-pill);
+  background: var(--glass); border: 1px solid var(--line-2);
+  -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s);
+  box-shadow: var(--shadow-s), var(--shine);
+  font-size: var(--fs-s); font-weight: 500; line-height: 1.35; text-align: center;
+  opacity: 0; transform: translateY(calc(-8 * var(--u))) scale(0.98);
+  transition: opacity var(--t) var(--ease), transform var(--t) var(--ease);
+}
+.tl-toast.is-in { opacity: 1; transform: none; }
+.tl-toast.is-out { opacity: 0; transform: translateY(calc(-4 * var(--u))) scale(0.98); }
+
+/* ---- the panel ----------------------------------------------------------------------------- */
+
+.tl-panel {
+  position: absolute; z-index: 3; pointer-events: auto;
+  display: flex; flex-direction: column; overflow: hidden; isolation: isolate;
+  /* a floating bottom sheet first; wide screens turn it into a side sheet below */
+  left: calc(var(--safe-l) + var(--gap)); right: calc(var(--safe-r) + var(--gap));
+  bottom: calc(var(--safe-b) + var(--gap) + var(--kb));
+  margin: 0 auto; max-width: var(--sheet-max-w);
+  height: min(var(--sheet-h), calc(100% - var(--kb) - var(--safe-t) - var(--safe-b) - 4 * var(--gap)));
+  border-radius: var(--r-panel);
+  background: var(--glass); border: 1px solid var(--line-2);
+  -webkit-backdrop-filter: var(--glass-blur); backdrop-filter: var(--glass-blur);
+  box-shadow: var(--shadow), var(--shine);
+  transform: translate3d(0, calc(100% + var(--safe-b) + 3 * var(--gap)), 0);
+  visibility: hidden;
+  transition: transform var(--t-slow) var(--ease-out), visibility 0s linear var(--t-slow), bottom var(--t) var(--ease);
+}
+.tl-panel.is-open {
+  transform: none; visibility: visible;
+  transition: transform 460ms var(--ease), visibility 0s, bottom var(--t) var(--ease);
+}
+.tl-panel.is-dragging { transition: none; }
+/* a soft sheen along the top edge, like light caught in glass */
+.tl-panel-glass {
+  position: absolute; inset: 0; z-index: -1; pointer-events: none;
+  background: var(--glass-edge); border-radius: inherit;
+}
+
+.tl-grab { flex: none; padding: 0 var(--sp-3) 0 var(--sp-5); touch-action: none; }
+.tl-handle {
+  width: calc(38 * var(--u)); height: calc(5 * var(--u)); margin: var(--sp-2) auto 0;
+  border-radius: var(--r-pill); background: var(--line-strong); opacity: 0.6;
+}
+.tl-panel-head { display: flex; align-items: center; gap: var(--sp-3); min-height: calc(56 * var(--u)); padding-top: var(--sp-1); }
+.tl-panel-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: calc(2 * var(--u)); }
+.tl-eyebrow {
+  font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-3);
+}
+.tl-scene-name {
+  font-size: var(--fs-l); font-weight: 600; letter-spacing: -0.005em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.tl-icon-btn {
+  flex: none; width: var(--tap); height: var(--tap); display: grid; place-items: center;
+  border-radius: 50%; background: var(--fill-2); border: 1px solid var(--line);
+  color: var(--text); transition: background var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.tl-icon-btn:hover { background: var(--hover); }
+.tl-icon-btn:active { transform: scale(0.94); }
+.tl-icon-btn--small { background: transparent; border-color: transparent; color: var(--text-2); }
+
+/* tabs: seven share the strip's width and never scroll out of it. When a name does not fit
+   its share (a narrow phone, a large Control size, a large system font), fitTabs in panel.js
+   sets data-compact: the other tabs show only their icons, their names kept for screen
+   readers, and the chosen tab takes the room its name needs. */
+.tl-tabs {
+  flex: none; display: flex; gap: 0; padding: var(--sp-1) var(--sp-1) var(--sp-2);
+  overflow: hidden; border-bottom: 1px solid var(--line);
+}
+.tl-tab {
+  flex: 1 1 0; min-width: 0;
+  position: relative; min-height: calc(54 * var(--u)); padding: var(--sp-1) calc(2 * var(--u));
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: calc(4 * var(--u));
+  border-radius: var(--r-m); color: var(--text-3);
+  font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.01em; white-space: nowrap;
+  transition: color var(--t) var(--ease), background var(--t) var(--ease);
+}
+.tl-tab .tl-icon { flex: none; width: calc(22 * var(--u)); height: calc(22 * var(--u)); max-width: 100%; transition: color var(--t) var(--ease), transform var(--t) var(--ease); }
+.tl-tab-label { display: block; max-width: 100%; overflow: hidden; }
+.tl-tabs[data-compact] .tl-tab[aria-selected='false'] .tl-tab-label {
+  position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;
+  overflow: hidden; clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
+}
+.tl-tabs[data-compact] .tl-tab[aria-selected='true'] { flex: 0 0 auto; padding-inline: var(--sp-1); }
+.tl-tab:hover { color: var(--text-2); }
+.tl-tab[aria-selected='true'] { color: var(--text); background: var(--fill-2); }
+.tl-tab[aria-selected='true'] .tl-icon { color: var(--accent); transform: translateY(calc(-1 * var(--u))); }
+.tl-tab[aria-selected='true']::after {
+  content: ''; position: absolute; left: 34%; right: 34%; bottom: calc(3 * var(--u)); height: calc(2 * var(--u));
+  border-radius: var(--r-pill); background: var(--accent-grad);
+}
+
+.tl-panel-body {
+  flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain;
+  padding: var(--sp-1) var(--sp-4) calc(var(--sp-8) + var(--sp-2));
+  -webkit-overflow-scrolling: touch; scrollbar-width: thin; scrollbar-color: var(--line-2) transparent;
+}
+.tl-panel-body::-webkit-scrollbar { width: calc(6 * var(--u)); }
+.tl-panel-body::-webkit-scrollbar-thumb { background: var(--line-2); border-radius: var(--r-pill); }
+.tl-tabpanel { animation: tl-tab-in var(--t-slow) var(--ease); }
+@keyframes tl-tab-in {
+  from { opacity: 0; transform: translateY(calc(6 * var(--u))); }
+  to { opacity: 1; transform: none; }
+}
+
+/* side sheet: wide or landscape screens (panel.js SIDE_QUERY matches this) */
+@media (orientation: landscape) and (min-width: 560px), (min-width: 1000px) {
+  .tl-panel {
+    left: auto; margin: 0; max-width: none; width: var(--side-w); height: auto;
+    top: calc(var(--safe-t) + var(--gap)); bottom: calc(var(--safe-b) + var(--gap));
+    right: calc(var(--safe-r) + var(--gap));
+    transform: translate3d(calc(100% + var(--safe-r) + 3 * var(--gap)), 0, 0);
+  }
+  .tl-grab { touch-action: auto; }
+  .tl-handle { display: none; }
+  .tl-panel-head { min-height: calc(64 * var(--u)); padding-top: var(--sp-2); }
+  .is-panel-open .tl-namecard-layer,
+  .is-panel-open .tl-toasts { right: calc(var(--safe-r) + var(--side-w) + 3 * var(--gap)); }
+}
+/* with a bottom sheet open, the name card rises into the light above it */
+@media not all and (orientation: landscape) and (min-width: 560px) {
+  .is-panel-open .tl-namecard-layer { bottom: calc(var(--safe-b) + var(--gap) + var(--sheet-h) + var(--sp-6)); }
+}
+@media (min-width: 1000px) {
+  .is-panel-open .tl-namecard-layer { bottom: calc(var(--safe-b) + 13vh); }
+}
+
+/* ---- sections and rows ---------------------------------------------------------------------- */
+
+.tl-section { margin-top: var(--sp-5); }
+.tl-section-title {
+  margin: 0 var(--sp-1) var(--sp-2); font-size: var(--fs-2xs); font-weight: 650; letter-spacing: 0.14em;
+  text-transform: uppercase; color: var(--text-3);
+}
+.tl-section-note { margin: calc(-4 * var(--u)) var(--sp-1) var(--sp-2); font-size: var(--fs-s); color: var(--text-2); }
+.tl-card {
+  padding: calc(2 * var(--u)) var(--sp-4); border-radius: var(--r-l);
+  background: var(--fill-1); border: 1px solid var(--line);
+}
+.tl-card--bare { padding: 0; background: none; border: 0; }
+.tl-field { padding: var(--sp-3) 0 calc(14 * var(--u)); }
+.tl-field + .tl-field { border-top: 1px solid var(--line-soft); }
+.tl-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.tl-label { font-size: var(--fs-m); font-weight: 500; color: var(--text); }
+.tl-label--wide { flex: 1; min-width: 0; }
+.tl-value {
+  flex: none; font-size: var(--fs-s); font-weight: 500; color: var(--text-2);
+  font-variant-numeric: tabular-nums; letter-spacing: 0.01em;
+}
+.tl-help { margin: calc(6 * var(--u)) 0 0; font-size: var(--fs-s); line-height: 1.45; color: var(--text-2); }
+.tl-row-end { display: flex; justify-content: flex-end; margin-top: var(--sp-2); }
+.is-muted { opacity: 0.45; }
+.tl-notice {
+  margin: var(--sp-3) 0 0; padding: calc(10 * var(--u)) var(--sp-3);
+  border-radius: var(--r-s); background: var(--fill-2); color: var(--text-2);
+  font-size: var(--fs-s); line-height: 1.45;
+}
+.tl-notice.is-error { background: var(--danger-soft); color: var(--danger-text); }
+
+/* collapsible section */
+.tl-section--collapsible > .tl-card { margin-top: var(--sp-1); }
+.tl-disclose {
+  width: 100%; min-height: var(--tap); padding: var(--sp-1) var(--sp-1);
+  display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: var(--sp-3);
+  text-align: left; border-radius: var(--r-s);
+}
+.tl-disclose .tl-section-title { margin: 0; }
+.tl-disclose-note { grid-column: 1; font-size: var(--fs-s); color: var(--text-2); }
+.tl-disclose-chevron { grid-column: 2; grid-row: 1 / span 2; color: var(--text-2); transition: transform var(--t) var(--ease); }
+.tl-disclose[aria-expanded='true'] .tl-disclose-chevron { transform: rotate(180deg); }
+
+/* ---- sliders ------------------------------------------------------------------------------ */
+
+.tl-range-wrap { position: relative; margin: calc(2 * var(--u)) calc(-2 * var(--u)) 0; }
+/* a small notch marks where the value started out */
+.tl-range-wrap::before {
+  content: ''; position: absolute; top: 50%; width: calc(2 * var(--u)); height: calc(10 * var(--u));
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--def, 0)); margin: calc(-5 * var(--u)) 0 0 calc(-1 * var(--u));
+  border-radius: 1px; background: var(--text-3); opacity: 0.6; pointer-events: none;
+}
+.tl-range {
+  --pos: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--fill, 0));
+  position: relative; display: block; width: 100%; height: var(--tap); margin: 0;
+  -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer;
+}
+.tl-range::-webkit-slider-runnable-track {
+  height: var(--track-h); border-radius: var(--r-pill);
+  background: linear-gradient(90deg, transparent var(--pos), var(--track) var(--pos)), var(--accent-grad);
+}
+.tl-range::-moz-range-track {
+  height: var(--track-h); border-radius: var(--r-pill);
+  background: linear-gradient(90deg, transparent var(--pos), var(--track) var(--pos)), var(--accent-grad);
+}
+.tl-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: var(--thumb); height: var(--thumb); margin-top: calc((var(--track-h) - var(--thumb)) / 2);
+  border-radius: 50%; border: 0; background: var(--knob-on);
+  box-shadow: 0 0 0 calc(1 * var(--u)) rgba(0, 0, 0, 0.35), 0 calc(2 * var(--u)) calc(10 * var(--u)) rgba(0, 0, 0, 0.5);
+  transition: transform var(--t-fast) var(--ease);
+}
+.tl-range::-moz-range-thumb {
+  width: var(--thumb); height: var(--thumb); border-radius: 50%; border: 0; background: var(--knob-on);
+  box-shadow: 0 0 0 calc(1 * var(--u)) rgba(0, 0, 0, 0.35), 0 calc(2 * var(--u)) calc(10 * var(--u)) rgba(0, 0, 0, 0.5);
+  transition: transform var(--t-fast) var(--ease);
+}
+.tl-range:active::-webkit-slider-thumb { transform: scale(1.14); }
+.tl-range:active::-moz-range-thumb { transform: scale(1.14); }
+#ui .tl-range:focus-visible { outline-offset: 0; border-radius: var(--r-s); }
+
+/* ---- switches ---------------------------------------------------------------------------- */
+
+.tl-switch-row { position: relative; display: flex; align-items: center; justify-content: space-between; gap: var(--sp-4); min-height: var(--tap); }
+/* the whole row is the switch's label: tapping the words flips it too */
+.tl-field--switch .tl-label::after { content: ''; position: absolute; inset: calc(-12 * var(--u)) 0; }
+.tl-field--switch .tl-label { cursor: pointer; }
+.tl-switch {
+  position: relative; z-index: 1; flex: none; margin: 0; cursor: pointer;
+  width: var(--switch-w); height: var(--switch-h); border-radius: var(--r-pill);
+  -webkit-appearance: none; appearance: none; border: 1px solid var(--line-2);
+  background-color: var(--switch-off);
+  background-image: radial-gradient(circle closest-side, var(--knob-off) calc(100% - 1.5px), transparent 100%);
+  background-size: var(--knob) var(--knob); background-repeat: no-repeat;
+  background-position: calc(1 * var(--u)) 50%;
+  transition: background-position var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.tl-switch:checked {
+  border-color: transparent;
+  background-image:
+    radial-gradient(circle closest-side, var(--knob-on) calc(100% - 1.5px), transparent 100%),
+    var(--accent-grad);
+  background-size: var(--knob) var(--knob), 100% 100%;
+  background-position: calc(100% - 1 * var(--u)) 50%, 0 0;
+}
+
+/* ---- stepper ------------------------------------------------------------------------------ */
+
+.tl-stepper {
+  flex: none; display: flex; align-items: center; gap: calc(2 * var(--u));
+  padding: calc(2 * var(--u)); border-radius: var(--r-pill);
+  background: var(--fill-inset); border: 1px solid var(--line);
+}
+.tl-step-btn {
+  width: var(--tap); height: var(--tap); display: grid; place-items: center; border-radius: 50%;
+  color: var(--text); transition: background var(--t-fast) var(--ease);
+}
+.tl-step-btn:hover:not(:disabled) { background: var(--hover); }
+.tl-step-btn:disabled { opacity: 0.3; }
+.tl-step-btn .tl-icon { width: var(--icon-s); height: var(--icon-s); }
+.tl-step-value { min-width: 3.2ch; text-align: center; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* ---- segmented control -------------------------------------------------------------------- */
+
+.tl-seg {
+  --gutter: calc(3 * var(--u));
+  position: relative; display: grid; grid-template-columns: repeat(var(--n), minmax(0, 1fr));
+  margin-top: var(--sp-3); padding: var(--gutter); border-radius: calc(var(--r-s) + var(--gutter));
+  background: var(--fill-inset); border: 1px solid var(--line);
+}
+.tl-seg-thumb {
+  position: absolute; top: var(--gutter); bottom: var(--gutter); left: var(--gutter);
+  width: calc((100% - 2 * var(--gutter)) / var(--n));
+  transform: translateX(calc(var(--i, 0) * 100%));
+  border-radius: var(--r-s); background: var(--seg-on); border: 1px solid var(--line-2);
+  box-shadow: 0 calc(2 * var(--u)) calc(10 * var(--u)) rgba(0, 0, 0, 0.35), var(--shine);
+  transition: transform var(--t) var(--ease);
+}
+.tl-seg .tl-opt {
+  position: relative; z-index: 1; min-height: var(--tap); padding: 0 var(--sp-1);
+  border-radius: var(--r-s); color: var(--text-2);
+  font-size: calc(var(--fs-s) * var(--fit-shrink, 1)); font-weight: 600; letter-spacing: 0.005em;
+  transition: color var(--t) var(--ease);
+}
+.tl-seg .tl-opt:hover { color: var(--text); }
+.tl-seg .tl-opt[aria-checked='true'] { color: var(--text); }
+.tl-opt-text { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* Too narrow for one row (large Control size, small phone): two rows, then one, with the
+   chosen option lit in place of the sliding highlight. em here is the field's text size,
+   so these widths grow with the Control size. */
+.tl-field--seg { container-type: inline-size; }
+@container (max-width: 18em) {
+  .tl-seg { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--gutter); }
+  .tl-seg-thumb { display: none; }
+  .tl-seg .tl-opt[aria-checked='true'] { background: var(--seg-on); box-shadow: inset 0 0 0 1px var(--line-2), var(--shine); }
+  /* an odd one out takes the whole last row (the thumb is the first child) */
+  .tl-seg .tl-opt:last-child:nth-child(even) { grid-column: 1 / -1; }
+}
+@container (max-width: 12em) {
+  .tl-seg { grid-template-columns: minmax(0, 1fr); }
+}
+/* The same, decided by measurement (fitLabels in controls.js) for fonts wider than the
+   em guess above. */
+.tl-seg[data-fit] { gap: var(--gutter); }
+.tl-seg[data-fit] .tl-seg-thumb { display: none; }
+.tl-seg[data-fit] .tl-opt[aria-checked='true'] { background: var(--seg-on); box-shadow: inset 0 0 0 1px var(--line-2), var(--shine); }
+.tl-seg[data-fit='2'] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.tl-seg[data-fit='2'] .tl-opt:last-child:nth-child(even) { grid-column: 1 / -1; }
+.tl-seg[data-fit='1'] { grid-template-columns: minmax(0, 1fr); }
+
+/* ---- chips and swatches -------------------------------------------------------------------- */
+
+/* as many across as fit, so a name and its tick always have room: three on most phones,
+   fewer on the narrowest and as the Control size grows */
+.tl-chips {
+  --chip-min: calc(88 * var(--u));
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, var(--chip-min)), 1fr));
+  gap: var(--sp-2); margin-top: var(--sp-3);
+}
+.tl-chips .tl-opt {
+  position: relative; min-height: var(--tap); padding: var(--sp-2) calc(5 * var(--u));
+  display: flex; align-items: center; justify-content: center; gap: calc(4 * var(--u));
+  border-radius: var(--r-s); background: var(--fill-1); border: 1px solid var(--line);
+  color: var(--text-2); font-size: var(--fs-s); font-weight: 600;
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), color var(--t) var(--ease), transform var(--t-fast) var(--ease);
+}
+.tl-chips .tl-opt:hover { background: var(--fill-2); color: var(--text); }
+.tl-chips .tl-opt:active { transform: scale(0.97); }
+.tl-chips .tl-opt[aria-checked='true'] {
+  background: var(--fill-3); border-color: var(--line-strong); color: var(--text);
+  box-shadow: var(--shine), 0 0 0 1px var(--line-2);
+}
+.tl-opt-check { display: none; width: calc(14 * var(--u)); height: calc(14 * var(--u)); color: var(--accent); }
+.tl-opt[aria-checked='true'] .tl-opt-check { display: block; }
+
+.tl-swatches { --chip-min: calc(80 * var(--u)); } /* the tick sits on the swatch, not beside the name */
+.tl-swatches .tl-opt { flex-direction: column; align-items: stretch; padding: calc(6 * var(--u)) calc(6 * var(--u)) var(--sp-2); gap: calc(7 * var(--u)); }
+.tl-swatch-bar {
+  display: block; height: calc(30 * var(--u)); border-radius: var(--r-xs);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.1), 0 calc(4 * var(--u)) calc(14 * var(--u)) -6px rgba(0, 0, 0, 0.6);
+}
+.tl-swatch-name { font-size: var(--fs-xs); text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tl-swatches .tl-opt-check {
+  position: absolute; top: calc(11 * var(--u)); right: calc(11 * var(--u));
+  width: calc(20 * var(--u)); height: calc(20 * var(--u)); padding: calc(3 * var(--u));
+  border-radius: 50%; background: rgba(0, 0, 0, 0.62); color: #fff;
+}
+
+.tl-caption {
+  margin: var(--sp-3) 0 0; padding: calc(10 * var(--u)) var(--sp-3); min-height: calc(3.6em + 20 * var(--u));
+  border-radius: var(--r-s); background: var(--fill-inset); border: 1px solid var(--line-soft);
+  font-size: var(--fs-s); line-height: 1.45; color: var(--text-2);
+}
+.tl-caption-name { color: var(--text); font-weight: 650; margin-right: 0.45em; }
+.tl-chips--behaviours .tl-opt { -webkit-touch-callout: none; }
+/* Auto sits on a row of its own above the twelve behaviours */
+.tl-chips--behaviours .tl-opt[data-value='auto'] { grid-column: 1 / -1; }
+
+/* ---- selects (the fingers table) ------------------------------------------------------------- */
+
+.tl-chords { display: grid; }
+.tl-select-row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); min-height: calc(54 * var(--u)); }
+.tl-select-row + .tl-select-row { border-top: 1px solid var(--line-soft); }
+.tl-select-wrap { position: relative; flex: none; }
+.tl-select {
+  min-width: calc(148 * var(--u)); min-height: var(--tap); padding: 0 calc(38 * var(--u)) 0 var(--sp-3);
+  -webkit-appearance: none; appearance: none; cursor: pointer;
+  font: inherit; font-size: var(--fs-m); font-weight: 500; color: var(--text);
+  border-radius: var(--r-s); background: var(--fill-2); border: 1px solid var(--line);
+}
+.tl-select option { background: var(--glass-solid); color: var(--text); }
+.tl-select-chevron { position: absolute; right: var(--sp-3); top: 50%; width: var(--icon-s); height: var(--icon-s); margin-top: calc(-8 * var(--u)); pointer-events: none; color: var(--text-2); }
+
+/* ---- buttons ------------------------------------------------------------------------------ */
+
+.tl-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--tap); padding: 0 var(--sp-5); border-radius: var(--r-pill);
+  background: var(--fill-2); border: 1px solid var(--line-2);
+  font-size: var(--fs-m); font-weight: 600; letter-spacing: 0.005em; color: var(--text);
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease);
+}
+.tl-btn .tl-icon { width: calc(18 * var(--u)); height: calc(18 * var(--u)); }
+.tl-btn:hover { background: var(--hover); border-color: var(--line-strong); }
+.tl-btn:active { transform: scale(0.97); }
+.tl-btn--primary { background: var(--text); color: var(--text-ink); border-color: transparent; }
+.tl-btn--primary:hover { background: #fff; }
+.tl-btn--quiet { background: transparent; border-color: transparent; color: var(--text-2); padding: 0 var(--sp-3); }
+.tl-btn--quiet:hover { background: var(--fill-2); color: var(--text); }
+.tl-btn--danger { background: var(--danger); border-color: transparent; color: #fff; }
+/* side by side when both names fit on one line, else one under the other (each starts at
+   its own name's width); a hidden button leaves the whole row to the one that is shown */
+.tl-actions-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.tl-actions-row .tl-btn { flex: 1 1 auto; min-width: 0; max-width: 100%; padding: 0 var(--sp-3); font-size: calc(var(--fs-m) * var(--fit-shrink, 1)); }
+/* one line each; a name too wide for the whole row is shrunk to fit (fitLabels in controls.js) */
+.tl-actions-row .tl-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.tl-confirm-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }
+.tl-confirm-q { font-size: var(--fs-s); color: var(--text); font-weight: 500; }
+.tl-confirm-actions { display: flex; gap: var(--sp-2); margin-left: auto; }
+
+/* ---- scenes tab ---------------------------------------------------------------------------- */
+
+/* two cards across on a phone, more on a wide sheet, one when the controls are made large */
+.tl-presets { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, calc(150 * var(--u))), 1fr)); gap: calc(10 * var(--u)); }
+.tl-preset {
+  position: relative; display: flex; flex-direction: column; overflow: hidden; text-align: left;
+  border-radius: var(--r-m); background: var(--fill-1); border: 1px solid var(--line);
+  transition: border-color var(--t) var(--ease), transform var(--t-fast) var(--ease), background var(--t) var(--ease);
+}
+.tl-preset:hover { background: var(--fill-2); border-color: var(--line-2); }
+.tl-preset:active { transform: scale(0.98); }
+.tl-preset-thumb { display: block; width: 100%; aspect-ratio: 16 / 9; transition: filter var(--t) var(--ease); }
+.tl-preset:hover .tl-preset-thumb { filter: brightness(1.15) saturate(1.1); }
+.tl-preset-strip { display: block; height: calc(2 * var(--u)); opacity: 0.85; }
+.tl-preset-text { display: flex; flex-direction: column; gap: calc(3 * var(--u)); padding: calc(10 * var(--u)) var(--sp-3) var(--sp-3); }
+.tl-preset-name { font-size: var(--fs-m); font-weight: 600; letter-spacing: -0.005em; }
+/* never cut short: a touch screen has no way to show the rest */
+.tl-preset-blurb { font-size: var(--fs-xs); line-height: 1.4; color: var(--text-2); }
+.tl-preset-badge {
+  position: absolute; top: var(--sp-2); left: var(--sp-2); display: none; align-items: center; gap: calc(5 * var(--u));
+  padding: calc(3 * var(--u)) calc(9 * var(--u)) calc(3 * var(--u)) calc(7 * var(--u)); border-radius: var(--r-pill);
+  background: rgba(0, 0, 0, 0.6); color: #fff;
+  font-size: var(--fs-2xs); font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.tl-preset-badge::before { content: ''; width: calc(6 * var(--u)); height: calc(6 * var(--u)); border-radius: 50%; background: var(--accent); }
+.tl-preset[aria-current='true'] { border-color: var(--line-strong); box-shadow: 0 0 0 1px var(--line-strong); }
+.tl-preset[aria-current='true'] .tl-preset-badge { display: inline-flex; }
+
+.tl-save { padding: var(--sp-3) 0 var(--sp-3); }
+.tl-save-row { display: flex; gap: var(--sp-2); margin-top: var(--sp-2); }
+.tl-text {
+  flex: 1; min-width: 0; min-height: var(--tap); padding: 0 var(--sp-3); margin: 0;
+  font: inherit; font-size: var(--fs-input); color: var(--text);
+  border-radius: var(--r-s); background: var(--fill-inset); border: 1px solid var(--line-2);
+  user-select: text; -webkit-user-select: text;
+  transition: border-color var(--t-fast) var(--ease);
+}
+.tl-text::placeholder { color: var(--text-3); opacity: 1; }
+.tl-text:focus { border-color: var(--line-strong); }
+.tl-user-list { list-style: none; margin: 0; padding: 0 0 var(--sp-1); }
+.tl-user { border-top: 1px solid var(--line-soft); }
+.tl-user-main { display: flex; align-items: center; gap: var(--sp-1); }
+.tl-user-load {
+  flex: 1; min-width: 0; min-height: calc(54 * var(--u)); display: flex; align-items: center; gap: var(--sp-3);
+  text-align: left; border-radius: var(--r-s); padding: 0 var(--sp-1); margin-left: calc(-4 * var(--u));
+}
+.tl-user-load:hover { background: var(--fill-1); }
+.tl-user-swatch {
+  flex: none; width: calc(30 * var(--u)); height: calc(30 * var(--u)); border-radius: 50%;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+.tl-user-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+.tl-user-date { flex: none; font-size: var(--fs-s); color: var(--text-3); }
+.tl-user.is-asking .tl-user-main { opacity: 0.5; }
+.tl-user-ask { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding: 0 0 var(--sp-3); }
+.tl-empty { padding: var(--sp-3) 0 var(--sp-2); font-size: var(--fs-s); color: var(--text-2); }
+
+/* ---- sound tab ---------------------------------------------------------------------------- */
+
+.tl-song {
+  display: flex; align-items: center; gap: var(--sp-3); margin-top: var(--sp-3);
+  padding: calc(6 * var(--u)) calc(6 * var(--u)) calc(6 * var(--u)) var(--sp-3);
+  border-radius: var(--r-m); background: var(--fill-2); border: 1px solid var(--line);
+}
+.tl-song-icon { color: var(--accent); }
+.tl-song-text { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.tl-song-eyebrow { font-size: var(--fs-2xs); font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-3); }
+.tl-song-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; }
+
+/* ---- capture tab ---------------------------------------------------------------------------- */
+
+.tl-tiles { display: grid; grid-template-columns: 1fr 1fr; gap: calc(10 * var(--u)); }
+.tl-tile {
+  position: relative; overflow: hidden; min-height: calc(156 * var(--u)); padding: var(--sp-4);
+  display: flex; flex-direction: column; align-items: flex-start; text-align: left;
+  border-radius: var(--r-l); background: var(--fill-1); border: 1px solid var(--line);
+  transition: background var(--t) var(--ease), border-color var(--t) var(--ease), transform var(--t-fast) var(--ease);
+}
+.tl-tile::before {
+  content: ''; position: absolute; inset: 0; pointer-events: none; opacity: 0.18;
+  background: radial-gradient(120% 80% at 0% 0%, var(--accent), transparent 60%);
+  transition: opacity var(--t) var(--ease);
+}
+.tl-tile:hover { background: var(--fill-2); border-color: var(--line-2); }
+.tl-tile:hover::before { opacity: 0.28; }
+.tl-tile:active { transform: scale(0.98); }
+.tl-tile:disabled { opacity: 0.6; }
+.tl-tile-icon {
+  position: relative; width: calc(48 * var(--u)); height: calc(48 * var(--u));
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--fill-3); border: 1px solid var(--line-2);
+}
+.tl-tile-icon .tl-icon { width: calc(24 * var(--u)); height: calc(24 * var(--u)); grid-area: 1 / 1; }
+.tl-tile-icon .tl-icon--stop, .tl-tile.is-recording .tl-tile-icon .tl-icon { display: none; }
+.tl-tile.is-recording .tl-tile-icon .tl-icon--stop { display: block; }
+.tl-tile-title { position: relative; margin-top: var(--sp-5); font-size: var(--fs-l); font-weight: 650; }
+.tl-tile-sub { position: relative; margin-top: calc(2 * var(--u)); font-size: var(--fs-s); line-height: 1.35; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.tl-tile.is-recording { border-color: var(--rec); }
+.tl-tile.is-recording::before { background: radial-gradient(120% 80% at 0% 0%, var(--rec), transparent 60%); opacity: 0.3; }
+.tl-tile.is-recording .tl-tile-icon { background: var(--rec); border-color: transparent; color: #fff; animation: tl-rec-pulse 1.6s ease-in-out infinite; }
+
+/* ---- settings tab ------------------------------------------------------------------------- */
+
+.tl-only-keys { display: none; }
+@media (hover: hover) and (pointer: fine) { .tl-only-keys { display: block; } }
+.tl-keys { display: grid; grid-template-columns: auto 1fr; gap: calc(10 * var(--u)) var(--sp-4); margin: var(--sp-4) 0; font-size: var(--fs-s); align-items: center; }
+.tl-keys dt, .tl-keys dd { margin: 0; }
+.tl-keys dd { color: var(--text-2); }
+.tl-keys kbd {
+  display: inline-block; min-width: calc(26 * var(--u)); padding: calc(3 * var(--u)) calc(8 * var(--u));
+  font: inherit; font-size: var(--fs-xs); font-weight: 650; text-align: center; white-space: nowrap; color: var(--text);
+  border-radius: calc(7 * var(--u)); background: var(--fill-2); border: 1px solid var(--line-2);
+  box-shadow: 0 calc(1 * var(--u)) 0 var(--line-2);
+}
+.tl-about-title { margin: 0; font-size: var(--fs-m); font-weight: 500; line-height: 1.45; }
+.tl-stats { margin: var(--sp-3) 0 0; font-size: var(--fs-xs); color: var(--text-3); font-variant-numeric: tabular-nums; }
+/* the Device check report: selectable, wrapped, scrolls when long */
+.tl-diag {
+  margin: var(--sp-3) 0 0; padding: var(--sp-3); max-height: calc(260 * var(--u)); overflow: auto;
+  font: var(--fs-xs)/1.45 ui-monospace, 'SFMono-Regular', 'Roboto Mono', 'DejaVu Sans Mono', monospace;
+  color: var(--text-2); background: var(--fill-inset); border: 1px solid var(--line); border-radius: var(--r-s);
+  white-space: pre-wrap; overflow-wrap: anywhere;
+  user-select: text; -webkit-user-select: text; -webkit-touch-callout: default;
+}
+
+/* ---- first-run intro ----------------------------------------------------------------------- */
+
+.tl-intro {
+  position: absolute; inset: 0; z-index: 5; pointer-events: auto; cursor: pointer;
+  display: grid; place-items: center;
+  padding: calc(var(--safe-t) + var(--sp-6)) calc(var(--safe-r) + var(--sp-6)) calc(var(--safe-b) + var(--sp-6)) calc(var(--safe-l) + var(--sp-6));
+  opacity: 0; transition: opacity 700ms var(--ease);
+}
+.tl-intro.is-in { opacity: 1; }
+.tl-intro.is-leaving { opacity: 0; pointer-events: none; transition: opacity 850ms var(--ease-out); }
+.tl-intro-veil {
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 75% 60% at 50% 50%, var(--veil-mid), var(--veil-out) 55%, var(--veil-edge) 100%);
+}
+.tl-intro-body { position: relative; display: flex; flex-direction: column; align-items: center; text-align: center; }
+.tl-intro-title {
+  margin: 0; font-size: var(--fs-title); font-weight: 200; line-height: 1;
+  letter-spacing: 0.26em; padding-left: 0.26em; color: var(--text); white-space: nowrap;
+  text-shadow: 0 0 calc(40 * var(--u)) rgba(255, 255, 255, 0.28), 0 0 calc(80 * var(--u)) var(--name-shadow);
+}
+.tl-intro-letter {
+  display: inline-block; opacity: 0; filter: blur(12px); transform: translateY(0.12em) scale(1.04);
+  transition: opacity 1s var(--ease) var(--d), filter 1.2s var(--ease) var(--d), transform 1.3s var(--ease) var(--d);
+}
+.tl-intro.is-in .tl-intro-letter { opacity: 1; filter: blur(0); transform: none; }
+.tl-intro-line {
+  margin: calc(28 * var(--u)) 0 0; max-width: 26em;
+  font-size: clamp(15px, 4.2vw, 19px); font-weight: 300; line-height: 1.55; letter-spacing: 0.015em; color: var(--text);
+  text-shadow: 0 0 calc(24 * var(--u)) var(--name-shadow);
+  opacity: 0; transform: translateY(calc(8 * var(--u)));
+  transition: opacity 900ms var(--ease) 650ms, transform 900ms var(--ease) 650ms;
+}
+.tl-intro-begin {
+  margin-top: calc(44 * var(--u)); min-height: calc(52 * var(--u)); min-width: calc(150 * var(--u));
+  padding: 0 calc(36 * var(--u)); border-radius: var(--r-pill);
+  font-size: var(--fs-m); font-weight: 500; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text);
+  background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.4);
+  -webkit-backdrop-filter: var(--glass-blur-s); backdrop-filter: var(--glass-blur-s);
+  box-shadow: 0 0 calc(40 * var(--u)) rgba(255, 255, 255, 0.08), var(--shine);
+  opacity: 0; transform: translateY(calc(8 * var(--u)));
+  transition: opacity 900ms var(--ease) 1000ms, transform 900ms var(--ease) 1000ms, background var(--t) var(--ease), border-color var(--t) var(--ease);
+}
+.tl-intro-begin:hover { background: rgba(255, 255, 255, 0.16); border-color: rgba(255, 255, 255, 0.7); }
+.tl-intro.is-in .tl-intro-line, .tl-intro.is-in .tl-intro-begin { opacity: 1; transform: none; }
+.tl-intro.is-still .tl-intro-letter,
+.tl-intro.is-still .tl-intro-line,
+.tl-intro.is-still .tl-intro-begin { filter: none; transform: none; transition-property: opacity; transition-duration: 300ms; transition-delay: 0s; }
+
+/* ---- hidden controls -------------------------------------------------------------------------- */
+
+.is-hidden .tl-panel { visibility: hidden; }
+
+/* ---- preferences ------------------------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  #ui *, #ui *::before, #ui *::after {
+    transition-duration: 1ms !important; transition-delay: 0s !important;
+    animation-duration: 1ms !important; animation-iteration-count: 1 !important;
+  }
+}
+
+/* no blur available, or asked for less see-through: solid surfaces */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  #ui { --glass: rgba(14, 15, 21, 0.94); --glass-chip: rgba(18, 19, 26, 0.86); }
+}
+@media (prefers-reduced-transparency: reduce) {
+  #ui { --glass: var(--glass-solid); --glass-chip: var(--glass-solid); --glass-blur: none; --glass-blur-s: none; }
+}
+
+@media (prefers-contrast: more) {
+  #ui {
+    --glass: #000; --glass-chip: #000; --glass-blur: none; --glass-blur-s: none;
+    --text-2: #e4e6ec; --text-3: #cfd2da;
+    --line: rgba(255, 255, 255, 0.4); --line-soft: rgba(255, 255, 255, 0.3);
+    --line-2: rgba(255, 255, 255, 0.6); --line-strong: #fff;
+    --fill-1: rgba(255, 255, 255, 0.07); --fill-2: rgba(255, 255, 255, 0.12);
+    --track: #55566a; --switch-off: #4a4b58;
+  }
+  .tl-namecard-blurb { opacity: 1; }
+  /* the way into the controls never fades (hidden controls stay faint: that was asked for) */
+  #ui:not(.is-hidden) .tl-open.is-dim { opacity: 1; }
+  #stage:focus-visible { outline-color: #fff; animation: none; }
+}
+
+@media (forced-colors: active) {
+  .tl-panel, .tl-toast, .tl-open-glass, .tl-rec, .tl-card, .tl-btn, .tl-icon-btn,
+  .tl-chips .tl-opt, .tl-preset, .tl-tile, .tl-seg, .tl-stepper, .tl-select, .tl-text, .tl-song { border: 1px solid CanvasText !important; }
+  /* system colours keep their see-through alpha here, so surfaces must be solid */
+  .tl-panel, .tl-toast, .tl-open-glass, .tl-rec, .tl-intro-veil { background: Canvas; -webkit-backdrop-filter: none; backdrop-filter: none; }
+  .tl-seg-thumb, .tl-panel-glass, .tl-tile::before, .tl-tab[aria-selected='true']::after { display: none; }
+  .tl-opt[aria-checked='true'], .tl-tab[aria-selected='true'], .tl-preset[aria-current='true'] { outline: 2px solid Highlight; outline-offset: -2px; }
+  .tl-preset-thumb, .tl-preset-strip, .tl-swatch-bar, .tl-user-swatch { forced-color-adjust: none; }
+  .tl-range, .tl-switch { -webkit-appearance: auto; appearance: auto; background: none; }
+  .tl-range::-webkit-slider-thumb { -webkit-appearance: auto; appearance: auto; }
+  .tl-range-wrap::before { display: none; }
+  .tl-rec-dot { forced-color-adjust: none; }
+  #ui :focus-visible { outline-color: Highlight; }
+  #stage:focus-visible { outline-color: Highlight; animation: none; }
+  #ui:not(.is-hidden) .tl-open.is-dim { opacity: 1; }
+}
