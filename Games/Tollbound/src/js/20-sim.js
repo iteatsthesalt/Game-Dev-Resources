@@ -2,16 +2,19 @@
 // Owns: Sim
 // Public:
 //   Sim.create(cfg) -> S             a new run. cfg: {mode, zone, seed, char, account} as in docs/engine.md; seed is
-//                                    a number or a string, mode defaults to 'watch'. For a run without a
+//                                    a number or a string, mode defaults to 'household'. For a run without a
 //                                    character (tests, debug scenes, the first stage) cfg may also carry
-//                                    mods: [Mod], sigils: [SigilInst], level, weapon (a weapon profile for
-//                                    Stats.sheet) and rules: {name: number} to overrule S.rules.
+//                                    mods: [Mod], voices: [VoiceInst], level, class (the id of the class whose
+//                                    rule and trade the player has; Player.classRun builds such a cfg), weapon (a
+//                                    weapon profile for Stats.sheet; no tool is one) and rules: {name: number} to
+//                                    overrule S.rules.
 //   Sim.step(S, input?) -> boolean   one step of 1/60 s. Does nothing and returns false unless S.phase is 'play'.
 //   Sim.command(S, cmd) -> boolean   a Command of docs/engine.md; false if it was not acted on
 //   Sim.emit(S, k, x, y, a, b, id)   adds an event to this step's queue
 //   Sim.spawnEnemy(S, id, x, y, opts?) -> enemy | null     opts: {level, rank, traits: [trait id]}; id may be a boss
 //   Sim.rebuild(S) -> Sheet          collects the modifiers and works out S.sheet and every skill's sheet
-//   Sim.end(S, outcome) -> result    ends the run: outcome is 'left' or 'died'
+//   Sim.end(S, outcome) -> result    ends the run: outcome is 'left' (rung down at a lychgate), 'spared' (reached a
+//                                    lychgate while Tolled-for: alive, the haul lost) or 'died'
 //   Sim.result(S) -> result          the totals so far, or S.result once the run has ended
 //   Sim.hash(S) -> uint32            a checksum of the run: equal seeds and inputs give equal checksums
 //   Sim.debugScene(n, seed?) -> S    a run in the zone 'debug' with n 'debug.husk' enemies in rings round the player
@@ -19,7 +22,7 @@
 //   Sim.fields(kind) -> [name]       the fields of a kind, built in and added
 //   Sim.state(name, make)            gives every run a slot S[name] = make(S), for a system's own state
 //   Sim.source(fn)                   fn(S, out) adds modifiers to every sheet rebuild: out.push(mod)
-//   Sim.COMMON = 0, Sim.ELITE = 1, Sim.MINIBOSS = 2, Sim.BOSS = 3     the ranks of an enemy
+//   Sim.COMMON = 0, Sim.ELITE = 1, Sim.MINIBOSS = 2, Sim.BOSS = 3     the ranks of an enemy (a keeper is Sim.BOSS)
 //   Sim.NO_INPUT                     the InputFrame of a player who does nothing
 //
 // The run state. Plain data, pools and grids; presentation reads it and never writes it.
@@ -31,60 +34,67 @@
 //   S.step, S.t                  steps done; seconds = step / 60
 //   S.toll, S.tollAt, S.tollSteps    tolls rung, the step at which the next one rings, and steps between two
 //   S.threat                     the threat tier. The director keeps it; this file only starts it at 0.
-//   S.phase                      'play' | 'offer' | 'ended'
+//   S.phase                      'play' | 'offer' | 'ended'. Nothing in the first vigil pauses: favours are walked
+//                                into in the world, so the phase never becomes 'offer' for them.
 //   S.player                     see "Entities"
 //   S.mods, S.sheet              the modifier list of the last rebuild and the Sheet made from it (Stats.sheet)
 //   S.skills                     [{inst, sheet, cd, t, n, target, a0..a3}]: one slot for each place of the loadout
-//                                (cfg.sigils, or the character's loadout), in its order: a sigil instance, its
+//                                (cfg.voices, or the character's loadout), in its order: a voice instance, its
 //                                SkillSheet, and room for the archetype's state (cd: seconds until the next
 //                                cast). An empty place has inst and sheet null. Every rebuild follows the
-//                                loadout: a slot whose sigil changed starts afresh, and no slot ever moves.
+//                                loadout: a slot whose voice changed starts afresh, and no slot ever moves.
 //   S.enemies, S.shots, S.areas, S.pickups, S.minions      Core.Pool
 //   S.grid                       Core.Grid over S.enemies, rebuilt in every step (see the order below): it knows
 //                                the enemies as they stood then, so not the ones spawned later in the step
 //   S.region, S.props            the ground from World.region; S.props is S.region.props
-//   S.gate, S.boss               null | {x, y, until, hold}; null | the boss's entity (set to null when it is removed)
-//   S.offer, S.offerQueue        null | Offer; offers waiting behind it
-//   S.chimes, S.buffs            {[chime id]: stacks}; a list the buff system keeps
+//   S.gate, S.boss               null | the open lychgate {x, y, until, far, ring, strokes} (the vigil's director
+//                                keeps it); null | the keeper's entity (set to null when it is removed)
+//   S.offer, S.offerQueue        null | Offer; offers waiting behind it (for an offer that pauses; none does yet)
+//   S.favours, S.buffs           {[favour id]: times taken this vigil}; a list the buff system keeps
 //   S.events, S.eventCount, S.eventStart, S.eventsDropped   see "Events"
-//   S.haul, S.gold, S.echoes, S.kills, S.counters           S.kills is counted here, in the deaths phase
+//   S.haul, S.coin, S.bank       the finds carried, the coin carried (both unbanked: lost at death), and what
+//                                ringing down has banked, {coin, finds}
+//   S.hum, S.kills, S.counters   the Hum heard this vigil; S.kills is counted here, in the deaths phase
 //   S.dirty                      set it to true when modifiers changed; the sheets are rebuilt in the same step
-//   S.result                     null | {outcome, mode, zone, seed, steps, time, tolls, threat, kills, gold, echoes,
-//                                runLevel, haul (how many items), eventsDropped}
+//   S.result                     null | {outcome, mode, zone, seed, steps, time, tolls, threat, kills, coin, banked, hum,
+//                                runLevel, haul (how many finds), eventsDropped}
 //   S.uid                        the last uid given out
 //   S.debug                      null | the state of Sim.debugScene
 //
 // The order of a step, set here and nowhere else. Other namespaces are called only if they exist.
 //    0  the event queue is emptied, and px, py of the player and of every entity take its x, y
-//    1  Player.step(S, input)
-//    2  Director.step(S)
+//    1  Player.step(S, input)          the player moves; its posture, the turn rule and its conditions' mask
+//    2  Director.step(S)               spawns, the toll's effects, lychgates and ringing down
 //    3  S.grid.rebuild(S.enemies)
-//    4  Enemies.step(S)
-//    5  Skills.step(S)                 casting, then shots, areas, minions and their hits
-//    6  Boss.step(S)
-//    7  Dmg.tick(S)                    every 15th step: damage over time, 4 times a second
-//    8  deaths                         an enemy with life <= 0: S.kills + 1, a 'kill' event, Director.onKill(S, enemy),
+//    4  Enemies.step(S)                the wake is noted; the dead steer, and their attacks wind up and land
+//    5  Dmg.step(S)                    every body's condition times run down; the dead's postures and the turn rule
+//    6  Skills.step(S)                 casting, then shots, areas, minions and their hits
+//    7  Boss.step(S)
+//    8  Dmg.tick(S)                    every 15th step: Drag, 4 times a second
+//    9  deaths                         an enemy with life <= 0: S.kills + 1, a 'kill' event, Director.onKill(S, enemy),
 //                                      removal. A minion with life <= 0 is removed. Shots, areas and pickups lose
 //                                      1/60 s of ttl and are removed when none is left: whoever spawns one gives it
 //                                      a ttl in seconds (0.5 lasts 30 steps), or it is gone in the same step.
 //                                      Anything killed by pool.kill() goes without a word. Pools are compacted
 //                                      here and only here.
-//    9  Player.pickups(S)
-//   10  Sim.rebuild(S), if S.dirty
-//   11  Offers.step(S)
-//   12  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event (just before it, what was made in
+//   10  Player.pickups(S)
+//   11  Favours.step(S)                the row; walk-in favours rise, are taken, sink
+//   12  Sim.rebuild(S), if S.dirty
+//   13  Offers.step(S)
+//   14  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event (just before it, what was made in
 //       this step gets its px, py)
 // A step that began in 'play' runs to its end even if the run ends or an offer opens on the way.
-// In a debug scene (S.debug) steps 2, 4 and 6 are replaced by the scene's own rule: every enemy circles the
+// In a debug scene (S.debug) steps 2, 4 and 7 are replaced by the scene's own rule: every enemy circles the
 // spot where the player began. Without Player.step, the move vector of the input walks the player.
 //
 // Sheets. Sim.rebuild(S) gathers the modifiers: Char.mods(cfg.char, S, cfg.account) if the run has a character
-// and that function exists, else cfg.mods; then whatever each Sim.source adds (chimes, buffs). Stats.sheet gets
-// them with level (the character's, else cfg.level, else 1), weapon (cfg.weapon, else Char.weapon(char) if
-// there is such a function, else none), vows (how many the character has active), chimes (the stacks in
-// S.chimes) and conds (S.player.conds). Then S.skills is made to follow the loadout and every slot gets its
-// SkillSheet. Whoever changes a modifier, the loadout or S.player.conds sets S.dirty; the rebuild comes at
-// step 10, or at once after a command.
+// and that function exists, else cfg.mods; then whatever each Sim.source adds (favours, buffs, scars). Stats.sheet
+// gets them with level (the character's, else cfg.level, else 1), weapon (cfg.weapon, else Char.weapon(char) if
+// there is such a function, else none), the counts of a "per" modifier: observances (how many the character
+// keeps, char.observances), favours (the times taken in S.favours), finds (S.haul.length) and debts
+// (S.player.debts, a field a later file declares, else 0); and conds (S.player.conds). Then S.skills is made to
+// follow the loadout and every slot gets its SkillSheet. Whoever changes a modifier, the loadout, one of those
+// counts or S.player.conds sets S.dirty; the rebuild comes at step 12, or at once after a command.
 //
 // Entities. Every pooled object has one fixed set of fields and is sealed, so a field that was not declared
 // cannot be added by mistake. pool.alloc() gives one with every field at its default, alive = true and a new uid.
@@ -105,9 +115,8 @@
 //                 hits: Int32Array(8) of uids hit lately, hitN: how many were written
 //   area          def, team, owner, skill, ttl, damage, tick, angle, len, target
 //   pickup        kind, value, ttl, item
-//   player        alive, uid (0), x, y, px, py, vx, vy, r, face, aimX, aimY, life, hush, hushWait, dodgeT, dodgeCd, invuln,
-//                 draughts, draughtFill, runLevel, runXp, kx, ky, state, stateT, conds (a mask, Stats.condMask),
-//                 evade, hurtT, killT, flash, condT, condV, condN, a0..a3
+//   player        alive, uid (0), x, y, px, py, vx, vy, r, face, aimX, aimY, life, runLevel, runXp, kx, ky, state,
+//                 stateT, conds (a mask, Stats.condMask), hurtT, killT, flash, condT, condV, condN, a0..a3
 // Entities are reused: keep a uid, never the object, from one step to the next (S.boss is the one exception,
 // and this file clears it). A loop over pool.items[0 .. pool.n) skips what is not alive.
 //
@@ -115,8 +124,8 @@
 // step that ran, or the last command, emitted: both empty it first, so read it after each call. Event i of
 // S.eventCount is S.events[(S.eventStart + i) % S.events.length]; S.eventStart is 0 unless more events were
 // emitted than the ring holds, in which case the oldest were overwritten and S.eventsDropped counts them.
-// What a, b and id mean is up to the emitter; here: 'kill' a = rank, b = level, id = the enemy def's id;
-// 'toll' a = S.toll; 'end' id = the outcome.
+// What a, b and id mean is up to the emitter (docs/engine.md lists them all); here: 'kill' a = rank, b = level,
+// id = the enemy def's id; 'toll' a = S.toll; 'end' a = tolls, b = kills, id = the outcome.
 (function () {
   'use strict';
 
@@ -129,10 +138,11 @@
   const ZONE_RULES = ['tollSeconds', 'keeperToll', 'gateEvery'];   // zone fields that overrule the constants
   const NEEDED = ['tollSeconds', 'gridCell', 'playerRadius'];      // the constants this file itself cannot do without
   const CAPS = ['enemies', 'shots', 'areas', 'pickups', 'minions', 'events'];
-  const LIFE = 'lifeMax', HUSH = 'hushMax', DRAUGHTS = 'draughtCharges';   // the stats this file reads by name
+  const LIFE = 'life-max';                           // the one stat this file reads by name
+  const OUTCOMES = ['left', 'spared', 'died'];
   const COMMANDS = { pick: true, banish: true, reroll: true, skip: true, leave: true, allocate: true, equip: true };
-  const NONE = Object.freeze({}), NO_SIGILS = Object.freeze([]);
-  const NO_INPUT = Object.freeze({ mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false });
+  const NONE = Object.freeze({}), NO_VOICES = Object.freeze([]);
+  const NO_INPUT = Object.freeze({ mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false });
 
   Sim.COMMON = COMMON; Sim.ELITE = ELITE; Sim.MINIBOSS = MINIBOSS; Sim.BOSS = BOSS;
   Sim.NO_INPUT = NO_INPUT;
@@ -158,9 +168,9 @@
     area: Object.assign({}, BASE, { def: null, team: 0, owner: 0, skill: -1, ttl: 0, damage: 0, tick: 0, angle: 0, len: 0, target: 0 }),
     pickup: Object.assign({}, BASE, { kind: 0, value: 0, ttl: 0, item: null }),
     player: {
-      alive: false, uid: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 0, face: 0, aimX: 1, aimY: 0, life: 0, hush: 0, hushWait: 0, dodgeT: 0,
-      dodgeCd: 0, invuln: 0, draughts: 0, draughtFill: 0, runLevel: 0, runXp: 0, kx: 0, ky: 0, state: 0, stateT: 0, conds: 0,
-      evade: 0, hurtT: 0, killT: 0, flash: 0, condT: conds, condV: conds, condN: conds, a0: 0, a1: 0, a2: 0, a3: 0,
+      alive: false, uid: 0, x: 0, y: 0, px: 0, py: 0, vx: 0, vy: 0, r: 0, face: 0, aimX: 1, aimY: 0, life: 0, runLevel: 0, runXp: 0,
+      kx: 0, ky: 0, state: 0, stateT: 0, conds: 0, hurtT: 0, killT: 0, flash: 0, condT: conds, condV: conds, condN: conds,
+      a0: 0, a1: 0, a2: 0, a3: 0,
     },
     skill: { inst: null, sheet: null, cd: 0, t: 0, n: 0, target: 0, a0: 0, a1: 0, a2: 0, a3: 0 },
   };
@@ -239,17 +249,17 @@
     return { ...rules };         // a copy made in one go: an object that had a key deleted is slow to read from
   }
 
-  // Makes S.skills follow the loadout: cfg.sigils as it stands, or the sigils the character's loadout names.
+  // Makes S.skills follow the loadout: cfg.voices as it stands, or the voices the character's loadout names.
   // Slot i is place i of the loadout whatever happens, so a shot can keep the index of the skill that made it;
-  // a place with no sigil has inst null. A slot whose sigil changed starts afresh, the others keep their state.
+  // a place with no voice has inst null. A slot whose voice changed starts afresh, the others keep their state.
   function syncSkills(S) {
-    const cfg = S.cfg, char = cfg.char, places = cfg.sigils || (char && char.loadout && char.sigils ? char.loadout : NO_SIGILS);
+    const cfg = S.cfg, char = cfg.char, places = cfg.voices || (char && char.loadout && char.voices ? char.loadout : NO_VOICES);
     const skills = S.skills, F = factories().skill;
     while (skills.length < places.length) skills.push(F.make());
     skills.length = places.length;
     for (let i = 0; i < places.length; i++) {
       let inst = places[i] === undefined ? null : places[i];
-      if (inst !== null && typeof inst !== 'object') inst = (char && char.sigils && char.sigils.find((s) => s.uid === places[i])) || null;   // a uid
+      if (inst !== null && typeof inst !== 'object') inst = (char && char.voices && char.voices.find((v) => v.uid === places[i])) || null;   // a uid
       if (skills[i].inst === inst) continue;
       F.reset(skills[i]);
       skills[i].inst = inst;
@@ -258,7 +268,7 @@
 
   Sim.create = function (cfg) {
     Core.assert(cfg && (typeof cfg.seed === 'number' || typeof cfg.seed === 'string'), 'Sim.create needs cfg.seed, a number or a string');
-    const F = factories(), mode = Defs.get('mode', cfg.mode || 'watch'), zone = Defs.get('zone', cfg.zone);
+    const F = factories(), mode = Defs.get('mode', cfg.mode || 'household'), zone = Defs.get('zone', cfg.zone);
     const rules = rulesFor(zone, cfg), caps = rules.caps, root = new Core.RNG(cfg.seed);
     const S = {
       cfg, mode, zone, rules, curves: Defs.get('curves', 'main'),
@@ -267,9 +277,9 @@
       player: F.player.make(), mods: [], sheet: null, skills: [],
       enemies: null, shots: null, areas: null, pickups: null, minions: null,
       grid: new Core.Grid(rules.gridCell), region: null, props: null,
-      gate: null, boss: null, offer: null, offerQueue: [], chimes: {}, buffs: [],
+      gate: null, boss: null, offer: null, offerQueue: [], favours: {}, buffs: [],
       events: [], eventCount: 0, eventStart: 0, eventsDropped: 0,
-      haul: [], gold: 0, echoes: 0, kills: 0, counters: {},
+      haul: [], coin: 0, bank: { coin: 0, finds: [] }, hum: 0, kills: 0, counters: {},
       dirty: false, result: null, uid: 0, debug: null,
     };
     const pool = (kind, cap) => new Core.Pool(F[kind].make, cap, function (o) { F[kind].reset(o); o.uid = ++S.uid; });
@@ -286,18 +296,15 @@
 
     const p = S.player;
     p.alive = true;
-    p.x = p.px = S.region.x;
-    p.y = p.py = S.region.y;
+    p.x = p.px = S.region.startX;
+    p.y = p.py = S.region.startY;
     p.r = rules.playerRadius;
     for (let i = 0; i < states.length; i++) {
       Core.assert(!(states[i].name in S), 'Sim.state: the run state has a field "' + states[i].name + '" already');
       S[states[i].name] = states[i].make(S);
     }
 
-    const stats = Sim.rebuild(S).stats;
-    p.life = stats[LIFE];
-    p.hush = stats[HUSH];
-    p.draughts = stats[DRAUGHTS];
+    p.life = Sim.rebuild(S).stats[LIFE];
     return S;
   };
 
@@ -306,14 +313,16 @@
     const own = char !== null && typeof Char.mods === 'function' ? Char.mods(char, S, cfg.account || null) : cfg.mods;
     for (let i = 0; own && i < own.length; i++) mods.push(own[i]);
     for (let i = 0; i < sources.length; i++) sources[i](S, mods);
-    let chimes = 0;
-    for (const id in S.chimes) chimes += S.chimes[id];
+    let favours = 0;
+    for (const id in S.favours) favours += S.favours[id];
     S.mods = mods;
     S.sheet = Stats.sheet(mods, {
       level: char !== null && char.level > 0 ? char.level : cfg.level || 1,
       weapon: cfg.weapon || (char !== null && typeof Char.weapon === 'function' ? Char.weapon(char) : null),
-      vows: char !== null && char.activeVows ? char.activeVows.length : 0,
-      chimes,
+      observances: char !== null && Array.isArray(char.observances) ? char.observances.length : 0,
+      favours,
+      finds: S.haul.length,
+      debts: p.debts > 0 ? p.debts : 0,                // a field of the Surety's that a later file may declare
       conds: p.conds,
     });
     syncSkills(S);
@@ -322,7 +331,6 @@
       skill.sheet = skill.inst === null ? null : Stats.skillSheet(mods, skill.inst, S.sheet);
     }
     if (p.life > S.sheet.stats[LIFE]) p.life = S.sheet.stats[LIFE];
-    if (p.hush > S.sheet.stats[HUSH]) p.hush = S.sheet.stats[HUSH];
     S.dirty = false;
     return S.sheet;
   };
@@ -440,11 +448,13 @@
     S.grid.rebuild(S.enemies);
     if (debug) debugOrbit(S);
     else if (typeof Enemies.step === 'function') Enemies.step(S);
+    if (typeof Dmg.step === 'function') Dmg.step(S);
     if (typeof Skills.step === 'function') Skills.step(S);
     if (!debug && typeof Boss.step === 'function') Boss.step(S);
     if (S.step % TICK === TICK - 1 && typeof Dmg.tick === 'function') Dmg.tick(S);
     deaths(S);
     if (typeof Player.pickups === 'function') Player.pickups(S);
+    if (typeof Favours.step === 'function') Favours.step(S);
     if (S.dirty) Sim.rebuild(S);
     if (typeof Offers.step === 'function') Offers.step(S);
     holdAll(S, before);
@@ -495,14 +505,15 @@
   function totals(S, outcome) {
     return {
       outcome, mode: S.mode.id, zone: S.zone.id, seed: S.cfg.seed, steps: S.step, time: S.t, tolls: S.toll, threat: S.threat,
-      kills: S.kills, gold: S.gold, echoes: S.echoes, runLevel: S.player.runLevel, haul: S.haul.length, eventsDropped: S.eventsDropped,
+      kills: S.kills, coin: S.coin, banked: S.bank.coin, hum: S.hum, runLevel: S.player.runLevel, haul: S.haul.length,
+      eventsDropped: S.eventsDropped,
     };
   }
 
   Sim.result = function (S) { return S.result !== null ? S.result : totals(S, null); };
 
   Sim.end = function (S, outcome) {
-    Core.assert(outcome === 'left' || outcome === 'died', 'Sim.end: the outcome is "left" or "died"');
+    Core.assert(OUTCOMES.includes(outcome), 'Sim.end: the outcome is "left", "spared" or "died"');
     if (S.phase === 'ended') return S.result;
     if (outcome === 'died') S.player.alive = false;
     S.phase = 'ended';
@@ -535,10 +546,10 @@
     const p = S.player, rng = S.rng;
     let h = hashMix(0x70116, S.step);
     h = hashMix(hashMix(hashMix(hashMix(h, S.toll), S.threat), PHASES.indexOf(S.phase)), S.uid);
-    h = hashMix(hashMix(hashMix(h, S.kills), round(S.gold * 1000)), round(S.echoes * 1000));
+    h = hashMix(hashMix(hashMix(hashMix(h, S.kills), round(S.coin * 1000)), round(S.bank.coin * 1000)), round(S.hum * 1000));
     h = rng.world.hash(rng.offers.hash(rng.combat.hash(rng.loot.hash(rng.spawn.hash(h)))));
     h = hashMix(hashMix(hashMix(h, round(p.x * 1000)), round(p.y * 1000)), p.alive);
-    h = hashMix(hashMix(hashMix(h, round(p.life * 1000)), round(p.hush * 1000)), p.draughts);
+    h = hashMix(h, round(p.life * 1000));
     h = hashMix(hashMix(h, p.runLevel), round(p.runXp * 1000));
     for (let i = 0; i < S.skills.length; i++) h = hashMix(h, round(S.skills[i].cd * 1000));
     h = hashPool(h, S.enemies, 0);
@@ -558,7 +569,7 @@
   const DEBUG_WALK = 5;                                         // metres a second, when nothing else moves the player
 
   Sim.debugScene = function (n, seed) {
-    const S = Sim.create({ mode: 'watch', zone: 'debug', seed: seed === undefined ? 1 : seed });
+    const S = Sim.create({ mode: 'household', zone: 'debug', seed: seed === undefined ? 1 : seed });
     const p = S.player, rng = S.rng.spawn;
     S.debug = { x: p.x, y: p.y };
     for (let ring = 0, left = n; left > 0; ring++) {

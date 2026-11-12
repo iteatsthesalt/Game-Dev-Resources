@@ -9,7 +9,6 @@ This folder is the game's design, written for the people who build it.
 | `03-classes.md` | the six classes and the twelve callings |
 | `04-progression.md` | the Plan, voices and knots, finds and how they are changed, observances and Heed, favours and the row, the Bellframe and Hum, the Household and the Watch-night |
 | `denylist.txt` | names and terms that must never appear in the game's ids or text; `tools/lint.js` enforces it over `src/` as whole words in any letter case |
-| `denylist-pending.txt` | entries that today's source still breaks only because of the placeholder rows of `src/js/10-stats.js`; the engineers move them into `denylist.txt` when they replace those rows |
 | `pool/` | every idea proposed, how each fared, and the two spines this design merges |
 | `tools/` | the scripts that checked the pool and gathered its survivors |
 

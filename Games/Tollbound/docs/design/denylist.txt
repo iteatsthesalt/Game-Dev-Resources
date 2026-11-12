@@ -134,3 +134,9 @@ poison cloud
 healing aura
 necromancer
 paladin
+gain as extra
+item rarity
+item quantity
+crit chance
+crit multi
+dex

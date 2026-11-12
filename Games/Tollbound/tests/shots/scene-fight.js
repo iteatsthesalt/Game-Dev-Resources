@@ -32,7 +32,7 @@
         const some = near(6.5);
         const e = some[(n * 7) % Math.max(1, Math.min(8, some.length))];
         if (e) {
-          tell(n % 24 === 0 ? 'crit' : 'hit', e.x, e.y, 6, e.uid);
+          tell('hit', e.x, e.y, 6, 1);
           e.life -= 7 + (n % 4) * 2;
           e.flash = 1;
         }

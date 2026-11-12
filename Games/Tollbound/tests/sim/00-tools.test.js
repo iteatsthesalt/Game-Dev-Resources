@@ -150,7 +150,7 @@ const clean = (found) => assert.deepEqual(found, []);
 test('lint: honest files pass', () => {
   clean(lint.check({ js: [{ file: '00-core.js', text: CORE }, { file: '50-platform.js', text: PLATFORM }] }));
   clean(problems('10-stats.js', wrap('Stats', '  const table = [1, 2, 3];\n  Stats.sheet = function (mods) { return Core.clamp(mods.length + table.length); };')));
-  clean(problems('30-modes.js', wrap('(none)', "  Defs.add('mode', { id: 'watch', name: 'The Watch', levels: [1, 2, 3], next: null });")));
+  clean(problems('30-modes.js', wrap('(none)', "  Defs.add('mode', { id: 'household', name: 'The Household', levels: [1, 2, 3], next: null });")));
   clean(problems('70-ui-core.js', wrap('UI', '  UI.open = function (id) { document.title = id; window.setTimeout(function () {}, 5); return Game; };')));
 });
 
@@ -208,7 +208,7 @@ test('lint: files below 50 use no browser, clock, timer, storage or unseeded ran
   for (const [name, use] of Object.entries(uses)) {
     const text = wrap('Stats', `  const tick = 1;\n  Stats.f = function () {\n    return ${use};\n  };`);
     flagged(problems('10-stats.js', text), new RegExp('uses ' + name.replace('.', '\\.')), 7);
-    flagged(problems('35-sigils.js', text), new RegExp('uses ' + name.replace('.', '\\.')), 7);
+    flagged(problems('35-voices.js', text), new RegExp('uses ' + name.replace('.', '\\.')), 7);
     clean(problems('60-mesh.js', text.replace(/Stats/g, 'UI')));
   }
   flagged(problems('10-stats.js', wrap('Stats', '  Stats.f = function () { return Date.now(); };')), /uses Date/);
@@ -229,20 +229,20 @@ test('lint: the simulation does not use presentation namespaces', () => {
 });
 
 test('lint: content is plain data', () => {
-  const content = (body) => problems('35-sigils.js', wrap('(none)', body));
-  clean(content("  const fire = ['fire', 'spell'];\n  for (const tier of [1, 2, 3]) Defs.add('sigil', { id: 'ember.' + tier, tags: fire, text: 'A function of heat => light.', angle: Math.PI / 3 });"));
+  const content = (body) => problems('35-voices.js', wrap('(none)', body));
+  clean(content("  const round = ['round', 'still'];\n  for (const tier of [1, 2, 3]) Defs.add('voice', { id: 'stroke.' + tier, tags: round, text: 'A function of reach => harm.', angle: Math.PI / 3 });"));
   // words of the language are fine as field names
   clean(content("  const base = { class: 'warden', new: true };\n  Defs.add('calling', {\n    id: 'a',\n    class: base.class,\n    new: base.new, function: 1, undefined: 2, get: 3, set: 4,\n  });"));
-  flagged(content("  Defs.add('sigil', { id: 'a', cast: function (S) { return 1; } });"), /a function: content is plain data/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', cast: (S) => 1 });"), /an arrow function/, 5);
-  flagged(content("  Defs.add('sigil', {\n    id: 'a',\n    cast(S) { return 1; },\n  });"), /a method/, 7);
-  flagged(content("  Defs.add('sigil', { id: 'a', get power() { return 1; } });"), /a getter or setter/, 5);
-  flagged(content("  class Sigil {}\n  Defs.add('sigil', { id: 'a' });"), /a class/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', tags: new Set() });"), /an object made with new/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', icon: undefined });"), /undefined: leave the field out/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', rate: Stats.base });"), /uses Stats: content may call Defs\.add only/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', like: Defs.get('sigil', 'b') });"), /content may call Defs\.add and nothing else/, 5);
-  flagged(content("  Defs.add('sigil', { id: 'a', seed: Date.now() });"), /uses Date/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', cast: function (S) { return 1; } });"), /a function: content is plain data/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', cast: (S) => 1 });"), /an arrow function/, 5);
+  flagged(content("  Defs.add('voice', {\n    id: 'a',\n    cast(S) { return 1; },\n  });"), /a method/, 7);
+  flagged(content("  Defs.add('voice', { id: 'a', get power() { return 1; } });"), /a getter or setter/, 5);
+  flagged(content("  class Voice {}\n  Defs.add('voice', { id: 'a' });"), /a class/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', tags: new Set() });"), /an object made with new/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', icon: undefined });"), /undefined: leave the field out/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', rate: Stats.base });"), /uses Stats: content may call Defs\.add only/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', like: Defs.get('voice', 'b') });"), /content may call Defs\.add and nothing else/, 5);
+  flagged(content("  Defs.add('voice', { id: 'a', seed: Date.now() });"), /uses Date/, 5);
 });
 
 test('lint: a file adds only to the namespaces its header says it owns', () => {
@@ -315,8 +315,8 @@ test('lint: denylist entries are found as whole words in any letter case', () =>
   // the two entries are nonsense words made up for this test
   assert.deepEqual(lint.denyEntries('# names that stay out\n\nZorblat\n  Quib Marn  \n# end\n'), ['Zorblat', 'Quib Marn']);
   const deny = ['Zorblat', 'Quib Marn'];
-  const find = (text) => lint.check({ js: [{ file: '35-sigils.js', text }], deny }).filter((p) => /denylist/.test(p.msg)).map((p) => `${p.line}: ${p.msg}`);
-  const data = (line) => wrap('(none)', `  Defs.add('sigil', ${line});`);
+  const find = (text) => lint.check({ js: [{ file: '35-voices.js', text }], deny }).filter((p) => /denylist/.test(p.msg)).map((p) => `${p.line}: ${p.msg}`);
+  const data = (line) => wrap('(none)', `  Defs.add('voice', ${line});`);
   flagged(find(data("{ id: 'x', name: 'Zorblat' }")), /"Zorblat" is on the denylist/, 5);
   flagged(find(data("{ id: 'the-zorblat.one', name: 'X' }")), /"zorblat" is on the denylist/, 5);
   flagged(find(data("{ id: 'x', name: 'ZORBLAT!' }")), /"ZORBLAT" is on the denylist/);

@@ -25,7 +25,7 @@ if (steps < 1) throw new Error('bench: there must be at least one step to measur
 
 const { Sim } = loadSim({ boot: true });
 // the player walks in a slow circle, so whatever moves the player has something to do
-const input = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+const input = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false };
 const S = Sim.debugScene(n, 20261112);
 function step() {
   input.mx = Math.cos(S.step / 240) * 0.6;

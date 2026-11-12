@@ -36,6 +36,7 @@
       Boss: typeof Boss !== 'undefined' ? Boss : null,
       Director: typeof Director !== 'undefined' ? Director : null,
       Offers: typeof Offers !== 'undefined' ? Offers : null,
+      Favours: typeof Favours !== 'undefined' ? Favours : null,
       Bot: typeof Bot !== 'undefined' ? Bot : null,
       World: typeof World !== 'undefined' ? World : null,
       Plat: typeof Plat !== 'undefined' ? Plat : null,
@@ -52,6 +53,7 @@
       Scene: typeof Scene !== 'undefined' ? Scene : null,
       Vfx: typeof Vfx !== 'undefined' ? Vfx : null,
       UI: typeof UI !== 'undefined' ? UI : null,
+      Hud: typeof Hud !== 'undefined' ? Hud : null,
       Game: typeof Game !== 'undefined' ? Game : null,
     };
   }

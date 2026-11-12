@@ -19,6 +19,14 @@ function world() {
     id: 'test.yard', region: { radius: 50 }, props: [{ prop: 'test.pillar', density: 0.5 }, { prop: 'test.brazier', density: 0.2 }, { prop: 'test.candle', density: 0.3 }],
   }));
   sim.Defs.add('zone', Object.assign({}, zone, { id: 'test.thicket', region: { radius: 30 }, props: [{ prop: 'test.pillar', density: 20 }] }));
+  // a plaza like the Dial: a post at the middle, stones set where the zone says, the start off the post
+  sim.Defs.add('prop', { id: 'test.post', puppet: 'debug.husk', radius: 0.6, role: 'bell-post' });
+  sim.Defs.add('prop', { id: 'test.stone', puppet: 'debug.husk', radius: 0.5 });
+  sim.Defs.add('zone', Object.assign({}, zone, {
+    id: 'test.plaza', region: { radius: 35 }, start: { x: 0, y: 8 },
+    place: [{ prop: 'test.post', x: 0, y: 0 }, { prop: 'test.stone', x: 14, y: 0, role: 'landmark' }, { prop: 'test.stone', x: -14, y: 0 }],
+    props: [{ prop: 'test.stone', density: 0.2 }],
+  }));
   assert.deepEqual(plain(sim.Defs.finalize()), [], 'what this file adds is valid');
   return sim;
 }
@@ -29,19 +37,48 @@ const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} is no
 
 test('a region is the zone\'s ground with its props scattered by density', () => {
   const region = World.region(7, yard);
-  assert.deepEqual(Object.keys(region), ['x', 'y', 'radius', 'props', 'grid']);
-  assert.deepEqual([region.x, region.y, region.radius], [0, 0, 50]);
+  assert.deepEqual(Object.keys(region), ['x', 'y', 'radius', 'startX', 'startY', 'props', 'grid']);
+  assert.deepEqual([region.x, region.y, region.radius, region.startX, region.startY], [0, 0, 50, 0, 0]);
   const count = (id) => region.props.filter((p) => p.id === id).length;
   // a disc of 50 m is 7854 m2: 0.5, 0.2 and 0.3 on every 100 m2 are 39, 16 and 24, and a thin scatter fits them all
   assert.deepEqual([count('test.pillar'), count('test.brazier'), count('test.candle')], [39, 16, 24]);
   for (const p of region.props) {
-    assert.deepEqual(Object.keys(p), ['id', 'x', 'y', 'r', 'light']);
+    assert.deepEqual(Object.keys(p), ['id', 'x', 'y', 'r', 'light', 'role']);
     const def = Defs.get('prop', p.id);
     assert.equal(p.r, def.radius);
     assert.equal(p.light, def.light === undefined ? null : def.light, 'the def\'s light, or null');
+    assert.equal(p.role, null, 'a prop whose def has no role has none');
   }
   assert.equal(World.region(7, Defs.get('zone', 'debug')).props.length, 0, 'a zone without props has an empty ground');
   assert.deepEqual([World.CLEAR, World.GAP], [8, 2]);
+});
+
+test('authored props stand where the zone says, with their roles, and the scatter keeps clear of the start', () => {
+  const plaza = Defs.get('zone', 'test.plaza'), region = World.region(3, plaza);
+  const placed = plain(region.props.slice(0, 3).map((p) => [p.id, p.x, p.y, p.r, p.role]));
+  assert.deepEqual(placed, [['test.post', 0, 0, 0.6, 'bell-post'], ['test.stone', 14, 0, 0.5, 'landmark'], ['test.stone', -14, 0, 0.5, null]],
+    'first, in order: a role from the place, else from the def, else none');
+  assert.deepEqual([region.startX, region.startY], [0, 8]);
+  const scattered = region.props.slice(3);
+  // a disc of 35 m is 3848 m2: 0.2 on every 100 m2 is round(7.70) = 8 stones, and so thin a scatter fits them all
+  assert.equal(scattered.length, 8, `${scattered.length} stones scattered`);
+  for (const p of scattered) {
+    assert.ok(Math.hypot(p.x - 0, p.y - 8) - p.r >= World.CLEAR - 1e-9, 'the clear circle is round the start, not the middle');
+    for (const q of region.props.slice(0, 3)) assert.ok(gap(p, q) >= World.GAP - 1e-9, 'and clear of what was set down by hand');
+  }
+  // a region set elsewhere carries its authored props and its start along
+  const away = World.region(3, plaza, 100, 50);
+  assert.deepEqual([away.props[1].x, away.props[1].y, away.startX, away.startY], [114, 50, 100, 58]);
+  // a run starts there, and finds props by their role
+  const S = Sim.create({ zone: 'test.plaza', seed: 3 }), out = [];
+  assert.deepEqual([S.player.x, S.player.y], [0, 8]);
+  assert.equal(World.withRole(S, 'landmark', out), 1);
+  assert.equal(out[0], S.props[1]);
+  assert.equal(World.withRole(S, 'bell-post', out), 1);
+  assert.equal(out[0].id, 'test.post');
+  assert.equal(World.withRole(S, 'lamp-post', out), 0);
+  assert.equal(World.withRole({ region: null }, 'landmark', out), 0);
+  assert.equal(World.withRole(Sim.create({ zone: 'test.yard', seed: 3 }), 'landmark', out), 0, 'scattered props have the role of their def');
 });
 
 test('the same seed gives the same region, another seed another', () => {

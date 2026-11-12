@@ -16,18 +16,18 @@ const { loadSim } = require('../sim/loader.js');
 
 const SEED = 20261112, HUSKS = 600, STEPS = 600, EVERY = 200;
 
-// Plays the reference run in Node. A move is [mx, my, dodge, draught] for one step, as plain numbers.
+// Plays the reference run in Node. A move is [mx, my, trade, heave] for one step, as plain numbers.
 function reference() {
   const { Sim } = loadSim({ boot: true });
-  const S = Sim.debugScene(HUSKS, SEED), frame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+  const S = Sim.debugScene(HUSKS, SEED), frame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false };
   const moves = [], marks = [];
   for (let i = 0; i < STEPS; i++) {
     const move = [Math.cos(i / 40) * 0.7, Math.sin(i / 55) * 0.7, i % 97 === 0 ? 1 : 0, i % 211 === 0 ? 1 : 0];
     moves.push(move);
     frame.mx = move[0];
     frame.my = move[1];
-    frame.dodge = move[2] === 1;
-    frame.draught = move[3] === 1;
+    frame.trade = move[2] === 1;
+    frame.heave = move[3] === 1;
     if (S.phase === 'offer') Sim.command(S, { type: 'pick', index: 0 });
     Sim.step(S, frame);
     if ((i + 1) % EVERY === 0) marks.push(Sim.hash(S));
@@ -115,13 +115,13 @@ const play = async function (ref) {
   }
 
   // ---- the page plays what Node played ----
-  const R = Sim.debugScene(ref.husks, ref.seed), frame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false }, marks = [];
+  const R = Sim.debugScene(ref.husks, ref.seed), frame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false }, marks = [];
   for (let i = 0; i < ref.moves.length; i++) {
     const move = ref.moves[i];
     frame.mx = move[0];
     frame.my = move[1];
-    frame.dodge = move[2] === 1;
-    frame.draught = move[3] === 1;
+    frame.trade = move[2] === 1;
+    frame.heave = move[3] === 1;
     if (R.phase === 'offer') Sim.command(R, { type: 'pick', index: 0 });
     Sim.step(R, frame);
     if ((i + 1) % ref.every === 0) marks.push(Sim.hash(R));
@@ -157,8 +157,8 @@ const play = async function (ref) {
     !!zoned && zoned === Game.S && zoned.zone.id === 'debug' && zoned.debug === null && zoned.cfg.seed === 7 && unseeded.seed === undefined && Game.state === 'run',
     zoned && { zone: zoned.zone.id, seed: zoned.cfg.seed });
   T.check('such a run steps like any other', Game.sim(1) === 60 && zoned.step === 60, zoned && zoned.step);
-  const given = { zone: 'debug', seed: 'a word', mode: 'watch' }, own = Game.start(given);
-  T.check('a cfg that brings its seed reaches the simulation as it is', !!own && own.cfg === given && own.mode.id === 'watch', own && own.cfg.seed);
+  const given = { zone: 'debug', seed: 'a word', mode: 'watch-night' }, own = Game.start(given);
+  T.check('a cfg that brings its seed reaches the simulation as it is', !!own && own.cfg === given && own.mode.id === 'watch-night', own && own.cfg.seed);
   Game.title();
   return T.done();
 };

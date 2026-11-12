@@ -11,22 +11,28 @@
 //   kill           crowd. The dead sink: a slosh of water falling in pitch, and a bubble
 //   kill.great     a great one sinks: a wide splash, a rumble, and a low muffled bell
 //   hurt           the player hurt: a close, dry knock, a scrape and a cracked bell
+//   mend           crowd. A wound gives life back: a soft tone rising
+//   scar           a wound scars: a dull cracked note
 //   level          a level gained: four handbells climbing the mode, and candles flaring
-//   offer          an offer opening: a shimmer of tiny half-muffled bells, a breath, a crackle of wax
-//   gate.open      a gate opening: a rope and beam creak, two pulley clicks, water drawn back, a muffled bell
-//   gate.hold      a gate held: a tone swelling for opts.seconds (3) under a creak, then an open bell
+//   offer          walk-in favours rise: a shimmer of tiny half-muffled bells, a breath, a crackle of wax
+//   count          the Lantern's watch rings the forecast on a thin hand-bell: opts.strokes (9 mostly large dead,
+//                  6 a mixed crowd, 3 small dead in numbers), after a pause one quick stroke for each of
+//                  opts.elites, then one low stroke if opts.gate
+//   gate.open      a lychgate opening: a rope and beam creak, two pulley clicks, water drawn back, a muffled bell
+//   gate.hold      ringing down: a tone swelling for opts.seconds (6) under a creak, then an open bell
 //   toll           the great bell: a strike on opts.note ('D2'), and a low stroke felt in the stones
 //   warning        a coming attack: a rising hiss, then two quick strikes of a cracked bell
 // The wiring:
 //   the notice 'step', when live (not inside Game.sim), and 'command': every event of S.events plays its effect,
-//   merged and limited by the engine; hits, deaths, pickups, gates and warnings where they happened (x, y), the
-//   player's hurt, a level, an offer and the toll in the middle:
-//     hit -> hit, crit -> hit.heavy, kill -> kill (kill.great when its rank a is Sim.ELITE or above),
-//     hurt -> hurt, pickup -> pickup (pickup.big when its kind a is not 0 or its value b is 10 or more:
-//     a guess until the pickups are written), level -> level, offer -> offer, toll -> Music.toll() (the
-//     effect toll when there is no music), gate -> gate.open, telegraph -> warning
-//   after each live step: while the gate's hold (S.gate.hold) is growing, gate.hold sounds; when it stops
-//   growing for a tenth of a second, the sound is let go
+//   merged and limited by the engine; hits, deaths, pickups, wounds, lychgates and warnings where they happened
+//   (x, y), the player's hurt, a level, an offer, the count and the toll in the middle:
+//     hit -> hit, kill -> kill (kill.great when its rank a is Sim.ELITE or above), hurt -> hurt, mend -> mend,
+//     scar -> scar, pickup -> pickup (pickup.big when its kind a is not 0 or its value b is 10 or more: a guess
+//     until the pickups are written), favour -> pickup.big, level -> level, offer -> offer, count -> count (a, b
+//     and id 'gate' give its strokes), toll -> Music.toll() (the effect toll when there is no music), gate ->
+//     gate.open, telegraph -> warning. wound, pull, trade, heave and stroke have no sound of their own yet.
+//   after each live step: while the open lychgate's ring (S.gate.ring, seconds of ringing down) grows, gate.hold
+//   sounds; when it stops growing for a tenth of a second, the sound is let go
 //   the menus, through the events the menu framework (70-ui-core.js) sends on its own controls inside #ui:
 //   focus that moves within 300 ms of a 'ui-nav' event or a Tab key plays menu.move; a click on a control
 //   plays menu.choose; a slider's 'input' plays menu.move, more softly.
@@ -102,6 +108,18 @@
     return Sound.bell(c, out, t, { freq: Sound.note(62) * p, weight: 0.25, cracked: 1, level: 0.55, partials: 8, length: 1.2 });
   }, { gap: 0.15, cap: 2, priority: 2, wet: 0.1, level: 0.75, length: 0.5 });
 
+  Sound.define('mend', function (c, out, t, o) {
+    const p = pitch(o) * Sound.vary(1, 0.02);
+    Sound.tone(c, out, t, { freq: 520 * p, to: 640 * p, glide: 0.12, attack: 0.01, decay: 0.16, level: 0.35 });
+    return Sound.tone(c, out, t + 0.02, { freq: 1040 * p, to: 1280 * p, glide: 0.12, attack: 0.01, decay: 0.1, level: 0.12 });
+  }, { gap: 0.2, cap: 2, wet: 0.25, level: 0.35, length: 0.25, crowd: true });
+
+  Sound.define('scar', function (c, out, t, o) {
+    const p = pitch(o);
+    Sound.noise(c, out, t, { color: 'brown', filter: 'lowpass', freq: 500 * p, attack: 0.005, decay: 0.25, level: 0.35 });
+    return Sound.bell(c, out, t, { freq: Sound.note(50) * p, weight: 0.35, muffled: 0.6, cracked: 1, level: 0.6, partials: 7, length: 1.2 });
+  }, { gap: 0.4, cap: 2, priority: 2, wet: 0.2, level: 0.7, length: 1.3 });
+
   Sound.define('level', function (c, out, t, o) {
     const p = pitch(o);
     let end = t;
@@ -123,6 +141,24 @@
     return end;
   }, { gap: 0.5, cap: 1, wet: 0.4, level: 0.7, length: 1.6 });
 
+  // The count: strokes a quarter of a second apart, a pause, the quick strokes of the elites, a low stroke for a
+  // lychgate. Left without opts (a test's rendering) it rings a mixed crowd.
+  const COUNT_STROKE = 0.26, COUNT_QUICK = 0.14, COUNT_PAUSE = 0.55;
+  Sound.define('count', function (c, out, t, o) {
+    const p = pitch(o), f = Sound.note(93) * p;
+    const strokes = o.strokes > 0 ? Math.min(12, o.strokes | 0) : 6, elites = o.elites > 0 ? Math.min(8, o.elites | 0) : 0;
+    let when = t, end = t;
+    for (let i = 0; i < strokes; i++, when += COUNT_STROKE) {
+      end = max(end, Sound.bell(c, out, when, { freq: f, weight: 0.02, level: 0.32, partials: 5, beat: 0, length: 0.5 }));
+    }
+    when += COUNT_PAUSE - COUNT_STROKE;
+    for (let i = 0; i < elites; i++, when += COUNT_QUICK) {
+      end = max(end, Sound.bell(c, out, when, { freq: f * 1.5, weight: 0.02, level: 0.3, partials: 5, beat: 0, length: 0.35 }));
+    }
+    if (o.gate === true) end = max(end, Sound.bell(c, out, when + COUNT_PAUSE, { freq: f / 4, weight: 0.3, level: 0.45, partials: 7, length: 1.6 }));
+    return end;
+  }, { gap: 3, cap: 1, priority: 2, wet: 0.35, level: 0.55, length: 5 });
+
   Sound.define('gate.open', function (c, out, t, o) {
     const p = pitch(o);
     Sound.creak(c, out, t, { rate: 48, to: 30, body: 640 * p, q: 7, attack: 0.15, hold: 0.5, decay: 0.6, level: 0.5 });
@@ -133,12 +169,12 @@
   }, { gap: 1, cap: 1, priority: 2, wet: 0.5, level: 1, length: 4.2 });
 
   Sound.define('gate.hold', function (c, out, t, o) {
-    const f = Sound.note(57) * pitch(o), s = typeof o.seconds === 'number' && o.seconds > 0.5 ? o.seconds : 3;
+    const f = Sound.note(57) * pitch(o), s = typeof o.seconds === 'number' && o.seconds > 0.5 ? o.seconds : 6;
     Sound.tone(c, out, t, { freq: f, attack: s * 0.87, hold: 0.2, decay: 0.8, level: 0.16 });
     Sound.tone(c, out, t, { freq: f * 2, attack: s * 0.93, decay: 0.8, level: 0.1 });
     Sound.creak(c, out, t + s * 0.73, { rate: 70, to: 40, body: 900, attack: 0.1, hold: 0.4, decay: 0.3, level: 0.3 });
     return Sound.bell(c, out, t + s, { freq: f, weight: 0.5, level: 0.6, partials: 10, length: 4 });
-  }, { gap: 0.5, cap: 1, priority: 2, wet: 0.5, level: 0.7, length: 7 });
+  }, { gap: 0.5, cap: 1, priority: 2, wet: 0.5, level: 0.7, length: 10 });
 
   Sound.define('toll', function (c, out, t, o) {
     const f = Sound.note(o.note !== undefined ? o.note : 'D2') * pitch(o);
@@ -156,7 +192,7 @@
   // ---- the events of the run ----
 
   const at = { x: 0, y: 0, level: 1, seconds: 0 };   // one object for every call: nothing is made per event
-  const centre = {};
+  const centre = {}, told = { strokes: 0, elites: 0, gate: false };
 
   function placed(id, e) {
     at.x = e.x;
@@ -181,32 +217,40 @@
       if (k === 'hit') placed('hit', e);
       else if (k === 'kill') placed(e.a >= Sim.ELITE ? 'kill.great' : 'kill', e);
       else if (k === 'pickup') placed(big(e) ? 'pickup.big' : 'pickup', e);
-      else if (k === 'crit') placed('hit.heavy', e);
+      else if (k === 'favour') placed('pickup.big', e);
       else if (k === 'hurt') Sound.sfx('hurt', centre);
+      else if (k === 'mend') placed('mend', e);
+      else if (k === 'scar') placed('scar', e);
       else if (k === 'telegraph') placed('warning', e);
       else if (k === 'level') Sound.sfx('level', centre);
       else if (k === 'offer') Sound.sfx('offer', centre);
-      else if (k === 'toll') toll();
+      else if (k === 'count') {
+        told.strokes = e.a;
+        told.elites = e.b;
+        told.gate = e.id === 'gate';
+        Sound.sfx('count', told);
+      } else if (k === 'toll') toll();
       else if (k === 'gate') placed('gate.open', e);
     }
   }
 
-  // The gate's hold, read from the run: it sounds while S.gate.hold grows.
-  let holding = 0, holdWas = 0, still = 0, holdRun = null;
+  // Ringing down, read from the run: gate.hold sounds while the open lychgate's ring grows.
+  let holding = 0, ringWas = 0, still = 0, holdRun = null;
   function gateHold(S) {
     if (S !== holdRun) {
       holdRun = S;
-      holdWas = 0;
+      ringWas = 0;
       still = 0;
       holding = 0;
     }
-    const g = S.gate, hold = g !== null && typeof g.hold === 'number' ? g.hold : 0;
-    if (hold > holdWas) {
+    const g = S.gate, ring = g !== null && typeof g.ring === 'number' ? g.ring : 0;
+    if (ring > ringWas) {
       still = 0;
       if (holding === 0 && Sound.live()) {
+        const r = S.rules;
         at.x = g.x;
         at.y = g.y;
-        at.seconds = max(0.5, (S.rules.gateHoldSeconds || 3) - hold);
+        at.seconds = max(0.5, (r.ringStrokes > 0 ? r.ringStrokes : 6) * (r.strokeSeconds > 0 ? r.strokeSeconds : 1) - ring);
         holding = Sound.sfx('gate.hold', at);
         at.seconds = 0;
       }
@@ -214,7 +258,7 @@
       Sound.stop(holding, 0.3);
       holding = 0;
     }
-    holdWas = hold;
+    ringWas = ring;
   }
 
   Plat.on('step', function (S, live) {

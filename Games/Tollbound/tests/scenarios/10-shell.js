@@ -585,7 +585,7 @@ const vigil = async function () {
   T.check('when the run has ended the results show', Game.state === 'results' && UI.top() === 'results' && Game.S === last && states[states.length - 1] === 'run > results', [Game.state, UI.top()]);
   const words = ui.textContent, back = button('Back to the title');
   T.check('the results say that the vigil is over, and offer the way back', /vigil/i.test(words) && /Time \d+:\d\d/.test(words) && !!back && document.activeElement === back, words);
-  if (last.result && last.result.outcome === 'left') T.check('the results name the outcome', words.includes('You left through the gate.'), words);
+  if (last.result && last.result.outcome === 'left') T.check('the results name the outcome', words.includes('You rang down and left by the lychgate.'), words);
   held = last.step;
   await T.sleep(150);
   T.check('an ended run is not stepped, by the frame loop or by Game.sim', last.step === held && Game.sim(1) === 0 && last.step === held);

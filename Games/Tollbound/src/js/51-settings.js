@@ -43,7 +43,7 @@
 //   input.stick     'floating' | 'fixed'   the touch stick: where the thumb lands, or fixed in the lower corner
 //   input.hand      'right' | 'left'       the side the touch buttons sit on
 //   input.deadzone  0.05..0.4, 0.15        the share of a stick's travel that does nothing (touch and pads)
-//   input.aim       'auto' | 'pointer'     on a desktop: sigils choose their targets, or aim with the mouse
+//   input.aim       'auto' | 'pointer'     on a desktop: voices choose their targets, or aim with the mouse
 //   input.haptics   true                   vibration, where the device allows it
 //   ui.scale        0.85..1.4, 1           text and control size: set as the custom property --ui-scale on the
 //                                          root element, for the stylesheets to multiply by
@@ -574,7 +574,7 @@
   Settings.define('input.deadzone', { value: 0.15, min: 0.05, max: 0.4, step: 0.05, format: percent, label: 'Stick dead zone', group: 'Controls', order: 12 });
   Settings.define('input.aim', {
     value: 'auto', label: 'Aim', group: 'Controls', order: 13,
-    options: [{ value: 'auto', label: 'Sigils choose' }, { value: 'pointer', label: 'With the mouse' }],
+    options: [{ value: 'auto', label: 'Voices choose' }, { value: 'pointer', label: 'With the mouse' }],
   });
   Settings.define('input.haptics', { value: true, label: 'Vibration', group: 'Controls', order: 14 });
   Settings.define('ui.scale', { value: 1, min: 0.85, max: 1.4, step: 0.05, format: percent, live: false, label: 'Text and controls', group: 'Display', order: 20 });

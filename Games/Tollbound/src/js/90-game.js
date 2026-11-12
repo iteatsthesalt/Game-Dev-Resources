@@ -68,7 +68,11 @@
   const RATES = [1 / 60, 1 / 120, 1 / 144, 1 / 90, 1 / 30], SNAP = 0.0002;
   const VIEWS = { '2d': '2D view', gl: '3D view' };
   const STORAGE = { saved: 'saves in this browser', memory: 'nothing is saved here', error: 'a save has failed' };
-  const OUTCOMES = { left: 'You left through the gate.', died: 'You fell, and the vigil ended with you.' };
+  const OUTCOMES = {
+    left: 'You rang down and left by the lychgate.',
+    spared: 'Tolled-for, you reached the lychgate in time. You live; your haul is lost.',
+    died: 'You fell, and joined the dead of the district.',
+  };
 
   let state = 'title', S = null, view = null, booted = false, visible = true, broken = false;
   let acc = 0;                               // seconds of frame time not yet spent on steps; after a frame it is
@@ -94,7 +98,7 @@
   const keys = {   // by KeyboardEvent.code: true while the key is down
     KeyW: false, KeyA: false, KeyS: false, KeyD: false, ArrowUp: false, ArrowLeft: false, ArrowDown: false, ArrowRight: false,
   };
-  const keyFrame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+  const keyFrame = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false };
 
   function releaseKeys() { for (const code in keys) keys[code] = false; }
 
@@ -263,7 +267,7 @@
       return UI.h('div', { class: 'ui-stack game-title' },
         UI.h('h1', { class: 'ui-title' }, 'Tollbound'),
         UI.h('div', { class: 'ui-rule' }),
-        UI.h('p', { class: 'ui-sub' }, 'The bells have fallen silent. Keep the vigil; leave by the gate.'),
+        UI.h('p', { class: 'ui-sub' }, 'The bells are dumb, and every toll wakes the dead. Keep the vigil; leave by a lychgate.'),
         UI.button('Begin vigil', function () { Game.start(); }, { class: 'primary', dataset: { focus: '' } }),
         typeof Settings.open === 'function' ? UI.button('Settings', function () { Settings.open(); }, { class: 'second' }) : null,
         build);
@@ -288,7 +292,7 @@
       const tolls = pick('tolls', 'toll'), kills = pick('kills', 'kills');
       let tally = 'Time ' + clock(pick('time', 't'));
       if (typeof tolls === 'number') tally += '  ·  Tolls ' + tolls;
-      if (typeof kills === 'number') tally += '  ·  Slain ' + kills;
+      if (typeof kills === 'number') tally += '  ·  Laid ' + kills;
       return UI.h('div', { class: 'ui-panel ui-stack game-results' },
         UI.h('h2', { class: 'ui-heading' }, 'The vigil is over'),
         UI.h('p', { class: 'ui-sub' }, OUTCOMES[result.outcome] || 'The night closes over the district.'),

@@ -471,7 +471,7 @@ const pad = async function () {
   T.check('the right stick aims', f[F.aim] === true && near(f[F.aimX], 0) && near(f[F.aimY], -1), [f[F.aim], f[F.aimX], f[F.aimY]]);
   one.axes[3] = 0;
   await frames(2);
-  T.check('and lets the sigils choose again when it rests', Input.sample()[F.aim] === false);
+  T.check('and lets the voices choose again when it rests', Input.sample()[F.aim] === false);
 
   const frame = Input.sample();
   let a = 0, b = 0, steps = 0;

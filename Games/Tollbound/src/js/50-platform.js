@@ -40,7 +40,7 @@
 //   Store.onStatus(fn) -> off()         fn(status) whenever Store.status changes
 //   Keys are plain names ('save'); in the browser's storage they get the prefix 'tollbound.'.
 const Plat = {}, Store = {}, Settings = {}, Input = {}, Sound = {}, Music = {}, Mesh = {}, Rigs = {}, Glyphs = {},
-  Ground = {}, Gfx = {}, Scene = {}, Vfx = {}, UI = {}, Game = {};
+  Ground = {}, Gfx = {}, Scene = {}, Vfx = {}, UI = {}, Hud = {}, Game = {};
 
 (function () {
   'use strict';

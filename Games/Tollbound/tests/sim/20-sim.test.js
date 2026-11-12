@@ -17,41 +17,48 @@ const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} is no
 const run = (S, steps, input) => { for (let i = 0; i < steps; i++) Sim.step(S, input); return S; };
 const live = (pool) => Array.from(pool.items.slice(0, pool.n));      // the entities in use, as an array of this context
 const events = (S) => Array.from({ length: S.eventCount }, (unused, i) => plain(S.events[(S.eventStart + i) % S.events.length]));
-const idle = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
-// What a player has with no modifiers at all. The numbers are provisional, so the tests only ever add to them.
-const BASE = { life: Stats.stat('lifeMax').base, hush: Stats.stat('hushMax').base, draughts: Stats.stat('draughtCharges').base };
+const idle = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false };
+const frame = (mx, my, trade = false, heave = false) => ({ mx, my, ax: 1, ay: 0, aim: false, trade, heave });
+// What a player has with no modifiers at all: the greatest life of section 15.8 of the design. Tests add to it.
+const BASE = { life: Stats.stat('life-max').base };
 const STATE = ['cfg', 'mode', 'zone', 'rules', 'curves', 'rng', 'step', 't', 'toll', 'tollAt', 'tollSteps', 'threat', 'phase', 'player', 'mods',
-  'sheet', 'skills', 'enemies', 'shots', 'areas', 'pickups', 'minions', 'grid', 'region', 'props', 'gate', 'boss', 'offer', 'offerQueue', 'chimes',
-  'buffs', 'events', 'eventCount', 'eventStart', 'eventsDropped', 'haul', 'gold', 'echoes', 'kills', 'counters', 'dirty', 'result', 'uid', 'debug'];
+  'sheet', 'skills', 'enemies', 'shots', 'areas', 'pickups', 'minions', 'grid', 'region', 'props', 'gate', 'boss', 'offer', 'offerQueue', 'favours',
+  'buffs', 'events', 'eventCount', 'eventStart', 'eventsDropped', 'haul', 'coin', 'bank', 'hum', 'kills', 'counters', 'dirty', 'result', 'uid', 'debug'];
+// a voice of the tests' own, in the shape of docs/engine.md
+const voice = (id, more) => Object.assign({
+  id, name: 'Spark', text: '', icon: null, attr: 'hand', tier: 1, tags: ['thrown'], weapon: null, archetype: 'spark', target: 'nearest', rate: 1,
+  damage: { blow: [1, 1] }, weaponPct: 0, eff: 1, crit: 0, params: {}, mods: [], fx: {},
+}, more);
 
 // ---- a new run ----
 
 test('a new run has the state the header of 20-sim.js lists, and nothing else', () => {
-  const cfg = { mode: 'watch', zone: 'debug', seed: 5, char: null, account: null };
+  const cfg = { mode: 'household', zone: 'debug', seed: 5, char: null, account: null };
   const S = Sim.create(cfg);
   assert.deepEqual(Object.keys(S).sort(), STATE.slice().sort());
   assert.equal(S.cfg, cfg);
-  assert.equal(S.mode, Defs.get('mode', 'watch'));
+  assert.equal(S.mode, Defs.get('mode', 'household'));
   assert.equal(S.zone, Defs.get('zone', 'debug'));
   assert.equal(S.curves, Defs.get('curves', 'main'));
   assert.deepEqual([S.step, S.t, S.toll, S.threat, S.phase, S.uid], [0, 0, 0, 0, 'play', 0]);
   assert.deepEqual([S.gate, S.boss, S.offer, S.result, S.debug, S.dirty], [null, null, null, null, null, false]);
-  assert.deepEqual([S.gold, S.echoes, S.kills, S.eventCount, S.eventStart, S.eventsDropped], [0, 0, 0, 0, 0, 0]);
-  assert.deepEqual(plain([S.offerQueue, S.chimes, S.buffs, S.haul, S.counters, S.skills, S.mods]), [[], {}, [], [], {}, [], []]);
+  assert.deepEqual([S.coin, S.hum, S.kills, S.eventCount, S.eventStart, S.eventsDropped], [0, 0, 0, 0, 0, 0]);
+  assert.deepEqual(plain([S.offerQueue, S.favours, S.buffs, S.haul, S.bank, S.counters, S.skills, S.mods]), [[], {}, [], [], { coin: 0, finds: [] }, {}, [], []]);
   assert.deepEqual([S.enemies.cap, S.shots.cap, S.areas.cap, S.pickups.cap, S.minions.cap], [600, 500, 120, 400, 40], 'the hard caps');
   assert.deepEqual([S.enemies.n, S.shots.n, S.areas.n, S.pickups.n, S.minions.n], [0, 0, 0, 0, 0]);
   assert.equal(S.events.length, 2048);
   assert.equal(S.props, S.region.props);
   assert.equal(S.region.radius, 60);
   assert.equal(S.grid.cell, 2);
-  assert.equal(Sim.create({ zone: 'debug', seed: 5 }).mode.id, 'watch', 'the mode defaults to the watch');
+  assert.equal(Sim.create({ zone: 'debug', seed: 5 }).mode.id, 'household', 'the mode defaults to the Household');
+  assert.equal(Sim.create({ zone: 'debug', seed: 5, mode: 'watch-night' }).mode.id, 'watch-night');
 });
 
 test('the rules of a run are the constants, overruled by the zone and by the cfg', () => {
   const S = Sim.create({ zone: 'debug', seed: 1 });
   const main = Defs.get('constants', 'main');
   assert.deepEqual([S.rules.spawnRadius, S.rules.despawnRadius, S.rules.tollSeconds, S.rules.keeperToll, S.rules.gateEvery, S.rules.gateOpenSeconds,
-    S.rules.gateHoldSeconds], [26, 34, 75, 8, 3, 25, 3]);
+    S.rules.gateRadius, S.rules.ringStrokes, S.rules.strokeSeconds, S.rules.backSeconds], [26, 34, 75, 8, 3, 25, 1.7, 6, 1, 2]);
   assert.equal(S.rules.id, undefined);
   assert.equal(S.rules.caps, main.caps);
   assert.deepEqual([S.tollSteps, S.tollAt], [4500, 4500]);
@@ -92,21 +99,28 @@ test('the five random streams are forks of the seed', () => {
   assert.notDeepEqual(plain(other.rng.loot.getState()), plain(S.rng.loot.getState()));
 });
 
-test('the player starts at the middle of the region with what the sheet gives', () => {
-  const S = Sim.create({ zone: 'debug', seed: 5, mods: [{ stat: 'lifeMax', op: 'flat', value: 40 }, { stat: 'hushMax', op: 'flat', value: 25 }, { stat: 'draughtCharges', op: 'flat', value: 1 }] });
+test('the player starts where the region starts, with the life the sheet gives', () => {
+  const S = Sim.create({ zone: 'debug', seed: 5, mods: [{ stat: 'life-max', op: 'flat', value: 40 }, { stat: 'knee', op: 'flat', value: 10 }] });
   const p = S.player;
-  assert.deepEqual([p.alive, p.uid, p.x, p.y, p.r, p.aimX, p.aimY], [true, 0, S.region.x, S.region.y, 0.4, 1, 0]);
-  assert.deepEqual([p.life, p.hush, p.draughts], [BASE.life + 40, BASE.hush + 25, BASE.draughts + 1]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level], [BASE.life + 40, 1]);
+  assert.deepEqual([p.alive, p.uid, p.x, p.y, p.r, p.aimX, p.aimY], [true, 0, S.region.startX, S.region.startY, 0.4, 1, 0]);
+  assert.deepEqual([S.region.startX, S.region.startY], [S.region.x, S.region.y], 'a zone without a start begins at its middle');
+  // 60 + 40 + 2 for each point of Knee
+  assert.deepEqual([p.life, S.sheet.stats['life-max'], S.sheet.level], [BASE.life + 40 + 20, BASE.life + 60, 1]);
   assert.deepEqual(Object.keys(p), plain(Sim.fields('player')));
+  for (const gone of ['hush', 'hushWait', 'dodgeT', 'dodgeCd', 'invuln', 'draughts', 'draughtFill', 'evade']) assert.ok(!(gone in p), `the player has no ${gone}`);
   assert.ok(p.condT instanceof Float64Array === false && ArrayBuffer.isView(p.condT) && p.condT.length === Stats.COND_MAX);
   assert.ok(Object.isSealed(p));
+  // a zone that names a start, off its middle, as the Dial does to keep the player off the bell-post
+  const sim = kernel();
+  sim.Defs.add('zone', Object.assign({}, plain(sim.Defs.get('zone', 'debug')), { id: 'test.offset', start: { x: 3, y: -4 } }));
+  const T = sim.Sim.create({ zone: 'test.offset', seed: 5 });
+  assert.deepEqual([T.player.x, T.player.y, T.region.x, T.region.y], [3, -4, 0, 0]);
 });
 
 // ---- determinism ----
 
 test('the same seed gives the same checksum after 600 steps, another seed another', () => {
-  const walk = (i) => ({ mx: Math.cos(i / 40), my: Math.sin(i / 55), ax: 1, ay: 0, aim: false, dodge: false, draught: false });
+  const walk = (i) => frame(Math.cos(i / 40), Math.sin(i / 55));
   const play = (seed) => {
     const S = Sim.debugScene(200, seed), seen = [];
     for (let i = 0; i < 600; i++) {
@@ -128,7 +142,7 @@ test('the same seed gives the same checksum after 600 steps, another seed anothe
 test('the whole build: with every system that exists, the same seed still gives the same checksum', () => {
   // loadSim() runs every module below 50, whoever wrote it, and finalizes and seals as the page does. A system
   // that reads a clock, keeps state between runs, or draws from anything but the run's streams shows here.
-  const walk = (i) => ({ mx: Math.sin(i / 30), my: Math.cos(i / 47), ax: 1, ay: 0, aim: false, dodge: i % 97 === 0, draught: i % 211 === 0 });
+  const walk = (i) => frame(Math.sin(i / 30), Math.cos(i / 47), i % 97 === 0, i % 211 === 0);
   const play = (sim, seed) => {
     const S = sim.Sim.debugScene(150, seed);
     for (let i = 0; i < 600; i++) {
@@ -153,7 +167,9 @@ test('the checksum takes in the step, the streams, the player and every live ent
   assert.ok(changed((S) => { S.threat++; }));
   assert.ok(changed((S) => { S.phase = 'offer'; }));
   assert.ok(changed((S) => { S.kills++; }));
-  assert.ok(changed((S) => { S.gold += 1; }));
+  assert.ok(changed((S) => { S.coin += 1; }));
+  assert.ok(changed((S) => { S.bank.coin += 1; }), 'what was banked');
+  assert.ok(changed((S) => { S.hum += 1; }));
   for (const name of ['spawn', 'loot', 'combat', 'offers', 'world']) assert.ok(changed((S) => { S.rng[name].next(); }), `the ${name} stream`);
   assert.ok(changed((S) => { S.player.x += 0.01; }));
   assert.ok(changed((S) => { S.player.life -= 1; }));
@@ -261,7 +277,7 @@ test('alloc gives a clean entity with a new uid, however it was left', () => {
 });
 
 test('px and py hold where a thing stood one step ago, for drawing between two steps', () => {
-  const sim = kernel(), S = sim.Sim.debugScene(40, 6), walk = { mx: 0.6, my: 0.8, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+  const sim = kernel(), S = sim.Sim.debugScene(40, 6), walk = frame(0.6, 0.8);
   assert.ok(live(S.enemies).every((e) => e.px === e.x && e.py === e.y), 'a new enemy has no earlier place than its own');
   assert.deepEqual([S.player.px, S.player.py], [S.player.x, S.player.y]);
   for (let step = 0; step < 5; step++) {
@@ -306,7 +322,7 @@ test('Sim.field gives every entity of a kind one more field, declared before the
   assert.ok(sim.Sim.fields('enemy').includes('chargeT') && !sim.Sim.fields('minion').includes('chargeT'));
   assert.throws(() => sim.Sim.fields('ghost'), /not a kind of entity/);
 
-  const S = sim.Sim.create({ zone: 'debug', seed: 1, sigils: [] });
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, voices: [] });
   assert.ok(S.enemies.items.every((e) => e.chargeT === 0 && e.mood === 'calm' && Object.isSealed(e)));
   assert.ok(S.shots.items.every((s) => s.bounces === 2));
   assert.equal(S.player.rooted, false);
@@ -326,23 +342,23 @@ test('Sim.state gives every run a slot of its own, and Sim.source adds modifiers
   sim.Sim.state('offers', () => { order.push('offers'); return { queue: [] }; });
   assert.throws(() => sim.Sim.state('offers', () => 0), /two slots named "offers"/);
   assert.throws(() => sim.Sim.state('x'), /needs a name and a function/);
-  sim.Sim.source((S, out) => { out.push({ stat: 'lifeMax', op: 'flat', value: 10 * (S.chimes.sturdy || 0) }); });
+  sim.Sim.source((S, out) => { out.push({ stat: 'life-max', op: 'flat', value: 10 * (S.favours.sturdy || 0) }); });
   sim.Sim.source((S, out) => { for (const buff of S.buffs) out.push(...buff.mods); });
   assert.throws(() => sim.Sim.source('mods'), /needs a function/);
 
-  const A = sim.Sim.create({ zone: 'debug', seed: 1, mods: [{ stat: 'lifeMax', op: 'flat', value: 5 }] }), B = sim.Sim.create({ zone: 'debug', seed: 2 });
+  const A = sim.Sim.create({ zone: 'debug', seed: 1, mods: [{ stat: 'life-max', op: 'flat', value: 5 }] }), B = sim.Sim.create({ zone: 'debug', seed: 2 });
   assert.deepEqual(order, ['director', 'offers', 'director', 'offers'], 'in the order they were declared, once for each run');
   assert.deepEqual(plain(A.director), { budget: 26, seen: 600 }, 'the pools and the player are there when a slot is made');
   assert.notEqual(A.offers, B.offers);
-  assert.equal(A.sheet.stats.lifeMax, BASE.life + 5);
-  A.chimes.sturdy = 3;
-  A.buffs.push({ id: 'vigour', mods: [{ stat: 'lifeMax', op: 'inc', value: 100 }] });
+  assert.equal(A.sheet.stats['life-max'], BASE.life + 5);
+  A.favours.sturdy = 3;
+  A.buffs.push({ id: 'vigour', mods: [{ stat: 'life-max', op: 'inc', value: 100 }] });
   A.dirty = true;
   sim.Sim.step(A, idle);
-  assert.equal(A.sheet.stats.lifeMax, (BASE.life + 5 + 30) * 2, 'the base, 5 from the cfg and 30 from the chimes, doubled by the buff');
-  assert.equal(A.sheet.primaries.chimes, 3, 'the stacks of chimes are what a per modifier counts');
+  assert.equal(A.sheet.stats['life-max'], (BASE.life + 5 + 30) * 2, 'the base, 5 from the cfg and 30 from the favours, doubled by the buff');
+  assert.equal(A.sheet.primaries.favours, 3, 'the times favours were taken are what a per modifier counts');
   assert.equal(A.mods.length, 3);
-  assert.equal(B.sheet.stats.lifeMax, BASE.life);
+  assert.equal(B.sheet.stats['life-max'], BASE.life);
   const clash = kernel();
   clash.Sim.state('player', () => 0);
   assert.throws(() => clash.Sim.create({ zone: 'debug', seed: 1 }), /the run state has a field "player" already/);
@@ -352,11 +368,11 @@ test('Sim.state gives every run a slot of its own, and Sim.source adds modifiers
 
 test('emit fills reused event objects, and each step starts with an empty queue', () => {
   const S = Sim.create({ zone: 'debug', seed: 1 }), first = S.events[0];
-  Sim.emit(S, 'hit', 1.5, -2, 30, 1, 'ember');
+  Sim.emit(S, 'hit', 1.5, -2, 30, 1, 'tenor-stroke');
   Sim.emit(S, 'cast');
   assert.equal(S.eventCount, 2);
   assert.equal(S.events[0], first, 'the objects of the ring are reused');
-  assert.deepEqual(events(S), [{ k: 'hit', x: 1.5, y: -2, a: 30, b: 1, id: 'ember' }, { k: 'cast', x: 0, y: 0, a: 0, b: 0, id: null }]);
+  assert.deepEqual(events(S), [{ k: 'hit', x: 1.5, y: -2, a: 30, b: 1, id: 'tenor-stroke' }, { k: 'cast', x: 0, y: 0, a: 0, b: 0, id: null }]);
   assert.equal(Sim.step(S, idle), true);
   assert.equal(S.eventCount, 0, 'a step empties the queue before anything else');
   Sim.emit(S, 'drop', 0, 0, 0, 0, 7);
@@ -410,7 +426,7 @@ test('a step does nothing while an offer is open or after the end', () => {
     const S = run(Sim.debugScene(40, 3), 50, idle);
     S.phase = phase;
     const before = Sim.hash(S), x = S.enemies.items[0].x;
-    for (let i = 0; i < 30; i++) assert.equal(Sim.step(S, { mx: 1, my: 0, ax: 1, ay: 0, aim: false, dodge: true, draught: true }), false);
+    for (let i = 0; i < 30; i++) assert.equal(Sim.step(S, frame(1, 0, true, true)), false);
     assert.deepEqual([S.step, S.t, Sim.hash(S), S.enemies.items[0].x, S.player.x], [50, 50 / 60, before, x, 0], phase);
   }
   const S = run(Sim.debugScene(40, 3), 50, idle);
@@ -427,11 +443,13 @@ function withSystems() {
   sim.Player.step = (S, input) => { calls.push('Player.step'); sim.seen.input = input; };
   sim.Director.step = () => { calls.push('Director.step'); };
   sim.Enemies.step = () => { calls.push('Enemies.step'); };
+  sim.Dmg.step = () => { calls.push('Dmg.step'); };
   sim.Skills.step = () => { calls.push('Skills.step'); };
   sim.Boss.step = () => { calls.push('Boss.step'); };
   sim.Dmg.tick = () => { calls.push('Dmg.tick'); };
   sim.Director.onKill = (S, e) => { calls.push('Director.onKill'); };
   sim.Player.pickups = () => { calls.push('Player.pickups'); };
+  sim.Favours.step = () => { calls.push('Favours.step'); };
   sim.Offers.step = () => { calls.push('Offers.step'); };
   sim.seen = {};
   sim.calls = calls;
@@ -439,9 +457,10 @@ function withSystems() {
 }
 
 test('a step calls the systems that exist, in the one fixed order', () => {
-  const sim = withSystems(), S = sim.Sim.create({ zone: 'debug', seed: 1 }), input = { mx: 0.5, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
+  const sim = withSystems(), S = sim.Sim.create({ zone: 'debug', seed: 1 }), input = frame(0.5, 0);
   sim.Sim.step(S, input);
-  assert.deepEqual(sim.calls, ['Player.step', 'Director.step', 'Enemies.step', 'Skills.step', 'Boss.step', 'Player.pickups', 'Offers.step']);
+  assert.deepEqual(sim.calls, ['Player.step', 'Director.step', 'Enemies.step', 'Dmg.step', 'Skills.step', 'Boss.step', 'Player.pickups',
+    'Favours.step', 'Offers.step']);
   assert.equal(sim.seen.input, input, 'the input goes to the player');
   sim.calls.length = 0;
   sim.Sim.step(S);
@@ -453,7 +472,7 @@ test('a step calls the systems that exist, in the one fixed order', () => {
     sim.Sim.step(S, input);
     if (sim.calls.includes('Dmg.tick')) {
       ticks.push(S.step);
-      assert.deepEqual(sim.calls.slice(4, 7), ['Boss.step', 'Dmg.tick', 'Player.pickups'], 'after the boss, before the deaths');
+      assert.deepEqual(sim.calls.slice(5, 8), ['Boss.step', 'Dmg.tick', 'Player.pickups'], 'after the boss, before the deaths');
     }
   }
   assert.deepEqual(ticks, [15, 30, 45, 60]);
@@ -463,19 +482,23 @@ test('what this file does itself sits at fixed places between the systems', () =
   const sim = withSystems(), S = sim.Sim.create({ zone: 'debug', seed: 1, mods: [] }), out = [], note = {};
   let victim = null;
   sim.Director.step = (run) => { victim = sim.Sim.spawnEnemy(run, 'debug.husk', 3, 0); note.inGridAtDirector = run.grid.query(3, 0, 1, out); };
-  sim.Enemies.step = (run) => { note.inGridAtEnemies = run.grid.query(3, 0, 1, out); };
-  sim.Skills.step = (run) => { victim.life = 0; run.cfg.mods.push({ stat: 'lifeMax', op: 'flat', value: 40 }); run.dirty = true; };
+  sim.Enemies.step = (run) => { note.inGridAtEnemies = run.grid.query(3, 0, 1, out); note.movedAtEnemies = victim.x; victim.x = 3.5; };
+  sim.Dmg.step = (run) => { note.atDmgStep = [victim.x, victim.alive, run.dirty]; };
+  sim.Skills.step = (run) => { victim.life = 0; run.cfg.mods.push({ stat: 'life-max', op: 'flat', value: 40 }); run.dirty = true; };
   sim.Dmg.tick = (run) => { note.aliveAtTick = victim.alive && run.enemies.n === 1; };
   sim.Director.onKill = (run, e) => { note.onKill = [e === victim, e.alive, e.life, run.kills, run.eventCount]; };
-  sim.Player.pickups = (run) => { note.atPickups = [run.enemies.n, victim.alive, run.dirty, run.sheet.stats.lifeMax]; };
-  sim.Offers.step = (run) => { note.atOffers = [run.dirty, run.sheet.stats.lifeMax, run.step]; };
+  sim.Player.pickups = (run) => { note.atPickups = [run.enemies.n, victim.alive, run.dirty, run.sheet.stats['life-max']]; };
+  sim.Favours.step = (run) => { note.atFavours = [run.dirty, run.sheet.stats['life-max'], run.eventCount]; };
+  sim.Offers.step = (run) => { note.atOffers = [run.dirty, run.sheet.stats['life-max'], run.step]; };
   S.step = 14;                                         // so that this step is one on which damage over time ticks
   sim.Sim.step(S, idle);
   assert.equal(note.inGridAtDirector, 0, 'the grid is rebuilt after the director, so it does not know the newcomer yet');
   assert.equal(note.inGridAtEnemies, 1, 'and before the enemies move');
+  assert.deepEqual([note.movedAtEnemies, note.atDmgStep], [3, [3.5, true, false]], 'postures are worked out once the dead have moved, before any voice speaks');
   assert.equal(note.aliveAtTick, true, 'the dead are removed only after damage over time');
   assert.deepEqual(note.onKill, [true, true, 0, 1, 1], 'Director.onKill gets the enemy while it is still there, the kill already counted and told');
   assert.deepEqual(note.atPickups, [0, false, true, BASE.life], 'pickups come after the deaths and before the sheet is rebuilt');
+  assert.deepEqual(note.atFavours, [true, BASE.life, 1], 'favours come after the pickups, and what they change is rebuilt in the same step');
   assert.deepEqual(note.atOffers, [false, BASE.life + 40, 14], 'offers see the new sheet, and the clock has not moved yet');
   assert.equal(S.step, 15);
 });
@@ -483,7 +506,7 @@ test('what this file does itself sits at fixed places between the systems', () =
 test('in a debug scene the director, the enemies and the boss stand aside', () => {
   const sim = withSystems(), S = sim.Sim.debugScene(20, 4), x = S.enemies.items[0].x;
   sim.Sim.step(S, idle);
-  assert.deepEqual(sim.calls, ['Player.step', 'Skills.step', 'Player.pickups', 'Offers.step']);
+  assert.deepEqual(sim.calls, ['Player.step', 'Dmg.step', 'Skills.step', 'Player.pickups', 'Favours.step', 'Offers.step']);
   assert.notEqual(S.enemies.items[0].x, x, 'the scene\'s own rule moves the husks');
 });
 
@@ -603,44 +626,55 @@ test('spawnEnemy takes the zone\'s level, traits, and bosses from their own regi
 
 test('the sheets are rebuilt when the run is marked dirty', () => {
   const sim = kernel();
-  sim.Defs.add('sigil', {
-    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell', 'projectile', 'fire'], weapon: null,
-    archetype: 'projectile', target: 'nearest', rate: 2, damage: { fire: [10, 20] }, weaponPct: 0, eff: 1, crit: 5, params: { speed: 12 }, mods: [], fx: {},
-  });
-  const mods = [{ stat: 'damage', op: 'inc', value: 50, tags: ['fire'] }], inst = { uid: 1, id: 'test.spark', level: 1, sockets: 2, bindings: [null, null] };
-  const S = sim.Sim.create({ zone: 'debug', seed: 1, mods, sigils: [inst], level: 9 });
-  const fire = sim.Stats.TYPE.fire;
+  sim.Defs.add('voice', voice('test.spark', { rate: 2, damage: { blow: [10, 20] }, params: { speed: 12 } }));
+  // Hand 10 meets what a tier-1 voice of Hand wants, so it works in full
+  const mods = [{ stat: 'hand', op: 'flat', value: 10 }, { stat: 'damage', op: 'inc', value: 50, tags: ['blow'] }];
+  const inst = { uid: 1, id: 'test.spark', level: 1, rope: 2, knots: [null, null] };
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, mods, voices: [inst], level: 9 });
+  const blow = sim.Stats.TYPE.blow;
   assert.equal(S.skills.length, 1);
   assert.deepEqual(Object.keys(S.skills[0]), plain(sim.Sim.fields('skill')));
   assert.equal(S.skills[0].inst, inst);
-  assert.deepEqual([S.skills[0].sheet.min[fire], S.skills[0].sheet.max[fire], S.skills[0].sheet.rate, S.skills[0].cd], [15, 30, 2, 0]);
+  assert.deepEqual([S.skills[0].sheet.min[blow], S.skills[0].sheet.max[blow], S.skills[0].sheet.rate, S.skills[0].cd, S.skills[0].sheet.share], [15, 30, 2, 0, 1]);
   assert.equal(S.sheet.level, 9);
   const sheet = S.sheet, skillSheet = S.skills[0].sheet;
   sim.Sim.step(S, idle);
   assert.equal(S.sheet, sheet, 'nothing changed: the sheets are kept');
-  mods.push({ stat: 'damage', op: 'more', value: 100 }, { stat: 'lifeMax', op: 'more', value: -50 });
+  mods.push({ stat: 'damage', op: 'more', value: 100 }, { stat: 'life-max', op: 'more', value: -50 });
   S.dirty = true;
   sim.Sim.step(S, idle);
   assert.equal(S.dirty, false);
   assert.ok(S.sheet !== sheet && S.skills[0].sheet !== skillSheet);
-  assert.deepEqual([S.skills[0].sheet.min[fire], S.sheet.stats.lifeMax], [30, BASE.life / 2]);
+  assert.deepEqual([S.skills[0].sheet.min[blow], S.sheet.stats['life-max']], [30, BASE.life / 2]);
   assert.equal(S.player.life, BASE.life / 2, 'life never stays above its new most');
-  assert.equal(S.mods.length, 3);
-  S.player.conds = sim.Stats.condMask(['lowLife']);
-  mods.push({ stat: 'armour', op: 'flat', value: 9, cond: 'lowLife' });
+  assert.equal(S.mods.length, 4);
+  S.player.conds = sim.Stats.condMask(['faint']);
+  mods.push({ stat: 'heed-max', op: 'flat', value: 9, cond: 'faint' });
   assert.equal(sim.Sim.rebuild(S), S.sheet);
-  assert.equal(S.sheet.stats.armour, 9, 'the player\'s conditions go into the sheet');
+  assert.equal(S.sheet.stats['heed-max'], 109, 'the player\'s conditions go into the sheet');
+});
+
+test('the counts of a per modifier reach the sheet: observances, favours, finds and debts', () => {
+  const sim = kernel();
+  sim.Sim.field('player', 'debts', 0);                 // a later file of the combat package declares it
+  const per = (stat) => ({ stat: 'heed-max', op: 'flat', value: 1, per: { stat, div: 1 } });
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, mods: [per('favours'), per('finds'), per('debts')] });
+  assert.deepEqual([S.sheet.primaries.favours, S.sheet.primaries.finds, S.sheet.primaries.debts], [0, 0, 0]);
+  S.favours['funeral-biscuit'] = 2;
+  S.favours.tithe = 1;
+  S.haul.push({ uid: 1 }, { uid: 2 });
+  S.player.debts = 4;
+  S.dirty = true;
+  sim.Sim.step(S, idle);
+  assert.deepEqual([S.sheet.primaries.favours, S.sheet.primaries.finds, S.sheet.primaries.debts, S.sheet.stats['heed-max']], [3, 2, 4, 109]);
 });
 
 test('S.skills follows the loadout through a run, and no slot ever moves', () => {
   const sim = kernel();
-  sim.Defs.add('sigil', {
-    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell'], weapon: null, archetype: 'burst', target: 'nearest',
-    rate: { a: 1, b: 20, curve: 'lin' }, damage: {}, weaponPct: 0, eff: 0, crit: 0, params: {}, mods: [], fx: {},
-  });
-  const inst = (uid, level) => ({ uid, id: 'test.spark', level, sockets: 2, bindings: [null, null] });
-  const a = inst(1, 1), b = inst(2, 2), c = inst(3, 3), sigils = [a, null, b];
-  const S = sim.Sim.create({ zone: 'debug', seed: 1, sigils }), skills = S.skills;
+  sim.Defs.add('voice', voice('test.spark', { rate: { a: 1, b: 20, curve: 'lin' } }));
+  const inst = (uid, level) => ({ uid, id: 'test.spark', level, rope: 2, knots: [null, null] });
+  const a = inst(1, 1), b = inst(2, 2), c = inst(3, 3), voices = [a, null, b];
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, voices }), skills = S.skills;
   const now = () => Array.from(S.skills, (k) => [k.inst === null ? null : k.inst.uid, k.sheet === null ? null : k.sheet.rate, k.cd]);
   assert.deepEqual(now(), [[1, 1, 0], [null, null, 0], [2, 2, 0]]);
   const before = sim.Sim.hash(S);
@@ -648,19 +682,19 @@ test('S.skills follows the loadout through a run, and no slot ever moves', () =>
   assert.notEqual(sim.Sim.hash(S), before, 'the checksum takes in the cooldowns');
   skills[2].cd = 0.3;
   skills[2].a1 = 5;
-  sigils[0] = c;                                       // one sigil swapped, one place filled, one more place opened
-  sigils[1] = a;
-  sigils.push(null);
+  voices[0] = c;                                       // one voice swapped, one place filled, one more place opened
+  voices[1] = a;
+  voices.push(null);
   S.dirty = true;
   sim.Sim.step(S, idle);
   assert.equal(S.skills, skills, 'the same list as before');
-  assert.deepEqual(now(), [[3, 3, 0], [1, 1, 0], [2, 2, 0.3], [null, null, 0]], 'a slot whose sigil changed starts afresh');
-  assert.equal(skills[2].a1, 5, 'and one that kept its sigil keeps its state');
-  b.level = 9;                                         // the same sigil, levelled: the slot stays, its sheet is new
+  assert.deepEqual(now(), [[3, 3, 0], [1, 1, 0], [2, 2, 0.3], [null, null, 0]], 'a slot whose voice changed starts afresh');
+  assert.equal(skills[2].a1, 5, 'and one that kept its voice keeps its state');
+  b.level = 9;                                         // the same voice, levelled: the slot stays, its sheet is new
   S.dirty = true;
   sim.Sim.step(S, idle);
   assert.deepEqual(now()[2], [2, 9, 0.3]);
-  sigils.length = 1;
+  voices.length = 1;
   sim.Sim.rebuild(S);
   assert.deepEqual(now(), [[3, 3, 0]]);
   assert.equal(sim.Sim.create({ zone: 'debug', seed: 1 }).skills.length, 0, 'no loadout, no slots');
@@ -668,41 +702,40 @@ test('S.skills follows the loadout through a run, and no slot ever moves', () =>
 
 test('a run with a character asks Char.mods, and commands reach the character', () => {
   const sim = kernel(), asked = [];
-  sim.Defs.add('sigil', {
-    id: 'test.spark', name: 'Spark', text: '', icon: null, attr: 'int', tier: 1, tags: ['spell'], weapon: null, archetype: 'burst', target: 'nearest',
-    rate: 1, damage: {}, weaponPct: 0, eff: 0, crit: 0, params: {}, mods: [], fx: {},
-  });
+  sim.Defs.add('voice', voice('test.spark'));
   const char = {
-    level: 14, tree: [], activeVows: ['a', 'b'], sigils: [{ uid: 7, id: 'test.spark', level: 2, bindings: [] }, { uid: 8, id: 'test.spark', level: 5, bindings: [] }],
+    level: 14, tree: [], observances: ['stability', 'alms'],
+    voices: [{ uid: 7, id: 'test.spark', level: 2, rope: 2, knots: [] }, { uid: 8, id: 'test.spark', level: 5, rope: 2, knots: [] }],
     loadout: [8, null, 7, null, 99, null],
   };
-  const account = { gold: 3 };
-  sim.Char.mods = (c, S, a) => { asked.push([c === char, typeof S.step, a === account]); return [{ stat: 'lifeMax', op: 'flat', value: 10 * c.tree.length }]; };
-  sim.Char.weapon = (c) => ({ family: 'staff', damage: {}, aps: 1, crit: 5 });
+  const account = { coin: 3 };
+  sim.Char.mods = (c, S, a) => { asked.push([c === char, typeof S.step, a === account]); return [{ stat: 'life-max', op: 'flat', value: 10 * c.tree.length }]; };
+  sim.Char.weapon = (c) => ({ family: 'rope', damage: {}, aps: 1 });
   sim.Char.allocate = (c, id, choice) => { c.tree.push({ id, choice }); return true; };
   sim.Char.equip = (c, uid, slot) => uid !== 0;
-  const S = sim.Sim.create({ zone: 'debug', seed: 1, char, account, mods: [{ stat: 'lifeMax', op: 'flat', value: 999 }] });
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, char, account, mods: [{ stat: 'life-max', op: 'flat', value: 999 }] });
   assert.deepEqual(asked, [[true, 'number', true]]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.sheet.level, S.sheet.primaries.vows, S.sheet.weapon.family], [BASE.life, 14, 2, 'staff'], 'cfg.mods is for runs without a character');
+  assert.deepEqual([S.sheet.stats['life-max'], S.sheet.level, S.sheet.primaries.observances, S.sheet.weapon.family], [BASE.life, 14, 2, 'rope'],
+    'cfg.mods is for runs without a character; the observances it keeps are counted');
   assert.deepEqual(Array.from(S.skills, (k) => (k.inst === null ? null : k.inst.uid)), [8, null, 7, null, null, null],
-    'one slot for each place of the loadout; a place that is empty, or names a sigil the character lacks, has none');
+    'one slot for each place of the loadout; a place that is empty, or names a voice the character lacks, has none');
   assert.deepEqual(Array.from(S.skills, (k) => (k.sheet === null ? null : k.sheet.level)), [5, null, 2, null, null, null]);
-  assert.equal(sim.Sim.command(S, { type: 'allocate', id: 'n1', choice: 'str' }), true);
-  assert.deepEqual(plain(char.tree), [{ id: 'n1', choice: 'str' }]);
-  assert.deepEqual([S.sheet.stats.lifeMax, S.dirty], [BASE.life + 10, false], 'a command that changed the character rebuilds the sheets at once');
-  assert.equal(sim.Sim.command(S, { type: 'equip', uid: 0, slot: 'weapon' }), false);
-  assert.equal(sim.Sim.command(S, { type: 'equip', uid: 4, slot: 'weapon' }), true);
+  assert.equal(sim.Sim.command(S, { type: 'allocate', id: 'n1', choice: 'knee' }), true);
+  assert.deepEqual(plain(char.tree), [{ id: 'n1', choice: 'knee' }]);
+  assert.deepEqual([S.sheet.stats['life-max'], S.dirty], [BASE.life + 10, false], 'a command that changed the character rebuilds the sheets at once');
+  assert.equal(sim.Sim.command(S, { type: 'equip', uid: 0, slot: 'tool' }), false);
+  assert.equal(sim.Sim.command(S, { type: 'equip', uid: 4, slot: 'tool' }), true);
   // without a character, or without the Char functions, those commands do nothing
   assert.equal(sim.Sim.command(sim.Sim.create({ zone: 'debug', seed: 1 }), { type: 'allocate', id: 'n1' }), false);
   const plainSim = Sim.create({ zone: 'debug', seed: 1, char: { level: 3 } });
-  assert.equal(Sim.command(plainSim, { type: 'equip', uid: 1, slot: 'helm' }), false);
+  assert.equal(Sim.command(plainSim, { type: 'equip', uid: 1, slot: 'hat' }), false);
   assert.equal(plainSim.sheet.level, 3);
 });
 
 // ---- commands, and the end ----
 
 test('offer commands go to Offers.resolve; without it, pick and skip close the offer', () => {
-  const S = Sim.create({ zone: 'debug', seed: 1 }), first = { kind: 'chime', options: [] }, second = { kind: 'node', options: [] };
+  const S = Sim.create({ zone: 'debug', seed: 1 }), first = { kind: 'node', options: [] }, second = { kind: 'reward', options: [] };
   assert.equal(Sim.command(S, { type: 'pick', index: 0 }), false, 'no offer is open');
   S.offer = first;
   S.offerQueue.push(second);
@@ -720,19 +753,19 @@ test('offer commands go to Offers.resolve; without it, pick and skip close the o
   sim.Offers.resolve = (run, cmd) => { got.push(cmd.type); run.phase = 'play'; run.dirty = cmd.type === 'pick'; return cmd.type !== 'banish'; };
   const T = sim.Sim.create({ zone: 'debug', seed: 1, mods: [] });
   T.phase = 'offer';
-  T.cfg.mods.push({ stat: 'lifeMax', op: 'flat', value: 5 });
+  T.cfg.mods.push({ stat: 'life-max', op: 'flat', value: 5 });
   assert.equal(sim.Sim.command(T, { type: 'banish', index: 0 }), false, 'what the resolver refuses is not done');
-  assert.equal(T.sheet.stats.lifeMax, BASE.life);
+  assert.equal(T.sheet.stats['life-max'], BASE.life);
   assert.equal(sim.Sim.command(T, { type: 'pick', index: 2 }), true);
   assert.equal(sim.Sim.command(T, { type: 'reroll' }), true);
   assert.equal(sim.Sim.command(T, { type: 'skip' }), true);
   assert.deepEqual(got, ['banish', 'pick', 'reroll', 'skip']);
-  assert.deepEqual([T.sheet.stats.lifeMax, T.dirty], [BASE.life + 5, false], 'a pick that marked the run dirty has the sheets rebuilt before it returns');
+  assert.deepEqual([T.sheet.stats['life-max'], T.dirty], [BASE.life + 5, false], 'a pick that marked the run dirty has the sheets rebuilt before it returns');
 });
 
 test('leave ends the run; an unknown command is warned about and ignored', () => {
   const S = run(Sim.debugScene(10, 2), 90, idle);
-  S.kills = 4; S.gold = 12; S.echoes = 3; S.haul.push({}, {}); S.player.runLevel = 2;
+  S.kills = 4; S.coin = 12; S.bank.coin = 5; S.hum = 3; S.haul.push({}, {}); S.player.runLevel = 2;
   const warned = [], warn = console.warn;
   console.warn = (text) => { warned.push(String(text)); };
   try {
@@ -747,7 +780,7 @@ test('leave ends the run; an unknown command is warned about and ignored', () =>
   assert.equal(Sim.command(S, { type: 'leave' }), true);
   assert.equal(S.phase, 'ended');
   assert.deepEqual(plain(S.result), {
-    outcome: 'left', mode: 'watch', zone: 'debug', seed: 2, steps: 90, time: 1.5, tolls: 0, threat: 0, kills: 4, gold: 12, echoes: 3, runLevel: 2,
+    outcome: 'left', mode: 'household', zone: 'debug', seed: 2, steps: 90, time: 1.5, tolls: 0, threat: 0, kills: 4, coin: 12, banked: 5, hum: 3, runLevel: 2,
     haul: 2, eventsDropped: 0,
   });
   assert.equal(Sim.result(S), S.result);
@@ -758,7 +791,7 @@ test('leave ends the run; an unknown command is warned about and ignored', () =>
   assert.equal(Sim.step(S, idle), false);
 });
 
-test('a run ends once, as left or as died', () => {
+test('a run ends once: rung down, spared while Tolled-for, or dead', () => {
   const S = run(Sim.debugScene(10, 2), 30, idle);
   const result = Sim.end(S, 'died');
   assert.deepEqual([result.outcome, S.phase, S.player.alive, result.steps], ['died', 'ended', false, 30]);
@@ -766,13 +799,18 @@ test('a run ends once, as left or as died', () => {
   S.kills = 99;
   assert.equal(Sim.end(S, 'left'), result, 'the first ending stands');
   assert.equal(S.result.kills, 0);
-  assert.throws(() => Sim.end(Sim.debugScene(1, 1), 'won'), /the outcome is "left" or "died"/);
+  assert.throws(() => Sim.end(Sim.debugScene(1, 1), 'won'), /the outcome is "left", "spared" or "died"/);
+  // spared: the player reached a lychgate while Tolled-for. It lives; what it carried is the director's to empty.
+  const spared = run(Sim.debugScene(10, 2), 30, idle);
+  spared.bank.coin = 7;
+  const kept = Sim.end(spared, 'spared');
+  assert.deepEqual([kept.outcome, spared.player.alive, kept.banked, events(spared).pop().id], ['spared', true, 7, 'spared']);
 
   // an ending in the middle of a step: the step still runs to its end
   const sim = withSystems(), T = sim.Sim.create({ zone: 'debug', seed: 1 });
   sim.Skills.step = (r) => { sim.calls.push('Skills.step'); sim.Sim.end(r, 'died'); };
   assert.equal(sim.Sim.step(T, idle), true);
-  assert.deepEqual(sim.calls.slice(-4), ['Skills.step', 'Boss.step', 'Player.pickups', 'Offers.step']);
+  assert.deepEqual(sim.calls.slice(-5), ['Skills.step', 'Boss.step', 'Player.pickups', 'Favours.step', 'Offers.step']);
   assert.deepEqual([T.step, T.phase, T.result.steps], [1, 'ended', 0]);
   assert.equal(sim.Sim.step(T, idle), false);
 });
@@ -781,7 +819,7 @@ test('a run ends once, as left or as died', () => {
 
 test('the debug scene puts n husks in rings round the player', () => {
   const S = Sim.debugScene(600, 1);
-  assert.deepEqual([S.zone.id, S.mode.id, S.cfg.seed, S.enemies.n, S.phase], ['debug', 'watch', 1, 600, 'play']);
+  assert.deepEqual([S.zone.id, S.mode.id, S.cfg.seed, S.enemies.n, S.phase], ['debug', 'household', 1, 600, 'play']);
   assert.deepEqual(plain(S.debug), { x: 0, y: 0 });
   const rings = new Map();
   for (const e of S.enemies.items) {
@@ -826,7 +864,7 @@ test('the husks walk their rings, slowly and for ever, the same way every time',
   }
   assert.ok(moved > 250, 'after a minute nearly every husk is somewhere else');
   assert.equal(S.enemies.n, 300, 'nothing dies in a debug scene');
-  assert.equal(S.player.life, S.sheet.stats.lifeMax);
+  assert.equal(S.player.life, S.sheet.stats['life-max']);
   const again = run(Sim.debugScene(300, 9), 3600, idle);
   assert.equal(Sim.hash(again), Sim.hash(S));
   assert.deepEqual(live(again.enemies).map((e) => [e.x, e.y]), live(S.enemies).map((e) => [e.x, e.y]));
@@ -835,7 +873,7 @@ test('the husks walk their rings, slowly and for ever, the same way every time',
 test('in a debug scene the input walks the player, and enemies spawned later stand still', () => {
   const S = Sim.debugScene(20, 3);
   const late = Sim.spawnEnemy(S, 'debug.husk', 12, -7, { rank: Sim.BOSS });
-  run(S, 60, { mx: 0.6, my: -0.8, ax: 1, ay: 0, aim: false, dodge: false, draught: false });
+  run(S, 60, frame(0.6, -0.8));
   near(S.player.x, 3, 1e-9);                           // one second at 5 m/s along (0.6, -0.8)
   near(S.player.y, -4, 1e-9);
   near(S.player.vx, 3);
@@ -844,7 +882,7 @@ test('in a debug scene the input walks the player, and enemies spawned later sta
   run(S, 5, idle);
   assert.deepEqual([S.player.vx, S.player.vy], [0, 0]);
   near(S.player.face, Math.atan2(-0.8, 0.6), 1e-9);    // and keeps facing where it last went
-  run(S, 60 * 30, { mx: 1, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false });
+  run(S, 60 * 30, frame(1, 0));
   near(Math.hypot(S.player.x, S.player.y), S.region.radius - S.player.r, 1e-6);   // the edge of the region stops it
   assert.ok(S.player.x > 59);
   near(Math.hypot(S.debug.x, S.debug.y), 0);           // the husks keep circling where the player began

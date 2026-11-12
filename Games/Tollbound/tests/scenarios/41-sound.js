@@ -75,7 +75,9 @@ const quiet = async function () {
   // a run's events reach the engine as they would, and nothing sounds or breaks
   const S = Game.start();
   if (S) {
-    for (const k of ['hit', 'crit', 'kill', 'hurt', 'pickup', 'level', 'offer', 'toll', 'gate', 'telegraph']) Sim.emit(S, k, S.player.x + 1, S.player.y, 0, 1, null);
+    for (const k of ['hit', 'kill', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'offer', 'favour', 'count', 'toll', 'gate', 'stroke', 'telegraph']) {
+      Sim.emit(S, k, S.player.x + 1, S.player.y, 0, 1, null);
+    }
     let fault = null;
     try {
       Plat.emit('step', S, true);
@@ -90,8 +92,8 @@ const quiet = async function () {
 const renders = async function () {
   const { Sound } = TB;
   const ids = Sound.list(), rate = 48000;
-  const FIRST = ['menu.move', 'menu.choose', 'pickup', 'pickup.big', 'hit', 'hit.heavy', 'kill', 'kill.great', 'hurt', 'level', 'offer',
-    'gate.open', 'gate.hold', 'toll', 'warning'];
+  const FIRST = ['menu.move', 'menu.choose', 'pickup', 'pickup.big', 'hit', 'hit.heavy', 'kill', 'kill.great', 'hurt', 'mend', 'scar', 'level',
+    'offer', 'count', 'gate.open', 'gate.hold', 'toll', 'warning'];
   T.check('the first set of effects is defined', FIRST.every((id) => ids.includes(id)), ids.join(' '));
   const measure = (d) => {
     let peak = 0, bad = 0;

@@ -40,7 +40,7 @@
 //                                     changes lives in a closure or inside an object the namespace holds.
 const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = {}, Progress = {}, Legacy = {},
   SaveData = {}, Sim = {}, Player = {}, Buffs = {}, AI = {}, Enemies = {}, Skills = {}, Boss = {}, Director = {},
-  Offers = {}, Bot = {}, World = {};
+  Offers = {}, Favours = {}, Bot = {}, World = {};
 
 (function () {
   'use strict';

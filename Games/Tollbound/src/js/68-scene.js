@@ -40,15 +40,16 @@
 // What it draws, and from what:
 //   figures    the player (the class's puppet, else 'test.biped'), enemies (their def's puppet; elites and bosses
 //              larger by their radius), minions (their def's puppet, else 'test.floater'), the props of S.props
-//              (their prop def's puppet, turned by where they stand), the gate (the puppet 'gate', else 'test.gate'),
-//              and the dead: an enemy that leaves the pool where the camera can see it falls and sinks for 1.15 s.
-//              The walk of each comes from the distance it covered; a hurt is seen when its life falls or its flash
-//              rises; harm is handed to Vfx.harm, which shows it as a number.
+//              (their prop def's puppet, turned by where they stand), the open lychgate (the puppet 'gate', else
+//              'test.gate'), and the dead: an enemy that leaves the pool where the camera can see it falls and sinks
+//              for 1.15 s. The walk of each comes from the distance it covered; a hurt is seen when its life falls or
+//              its flash rises; harm is handed to Vfx.harm, which shows it as a number.
 //   decals     warnings of attacks and marks (from Vfx.decals), areas (red for the enemies'), pickups' glow, the
-//              gate's ring (filling as the player holds it), and dark discs under figures where the view casts no
-//              shadows (at 'low')
+//              lychgate's ring (filling stroke by stroke as the player rings down: S.gate.ring against
+//              S.rules.ringStrokes x strokeSeconds), and dark discs under figures where the view casts no shadows
+//              (at 'low')
 //   billboards shots (with a short trail), pickups' motes, and Vfx's particles
-//   lights     the player's own small light, the gate, props that carry a light, shots: the nearest 32 to the player
+//   lights     the player's own small light, the lychgate, props that carry a light, shots: the nearest 32 to the player
 //   discs      in a view without figures (b.caps.puppets false), one disc for each figure instead of its parts
 // Budgets: at most Scene.limits.parts parts (detail parts go first, then the farthest common enemies are drawn
 // as a body and a head) and Scene.limits.lights lights.
@@ -129,7 +130,7 @@
   const sUid = new Int32Array(SLOTS), sSeen = new Int32Array(SLOTS), sKind = new Uint8Array(SLOTS);
   const sX = new Float64Array(SLOTS), sY = new Float64Array(SLOTS), sWalk = new Float64Array(SLOTS), sCycle = new Float64Array(SLOTS);
   const sSpeed = new Float32Array(SLOTS), sFace = new Float32Array(SLOTS), sScale = new Float32Array(SLOTS), sSeed = new Float32Array(SLOTS);
-  const sHurt = new Float64Array(SLOTS), sFlash = new Float32Array(SLOTS), sLife = new Float32Array(SLOTS), sHush = new Float32Array(SLOTS);
+  const sHurt = new Float64Array(SLOTS), sFlash = new Float32Array(SLOTS), sLife = new Float32Array(SLOTS);
   const sRank = new Uint8Array(SLOTS), sDead = new Float64Array(SLOTS);
   const sFig = new Array(SLOTS).fill(null);
   // the dying: figures whose things have left their pools
@@ -164,7 +165,7 @@
   const byDef = new Map();          // an enemy, boss or minion def -> its figure
   let fallbackEnemy = null, fallbackMinion = null, playerFig = null, playerFor = null, gateFig = null;
 
-  // A def names its figure in puppet (an enemy, a boss) or in fx.puppet (a sigil that summons).
+  // A def names its figure in puppet (an enemy, a boss) or in fx.puppet (a voice that summons).
   function figureOf(def, fallback) {
     if (def === null || typeof def !== 'object') return fallback;
     let fig = byDef.get(def);
@@ -404,7 +405,6 @@
     sHurt[s] = -99;
     sFlash[s] = e.flash || 0;
     sLife[s] = e.life;
-    sHush[s] = e.hush || 0;
     sRank[s] = kind === KIND_ENEMY ? e.rank : 0;
     sDead[s] = -1;
   }
@@ -458,12 +458,7 @@
     const flash = e.flash || 0, life = e.life;
     if (flash > sFlash[s] + 0.01 || life < sLife[s] - 1e-6) sHurt[s] = now;
     if (life < sLife[s] - 1e-6 && typeof Vfx.harm === 'function' && inView(x, y, 1)) {
-      Vfx.harm(e.uid, x, y, fig.height * scale, sLife[s] - life, kind === KIND_PLAYER ? 2 : 0);
-    }
-    if (kind === KIND_PLAYER) {
-      const hush = e.hush || 0;
-      if (hush < sHush[s] - 1e-6 && typeof Vfx.harm === 'function') Vfx.harm(0, x, y, fig.height * scale, sHush[s] - hush, 3);
-      sHush[s] = hush;
+      Vfx.harm(e.uid, x, y, fig.height * scale, sLife[s] - life, kind === KIND_PLAYER ? 1 : 0);
     }
     sFlash[s] = flash;
     sLife[s] = life;
@@ -647,8 +642,7 @@
           st.face = (h - floor(h)) * TAU;
         } else {
           st.face = PI / 2;
-          const hold = S.rules && S.rules.gateHoldSeconds > 0 ? Math.min(1, (e.hold || 0) / S.rules.gateHoldSeconds) : 0;
-          st.glow = 0.8 + 0.25 * sin(now * 3) + 0.6 * hold;
+          st.glow = 0.8 + 0.25 * sin(now * 3) + 0.6 * rungDown(S, e);
         }
       }
       st.scale = scale;
@@ -706,6 +700,13 @@
     lightN = want;
   }
 
+  // How far ringing down has gone at the open lychgate g, 0 to 1: its ring seconds against the strokes it takes.
+  function rungDown(S, g) {
+    const r = S.rules, full = r ? (r.ringStrokes > 0 ? r.ringStrokes : 6) * (r.strokeSeconds > 0 ? r.strokeSeconds : 1) : 6;
+    const ring = g && g.ring > 0 ? g.ring : 0;
+    return ring < full ? ring / full : 1;
+  }
+
   function things(S, alpha, now, px, py) {
     // shots: a bright bolt with a short trail, and a little light
     const shots = S.shots;
@@ -718,7 +719,7 @@
       if (o.team === 1) c = fxColor(o.def);
       else if (o.skill >= 0 && S.skills[o.skill] && S.skills[o.skill].inst) {
         const id = S.skills[o.skill].inst.id;
-        c = typeof id === 'string' && Defs.has('sigil', id) ? fxColor(Defs.get('sigil', id)) : null;
+        c = typeof id === 'string' && Defs.has('voice', id) ? fxColor(Defs.get('voice', id)) : null;
       }
       const enemy = o.team === 1, r = c ? c[0] : 1, g = c ? c[1] : enemy ? 0.35 : 0.84, b = c ? c[2] : enemy ? 0.3 : 0.5;
       const size = Math.max(0.22, (o.r > 0 ? o.r : 0.12) * 2.2), dx = o.x - o.px, dy = o.y - o.py;
@@ -747,12 +748,12 @@
       decalN = Scene.decal(decalBuf, decalN, a.x, a.y, a.r, enemy ? 1 : 0.6, enemy ? 0.25 : 0.85, enemy ? 0.18 : 1, enemy ? 0.75 : 0.5, fill,
         a.len > 0 ? BAR : DISC, a.angle || 0, 0);
     }
-    // the gate: its ring fills as the player holds it, and it shines
+    // the lychgate: its ring fills stroke by stroke as the player rings down, and it shines
     const gate = S.gate;
     if (gate) {
-      const hold = S.rules && S.rules.gateHoldSeconds > 0 ? Math.min(1, (gate.hold || 0) / S.rules.gateHoldSeconds) : 0;
-      if (inView(gate.x, gate.y, 2)) decalN = Scene.decal(decalBuf, decalN, gate.x, gate.y, 1.7, 0.6, 0.9, 1, 0.8, hold, RING, 0, 0);
-      lightCandidate(gate.x, gate.y, 1.6, 8, 0.55, 0.8, 1, 1.1 + 0.3 * sin(now * 3) + hold, px, py);
+      const rung = rungDown(S, gate), radius = S.rules && S.rules.gateRadius > 0 ? S.rules.gateRadius : 1.7;
+      if (inView(gate.x, gate.y, radius + 0.3)) decalN = Scene.decal(decalBuf, decalN, gate.x, gate.y, radius, 0.6, 0.9, 1, 0.8, rung, RING, 0, 0);
+      lightCandidate(gate.x, gate.y, 1.6, 8, 0.55, 0.8, 1, 1.1 + 0.3 * sin(now * 3) + rung, px, py);
     }
     // props that carry a light
     for (let i = 0; i < dN; i++) {

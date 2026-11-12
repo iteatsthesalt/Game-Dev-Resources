@@ -2,7 +2,8 @@
 // The whole build is loaded, every module below 50 whoever wrote it, and booted the way the page boots it. A
 // system that reads a clock, keeps something from one run to the next, shares scratch state between two runs
 // or draws from anything but the run's seeded streams shows here. The scene is Sim.debugScene, with a scripted
-// player who walks, dodges and drinks. tests/scenarios/20-play.js makes the browser agree with Node.
+// player who walks and presses both buttons, the trade and the heave. tests/scenarios/20-play.js makes the browser
+// agree with Node.
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
@@ -15,11 +16,11 @@ const sim = loadSim({ boot: true });
 function inputAt(i, frame) {
   frame.mx = Math.cos(i / 40) * 0.7;
   frame.my = Math.sin(i / 55) * 0.7;
-  frame.dodge = i % 97 === 0;
-  frame.draught = i % 211 === 0;
+  frame.trade = i % 97 === 0;
+  frame.heave = i % 211 === 0;
   return frame;
 }
-const newFrame = () => ({ mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false });
+const newFrame = () => ({ mx: 0, my: 0, ax: 1, ay: 0, aim: false, trade: false, heave: false });
 
 // One step of a run, with any offer that stands in its way taken first.
 function advance(Sim, S, i, frame) {

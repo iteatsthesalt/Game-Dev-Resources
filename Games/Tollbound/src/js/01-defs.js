@@ -2,9 +2,9 @@
 // that runs once at boot.
 // Owns: Defs
 // Public:
-//   Defs.KINDS                       the kinds of definition: sigil, binding, vow, treeSkeleton, cluster, legacyNode,
-//                                    class, calling, attack, enemy, boss, zone, puppet, prop, tileset, base, affix,
-//                                    unique, currency, chime, deed, mode, curves, constants, trait, chartMod
+//   Defs.KINDS                       the kinds of definition: voice, knot, observance, treeSkeleton, cluster,
+//                                    legacyNode, class, calling, attack, enemy, boss, zone, puppet, prop, tileset, base,
+//                                    affix, unique, currency, favour, bequest, mode, curves, constants, trait, cause
 //   Defs.add(kind, def) -> def       registers a definition. Cheap checks only: a known kind, a string id, an id
 //                                    not yet taken in that kind. Throws otherwise, and after Defs.finalize().
 //   Defs.get(kind, id) -> def        throws an error that names the kind and the id when there is none
@@ -13,8 +13,9 @@
 //   Defs.SCHEMA                      {kind: {open, fields: {name: spec}}}: the shapes of docs/engine.md as data
 //   Defs.SHAPES                      {Mod, ModRange, Trigger, Attack: {open, fields}}: shapes used inside others
 //   Defs.ENUMS                       {name: [word]}: the closed word lists the specs use (ai, archetype, rig, ...)
-//   Defs.allow(name, word, ...)      adds words to one of Defs.ENUMS. A registry of behaviour (AI.register and
-//                                    the like) calls it so that content may name what it has registered.
+//   Defs.allow(name, word, ...)      adds words to one of Defs.ENUMS. A registry of behaviour (AI.register,
+//                                    Skills.archetype and the like) calls it so that content may name what it has
+//                                    registered.
 //   Defs.extend(kind, fields)        adds or replaces field specs of a kind: {name: spec}; a spec is required unless
 //                                    it says required: false. What is given to 'attack' also holds for attacks
 //                                    written inside an enemy, and what is given to 'enemy' for bosses.
@@ -22,7 +23,11 @@
 //   Defs.finalize() -> [string]      checks every definition and then freezes all of them, the registries and
 //                                    the schema. [] means valid. Each string reads "kind id: field problem".
 //
-// A spec is {type, required, nullable?, ...}. A field that is not required may be left out; null is allowed
+// The kinds voice, knot, observance, favour, bequest and cause are the design's words (docs/design/01-world.md);
+// treeSkeleton, cluster, legacyNode, base, affix, unique and currency keep the shapes of the first plan until Stage 2
+// replaces them with the Plan, the Bellframe and finds (docs/design/04-progression.md).
+//
+// A spec is {type, required, nullable?, only?, ...}. A field that is not required may be left out; null is allowed
 // only where nullable is true. An object may hold only the fields its spec lists, unless it is open.
 //   type 'string' | 'bool' | 'any'
 //        'number' | 'int'     finite; min and max, if there, are the least and most allowed
@@ -34,27 +39,31 @@
 //        'object'             fields: {name: spec}; open: true when other fields may be there as well
 //        'shape'              shape: a name in Defs.SHAPES
 //        'union'              of: [spec, ...]; the value must fit one of them
-//        'stat' | 'tag' | 'cond' | 'dtype' | 'family' | 'primary' | 'counted' | 'ailment'
-//                             the id of a row of that table in Stats (dtype: a damage type; counted: Stats.PER)
+//        'stat' | 'tag' | 'cond' | 'harm' | 'family' | 'primary' | 'counted' | 'ailment'
+//                             the id of a row of that table in Stats (harm: a kind of harm; counted: Stats.PER;
+//                             ailment: a condition a body carries)
 //   enum: [word, ...]         on a string: the words allowed
 //   ref: kind                 on a string: the id of a definition of that kind. Not checked while that kind has
 //                             no definitions at all, which is how a build without (say) its puppets stays valid.
+//   only: value               the value must be exactly this, whatever the type says: a field the design keeps at
+//                             one value (a voice's crit is 0, its weapon null; an attack is never evadable)
 //
 // What finalize checks beyond the specs: that a definition is what JSON can carry (no function, no undefined,
 // no NaN, only plain objects and arrays); inside every Mod and ModRange that a pair value sits on a range stat
-// only, that "from" is there exactly when the stat is gained from another type, and that per.div is above 0;
-// keys and links inside one definition (cluster and calling nodes, puppet parts, a boss's attack ids); that a
-// class and its callings name each other; that no id is both an enemy and a boss.
+// only and that per.div is above 0; keys and links inside one definition (cluster and calling nodes, puppet parts,
+// a boss's attack ids); that a class and its callings name each other; that no id is both an enemy and a boss;
+// that a voice deals one kind of harm; that an enemy's guard is for a kind of harm that has one; that a favour uses
+// only flat and inc modifiers, and a plain favour switches no flag.
 (function () {
   'use strict';
 
-  const KINDS = ['sigil', 'binding', 'vow', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy',
-    'boss', 'zone', 'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'chime', 'deed', 'mode', 'curves',
-    'constants', 'trait', 'chartMod'];
+  const KINDS = ['voice', 'knot', 'observance', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy',
+    'boss', 'zone', 'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'favour', 'bequest', 'mode', 'curves',
+    'constants', 'trait', 'cause'];
   const ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/, HEX = /^#[0-9a-fA-F]{6}$/;
   const TABLES = {
-    stat: 'a stat', tag: 'a tag', cond: 'a condition', dtype: 'a damage type', family: 'a weapon family', primary: 'an attribute',
-    counted: 'something a per modifier can count', ailment: 'an ailment',
+    stat: 'a stat', tag: 'a tag', cond: 'a modifier condition', harm: 'a kind of harm', family: 'a family of finds', primary: 'an attribute',
+    counted: 'something a per modifier can count', ailment: 'a condition a body carries',
   };
 
   const lists = Object.create(null), byId = Object.create(null);   // no prototype behind them: "constructor" is not a kind
@@ -90,33 +99,36 @@
   const ENUMS = {
     op: ['flat', 'inc', 'more', 'set'],
     curve: ['lin', 'exp'],
-    archetype: ['projectile', 'burst', 'arc', 'orbit', 'chain', 'beam', 'zone', 'deployable', 'summon'],
+    archetype: ['ring', 'rap', 'bar', 'spark', 'cone'],            // what the first version needs (design 15.14)
     target: ['nearest', 'densest', 'random', 'farthest', 'aim', 'self'],
-    triggerOn: ['kill', 'crit', 'dodge', 'hurt', 'draught', 'timer'],
+    triggerOn: ['kill', 'hurt', 'pull', 'trade', 'heave', 'timer'],
     clusterShape: ['ring6', 'arc5', 'fork4', 'line3', 'diamond4'],
     nodeKind: ['minor', 'major', 'capstone'],
     callingKind: ['minor', 'major'],
-    attackKind: ['contact', 'projectile', 'area', 'beam', 'summon'],
-    attackShape: ['circle', 'cone', 'line', 'ring'],
-    ai: ['chase', 'ranged', 'charger', 'swarm', 'caster', 'exploder', 'summoner', 'lurker'],
-    zoneKind: ['campaign', 'rite', 'chart', 'debug'],
-    zoneEvent: ['elite', 'swarm', 'miniboss', 'shrine'],
+    attackKind: ['strike', 'throw', 'press', 'spread', 'fall', 'zone'],
+    attackShape: ['arc', 'line', 'circle', 'ring', 'wedge'],
+    ai: ['wake', 'chase'],                                         // the common dead walk the wake; the rest steer at you
+    size: ['small', 'large'],
+    zoneKind: ['district', 'peal', 'bill', 'debug'],
+    zoneEvent: ['elite', 'swarm'],
+    role: ['bell-post', 'landmark', 'lamp-post', 'pit', 'sally', 'circle', 'stair', 'hulk'],
     rig: ['biped', 'quadruped', 'floater', 'crawler', 'winged', 'serpent', 'static'],
     partShape: ['box', 'taper', 'cyl', 'sphere', 'cone'],
-    slot: ['weapon', 'offhand', 'helm', 'body', 'gloves', 'boots', 'amulet', 'ring', 'belt'],
+    slot: ['tool', 'hat', 'coat', 'hands', 'girdle', 'pattens', 'token'],
     affixType: ['prefix', 'suffix'],
-    currencyTarget: ['item', 'sigil'],
-    currencyOp: ['toMagic', 'toRare', 'addMod', 'reroll', 'removeMod', 'rerollValues', 'addSocket', 'corrupt', 'levelSigil'],
-    chimeRarity: ['common', 'rare', 'epic'],
-    chimeScope: ['global', 'sigils'],
-    deedScope: ['account', 'character'],
-    event: ['hit', 'crit', 'kill', 'cast', 'hurt', 'pickup', 'level', 'offer', 'telegraph', 'phase', 'drop', 'toll', 'gate', 'end'],
-    route: ['zone', 'gauntlet'],
+    currencyTarget: ['item', 'voice'],
+    currencyOp: ['toMagic', 'toRare', 'addMod', 'reroll', 'removeMod', 'rerollValues', 'addSocket', 'corrupt', 'levelVoice'],
+    favourRarity: ['plain', 'turned'],
+    favourScope: ['global', 'voices'],
+    bequestScope: ['account', 'character'],
+    event: ['hit', 'kill', 'cast', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'offer', 'favour',
+      'telegraph', 'phase', 'drop', 'toll', 'count', 'gate', 'stroke', 'end'],
+    route: ['zone', 'night'],
     levelOffer: ['none', 'node'],
-    runLevelOffer: ['chime', 'none'],
-    offer: ['none', 'chime', 'node', 'reward'],
+    runLevelOffer: ['favour', 'none'],
+    offer: ['none', 'favour', 'node', 'reward'],
     haul: ['gate', 'none'],
-    respec: ['gold', 'last3'],
+    respec: ['coin', 'none'],
     death: ['permanent'],
   };
 
@@ -124,6 +136,7 @@
   const str = T('string'), num = T('number'), bool = T('bool'), any = T('any'), scaled = T('scaled'), id = T('id'), hex = T('hex');
   const opt = (spec) => Object.assign({}, spec, { required: false });
   const nul = (spec) => Object.assign({}, spec, { nullable: true });
+  const pinned = (value) => T('any', { only: value });
   const ref = (kind) => T('string', { ref: kind });
   const one = (name) => T('string', { enum: ENUMS[name] });
   const word = (...words) => T('string', { enum: words });
@@ -141,24 +154,24 @@
   const SCALED = { a: num, b: num, curve: one('curve') };          // the long form of a 'scaled' value
 
   const attack = {
-    id, kind: one('attackKind'), type: row('dtype'), mult: at(0), cooldown: at(0), range: at(0), windup: at(0), shape: one('attackShape'),
-    radius: at(0), angle: at(0), count: whole(0), spread: at(0), speed: at(0), evadable: bool, ailment: nul(row('ailment')),
+    id, kind: one('attackKind'), type: row('harm'), mult: at(0), cooldown: at(0), range: at(0), windup: at(0), shape: one('attackShape'),
+    radius: at(0), angle: at(0), count: whole(0), spread: at(0), speed: at(0), evadable: pinned(false), ailment: nul(row('ailment')),
     summon: nul(obj({ enemy: ref('enemy'), count: whole(1) })), fx: any,
   };
   const enemy = {
     id, name: str, puppet: ref('puppet'), radius: at(0.05), life: at(0), damage: at(0), speed: at(0), xp: at(0), cost: at(0), loot: any,
-    ai: one('ai'), aiParams: map(any), attacks: list(either(ref('attack'), shape('Attack'))), res: map(num, row('dtype')), armour: at(0),
-    threshold: at(0), tags: list(str),
+    ai: one('ai'), aiParams: map(any), attacks: list(either(ref('attack'), shape('Attack'))), guard: map(at(0, 100), row('harm')),
+    size: one('size'), press: at(0), tags: list(str),
   };
   const phase = obj({ until: at(0), speed: at(0), onEnter: list(str), loop: list(either(str, obj({ wait: at(0) }))) });
 
   const SHAPES = {
     Mod: { open: false, fields: {
       stat: row('stat'), op: one('op'), value: either(scaled, list(scaled, 2)), tags: opt(tags), cond: opt(row('cond')),
-      per: opt(obj({ stat: row('counted'), div: num, cap: opt(at(0)) })), from: opt(row('dtype')), local: opt(bool),
+      per: opt(obj({ stat: row('counted'), div: num, cap: opt(at(0)) })), local: opt(bool),
     } },
     ModRange: { open: false, fields: {
-      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), from: opt(row('dtype')), local: opt(bool),
+      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), local: opt(bool),
       min: either(num, list(num, 2)), max: either(num, list(num, 2)),
     } },
     Trigger: { open: false, fields: { on: one('triggerOn'), chance: at(0), cooldown: at(0) } },
@@ -167,16 +180,16 @@
 
   // Each kind's fields besides its id. A kind marked open may carry fields that are not listed.
   const FIELDS = {
-    sigil: Object.assign({}, text, {
-      attr: row('primary'), tier: whole(1, 5), tags, weapon: nul(list(row('family'))), archetype: one('archetype'), target: one('target'),
-      rate: scaled, damage: map(list(scaled, 2), row('dtype')), weaponPct: scaled, eff: at(0), crit: at(0, 100), params: map(scaled), mods,
+    voice: Object.assign({}, text, {
+      attr: row('primary'), tier: whole(1, 5), tags, weapon: pinned(null), archetype: one('archetype'), target: one('target'),
+      rate: scaled, damage: map(list(scaled, 2), row('harm')), weaponPct: pinned(0), eff: at(0), crit: pinned(0), params: map(scaled), mods,
       fx: obj({ puppet: opt(nul(ref('puppet'))), cast: opt(any), hit: opt(any), sfxCast: opt(any), sfxHit: opt(any), light: opt(any) }, true),
     }),
-    binding: Object.assign({}, text, {
+    knot: Object.assign({}, text, {
       attr: row('primary'), tier: whole(1, 5), requires: tags, excludes: tags, addTags: tags, mods, params: map(num), trigger: nul(shape('Trigger')),
     }),
-    vow: Object.assign({}, text, {
-      attr: row('primary'), tier: whole(1, 5), candles: at(0), mods, aura: nul(obj({ radius: at(0), enemyMods: mods })),
+    observance: Object.assign({}, text, {
+      attr: row('primary'), tier: whole(1, 5), heed: at(20, 40), mods, aura: pinned(null),
     }),
     treeSkeleton: {
       spokes: whole(1), rings: list(obj({ r: at(0), slots: whole(1) })), pathMods: mods, starts: map(obj({ sector: whole(0) }), ref('class')),
@@ -189,9 +202,9 @@
       branch: str, row: whole(0), col: whole(0), requires: list(ref('legacyNode')), ranks: whole(1), cost: list(at(0)), mods, unlock: opt(map(any)),
     }),
     class: {
-      name: str, text: str, attrs: map(at(0), row('primary')), perLevel: map(at(0), either(row('primary'), word('life'))), base: mods,
-      sector: whole(0), startSigil: ref('sigil'), startGear: list(ref('base')), callings: list(ref('calling'), 2), unlock: nul(ref('deed')),
-      puppet: ref('puppet'), palette: list(hex),
+      name: str, text: str, attrs: map(at(0), row('primary')), perLevel: map(at(0), row('primary')), base: mods, door: opt(whole(0, 5)),
+      voices: list(ref('voice'), [1, 6]), startGear: list(ref('base')), trade: obj({ name: str, text: str, icon: any, recharge: at(0) }),
+      callings: list(ref('calling'), 2), unlock: nul(ref('bequest')), puppet: ref('puppet'), palette: list(hex),
     },
     calling: {
       class: ref('class'), name: str, text: str, points: whole(1),
@@ -202,15 +215,13 @@
     boss: Object.assign({}, enemy, { arena: obj({ radius: at(0) }), phases: list(phase) }),
     zone: {
       name: str, kind: one('zoneKind'), level: whole(1), tollSeconds: at(1), keeperToll: whole(1), gateEvery: whole(1), region: obj({ radius: at(10) }),
-      tileset: nul(ref('tileset')), props: list(obj({ prop: ref('prop'), density: at(0) })),
+      start: opt(obj({ x: num, y: num })), tileset: nul(ref('tileset')),
+      place: opt(list(obj({ prop: ref('prop'), x: num, y: num, role: opt(one('role')) }))), props: list(obj({ prop: ref('prop'), density: at(0) })),
       ambient: obj({ light: list(num, 3), fog: opt(any), sun: opt(any) }, true), music: any,
       timeline: list(obj({ toll: whole(0), rate: at(0), cap: whole(0), pool: list(obj({ enemy: ref('enemy'), w: at(0) })) })),
       overtoll: obj({ rateMul: at(0), levelPer: at(0), rewardPer: at(0) }),
-      events: list(obj({
-        toll: whole(0), kind: one('zoneEvent'), enemy: opt(ref('enemy')), boss: opt(ref('boss')), traits: opt(list(ref('trait'))),
-        shape: opt(str), count: opt(whole(1)),
-      })),
-      boss: nul(ref('boss')), rules: map(any), unlock: nul(ref('deed')), next: nul(ref('zone')),
+      events: list(obj({ toll: whole(0), kind: one('zoneEvent'), enemy: opt(ref('enemy')), traits: opt(list(ref('trait'))), shape: opt(str), count: opt(whole(1)) })),
+      boss: nul(ref('boss')), rules: map(any), unlock: nul(ref('bequest')), next: nul(ref('zone')),
     },
     puppet: {
       rig: one('rig'), scale: at(0),
@@ -222,43 +233,41 @@
     },
     prop: {
       puppet: ref('puppet'), radius: at(0), light: opt(obj({ radius: at(0), color: any, height: opt(at(0)), strength: opt(at(0)) })),
-      breakable: opt(obj({ loot: any })),
+      breakable: opt(obj({ loot: any })), role: opt(one('role')),
     },
     tileset: { recipe: opt(str), span: opt(at(0.5)), colors: opt(map(either(hex, list(at(0, 1), 3)))) },
     base: {
       name: str, slot: one('slot'), family: nul(row('family')), tags: list(str), level: whole(1), req, twoHanded: bool,
-      weapon: nul(obj({ damage: map(list(at(0), 2), row('dtype')), aps: at(0), crit: at(0, 100) })), defence: nul(map(at(0))),
-      implicit: ranges, icon: any,
+      weapon: pinned(null), defence: nul(map(at(0))), implicit: ranges, icon: any,
     },
     affix: { name: str, type: one('affixType'), group: str, weights: map(at(0)), tiers: list(obj({ ilvl: whole(1), mods: ranges })) },
-    unique: { name: str, base: ref('base'), level: whole(1), mods: ranges, flavour: str, weight: at(0), unlock: nul(ref('deed')) },
+    unique: { name: str, base: ref('base'), level: whole(1), mods: ranges, flavour: str, weight: at(0), unlock: nul(ref('bequest')) },
     currency: Object.assign({}, text, {
       target: one('currencyTarget'), op: one('currencyOp'), requires: map(any), args: map(any), weight: at(0), level: whole(1),
     }),
-    chime: Object.assign({}, text, {
-      rarity: one('chimeRarity'), weight: at(0), maxStacks: whole(1), group: opt(str), scope: one('chimeScope'),
+    favour: Object.assign({}, text, {
+      rarity: one('favourRarity'), weight: at(0), maxStacks: whole(1), group: opt(str), scope: one('favourScope'),
       requires: obj({ tags: opt(tags), class: opt(ref('class')), runLevel: opt(whole(0)) }), mods, params: opt(map(num)),
     }),
-    deed: {
-      name: str, text: str, hidden: bool, scope: one('deedScope'), on: one('event'), count: whole(1), where: map(any),
+    bequest: {
+      name: str, text: str, hidden: bool, scope: one('bequestScope'), on: one('event'), count: whole(1), where: map(any),
       reward: obj({
-        class: opt(ref('class')), zone: opt(ref('zone')), unique: opt(ref('unique')), treePoints: opt(whole(0)), gold: opt(at(0)),
-        echoes: opt(at(0)), currency: opt(map(at(0), ref('currency'))),
+        class: opt(ref('class')), zone: opt(ref('zone')), unique: opt(ref('unique')), planPoints: opt(whole(0)), coin: opt(at(0)),
+        hum: opt(at(0)), currency: opt(map(at(0), ref('currency'))),
       }),
     },
     mode: {
       name: str, text: opt(str), persistent: bool, route: one('route'), zones: opt(list(ref('zone'))), xpCurve: str, levelCap: whole(1),
       runLevels: whole(0), levelOffer: one('levelOffer'), runLevelOffer: one('runLevelOffer'), eliteOffer: one('offer'),
-      bossOffer: one('offer'), shrineOffer: one('offer'), haul: one('haul'),
-      calling: either(obj({ levels: list(whole(1)) }), obj({ afterBoss: whole(1), pointsPerBoss: whole(1) })),
+      bossOffer: one('offer'), haul: one('haul'), calling: obj({ afterKeeper: whole(0), pointsPerPeal: whole(0) }),
       respec: one('respec'), death: one('death'), score: any,
     },
     curves: { levels: whole(1) },
     constants: {},
     trait: { name: str, text: opt(str), mods: opt(mods) },
-    chartMod: { name: str, text: opt(str), mods: opt(mods) },
+    cause: { name: str, text: opt(str), mods: opt(mods) },
   };
-  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'chartMod'];
+  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'cause'];
 
   const SCHEMA = {};
   for (const kind of KINDS) SCHEMA[kind] = { open: OPEN.includes(kind), fields: Object.assign({ id }, FIELDS[kind]) };
@@ -325,6 +334,7 @@
   // Is the value the right sort of thing for a spec at all: text for a string, a list for an array, and so on?
   function sortFits(v, spec) {
     const type = spec.type, object = v !== null && typeof v === 'object' && !Array.isArray(v);
+    if (spec.only !== undefined) return v === spec.only;
     if (type === 'any') return true;
     if (v === null) return spec.nullable === true;
     if (type === 'union') return spec.of.some((form) => sortFits(v, form));
@@ -348,6 +358,10 @@
 
   function check(v, spec, path, say) {
     const type = spec.type;
+    if (spec.only !== undefined) {
+      if (v !== spec.only) say(path, 'must be ' + show(spec.only) + ', not ' + show(v));
+      return;
+    }
     if (v === null) { if (!spec.nullable && type !== 'any') say(path, 'is null'); return; }
     if (type === 'any') return;
     if (type === 'number' || type === 'int') {
@@ -424,9 +438,6 @@
     if (Array.isArray(value) && !stat.range) say(where, 'is a pair, but ' + m.stat + ' is a single number');
     if (ranged && Array.isArray(m.min) !== Array.isArray(m.max)) say(join(path, 'max'), 'must be a pair exactly when min is one');
     if (ranged && typeof m.min === 'number' && typeof m.max === 'number' && m.min > m.max) say(join(path, 'min'), 'is above max');
-    if (stat.from && m.from === undefined) say(join(path, 'from'), 'is missing: ' + m.stat + ' is gained from another damage type');
-    if (!stat.from && m.from !== undefined) say(join(path, 'from'), 'belongs only on a stat gained from another damage type, not on ' + m.stat);
-    if (stat.from && m.from === stat.type) say(join(path, 'from'), 'is the type the damage is gained as');
     if (m.per !== undefined && !(m.per.div > 0)) say(join(path, 'per.div'), 'must be above 0');
   }
 
@@ -437,7 +448,12 @@
     if (again !== undefined) say('nodes', 'has two nodes with the key "' + again + '"');
     return keys;
   }
+  const FLAG = 'flag.';                               // the prefix of the stats that switch a rule
   const RULES = {
+    voice: function (def, say) {
+      const kinds = Object.keys(def.damage);
+      if (kinds.length !== 1) say('damage', 'must name one kind of harm, not ' + kinds.length + ': every voice deals one kind');
+    },
     cluster: function (def, say) {
       if (!keyRules(def.nodes, say).includes(def.entry)) say('entry', '"' + def.entry + '" is not the key of one of its nodes');
     },
@@ -461,6 +477,12 @@
     enemy: function (def, say) {
       const own = def.attacks.map((a) => (typeof a === 'string' ? a : a.id)), again = twice(own);
       if (again !== undefined) say('attacks', 'has two attacks with the id "' + again + '"');
+      if (typeof Stats.TYPE === 'object') {
+        for (const key of Object.keys(def.guard)) {
+          const t = Stats.TYPE[key];
+          if (t !== undefined && Stats.TYPES[t].bare) say('guard.' + key, 'is a bare kind of harm, against which no body has a guard');
+        }
+      }
       return own;
     },
     boss: function (def, say) {
@@ -480,6 +502,12 @@
       def.parts.forEach((p, i) => {
         if (p.parent !== undefined && (p.parent === p.key || !keys.includes(p.parent))) say('parts[' + i + '].parent', '"' + p.parent + '" is not the key of another of its parts');
         if (!own.call(def.palette, p.color)) say('parts[' + i + '].color', '"' + p.color + '" is not in its palette');
+      });
+    },
+    favour: function (def, say) {
+      def.mods.forEach((m, i) => {
+        if (m.op !== 'flat' && m.op !== 'inc') say('mods[' + i + '].op', '"' + m.op + '": a favour adds numbers with flat and inc only');
+        if (def.rarity === 'plain' && typeof m.stat === 'string' && m.stat.startsWith(FLAG)) say('mods[' + i + '].stat', '"' + m.stat + '" switches a rule, which only a turned favour does');
       });
     },
     mode: function (def, say) {

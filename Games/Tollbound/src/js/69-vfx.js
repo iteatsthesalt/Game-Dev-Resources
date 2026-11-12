@@ -7,9 +7,8 @@
 //                              shown), so nobody else needs to call it.
 //   Vfx.update(dt, S)          moves everything on by dt seconds of the run; Scene.draw calls it once a frame
 //   Vfx.harm(uid, x, y, z, amount, kind)   shows harm as a number over the thing uid at (x, y), z metres up. kind:
-//                              0 harm to an enemy, 1 a critical blow, 2 harm to the player's life, 3 to its hush.
-//                              Harm to one thing within a quarter of a second adds up into one number, and a
-//                              'crit' event whose b is that uid turns its number into a critical one.
+//                              0 harm to one of the dead, 1 harm to the player's life. Harm to one thing within a
+//                              quarter of a second adds up into one number.
 //   Vfx.burst(kind, x, y, z, count, r, g, b)   particles: kind 'spark' (fast, glowing, falls), 'puff' (slow dust
 //                              that covers), 'mote' (rises and glows), 'ring' (a ring of motes spreading out)
 //   Vfx.billboards(buffer, n, max) -> n    writes the particles as Gfx.BILLBOARD_STRIDE records from record n on
@@ -24,16 +23,17 @@
 //   Vfx.shake, Vfx.flash, Vfx.numbers   settings, 0 to 1: Settings.get('fx.shake'), Settings.get('fx.flash') and
 //                              Settings.get('fx.numbers') when there is a Settings.get, otherwise 1. Values.
 //   Vfx.stats                  {particles, numbers, marks, warnings}, as they stand
-// The events it reads (the field each uses, beyond x and y): hit (sparks), crit (b: the uid of the one struck),
-// kill (a: rank; id: the enemy def, whose figure colours the dust), cast, hurt, pickup (a: its kind), level,
-// toll, telegraph, drop, phase, gate. A number never comes from an event: Scene.draw sees life fall and calls
-// Vfx.harm, so the numbers are right whatever the events carry.
+// The events it reads (the field each uses, beyond x and y): hit (sparks), kill (a: rank; id: the enemy def, whose
+// figure colours the dust), cast, hurt, wound, mend, scar, pull, trade, heave, pickup (a: its kind), favour, level,
+// toll, telegraph (a: radius, b: seconds), drop, phase, gate, stroke. A number never comes from an event:
+// Scene.draw sees life fall and calls Vfx.harm, so the numbers are right whatever the events carry. The wounds
+// themselves, postures, the wake and the dead's Swells are the scene's to draw from the run's state.
 (function () {
   'use strict';
 
   const TAU = Core.TAU, sin = Math.sin, cos = Math.cos, sqrt = Math.sqrt, floor = Math.floor;
-  const MOST = 1500, FEW = 400, NUMBERS = 96, WARNINGS = 64, MARKS = 64, CRITS = 32;
-  const ADD_FOR = 0.25, NUMBER_LIFE = 0.9, CRIT_LIFE = 1.15, RISE = 46;   // seconds, seconds, seconds, CSS px a second
+  const MOST = 1500, FEW = 400, NUMBERS = 96, WARNINGS = 64, MARKS = 64;
+  const ADD_FOR = 0.25, NUMBER_LIFE = 0.9, RISE = 46;     // seconds, seconds, CSS px a second
   const SHAKE_MAX = 0.38, SHAKE_FALL = 1.6, FLASH_FALL = 4;               // metres; trauma lost a second; flash lost a second
   const MARK_LIFE = 3.2;
   const PICKUP = [[0.45, 0.95, 0.85], [1, 0.82, 0.35], [0.95, 0.95, 1], [1, 0.5, 0.6], [0.55, 0.7, 1], [0.8, 1, 0.5]];
@@ -145,21 +145,14 @@
   const nUid = new Int32Array(NUMBERS), nKind = new Uint8Array(NUMBERS);
   const nX = new Float32Array(NUMBERS), nY = new Float32Array(NUMBERS), nZ = new Float32Array(NUMBERS), nValue = new Float64Array(NUMBERS), nAge = new Float32Array(NUMBERS);
   let nN = 0;
-  const critUid = new Int32Array(CRITS), critAge = new Float32Array(CRITS);
-  let critN = 0;
-
-  function lifeOf(kind) { return kind === 1 ? CRIT_LIFE : NUMBER_LIFE; }
 
   Vfx.harm = function (uid, x, y, z, amount, kind) {
     if (!(amount > 0) || setting('fx.numbers') <= 0) return;
-    let k = kind | 0;
-    if (k < 2) for (let c = 0; c < critN; c++) if (critUid[c] === uid && critAge[c] < 0.3) { k = 1; break; }
-    const group = k < 2 ? 0 : k;          // harm and critical blows add up together; life and hush apart
+    const k = kind === 1 ? 1 : 0;
     for (let i = 0; i < nN; i++) {
-      if (nUid[i] === uid && nAge[i] < ADD_FOR && (nKind[i] < 2 ? 0 : nKind[i]) === group) {
+      if (nUid[i] === uid && nAge[i] < ADD_FOR && nKind[i] === k) {
         nValue[i] += amount;
         nX[i] = x; nY[i] = y;
-        if (k === 1) nKind[i] = 1;
         return;
       }
     }
@@ -210,11 +203,7 @@
     for (let i = 0; i < S.eventCount; i++) {
       const e = ring2[(S.eventStart + i) % ring2.length], k = e.k, x = e.x, y = e.y;
       if (k === 'hit') sparks(x, y, 1, 4, 1, 0.88, 0.6, 3.5);
-      else if (k === 'crit') {
-        sparks(x, y, 1.1, 10, 1, 0.7, 0.3, 5);
-        if (critN < CRITS) { critUid[critN] = e.b | 0; critAge[critN] = 0; critN++; }
-        jolt(0.06);
-      } else if (k === 'kill') {
+      else if (k === 'kill') {
         const c = tintOf(e.id), rank = e.a | 0;
         puffs(x, y, 1, 5 + rank * 4, c ? c[0] * 0.8 : 0.45, c ? c[1] * 0.8 : 0.42, c ? c[2] * 0.8 : 0.38);
         sparks(x, y, 0.9, 5 + rank * 6, 1, 0.8, 0.45, 3.5);
@@ -226,10 +215,17 @@
         sparks(x, y, 1.1, 6, 1, 0.3, 0.25, 3);
         jolt(0.32);
         blink(0.28);
-      } else if (k === 'pickup') {
+      } else if (k === 'wound') puffs(x, y, 0.4, 3, 0.42, 0.06, 0.07);
+      else if (k === 'mend') motes(x, y, 0.2, 2, 1, 0.55, 0.5, 0.5, 1.1);
+      else if (k === 'scar') { puffs(x, y, 0.3, 5, 0.42, 0.4, 0.38); blink(0.1); }
+      else if (k === 'pull') ring(x, y, 0.6, 12, 0.95, 0.92, 0.85, 2.2);
+      else if (k === 'trade') ring(x, y, 1.8, 16, 1, 0.8, 0.45, 1.4);
+      else if (k === 'heave') puffs(x, y, 0.3, 6, 0.55, 0.5, 0.45);
+      else if (k === 'pickup') {
         const c = PICKUP[(e.a | 0) % PICKUP.length];
         motes(x, y, 0.3, 6, c[0], c[1], c[2], 0.25, 1.8);
-      } else if (k === 'level') {
+      } else if (k === 'favour') motes(x, y, 0.3, 14, 1, 0.85, 0.45, 0.6, 1.8);
+      else if (k === 'level') {
         ring(x, y, 0.2, 24, 1, 0.85, 0.4, 2.5);
         motes(x, y, 0.2, 12, 1, 0.9, 0.5, 0.8, 1.6);
         blink(0.2);
@@ -241,6 +237,7 @@
       else if (k === 'drop') motes(x, y, 0.1, 6, 1, 0.95, 0.75, 0.15, 0.9);
       else if (k === 'phase') { jolt(0.5); blink(0.25); }
       else if (k === 'gate') ring(x, y, 0.2, 20, 0.6, 0.9, 1, 2);
+      else if (k === 'stroke') ring(x, y, 1.2, 10 + 2 * (e.a | 0), 0.75, 0.9, 1, 1.6);
     }
   };
 
@@ -269,15 +266,11 @@
     }
     for (let i = 0; i < nN; i++) {
       nAge[i] += dt;
-      if (nAge[i] >= lifeOf(nKind[i])) {
+      if (nAge[i] >= NUMBER_LIFE) {
         nN--;
         nUid[i] = nUid[nN]; nKind[i] = nKind[nN]; nX[i] = nX[nN]; nY[i] = nY[nN]; nZ[i] = nZ[nN]; nValue[i] = nValue[nN]; nAge[i] = nAge[nN];
         i--;
       }
-    }
-    for (let i = 0; i < critN; i++) {
-      critAge[i] += dt;
-      if (critAge[i] > 0.4) { critN--; critUid[i] = critUid[critN]; critAge[i] = critAge[critN]; i--; }
     }
     for (let i = 0; i < wN; i++) {
       wAge[i] += dt;
@@ -326,15 +319,14 @@
   };
 
   // ---- the overlay: numbers and bars ----
-  // Digits are painted once into an atlas, in four looks, and copied from it: drawing a number builds no text.
+  // Digits are painted once into an atlas, in two looks, and copied from it: drawing a number builds no text.
   let overlay = null, ctx = null, cssW = 0, cssH = 0, ratio = 1, atlas = null, dirty = false;
   const STYLES = [
-    { size: 15, fill: '#f2e6c8' },      // harm to an enemy
-    { size: 21, fill: '#ffb347' },      // a critical blow
+    { size: 15, fill: '#f2e6c8' },      // harm to one of the dead
     { size: 16, fill: '#ff6b5b' },      // harm to the player
-    { size: 15, fill: '#9fd0ff' },      // harm to the player's hush
   ];
-  const cellW = new Float32Array(4), cellH = new Float32Array(4), cellY = new Float32Array(4), advance = new Float32Array(4);
+  const cellW = new Float32Array(STYLES.length), cellH = new Float32Array(STYLES.length), cellY = new Float32Array(STYLES.length);
+  const advance = new Float32Array(STYLES.length);
   const at = { x: 0, y: 0 };
 
   function paintAtlas() {
@@ -443,7 +435,7 @@
     if (showNumbers > 0 && atlas) {
       for (let i = 0; i < nN; i++) {
         if (!Gfx.worldToScreen(nX[i], nY[i], nZ[i], at)) continue;
-        const age = nAge[i], life = lifeOf(nKind[i]), pop = 1 + 0.45 * Math.max(0, 1 - age / 0.12);
+        const age = nAge[i], life = NUMBER_LIFE, pop = 1 + 0.45 * Math.max(0, 1 - age / 0.12);
         const fade = age > life - 0.3 ? Math.max(0, (life - age) / 0.3) : 1;
         drawNumber(nValue[i], nKind[i], at.x, at.y - RISE * age, pop, fade * showNumbers);
       }
@@ -452,7 +444,7 @@
   };
 
   Vfx.clear = function () {
-    pN = 0; over = 0; nN = 0; wN = 0; mN = 0; mOver = 0; critN = 0;
+    pN = 0; over = 0; nN = 0; wN = 0; mN = 0; mOver = 0;
     trauma = 0; flashNow = 0;
     dirty = true;
     wipe();

@@ -7,10 +7,11 @@
 //                                  those of Sim.NO_INPUT, named in the table FIELD at the top of this file:
 //                                    moveX, moveY   the move vector, length at most 1 (+y runs down the screen)
 //                                    aimX, aimY     a unit aim vector, which counts only while aim is true
-//                                    A, B           the two buttons: true in exactly one sample for each press,
-//                                                   however short the press and however many steps a frame
-//                                                   runs. A press waits for its sample (up to 8 of each button
-//                                                   wait); presses are taken only while a run is in play.
+//                                    A, B           the two buttons, the trade and the heave: true in exactly one
+//                                                   sample for each press, however short the press and however
+//                                                   many steps a frame runs. A press waits for its sample (up to
+//                                                   8 of each button wait); presses are taken only while a run
+//                                                   is in play.
 //   Input.FIELDS                   that table: {moveX, moveY, aimX, aimY, aim, A, B} -> the frame's field names
 //   Input.button(id, opts)         sets up the touch button 'A' or 'B'. opts, each one optional and kept until it
 //                                  is given again: icon (an element, such as a Glyphs canvas; a short text; or
@@ -33,7 +34,7 @@
 //            loses focus, the page is hidden or the game changes state.
 //   Mouse    with 'input.aim' 'pointer', while the keys and the mouse are in use, aim points from the player to
 //            the ground under the pointer (Gfx.screenToWorld) and is true. Otherwise aim is false and every
-//            sigil picks its own target.
+//            voice picks its own target.
 //   Touch    the controls show once the screen has been touched, during a run while nothing pauses it, and hide
 //            again when a key or a pad is used. The first thumb that lands on the game on the stick side (the
 //            half away from the buttons) holds the stick: 'floating' puts it where the thumb lands and drags it
@@ -57,8 +58,9 @@
 (function () {
   'use strict';
 
-  // The InputFrame's field names, as Sim.NO_INPUT has them. The design will rename them: this is the one place.
-  const FIELD = { moveX: 'mx', moveY: 'my', aimX: 'ax', aimY: 'ay', aim: 'aim', A: 'dodge', B: 'draught' };
+  // The InputFrame's field names, as Sim.NO_INPUT has them: button A is the trade, the class's own act, and button
+  // B the heave, a find thrown overboard (docs/design/02-combat.md, section 10). This is the one place they are named.
+  const FIELD = { moveX: 'mx', moveY: 'my', aimX: 'ax', aimY: 'ay', aim: 'aim', A: 'trade', B: 'heave' };
   const F_MX = FIELD.moveX, F_MY = FIELD.moveY, F_AX = FIELD.aimX, F_AY = FIELD.aimY, F_AIM = FIELD.aim, F_A = FIELD.A, F_B = FIELD.B;
 
   // KeyboardEvent.code -> what the key does. Codes name places on the keyboard, whatever letters it wears.
