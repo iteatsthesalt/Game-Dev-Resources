@@ -3,9 +3,14 @@
 // blurred speck keeps its energy. engine.js puts common.wgsl in front of this file.
 //
 // A port of the mobile edition's points.vert.glsl and points.frag.glsl. Mobile draws GL
-// points; WebGPU points are always one pixel, so here every particle is an instanced quad
-// of 4 vertices (a triangle strip) that covers the same square a point sprite would. A
-// quad never shrinks below one pixel: smaller ones could miss every pixel centre and vanish.
+// points; WebGPU points are always one pixel, so here every particle is a quad that covers
+// the same square a point sprite would. A quad never shrinks below one pixel: smaller ones
+// could miss every pixel centre and vanish.
+//
+// The quads are instanced in batches: each instance draws BATCH particles, from a shared
+// index buffer of BATCH quads (4 corners and 6 indices each). One instance per particle
+// would cost a fixed amount per instance, which some GPUs (and the software one the tests
+// use, 20 µs each) pay dearly for four vertices.
 
 @group(0) @binding(0) var<uniform> F: Frame;
 @group(0) @binding(1) var<storage, read> particles: array<Particle>;
@@ -26,9 +31,13 @@ fn hueRotate(c: vec3f, a: f32) -> vec3f {
   return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);
 }
 
+const BATCH = 64u;   // particles per instance; engine.js uses the same number
+
 @vertex
-fn speck(@builtin(vertex_index) corner: u32, @builtin(instance_index) id: u32) -> Speck {
-  let pt = particles[id];
+fn speck(@builtin(vertex_index) vertex: u32, @builtin(instance_index) batch: u32) -> Speck {
+  let id = batch * BATCH + vertex / 4u;
+  let corner = vertex % 4u;
+  let pt = particles[min(id, arrayLength(&particles) - 1u)];
   let s = seeds(id);
   let p = pt.pos.xyz;
   let v = pt.vel.xyz;
@@ -80,7 +89,7 @@ fn speck(@builtin(vertex_index) corner: u32, @builtin(instance_index) id: u32) -
   let energy = F.energy * persp * bright * (base * base) / (px * px); // nonzero: px >= 1
   let color = col * min(energy, F.energyCap);
 
-  // the quad's corners, in the order of a triangle strip: (-1,-1) (1,-1) (-1,1) (1,1)
+  // the quad's corners: (-1,-1) (1,-1) (-1,1) (1,1)
   let c = vec2f(f32(corner & 1u), f32(corner >> 1u)) * 2.0 - 1.0;
   var out: Speck;
   // px pixels across: half of it each way, and one pixel is 2 / width in clip space
@@ -88,8 +97,9 @@ fn speck(@builtin(vertex_index) corner: u32, @builtin(instance_index) id: u32) -
   out.color = color;
   out.corner = c;
   out.soft = smoothstep(1.6, 3.6, px);
-  // a broken particle draws nothing, off screen, rather than a NaN that would spread
-  if (bad3(p) || bad3(color) || badf(heat)) {
+  // the last batch's spare quads, and a broken particle, draw nothing: off screen, rather
+  // than a NaN that would spread
+  if (id >= F.count || bad3(p) || bad3(color) || badf(heat)) {
     out.clip = vec4f(2.0, 2.0, 2.0, 1.0);
     out.color = vec3f(0.0);
   }

@@ -36,6 +36,7 @@ import COMPOSITE from './shaders/composite.wgsl';
 
 const BYTES_PER_PARTICLE = 32;
 const GROUP_SIZE = 256;                // the simulation's workgroup size (sim.wgsl)
+const BATCH = 64;                      // particles per instance of the speck draw (draw.wgsl)
 const PARTICLE_STEP = 65536;           // the particle buffer grows and shrinks in steps of 2 MiB
 const REF_COUNT = 262144;              // the count the mobile edition's energy is tuned around
 const LIGHT_FORMAT = 'rgba16float';    // the light, the bloom chain and the team field
@@ -189,7 +190,7 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
         layout: 'auto',
         vertex: { module: draw, entryPoint: 'speck' },
         fragment: { module: draw, entryPoint: 'light', targets: [{ format: LIGHT_FORMAT, blend: additive }] },
-        primitive: { topology: 'triangle-strip' },
+        primitive: { topology: 'triangle-list' },
       }),
       device.createRenderPipelineAsync({ label: 'team field', ...light(team, 'field') }),
       // multiplies the light already there by the blend constant: the trails
@@ -231,10 +232,15 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     const lookBuffer = device.createBuffer({ label: 'look', size: lookU.bytes.byteLength, usage: B.UNIFORM | B.COPY_DST });
     // eye adaptation and flash guard state; zero means "start afresh"
     const state = device.createBuffer({ label: 'exposure state', size: 16, usage: B.STORAGE | B.COPY_SRC | B.COPY_DST });
+    // one batch of quads: corners 0..3 of quad q are vertices 4q..4q+3, two triangles each
+    const quads = new Uint16Array(BATCH * 6);
+    for (let q = 0; q < BATCH; q++) quads.set([0, 1, 2, 2, 1, 3].map((k) => q * 4 + k), q * 6);
+    const quadIndex = device.createBuffer({ label: 'quad batch', size: quads.byteLength, usage: B.INDEX | B.COPY_DST });
+    device.queue.writeBuffer(quadIndex, 0, quads);
 
     res = {
       device, context, pictureFormat, pipelines, simLayout, levelLayout, compositeLayout,
-      sampler, palette, teamField, teamView: teamField.createView(), frameBuffer, exposureBuffer, lookBuffer, state,
+      sampler, palette, teamField, teamView: teamField.createView(), frameBuffer, exposureBuffer, lookBuffer, state, quadIndex,
       teamGroup: device.createBindGroup({ layout: pipelines.team.getBindGroupLayout(0), entries: [{ binding: 0, resource: { buffer: frameBuffer } }] }),
       particles: null, capacity: 0, simGroup: null, speckGroup: null,
       init: null,          // { first, end }: particles to place in the resting shape next frame
@@ -649,7 +655,8 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     }
     lightPass.setPipeline(r.pipelines.specks);
     lightPass.setBindGroup(0, r.speckGroup);
-    lightPass.draw(4, N);
+    lightPass.setIndexBuffer(r.quadIndex, 'uint16');
+    lightPass.drawIndexed(BATCH * 6, Math.ceil(N / BATCH));
     lightPass.end();
 
     // 4. bloom down, eye adaptation (on the smallest level), bloom up

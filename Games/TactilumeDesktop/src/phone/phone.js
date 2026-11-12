@@ -43,7 +43,9 @@ const actButtons = [...document.querySelectorAll('[data-act]')];
 const token = readToken(location.hash);
 const sessionId = loadSessionId();
 const canVibrate = typeof navigator.vibrate === 'function';
-const maxTouches = Math.max(1, Math.min(LIMITS.maxTouches, navigator.maxTouchPoints || LIMITS.maxTouches));
+// What the phone says it can do, for hello. Only a hint: some browsers report fewer touch
+// points than they deliver, so the pad itself tracks up to the protocol's ten regardless.
+const touchHint = Math.max(1, Math.min(LIMITS.maxTouches, navigator.maxTouchPoints || LIMITS.maxTouches));
 
 const touches = new Map();       // pointerId → { id, x, y, f, dot }
 const slots = createSlots(LIMITS.maxTouches);
@@ -161,7 +163,7 @@ function connect() {
   ws = socket;
   socket.onopen = () => {
     if (socket !== ws) return;
-    sendNow(hello({ token, id: sessionId || undefined, touches: maxTouches, haptics: canVibrate }));
+    sendNow(hello({ token, id: sessionId || undefined, touches: touchHint, haptics: canVibrate }));
   };
   socket.onmessage = (e) => {
     if (socket !== ws) return;
@@ -302,7 +304,7 @@ function place(e, t) {
 
 function onDown(e) {
   if (e.pointerType === 'mouse' && e.button !== 0) return;
-  if (touches.has(e.pointerId) || touches.size >= maxTouches) return;
+  if (touches.has(e.pointerId) || touches.size >= LIMITS.maxTouches) return;
   const id = slots.take();
   if (id < 0) return;
   try { pad.setPointerCapture(e.pointerId); } catch { /* the pointer is already gone */ }

@@ -11,8 +11,10 @@ export function readToken(hash) {
 // At most `maxHz` frames a second, on average. Animation frames do not land exactly 1/120 s
 // apart, so a plain "at least 8.33 ms since the last one" test would drop every other frame
 // on a 120 Hz screen. A small bucket of credit absorbs that jitter instead: on a 120 Hz
-// screen every frame goes out, on a 144 Hz one five frames in six.
-export function createFrameGate(maxHz = 120, slack = 0.5) {
+// screen every frame goes out, on a 144 Hz one five frames in six. It holds up to two
+// frames' worth, so the credit that builds up over a skipped frame is never thrown away,
+// and after a pause at most two frames go out back to back.
+export function createFrameGate(maxHz = 120, slack = 1) {
   const perMs = maxHz / 1000;
   const capacity = 1 + slack;
   let credit = capacity;
