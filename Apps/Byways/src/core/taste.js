@@ -24,7 +24,7 @@ const clamp = (n) => Math.max(-WEIGHT_CAP, Math.min(WEIGHT_CAP, n));
 
 /** Move one weight by `step` within the cap; returns the delta that actually applied. */
 function bump(weights, key, step) {
-  const before = weights[key] ?? 0;
+  const before = Object.hasOwn(weights, key) ? weights[key] : 0; // own only: 'constructor' is a valid id
   const after = clamp(before + step);
   weights[key] = after;
   return after - before;
@@ -41,7 +41,8 @@ export function applyReaction(taste, find, reaction, extra = {}) {
   const change = { tagDeltas: {}, sourceDelta: 0, hidden: [], blocked: [] };
 
   const moveTag = (tag, step) => {
-    change.tagDeltas[tag] = (change.tagDeltas[tag] ?? 0) + bump(next.tags, tag, step);
+    const earlier = Object.hasOwn(change.tagDeltas, tag) ? change.tagDeltas[tag] : 0;
+    change.tagDeltas[tag] = earlier + bump(next.tags, tag, step);
   };
   const blockSite = () => {
     const domain = domainOf(find?.url ?? '');

@@ -11,6 +11,12 @@ test('like adds 1 per tag and 0.5 to the source', () => {
   assert.deepEqual(taste.tags, { retro: 1, indie: 1 }); assert.deepEqual(taste.sources, { library: 0.5 });
   assert.equal(taste.reactions, 1); assert.deepEqual(change.tagDeltas, { retro: 1, indie: 1 }); assert.equal(change.sourceDelta, 0.5);
 });
+test('a like on a find tagged constructor stores a number, not an inherited function', () => {
+  const odd = { ...find, tags: ['constructor'], source: 'toString' };
+  const { taste, change } = applyReaction(DEFAULT_TASTE, odd, 'like');
+  assert.equal(taste.tags.constructor, 1); assert.equal(change.tagDeltas.constructor, 1);
+  assert.equal(taste.sources.toString, 0.5); assert.equal(change.sourceDelta, 0.5);
+});
 test('save works like like, and weights cap at +3', () => {
   const { taste, change } = applyReaction({ ...DEFAULT_TASTE, tags: { retro: 3 } }, find, 'save');
   assert.equal(taste.tags.retro, 3); assert.equal(change.tagDeltas.retro, 0);

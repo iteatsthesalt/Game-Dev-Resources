@@ -21,6 +21,17 @@ test('scoreFind sums tag and source weights plus Gumbel noise', () => {
   const taste = { ...DEFAULT_TASTE, tags: { retro: 2, indie: 1 }, sources: { library: 0.5 } };
   assert.equal(scoreFind(F('a', ['retro', 'indie', 'toy']), taste, () => 0.5), 3.5 + gumbel(() => 0.5));
 });
+test('scoreFind ignores inherited properties such as a constructor tag', () => {
+  const score = scoreFind(F('a', ['constructor']), { ...DEFAULT_TASTE, tags: {}, sources: {} }, () => 0.5);
+  assert.equal(typeof score, 'number');
+  assert.equal(score, gumbel(() => 0.5));
+});
+test('tasteWhy prints a fractional weight and falls back without a positive tag', () => {
+  const liked = pickNext({ ...opts, candidates: [F('a', ['retro'])], current: null, taste: { ...warm, tags: { retro: 1.5 } }, rand: seq(0.5) });
+  assert.equal(liked.why, 'matches retro +1.5');
+  const none = pickNext({ ...opts, candidates: [F('a', ['puzzle'])], current: null, taste: warm, rand: seq(0.5) });
+  assert.equal(none.branch, 'taste'); assert.equal(none.why, 'matches your taste');
+});
 test('eligible applies every always-on filter', () => {
   const t = { ...DEFAULT_TASTE, hiddenTags: ['toy'], blockedDomains: ['b.example.com'] };
   assert.equal(eligible(F('a', []), { ...opts, taste: t }), true);

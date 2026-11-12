@@ -23,7 +23,8 @@ export function chooseBranch(rand, s) {
   return 'wildcard';
 }
 
-const weightOf = (weights, key) => weights[key] ?? 0;
+/** Own properties only: ids come from outside, so 'constructor' must not read Object.prototype. */
+const weightOf = (weights, key) => (Object.hasOwn(weights, key) ? weights[key] : 0);
 
 /**
  * A find's taste score: its tag weights plus its source weight (missing weights count as 0), plus Gumbel noise
