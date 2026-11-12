@@ -236,13 +236,18 @@ git commit -m "Add the extension manifest template and browser overlays"
 - Test: `tests/unit/ext-check.test.js`
 
 **Interfaces:**
-- Consumes: `extensionManifest` (Task 1); Plan 01's `build({target, outRoot, id, now})`, `OUTPUTS.extension = ['dist/chrome', 'dist/firefox']`, `runChecks({srcDir, outputs, extraHtml})`, `checkHtml` and `APP_CSP`.
+- Consumes: `extensionManifest` (Task 1); Plan 01's `build({target, outRoot, id, now}) → Promise<{outputs}>`, `OUTPUTS.extension = ['dist/chrome', 'dist/firefox']`, `runChecks({srcDir, outputs, extraHtml}) → Promise<string[]>`, `checkHtml(file, html) → string[]` and `APP_CSP` (`tools/check.js`); the steps later plans added to `build()` for every output: Plan 06's `licenses.json` (from `buildLicenses({versions, target})` in `tools/vendor.js`) and Plan 04's `--linkcheck` rewrite of `data/library.json`.
 - Produces:
   - `buildExtension(browser: 'chrome'|'firefox', outDir: string, {id = process.env.GITHUB_SHA || 'dev', now = new Date()} = {}) → Promise<void>` in `tools/build.js`
   - `checkExtensionDir(dir: string, browser: 'chrome'|'firefox') → Promise<string[]>` in `tools/check.js` (empty array = clean)
+  - `checkHtml(file, html, {csp} = {}) → string[]`: Plan 01's function with an optional expected CSP
   - `EXT_PAGE_CSP` in `tools/check.js`, exactly `APP_CSP` with its `connect-src` replaced by `connect-src 'self' https: http:` (the extension may reach models on your local network): `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`
 
-- [ ] **Step 1: Write the failing tests** in `tests/unit/ext-check.test.js`
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/unit/build.test.js`, Plan 01's placeholder test (named `extension and android targets write only build.json until Plans 07 and 08`, unless Plan 06 renamed it when it added `licenses.json`) still expects the extension folders to hold nothing real. Remove `...OUTPUTS.extension` from its loop and the extension part from its name, for example `android target writes only build.json until Plan 08`. Leave what it asserts about the Android folders as it is: that half belongs to Plans 06 and 08.
+
+Then, in `tests/unit/ext-check.test.js`:
 
 ```js
 let dir;
@@ -252,16 +257,30 @@ before(async () => {
   await buildExtension('chrome', join(dir, 'chrome'), stamp);
   await buildExtension('firefox', join(dir, 'firefox'), stamp);
 });
-const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
-// copyBuild(): cp(join(dir, 'chrome'), <new tmp dir>, {recursive: true}) and return that dir
+const copyBuild = async () => {            // a fresh copy whose last segment is `chrome`, as runChecks needs
+  const d = join(await mkdtemp(join(tmpdir(), 'byways-ext-copy-')), 'chrome');
+  await cp(join(dir, 'chrome'), d, { recursive: true });
+  return d;
+};
+const page = (csp) => `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><script type="module" src="panel.js"></script>`;
 
 for (const b of ['chrome', 'firefox']) test(`buildExtension writes the ${b} manifest, code and data`, async () => {
   const d = join(dir, b);
-  assert.deepEqual(JSON.parse(readFileSync(join(d, 'manifest.json'), 'utf8')), await extensionManifest(b, { version: pkg.version }));
-  for (const f of ['core/engine.js', 'ui/boot.js', 'platform/extension.js', 'data/library.json', 'assets/icons/icon-192.png'])
+  assert.deepEqual(JSON.parse(readFileSync(join(d, 'manifest.json'), 'utf8')), await extensionManifest(b));
+  for (const f of ['core/engine.js', 'ui/boot.js', 'platform/web-voice.js', 'data/library.json', 'assets/icons/icon-192.png'])
     assert.ok(existsSync(join(d, f)), f);
   for (const f of readdirSync('shells/extension').filter((f) => !f.startsWith('manifest.'))) assert.ok(existsSync(join(d, f)), f);
   assert.deepEqual(JSON.parse(readFileSync(join(d, 'build.json'), 'utf8')), { id: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' });
+});
+
+test('build() gives both extension folders their manifest and the licence list', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'byways-ext-all-'));
+  await build({ target: 'extension', outRoot: out, id: 'abc123', now: new Date('2026-11-11T00:00:00Z') });
+  for (const d of OUTPUTS.extension) {
+    assert.ok(existsSync(join(out, d, 'manifest.json')), d);
+    assert.deepEqual(JSON.parse(readFileSync(join(out, d, 'licenses.json'), 'utf8')).components.map((c) => c.name),
+      ['Byways', 'Atkinson Hyperlegible']);
+  }
 });
 
 test('buildExtension never copies the Lab, vendor or manifest parts', () => {
@@ -299,6 +318,17 @@ test('checkExtensionDir reports a lab folder', async () => {
   mkdirSync(join(d, 'lab'));
   assert.deepEqual(await checkExtensionDir(d, 'chrome'), ['lab/: must not be in the extension build']);
 });
+
+test('checkHtml takes the extension page CSP', () => {
+  assert.deepEqual(checkHtml('app.html', page(EXT_PAGE_CSP), { csp: EXT_PAGE_CSP }), []);
+  assert.deepEqual(checkHtml('app.html', page(APP_CSP), { csp: EXT_PAGE_CSP }), ['app.html: CSP differs from EXT_PAGE_CSP']);
+});
+
+test('runChecks runs the extension checks on a chrome folder', async () => {
+  const d = await copyBuild();
+  mkdirSync(join(d, 'lab'));
+  assert.deepEqual(await runChecks({ srcDir: 'src', outputs: [d], extraHtml: [] }), ['lab/: must not be in the extension build']);
+});
 ```
 
 - [ ] **Step 2: Run the tests and see them fail**
@@ -306,11 +336,11 @@ test('checkExtensionDir reports a lab folder', async () => {
 Run: `node --test tests/unit/ext-check.test.js`
 Expected: FAIL with `does not provide an export named 'buildExtension'`.
 
-In `tests/unit/build.test.js`, rename Plan 01's `extension and android targets write only build.json until Plans 07 and 08` to `android target writes only build.json until Plan 08`, and loop over `OUTPUTS.android` only.
-
 - [ ] **Step 3: Implement `buildExtension(browser, outDir, {id, now})` in `tools/build.js`**
 
-It empties `outDir`, then copies `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` into `outDir` under the same names. It copies every file in `shells/extension/` except `manifest.*.json` to the root of `outDir`. It writes `manifest.json` from `extensionManifest(browser, {version: <package.json version>})` and `build.json` = `{id, builtAt: now.toISOString()}`. It never reads `src/lab`, `src/versions.json` or `vendor/`. The `extension` branch of `build()` (also used by `all` and `--check`) now calls `buildExtension('chrome', join(outRoot, 'dist/chrome'), {id, now})` and the same for `firefox`, instead of writing an empty folder.
+It copies `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` into `outDir` (creating it) under the same names. It copies every file in `shells/extension/` except `manifest.*.json` to the root of `outDir`. It writes `manifest.json` from `extensionManifest(browser)` and `build.json` = `{id, builtAt: now.toISOString()}`. It does not empty `outDir`, because `build()` empties every output first. It never reads `src/lab`, `src/versions.json` or `vendor/`.
+
+In `build()` (also used by `all` and `--check`), the `extension` branch calls `buildExtension('chrome', join(outRoot, 'dist/chrome'), {id, now})` and the same for `firefox`, in the place where Plan 01 made the empty folders. The steps that run on every output after the per-target branch, Plan 06's `licenses.json` and Plan 04's `--linkcheck` rewrite, then apply to the extension folders too. If either of them runs before the per-target branch, move it after: `buildExtension` copies `src/data` over a filtered `library.json`.
 
 - [ ] **Step 4: Implement `checkExtensionDir(dir, browser)` in `tools/check.js`**
 

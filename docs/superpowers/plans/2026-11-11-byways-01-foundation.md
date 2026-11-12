@@ -1785,10 +1785,11 @@ git add shells/pwa/sw.js src/ui/boot.js tests/e2e/sw.spec.js
 git commit -m "Add the offline service worker and the update toast"
 ```
 
-### Task 15: CI and Pages workflows
+### Task 16: CI and Pages workflows
 
 **Files:**
 - Create: `.github/workflows/byways.yml`, `.github/workflows/pages.yml` (repo root)
+- Modify: `README.md` (the §17.5 one-time step)
 - Test: `tests/unit/workflows.test.js`
 
 **Interfaces:**
@@ -1812,10 +1813,13 @@ test('pages.yml builds, assembles _site and deploys', () => {
   for (const s of ['branches: [main]', 'workflow_dispatch:', 'contents: read', 'node tools/build.js --target pwa',
     'cp shells/pwa/landing/index.html "$RUNNER_TEMP/_site/index.html"', 'cp -R dist/pwa/. "$RUNNER_TEMP/_site/byways/"',
     'actions/configure-pages@v6', 'actions/upload-pages-artifact@v5', 'path: ${{ runner.temp }}/_site',
-    'pages: write', 'id-token: write', 'name: github-pages', 'group: pages', 'actions/deploy-pages@v5']) assert.ok(y.includes(s), s);
+    'pages: write', 'id-token: write', 'name: github-pages', 'url: ${{ steps.deployment.outputs.page_url }}', 'group: pages', 'actions/deploy-pages@v5']) assert.ok(y.includes(s), s);
   assert.equal(y.includes('schedule:'), false);
+  assert.doesNotMatch(y, /\{[^}\n]*\$\{\{/);
 });
 ```
+
+The last assertion catches `${{ … }}` inside a YAML flow mapping such as `{ name: x, url: ${{ … }} }`, where the braces are flow indicators and the file no longer parses. Step 5 also runs a real YAML parser over both files.
 
 - [ ] **Step 2: Run it and see it fail**
 

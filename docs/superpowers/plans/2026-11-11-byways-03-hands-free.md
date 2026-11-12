@@ -1757,26 +1757,26 @@ Every control has a visible `<label>`. Each change saves at once with `app.saveS
 - [ ] **Step 4: Run the tests to verify they pass**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-voice.spec.js tests/e2e/handsfree.spec.js`
-Expected: PASS, 6 and 11 tests.
+Expected: PASS, 7 and 17 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/settings/voice.js src/ui/handsfree-ui.js src/ui/views/index.js tests/e2e/helpers/fakes.js tests/e2e/settings-voice.spec.js
+git add src/ui/views/settings/voice.js src/ui/handsfree-ui.js src/ui/views/index.js tests/e2e/settings-voice.spec.js
 git commit -m "Add voice settings, the cloud opt-in and the hands-free first-run step"
 ```
 
-### Task 11: Accessibility settings and the vendored font
+### Task 12: Accessibility settings and the vendored font
 
 **Files:**
 - Create: `src/ui/views/settings/access.js`
 - Create: `src/assets/fonts/atkinson-hyperlegible-latin-400-normal.woff2`, `src/assets/fonts/atkinson-hyperlegible-latin-700-normal.woff2`, `src/assets/fonts/OFL.txt`
-- Modify: `package.json`, `package-lock.json`, `src/ui/styles/app.css`, `src/ui/styles/themes.css`, `src/ui/views/index.js`
+- Modify: `package.json`, `package-lock.json`, `src/ui/styles/app.css`, `src/ui/views/index.js`
 - Test: `tests/unit/fonts.test.js`, `tests/e2e/settings-access.spec.js`
 
 **Interfaces:**
-- Consumes: `registerSettingsSection`, `applyAccessSettings(settings)` (`ui/theme.js`), `clampDwell` (Task 4), `app.saveSettings(patch)`.
-- Produces: the settings values `theme: 'contrast'` and `font: 'atkinson'` (besides `'system'`, and Plan 01's `'light'`/`'dark'`), and `motion: 'reduce'|'full'` (besides `'system'`).
+- Consumes: `registerSettingsSection`, `applyAccessSettings(settings)` (`ui/theme.js`), `clampDwell` (Task 4), `app.saveSettings(patch)`; in tests `test`, `expect`, `stageLibrary` (`helpers/net.js`), `gotoApp` (`helpers/app.js`), `installFakeSpeech` (`helpers/fakes.js`).
+- Produces: no new setting values. The section saves the overview's values, which Plan 01's `applyAccessSettings` and tokens already handle: `theme` `system|light|dark|high-contrast` (Plan 01's `[data-theme="high-contrast"]` tokens), `font` `system|atkinson` and `motion` `system|reduced|full` (Plan 01's `[data-motion="reduced"]` rule).
 
 The Accessibility section (`id:'access'`, `label:'Accessibility'`, `order:40`). Each change saves and then calls `applyAccessSettings(app.getSettings())`.
 
