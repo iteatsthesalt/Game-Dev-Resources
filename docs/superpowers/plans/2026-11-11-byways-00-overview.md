@@ -35,7 +35,7 @@ Dependencies:
 - **Language.** JavaScript ES2022 modules, with no TypeScript, no framework and no bundler. Types are JSDoc typedefs in `src/core/types.js`. Kotlin is used only in `shells/android/`.
 - **Core boundary.** `src/core/**` must not touch `window`, `document` or `chrome`. It may use web APIs that Node 22 also has: `fetch`, `Response`, `URL`, `TextEncoder`, `crypto.subtle`, `CompressionStream`, `structuredClone` and `AbortController`. Anything else comes in as a parameter, usually through the `Platform` object.
 - **Data loading.** Data files (`src/data/*.json`) are never imported by core modules. `ui/boot.js` fetches them and passes them in, and tests read them with `fs`.
-- **Forbidden in `src/**`:** `innerHTML`, `outerHTML =`, `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and remote `<script src="http`. The `--check` build fails on any of them (Plan 01, Task 2).
+- **Forbidden in `src/**`:** `innerHTML`, `outerHTML =`, `insertAdjacentHTML`, `document.write`, `eval(`, `new Function` and remote `<script src="http`. The `--check` build fails on any of them (Plan 01, Tasks 8–9: `tools/check.js`, run by `--check`).
 - **Unit tests:** `node:test`, in `tests/unit/**/*.test.js`, with no network. Run them with `npm test`.
 - **End-to-end tests:** `@playwright/test@1.63.0` (it matches the preinstalled Chromium build 1243 in `/opt/pw-browsers`), in `tests/e2e/**/*.spec.js`. Run them with `npm run e2e`. Every non-localhost request is mocked (see "Test helpers").
 - **Commits.** Make one commit per task, with an imperative subject naming the change, for example `Add the seen-set with URL hashing`.
@@ -366,7 +366,22 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **UI conventions (Plan 01):**
 
-- The router renders each view's `title` as the page's `<h1>`.
+- **The routed page.** The router renders each view's `title` as the page's `<h1>`. The DOM is `#app > div.view > h1` (the title) followed by `div.view-body`, which is the container passed to `render`.
+  - Views never render their own h1. Settings section pages use an h2.
+  - A view that must change its heading text sets `container.closest('.view').querySelector('h1').textContent`. Daily Fate does this to show "Daily Fate (backup pick)".
+  - Import keeps the heading "Import" and says "Shared with you" in the body.
+- **Android Back in the router.** `startRouter` listens for `byways:back` and reads `event.defaultPrevented` on a microtask, after every listener has run. It calls `history.back()` only when nothing prevented the event and the hash is not home (`''`, `'#'`, `'#/'`, `'#/stumble'`). At home, Back leaves the app. Plan 08's `attach` only dispatches the event. It reports `handled = prevented || not home`, and never calls `history.back()` itself.
+- **Toasts.** `showToast(message, {undo, ms = 5000, action: {label, run}} = {}) → {close()}`. With `ms: 0` a toast is sticky, and later toasts do not replace it (for example the update toast).
+- **`NetError`.** It can be built as `new NetError(kind, message = kind, {status, retryAfterMs, source} = {})` or as `new NetError({kind, message, status, retryAfterMs, source})`.
+- **`tools/check.js` CSP rule.** `expectedCsp(path) → string`:
+  - Pages in a `lab` folder get `LAB_CSP`.
+  - `lab/index.html` adds `'self'` to `frame-src`, and `dos.html` and `console.html` add `blob:` to `connect-src`.
+  - If `flash.html` needs `'unsafe-inline'`, Plan 06 adds that case.
+- **Other Plan 01 names:**
+  - `dataUrlFor(platformName, file)` (boot.js; `app.dataUrl` wraps it);
+  - `renderIcons({svgPath, outDir})` (tools/icons.js);
+  - `startRouter(render, win)`;
+  - the unit helpers `tests/unit/helpers/async.js` (`flush()`, `deferred()`) and `tests/unit/helpers/fake-dom.js` (`fakeDocument() → {document, created}`).
 - **Orders.**
   - Settings sections: `taste` 10, `sources` 20, `voice` 30, `access` 40, `ai` 50, `data` 60, `privacy` 70, `about` 90, `licenses` 100.
   - First-run steps: `welcome` 10, `interests` 20, `handsfree` 30, `ai` 40.
@@ -850,7 +865,15 @@ No environment variable sets the version. The release APK asset is named `byways
     - `skipFirstRun(page) → Promise<void>`: clicks **Skip** while it is visible.
   - **`tests/e2e/helpers/axe.js`:** `expectNoSeriousA11y(page, {exclude = []} = {}) → Promise<void>`.
   - **`tests/e2e/helpers/fakes.js`:** `installFakeSpeech(page)`. Plan 08 later adds `installFakeAndroidBridge(page, opts)`.
-  - **`tests/unit/helpers/fake-dom.js`:** a minimal DOM for unit tests of `ui/dom.js`.
+  - **`tests/unit/helpers/fake-dom.js`:** `fakeDocument() → {document, created}`. **`tests/unit/helpers/async.js`:** `flush()` and `deferred()`.
+  - **Strict console rule.** The e2e fixture fails a test on ANY console error, including 404 "Failed to load resource" messages. Specs must stage or route every same-origin file their views fetch, for example the generated `data/*.json` files, which `dist/pwa` lacks in e2e. For known harmless noise, use `test.use({ignoreProblems: [...]})`. `pageProblems` returns strings of the form `'console: <text>'` and `'pageerror: <message>'`.
+  - **Service workers** are blocked in e2e unless a spec sets `test.use({serviceWorkers: 'allow'})`. While blocked, `navigator.serviceWorker.ready` never settles and `page.route` does not see worker requests.
+  - **`installFakeSpeech` window hooks:**
+    - `__say(text, final = true)`, `__voiceError(code)`, `__recognizers`, `__spoken`, `__wake = {requests, releases}`;
+    - `cancel` fires `interrupted` or `canceled`;
+    - the fake voices are `local-en` and `net-en`.
+
+    Plan 03 extends it, with `__utterances`, `__speechCancels`, `__endSpeech()`, `__recStarts`, `__media`, `__announcements`, and the options `{available, holdSpeech}`.
 
 ## Global constraints (every plan)
 

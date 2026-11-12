@@ -1101,21 +1101,26 @@ test('falls back to the backup pick with its label', async ({ page }) => {
   for (const t of ['Comet Hopper', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
 });
 test('rolls over at UTC midnight while open', async ({ page }) => {   // Review Focus 3
-  await at(page, '2026-11-11T23:59:50Z'); await openView(page, '#/daily');
+  await at(page, '2026-11-11T23:59:50Z'); await gotoApp(page, '#/daily');
   await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
   await page.clock.runFor(15000);
   await expect(page.getByText('Picks for 2026-11-12 (UTC)')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
   await expect(page.getByText('Moth Radio').first()).toBeVisible();
 });
-test("Share today's Fate shares spoiler-free text and the day link", async ({ page }) => {
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+test('the game pick links to its details page and plays in place', async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
+  await expect(pick(page, 'Game').getByRole('link', { name: 'Details on archive.org' })).toHaveAttribute('href', 'https://archive.org/details/msdos_Whizz_1994');
+  await pick(page, 'Game').getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('iframe')).toHaveAttribute('src', 'https://archive.org/embed/msdos_Whizz_1994');
+});
+test("Share today's Fate shares spoiler-free text and the Pages link", async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
   await page.getByRole('button', { name: "Share today's Fate" }).click();
-  const shared = await page.evaluate(() => window.__shared);
-  assert.deepEqual(shared, { title: 'Byways Daily Fate', text: 'My Byways Daily Fate for 2026-11-11. No spoilers: open it to see the three picks.', url: 'http://localhost:4321/Game-Dev-Resources/byways/#/daily/2026-11-11' });
+  expect(await page.evaluate(() => window.__shared)).toEqual({ title: 'Byways Daily Fate', text: 'My Byways Daily Fate for 2026-11-11. No spoilers: open it to see the three picks.', url: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/#/daily/2026-11-11' });
 });
 test("a past day's link shows that day's backup pick", async ({ page }) => {
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily/2026-11-10');
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily/2026-11-10');
   await expect(page.getByText('Picks for 2026-11-10 (UTC)')).toBeVisible();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
   await expect(page.getByText(/Next Daily Fate/)).toHaveCount(0);
@@ -1123,53 +1128,56 @@ test("a past day's link shows that day's backup pick", async ({ page }) => {
 test('malformed and future day links show today', async ({ page }) => {
   await at(page, '2026-11-11T15:00:00Z');
   for (const hash of ['#/daily/2026-13-45', '#/daily/2099-01-01', '#/daily/x']) {
-    await openView(page, hash);
+    await gotoApp(page, hash);
     await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
   }
 });
 test('the streak counts days in a row and stays quiet on day one', async ({ page }) => {
-  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily');
   await expect(page.getByText(/in a row/)).toHaveCount(0);
-  await page.clock.setSystemTime(new Date('2026-11-12T15:00:00Z')); await page.reload(); await openView(page, '#/daily');
+  await page.clock.setSystemTime(new Date('2026-11-12T15:00:00Z')); await page.reload(); await gotoApp(page, '#/daily');
   await expect(page.getByText('2 days in a row.')).toBeVisible();
 });
+test('axe finds no serious issues on Daily Fate', async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await gotoApp(page, '#/daily'); await expectNoSeriousA11y(page);
+});
 ```
-
-(`assert` is `node:assert/strict`.)
 
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/daily.spec.js`
-Expected: FAIL (no Daily Fate heading).
+Expected: FAIL: no picks (Plan 01's placeholder view says "Nothing here yet.").
 
 - [ ] **Step 3: Implement `src/ui/views/daily.js`**
 
-- **Date.** Read it from `location.hash` (`#/daily/<date>`). Accept it only when it matches `/^\d{4}-\d{2}-\d{2}$/`, round-trips through `utcDate(Date.parse(date + 'T00:00:00Z'))`, and is not after today. Otherwise use today, `utcDate(app.clock.now())`.
-- **Loading.** `loadDaily({date, fetchDailyFile, backup})`. `fetchDailyFile` is `app.http.getJson(new URL('data/daily.json', document.baseURI).href, {source: 'pages'})`. `backup` is `backupDaily({date, library: app.data.library, vaultStarter: app.data.vaultStarter, fetchWikiFeatured, fetchApod})`. `fetchWikiFeatured(d)` gets `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` with `{source: 'wikipedia', headers: {'Api-User-Agent': 'Byways/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)'}}` and returns `.tfa`. `fetchApod(d)` gets `https://api.nasa.gov/planetary/apod?api_key=<key>&date=<d>&thumbs=true` with `{source: 'apod'}`, where the key is `await app.platform.secrets.get('src:apod')` or `DEMO_KEY`.
-- **Page.** `h1` "Daily Fate", or "Daily Fate (backup pick)" when `backup` is true. Then the lines `Picks for <date> (UTC)` and, for a backup, "This is the backup pick. Friends on another version may see a different game or web pick." Then one `h2` section per pick: "Game", "Web" or "Wonder". Each has a list item with `renderCard` and a player slot, and its actions go to `handleCardAction` (Play uses `mountPlayer`).
-- **Rollover.** For today only, show `Next Daily Fate: <time> your time`, where `<time>` is `new Date(nextUtcMidnight(now)).toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})`. When the hash carries no date, set a `setTimeout` for `nextUtcMidnight(now) − now + 1000` ms that renders the view again. `leave()` clears it.
-- **Share.** A button "Share today's Fate" calls `app.platform.share({title: 'Byways Daily Fate', text: 'My Byways Daily Fate for <date>. No spoilers: open it to see the three picks.', url: location.href.split('#')[0] + '#/daily/<date>'})`. Then it calls `announce('Link copied')` for `'copied'` and `announce('Shared')` for `'shared'`.
+- **Date.** Take it from `render(container, app, params)`'s `params.id`, which the router has decoded. Accept it only when it matches `/^\d{4}-\d{2}-\d{2}$/`, `Date.parse(date + 'T00:00:00Z')` is not `NaN`, the result round-trips through `utcDate`, and it is not after today. Otherwise use today, `utcDate(app.clock.now())`.
+- **Loading.** `loadDaily({date, fetchDailyFile, backup})`. `fetchDailyFile` is `app.http.getJson(app.dataUrl('daily.json') + '?d=' + date, {source: 'pages'})`. The date in the query gets past a service worker's or browser's copy of yesterday's file, since data files are stale-while-revalidate (§13.2). `backup` is `backupDaily({date, library: app.data.library, vaultStarter: app.data.vaultStarter, fetchWikiFeatured, fetchApod})`. `fetchWikiFeatured(d)` gets `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` with `{source: 'wikipedia', headers: {'Api-User-Agent': IDENT}}` and returns `.tfa`. `fetchApod(d)` gets `https://api.nasa.gov/planetary/apod?api_key=<key>&date=<d>&thumbs=true` with `{source: 'apod'}`, where the key is `await app.secrets.get('src:datagov')` or `DEMO_KEY`. With `DEMO_KEY` it follows Plan 02's APOD counter (`apod:count:<today>` in the app cache: no request at 45 or more, one more per request, 50 after a 429). Both fetchers cache their reply per date for 7 days in `createCache(app.store, app.clock)`.
+- **Page.** `h1` "Daily Fate", or "Daily Fate (backup pick)" when `backup` is true. Then the lines `Picks for <date> (UTC)` and, for a backup, "This is the backup pick. Friends on another version may see a different game or web pick." Then one `<section aria-labelledby>` per pick with an `h2` "Game", "Web" or "Wonder", holding `renderCard(find, {headingLevel: 3, onAction})` with the Vault's `onAction` rule (Task 9), so **Play** mounts the player in place (Task 10).
+- **Rollover.** For today only, show `Next Daily Fate: <time> your time`, where `<time>` is `new Date(nextUtcMidnight(now)).toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})`. When `params.id` is absent, set a `setTimeout` for `nextUtcMidnight(now) − now + 1000` ms that renders the view again. `leave()` clears it; a mounted player's watchdog stops by itself once its card has left the document (Task 10).
+- **Share.** A button "Share today's Fate" calls `app.platform.share({title: 'Byways Daily Fate', text: 'My Byways Daily Fate for <date>. No spoilers: open it to see the three picks.', url: SHARE_BASE + '#/daily/' + date})`, so links shared from the extension or Android open on Pages. Then it calls `announce('Link copied')` for `'copied'` and `announce('Shared')` for `'shared'`.
 - **Streak.** Keep the UTC dates of visits on today's view in `health` under `daily:visits` (unique, last 60). Count the run of consecutive days that ends today. When it is 2 or more, show `<n> days in a row.` Show no prompts and no reminders.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/daily.spec.js`
-Expected: PASS, 8 tests.
+Expected: PASS, 10 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/daily.js src/ui/views/index.js tests/fixtures/routes.js tests/fixtures/http/daily/daily-2026-11-11.json tests/e2e/daily.spec.js
+git add src/ui/views/daily.js src/ui/views/index.js tests/fixtures/http/daily/daily-2026-11-11.json tests/e2e/daily.spec.js
 git commit -m "Add the Daily Fate view with backup label, rollover and share"
 ```
 
+Before committing, also `git add tests/e2e/axe.spec.js` if this task changed it.
+
 ---
 
-### Task 10: The link check and the build exclusion
+### Task 12: The link check and the build exclusion
 
 **Files:**
 - Create: `tools/linkcheck.js`
-- Modify: `tools/build.js` (add `excludeDeadLinks`, the `--linkcheck <file>` option, and a main-module guard if it has none)
+- Modify: `tools/build.js` (add `excludeDeadLinks` and the `--linkcheck <file>` option)
 - Test: `tests/unit/linkcheck.test.js`, `tests/unit/build-linkcheck.test.js`
 
 **Interfaces:**
@@ -1178,7 +1186,7 @@ git commit -m "Add the Daily Fate view with backup label, rollover and share"
 
 - [ ] **Step 1: Write the failing tests**
 
-`run = (responder, previous) => checkLibrary({entries: [{id: 'lib-a', url: 'https://a.example/'}], fetch: fakeFetch([[/a\.example/, responder]]).fetch, previous, now: Date.UTC(2026, 10, 11, 0, 7)})`. `prev = (n) => ({v: 1, results: {'lib-a': {ok: false, status: 404, failStreak: n}}})`.
+`run = (responder, previous) => checkLibrary({entries: [{id: 'lib-a', url: 'https://a.example/'}], fetch: fakeFetch([[/a\.example/, responder]]).fetch, previous, now: Date.UTC(2026, 10, 11, 0, 7)})`. `prev = (n, checkedAt = '2026-11-10T00:07:00.000Z') => ({v: 1, checkedAt, results: {'lib-a': {ok: false, status: 404, failStreak: n}}})`.
 
 ```js
 test('a live link resets its fail streak', async () => {
@@ -1194,6 +1202,11 @@ test('HEAD 405 retries with GET, and 401/403/429 do not count as dead', async ()
   const r = await run((url, init) => { methods.push(init.method); return { status: init.method === 'HEAD' ? 405 : 200 }; });
   assert.deepEqual(methods, ['HEAD', 'GET']); assert.equal(r.results['lib-a'].ok, true);
   for (const s of [401, 403, 429]) assert.deepEqual((await run(() => ({ status: s }), prev(1))).results['lib-a'], { ok: true, status: s, failStreak: 0 });
+});
+test('a second check on the same UTC day does not count again', async () => {   // Review Focus 4
+  const today = '2026-11-11T00:01:00.000Z';
+  assert.equal((await run(() => ({ status: 404 }), prev(1, today))).results['lib-a'].failStreak, 1);
+  assert.equal((await run(() => ({ status: 404 }), prev(0, today))).results['lib-a'].failStreak, 1);
 });
 test('sends the descriptive User-Agent and stamps checkedAt', async () => {
   const net = fakeFetch([[/a\.example/, () => ({ status: 200 })]]);

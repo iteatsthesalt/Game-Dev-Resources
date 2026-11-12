@@ -1177,7 +1177,7 @@ git add shells/extension/panel.html shells/extension/app.html shells/extension/p
 git commit -m "Show the tab's find, a mini feed and Grant access in the side panel"
 ```
 
-### Task 7: Mic grant page and voice messages
+### Task 7: Mic grant page and hands-free on each surface
 
 **Files:**
 - Create: `shells/extension/permission.html`, `shells/extension/permission.js`
@@ -1185,67 +1185,95 @@ git commit -m "Show the tab's find, a mini feed and Grant access in the side pan
 - Test: `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}` (Task 3); `app.handsFree.state`, `.start()` and `.command(id)` (`handsfree.js`); `announce`; `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`); `expectNoSeriousA11y` (`tests/e2e/helpers/axe.js`); the Task 5 spec helpers and the `extArgs` fixture option.
+- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}`, `toggleListening(hf, {activated, start})` and `platform.leanBack` (Task 3); Plan 03's `startHandsFree(app) → Promise<void>` (`ui/handsfree-ui.js`), `app.handsFree` and the `#hf-listening` and `#hf-countdown` elements, with the contract additions `HandsFree.listening`, `HandsFree.setListening(on)` and `startHandsFree` passing `leanBack: app.platform.leanBack ?? true` to `createHandsFree`; `announce`; `expectNoSeriousA11y` (`tests/e2e/helpers/axe.js`); the Task 5 spec helpers and the `extArgs` fixture option; Playwright's `context.clock`.
 - Produces: the `micGranted` message `{type: 'micGranted', granted: boolean}`.
 
 - [ ] **Step 1: Write the failing tests**
 
 ```js
-test('the mic page grants, tells the open pages and closes', async ({ context, extId }) => {
-  const app = await extPage(context, extId, 'app.html');
-  const perm = await extPage(context, extId, 'permission.html');
-  const closed = perm.waitForEvent('close');
-  await expect(perm.locator('#status')).toHaveText('Microphone ready. This tab will close.');
-  await closed;
-  await expect(app.locator('#live-polite')).toHaveText('Microphone ready. Press Start.');
-});
-
-test.describe('mic blocked', () => {
-  test.use({ extArgs: ['--deny-permission-prompts'] });
-  test('the mic page says the mic is blocked and stays open', async ({ context, extId }) => {
+test.describe('hands-free', () => {
+  test('the mic page grants, tells the open pages and closes', async ({ context, extId }) => {
+    const app = await extPage(context, extId, 'app.html');
+    await useSources(app);
     const perm = await extPage(context, extId, 'permission.html');
-    await expect(perm.getByRole('heading', { level: 1 })).toHaveText('Enable hands-free');
-    await expect(perm.locator('#status')).toHaveText('Microphone blocked. Allow it for Byways in your browser settings, then press Start again.');
-    expect(perm.isClosed()).toBe(false);
+    const closed = perm.waitForEvent('close');
+    await expect(perm.locator('#status')).toHaveText('Microphone ready. This tab will close.');
+    await closed;
+    await expect.poll(() => said(app)).toContain('Microphone ready. Press Start.');
   });
-});
 
-test('the first Start opens the mic page when the mic is not granted', async ({ context, extId }) => {
-  const app = await context.newPage();
-  await installFakeSpeech(app);
-  await app.goto(`chrome-extension://${extId}/app.html`);
-  await onlyLibrary(app);
-  const [perm] = await Promise.all([context.waitForEvent('page', (p) => p.url().endsWith('/permission.html')),
-    app.getByRole('button', { name: 'Start' }).click()]);
-  expect(perm.url()).toBe(`chrome-extension://${extId}/permission.html`);
-});
+  test.describe('mic blocked', () => {
+    test.use({ extArgs: ['--deny-permission-prompts'] });         // the page stays open
+    test('the mic page says the mic is blocked and stays open', async ({ context, extId }) => {
+      const perm = await extPage(context, extId, 'permission.html');
+      await expect(perm.getByRole('heading', { level: 1 })).toHaveText('Enable hands-free');
+      await expect(perm.locator('#status')).toHaveText('Microphone blocked. Allow it for Byways in your browser settings, then press Start again.');
+      expect(perm.isClosed()).toBe(false);
+    });
+    test('the mic page has no serious accessibility issues', async ({ context, extId }) => {
+      const perm = await extPage(context, extId, 'permission.html');
+      await expect(perm.locator('#status')).not.toBeEmpty();
+      await expectNoSeriousA11y(perm);
+    });
+  });
 
-test('the toggle-listening command stops listening in the Byways tab', async ({ context, sw, extId }) => {
-  const perm = await extPage(context, extId, 'permission.html');
-  await perm.waitForEvent('close');
-  const app = await context.newPage();
-  await installFakeSpeech(app);
-  await app.goto(`chrome-extension://${extId}/app.html#/stumble`);
-  await onlyLibrary(app);
-  await app.getByRole('button', { name: 'Start' }).click();
-  await sw.evaluate(() => chrome.runtime.sendMessage({ type: 'toggleListening' }));
-  await expect(app.locator('#live-polite')).toHaveText('Listening off');   // Plan 03's stopListening announcement
-});
+  test('the first Start opens the mic page when the mic is not granted', async ({ context, extId }) => {
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    const [perm] = await Promise.all([context.waitForEvent('page', (p) => p.url().endsWith('/permission.html')),
+      app.getByRole('button', { name: 'Start' }).click()]);
+    expect(perm.url()).toBe(`chrome-extension://${extId}/permission.html`);
+  });
 
-test.describe('mic page accessibility', () => {
-  test.use({ extArgs: ['--deny-permission-prompts'] });        // the page stays open
-  test('the mic page has no serious accessibility issues', async ({ context, extId }) => {
-    const perm = await extPage(context, extId, 'permission.html');
-    await expect(perm.locator('#status')).not.toBeEmpty();
-    await expectNoSeriousA11y(perm);
+  test('Alt+Shift+V turns listening on, off and on again in the Byways tab', async ({ context, sw, extId }) => {
+    await grantMic(context, extId);
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    await app.getByRole('heading', { level: 1 }).click();             // a press on the page, so speech may start
+    const { id, windowId } = await tabInfo(app);
+    const toggle = () => tell(sw, { type: 'toggleListening', tabId: id, windowId, inBywaysTab: true });
+    await toggle();
+    await expect(app.locator('#hf-listening')).toHaveText('Listening');
+    await toggle();
+    await expect.poll(() => said(app)).toContain('Listening off');     // Plan 03's stopListening announcement
+    await expect(app.locator('#hf-listening')).toHaveText('Not listening');
+    await toggle();
+    await expect(app.locator('#hf-listening')).toHaveText('Listening');
+  });
+
+  test('Start in panel.html reads aloud but never moves on by itself', async ({ context, extId }) => {
+    await grantMic(context, extId);
+    await context.clock.install();
+    const panel = await extPage(context, extId, 'panel.html#/stumble');
+    await useSources(panel);
+    await panel.getByRole('button', { name: 'Start' }).click();
+    await expect.poll(() => panel.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
+    const title = panel.locator('#main article.card h2').first();
+    const shown = await title.textContent();
+    await context.clock.runFor(60000);
+    await expect(title).toHaveText(shown);
+    await expect(panel.locator('#hf-countdown')).toBeEmpty();
+  });
+
+  test('Start in the Byways tab moves on by itself after the dwell', async ({ context, extId }) => {
+    await grantMic(context, extId);
+    await context.clock.install();
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    await app.getByRole('button', { name: 'Start' }).click();
+    await expect.poll(() => app.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
+    const title = app.locator('#main article.card h2').first();
+    const shown = await title.textContent();
+    await context.clock.runFor(21000);                                  // the default 20 s dwell
+    await expect(title).not.toHaveText(shown);
   });
 });
 ```
 
 - [ ] **Step 2: Run them and see them fail**
 
-Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "mic|Start|toggle"` (this also picks up the mic page accessibility test)
-Expected: FAIL. `permission.html` is missing, so `#status` times out, and the toggle test never sees `Listening off`.
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "hands-free"`
+Expected: FAIL. `permission.html` is missing, so `#status` and `grantMic`'s `close` time out, and the first Start opens no mic page.
 
 - [ ] **Step 3: Write `permission.html`**
 
@@ -1259,13 +1287,15 @@ It calls `navigator.mediaDevices.getUserMedia({audio: true})` on load and stops 
 
 - [ ] **Step 5: Handle the voice messages in `panel.js`** (both surfaces)
 
-- `micGranted`: `announce('Microphone ready. Press Start.')` when granted, else `announce('Microphone blocked.', {assertive: true})`.
-- `toggleListening`: `app.handsFree.start()` when `app.handsFree.state === 'idle'`, else `app.handsFree.command('stopListening')`.
+- `micGranted` (before `boot`, since it needs no `app`): `announce('Microphone ready. Press Start.')` when granted, else `announce('Microphone blocked', {assertive: true})`, Plan 03's wording for a blocked mic.
+- `toggleListening` (after `ready`): only the page the message names acts. The Byways tab acts when `msg.inBywaysTab` and `msg.tabId` is its own tab id (`ext.tabs.getCurrent()`); the panel acts when `!msg.inBywaysTab` and `msg.windowId` is its window (`ext.windows.getCurrent()`). That page runs `toggleListening(app.handsFree, {activated: navigator.userActivation?.hasBeenActive ?? true, start: () => startHandsFree(app)})` and announces `Press Start to turn on hands-free.` when the result is `'needs-start'`. A command relayed from the background gives the page no user activation, and a page that was never pressed cannot start speech.
+
+The side panel never auto-advances because `platform.leanBack` is `false` on the panel surface (Task 3). The two lean-back tests also need Plan 03's side of that: `createHandsFree` takes the contract's `leanBack` option, and `startHandsFree` passes `leanBack: app.platform.leanBack ?? true` to it. The toggle test needs Plan 03's `listening` and `setListening`.
 
 - [ ] **Step 6: Run them and see them pass**
 
-Run the Step 2 command with `-g "mic|Start|toggle"`.
-Expected: PASS, 5 tests.
+Run the Step 2 command again.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 7: Run the whole suite**
 
@@ -1276,7 +1306,7 @@ Expected: both exit with code 0.
 
 ```bash
 git add shells/extension/permission.html shells/extension/permission.js shells/extension/panel.js tests/e2e/extension.spec.js
-git commit -m "Add the one-time mic grant page and the extension voice messages"
+git commit -m "Add the one-time mic grant page, the listening toggle and lean-back per surface"
 ```
 
 ### Task 8: CI: extension zips and the extension spec

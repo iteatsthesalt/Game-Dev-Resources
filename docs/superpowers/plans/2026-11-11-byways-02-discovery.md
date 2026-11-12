@@ -2317,32 +2317,30 @@ git commit -m "Add Your taste settings and the first-run interests step"
 ### Task 28: Sources and Data settings
 
 **Files:**
-- Create: `src/ui/views/settings/sources.js`, `src/ui/views/settings/data.js`
-- Modify: `src/ui/views/index.js` (import both)
-- Test: `tests/e2e/settings-sources-data.spec.js`
+- Create: `src/ui/views/settings/sources.js`
+- Modify: `src/ui/views/index.js` (import it)
+- Test: `tests/e2e/settings-sources.spec.js`
 
 **Interfaces:**
-- Consumes: `registerSettingsSection`, `app.saveSettings`, `app.store`, `app.seen`, `app.clock`, `platform.secrets`, `platform.files`, `SOURCES`, `enabledSources` (Task 5), `exportBackup`, `importBackup`, `backupFileName` (Task 10), `showToast`, `announce`. Probe results are read from `health['probe:<platform.name>']`.
-- Produces:
-  - `registerSettingsSection({id: 'sources', label: 'Sources', order: 30, render})`:
-    - Checkboxes **Family filter** (`familyFilter`, hint `'Keeps mixed sources out of Fate and lean-back.'`) and **Check links before showing** (`checkLinks`, hint `'This contacts each site before it is shown.'`).
-    - One row per `SOURCES` adapter: a checkbox `'Use <name>'` (checked when `settings.sources[id]?.enabled ?? key !== 'required'`), for `fate: true` adapters a select `'Fate weight for <name>'` with options 0–3 (default 1), and a status line: `'Not reachable from the web app. It works in the extension and the Android app.'` for a probe-tier source whose stored probe result is not `'ok'` on `pwa`, or `'Needs a key.'` for a `required` key with no secret. Changes save to `settings.sources[id]`.
-    - A **Keys** group of password fields, each with **Save** and **Delete**: **Europeana key** (`src:europeana`), **Openverse client ID** and **Openverse client secret** (one **Save** stores the JSON in `src:openverse`), **api.data.gov key (APOD and Smithsonian)** (`src:apidatagov`), **Marginalia key** (`src:marginalia`) and **GitHub token (read-only)** (`src:github`). A saved field is cleared and shows `'Saved on this device.'`; a stored key is never put back in a field, which shows `'A key is saved.'` instead. Saving the Europeana, Openverse or api.data.gov key also sets `enabled: true` for `europeana`, `openverse` or `smithsonian`. **Delete** shows `'Deleted.'`
-  - `registerSettingsSection({id: 'data', label: 'Data', order: 80, render})`: `'You have seen <n> find(s).'`; an **Include keys** checkbox that shows `'Anyone who gets this file can use your keys.'`; **Export backup** (`platform.files.save(backupFileName(clock, includeKeys), <JSON Blob>)`); **Import backup** (`platform.files.pick('.json,application/json')`, then `importBackup`, then the toast `'Imported <c> collection(s) and <s> seen find(s).'`; any failure shows and assertively announces `'This is not a Byways backup file.'`); **Reset seen**, which asks `'Forget every find you have seen? You may see them again.'` with **Reset** and **Cancel**, then calls `seen.reset()` and toasts `'Seen list cleared.'`
+- Consumes: `registerSettingsSection`, `app.saveSettings`, `app.getSettings`, `app.store`, `app.secrets` (Task 22), `SOURCES` (Task 5), `showToast`, `announce`. Probe results are read from `health['probe:<platform.name>']`.
+- Produces: `registerSettingsSection({id: 'sources', label: 'Sources', order: 20, render})`:
+  - Checkboxes **Family filter** (`familyFilter`, hint `'Keeps mixed sources out of Fate and lean-back.'`) and **Check links before showing** (`checkLinks`, hint `'This contacts each site before it is shown.'`).
+  - One row per `SOURCES` adapter, carrying `data-source="<id>"`: a checkbox `'Use <name>'` (checked when `settings.sources[id]?.enabled ?? key !== 'required'`), for `fate: true` adapters a select `'Fate weight for <name>'` with options 0–3 (default 1), and a `.status` line: `'Not reachable from the web app. It works in the extension and the Android app.'` for a probe-tier source whose stored probe result is not `'ok'` on `pwa`, or `'Needs a key.'` for a `required` key with no secret in `app.secrets`. Changes save to `settings.sources[id]`.
+  - A **Keys** group of password fields, each in an element carrying `data-key="<secret id>"` (Plan 05's key rows use the same attribute) with **Save** and **Delete**: **Europeana key** (`src:europeana`), **Openverse client ID** and **Openverse client secret** (one **Save** stores the JSON `{clientId, clientSecret}` in `src:openverse`), **api.data.gov key (APOD and Smithsonian)** (`src:datagov`), **Marginalia key** (`src:marginalia`) and **GitHub token (read-only)** (`src:github`). Every read and write goes through `app.secrets`. A saved field is cleared and shows `'Saved on this device.'`; a stored key is never put back in a field, which shows `'A key is saved.'` instead. Saving the Europeana, Openverse or api.data.gov key also sets `enabled: true` for `europeana`, `openverse` or `smithsonian`. **Delete** shows `'Deleted.'`
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
 // same imports, `small` and `open` helper as stumble.spec.js
-test('axe finds no serious issues on Sources and Data', async ({ page }) => {
-  await open(page, small);
-  for (const s of ['sources', 'data']) { await page.goto(`./#/settings/${s}`); await expectNoSeriousA11y(page); }
+test('axe finds no serious issues on Sources', async ({ page }) => {
+  await open(page, small, '#/settings/sources'); await expectNoSeriousA11y(page);
 });
 test('a source that is off gets no requests', async ({ page }) => {
   await open(page, small); await page.goto('./#/settings/sources');
   await page.getByRole('checkbox', { name: 'Use Wikipedia' }).uncheck();
-  const hits = []; page.on('request', (r) => { if (r.url().includes('wikipedia.org')) hits.push(r.url()); });
-  await page.goto('./#/stumble'); await page.getByRole('button', { name: 'Next' }).click();
+  const hits = []; page.on('request', (r) => { if (/en\.wikipedia\.org\/(api\/rest_v1\/page\/random|w\/api\.php)/.test(r.url())) hits.push(r.url()); });
+  const refill = page.waitForRequest(/api\.inaturalist\.org/);
+  await page.goto('./#/stumble'); await page.getByRole('button', { name: 'Next' }).click(); await refill;
   expect(hits).toEqual([]);
   await page.goto('./#/settings/sources'); await expect(page.getByRole('checkbox', { name: 'Use Wikipedia' })).not.toBeChecked();
 });
@@ -2354,6 +2352,52 @@ test('the link check note, the probe note and a key that turns Europeana on', as
   await expect(page.locator('[data-key="src:europeana"]')).toContainText('Saved on this device.');
   await expect(page.getByLabel('Europeana key')).toHaveValue('');
   await expect(page.getByRole('checkbox', { name: 'Use Europeana' })).toBeChecked();
+});
+test('Fate weights of 0 leave the starter library as the only Fate source', async ({ page }) => {
+  await open(page, small); await page.goto('./#/settings/sources');
+  for (const weight of await page.getByLabel(/^Fate weight for (?!Starter library)/).all()) await weight.selectOption('0');
+  await page.goto('./#/stumble'); await page.getByRole('radio', { name: 'Fate' }).check();
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(page.locator('article.card .why')).toHaveText('Fate · pure random · Starter library');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-sources.spec.js`
+Expected: FAIL: no checkbox named `Use Wikipedia`.
+
+- [ ] **Step 3: Implement `settings/sources.js`**
+
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
+
+Run: `npm run e2e -- tests/e2e/settings-sources.spec.js`, then `npm run e2e`
+Expected: PASS, 4 tests, then the whole suite passes.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/sources.js src/ui/views/index.js tests/e2e/settings-sources.spec.js
+git commit -m "Add the Sources settings with source keys and Fate weights"
+```
+
+### Task 29: Data settings
+
+**Files:**
+- Create: `src/ui/views/settings/data.js`
+- Modify: `src/ui/views/index.js` (import it)
+- Test: `tests/e2e/settings-data.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection`, `app.store`, `app.seen`, `app.clock`, `app.secrets`, `app.history.reload` (Task 2), `app.engine.reload` (Task 20), `platform.files`, `exportBackup`, `importBackup`, `backupFileName` (Task 10), `showToast`, `announce`.
+- Produces: `registerSettingsSection({id: 'data', label: 'Data', order: 60, render})`: `'You have seen <n> find(s).'`; an **Include keys** checkbox that shows `'Anyone who gets this file can use your keys.'`; **Export backup** (`platform.files.save(backupFileName(clock, includeKeys), <JSON Blob of exportBackup(store, {includeKeys, app: platform.name, clock, secrets: app.secrets})>)`); **Import backup** (`platform.files.pick('.json,application/json')`, then `importBackup(store, data, {secrets: app.secrets})`, then `await app.history.reload()` and `await app.engine.reload()` so the running app uses what was written, then the toast `'Imported <c> collection(s) and <s> seen find(s).'`; any failure shows and assertively announces `'This is not a Byways backup file.'`); **Reset seen**, which asks `'Forget every find you have seen? You may see them again.'` with **Reset** and **Cancel**, then calls `seen.reset()` and toasts `'Seen list cleared.'`
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('axe finds no serious issues on Data', async ({ page }) => {
+  await open(page, small, '#/settings/data'); await expectNoSeriousA11y(page);
 });
 test('export, reset and import a backup', async ({ page }) => {
   await open(page, [small[0]]); await page.goto('./#/settings/data');
@@ -2376,33 +2420,96 @@ test('a wrong file and the keys warning', async ({ page }) => {
   const [download] = await Promise.all([page.waitForEvent('download'), page.getByRole('button', { name: 'Export backup' }).click()]);
   expect(download.suggestedFilename()).toMatch(/-with-keys\.json$/);
 });
+test('an imported taste shows in Your taste', async ({ page }) => {
+  await open(page, small, '#/settings/data');
+  const file = { format: 'byways-backup', v: 1, exportedAt: '2026-11-11T12:00:00.000Z', app: 'pwa', settings: {}, collections: [], history: [], seen: [],
+    taste: { v: 1, tags: { space: 2 }, sources: {}, hiddenTags: [], blockedDomains: [], strangeness: 0.25, interests: [], reactions: 3 } };
+  const [chooser] = await Promise.all([page.waitForEvent('filechooser'), page.getByRole('button', { name: 'Import backup' }).click()]);
+  await chooser.setFiles({ name: 'b.json', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify(file)) });
+  await expect(page.getByText('Imported 0 collections and 0 seen finds.')).toBeVisible();
+  await page.goto('./#/settings/taste'); await expect(page.getByRole('slider', { name: 'Space' })).toHaveValue('2');
+});
 ```
-
-(Each source row carries `data-source="<id>"` and each key group `data-key="<secret id>"`, so tests and Plan 05's key rows can find them.)
 
 - [ ] **Step 2: Run it and see it fail**
 
-Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-sources-data.spec.js`
-Expected: FAIL: no checkbox named `Use Wikipedia`.
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-data.spec.js`
+Expected: FAIL: no button named `Export backup`.
 
-- [ ] **Step 3: Implement `settings/sources.js` and `settings/data.js`**
+- [ ] **Step 3: Implement `settings/data.js`**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/settings-sources-data.spec.js`
-Expected: PASS, 5 tests.
+Run: `npm run e2e -- tests/e2e/settings-data.spec.js`, then `npm run e2e`
+Expected: PASS, 4 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/views/settings/sources.js src/ui/views/settings/data.js src/ui/views/index.js tests/e2e/settings-sources-data.spec.js
-git commit -m "Add the Sources and Data settings"
+git add src/ui/views/settings/data.js src/ui/views/index.js tests/e2e/settings-data.spec.js
+git commit -m "Add the Data settings with backup export, import and reset"
 ```
 
-### Task 29: Curate the starter library
+### Task 30: Settings → Privacy
 
 **Files:**
-- Create (or replace Plan 01's stub): `src/data/library.json`
+- Create: `src/ui/views/settings/privacy.js`
+- Modify: `src/ui/views/index.js` (import it)
+- Test: `tests/e2e/settings-privacy.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection`, `h`, `app.platform.name`.
+- Produces: `registerSettingsSection({id: 'privacy', label: 'Privacy', order: 70, render})`, holding the whole Privacy text (overview: Plan 02 owns it and no other plan edits it), in this order:
+  - A `table` with the caption `What goes over the network, and when`, the column headers **When** and **To**, and the seven §15.1 rows: `You stumble or browse` → `Only the enabled sources (Settings → Sources) and the site you open`; `Link check (if on)` → `The find's site, before it is shown`; `AI Search or AI team` → `Only the providers you set up, with your query, your tags and recent domains`; `Cloud voice (only if you opted in)` → `Google, Apple or Microsoft, depending on your browser`; `Vault play` → `archive.org`; `Daily data` → `The Byways Pages site (static files)`; `Android update check` → `api.github.com`.
+  - The line `Nothing goes to a Byways server, because there is none. There are no analytics.`
+  - Voice (§6.2): `Voice commands are recognised on this device when it can do that. Otherwise they need a cloud service from Google, Apple or Microsoft, and Byways asks you first, naming the company.`
+  - Keys (§12.8): `Your keys stay on this device and are sent only to their own provider.`, `Use spend-limited keys.` and `Restrict your Gemini key to the Generative Language API.`
+  - On `pwa` only, three paragraphs about the shared web address (§12.8, §15.2, §11.2): `Every iteatsthesalt.github.io project shares one origin. A custom domain would isolate Byways.`; `The browser remembers a microphone grant per origin, so allowing the microphone for Byways allows it for every page on iteatsthesalt.github.io.`; and the Lab limit, `The Lab shares this web address with the rest of Byways. Without the passphrase lock, code running in the Lab could read your stored keys. The Lab runs only pinned emulators that ship with Byways, and Flash script access is off.` (the sentence Plan 06's test looks for).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+// same imports, `small` and `open` helper as stumble.spec.js
+test('Privacy lists every network use and the privacy notes', async ({ page }) => {
+  await open(page, small, '#/settings/privacy');
+  const rows = [['You stumble or browse', 'Only the enabled sources (Settings → Sources) and the site you open'],
+    ['Link check (if on)', "The find's site, before it is shown"],
+    ['AI Search or AI team', 'Only the providers you set up, with your query, your tags and recent domains'],
+    ['Cloud voice (only if you opted in)', 'Google, Apple or Microsoft, depending on your browser'], ['Vault play', 'archive.org'],
+    ['Daily data', 'The Byways Pages site (static files)'], ['Android update check', 'api.github.com']];
+  for (const [when, to] of rows) await expect(page.getByRole('row', { name: `${when} ${to}` })).toBeVisible();
+  for (const text of ['Nothing goes to a Byways server, because there is none. There are no analytics.', 'Use spend-limited keys.',
+    'Restrict your Gemini key to the Generative Language API.', 'Every iteatsthesalt.github.io project shares one origin. A custom domain would isolate Byways.'])
+    await expect(page.getByText(text, { exact: true })).toBeVisible();
+  await expect(page.getByText(/microphone grant per origin/)).toBeVisible();
+  await expect(page.getByText(/^The Lab shares this web address with the rest of Byways\./)).toBeVisible();
+  await expectNoSeriousA11y(page);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-privacy.spec.js`
+Expected: FAIL: no row named `You stumble or browse Only the enabled sources (Settings → Sources) and the site you open`.
+
+- [ ] **Step 3: Implement `settings/privacy.js`**
+
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
+
+Run: `npm run e2e -- tests/e2e/settings-privacy.spec.js`, then `npm run e2e`
+Expected: PASS, 1 test, then the whole suite passes.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/privacy.js src/ui/views/index.js tests/e2e/settings-privacy.spec.js
+git commit -m "Add Settings → Privacy with the network table and the privacy notes"
+```
+
+### Task 31: Curate the starter library
+
+**Files:**
+- Modify: `src/data/library.json` (Plan 01's empty stub)
 - Test: `tests/unit/library-data.test.js`
 
 **Interfaces:**
