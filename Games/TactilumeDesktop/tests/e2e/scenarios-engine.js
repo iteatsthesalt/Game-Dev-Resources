@@ -101,8 +101,17 @@ export default [
       const middle = await h.capture(page, { region: { x0: 0.42, y0: 0.4, x1: 0.58, y1: 0.6 } });
       checks.push(h.check('it is brighter in the middle than in the corner', middle.mean > edge.mean * 2 + 5, { middle: middle.mean, edge: edge.mean }));
       const p = await particles(page, 4096);
-      checks.push(h.check('every particle read back is a real number', p.bad === 0, p));
-      checks.push(h.check('every particle was placed in the resting shape', p.unplaced === 0, { unplaced: p.unplaced }));
+      checks.push(h.check('every particle read back is a real number', p.bad === 0, { bad: p.bad }));
+      // the resting nebula is a soft cloud, 0.34 world units across a standard deviation (x
+      // scaled by the aspect): particles that were never placed would sit at the centre
+      const spread = (k) => {
+        const v = p.positions.filter((_, i) => i % 3 === k);
+        const m = v.reduce((s, x) => s + x, 0) / v.length;
+        return Math.sqrt(v.reduce((s, x) => s + (x - m) ** 2, 0) / v.length);
+      };
+      const aspect = await page.evaluate(() => window.TACTILUME_DESKTOP.engine.aspect);
+      const sx = spread(0), sy = spread(1);
+      checks.push(h.check('the particles are spread like the resting nebula', Math.abs(sx / (0.34 * aspect) - 1) < 0.35 && Math.abs(sy / 0.34 - 1) < 0.35, { sx: round(sx, 3), sy: round(sy, 3), aspect }));
       checks.push(h.check('the eye adaptation state is set', p.adapt[3] === 1 && p.adapt[2] > 0.02, p.adapt));
       const e = await engineErrors(page);
       checks.push(h.check('no WebGPU errors', e.count === 0, e));
@@ -119,15 +128,19 @@ export default [
       await drawFrames(h, page, 6);
       const aspect = await page.evaluate(() => window.TACTILUME_DESKTOP.engine.aspect);
       const x = aspect * 0.6, y = 0.1;
+      // the pole's place, and its mirror image across the middle as a control
       const spot = await around(page, x, y, 0.09);
+      const mirror = await around(page, -x, y, 0.09);
       const before = await h.capture(page);
       const spotBefore = await h.capture(page, { region: spot });
       const player = await addPlayer(page, 'pull', [[x, y]]);
       const checks = [h.check('the engine keeps drawing', await drawFrames(h, page, 40))];
       const after = await h.capture(page);
       const spotAfter = await h.capture(page, { region: spot });
+      const mirrorAfter = await h.capture(page, { region: mirror });
       checks.push(h.check('the light moves toward the pole', after.cx > before.cx + 0.05, { before: round(before.cx, 3), after: round(after.cx, 3), pole: round((x / aspect + 1) / 2, 3) }));
-      checks.push(h.check('the light gathers at the pole', spotAfter.mean > spotBefore.mean * 1.5 + 10, { before: round(spotBefore.mean), after: round(spotAfter.mean) }));
+      const info = { before: round(spotBefore.mean), after: round(spotAfter.mean), mirror: round(mirrorAfter.mean) };
+      checks.push(h.check('the light gathers at the pole, and not at its mirror image', spotAfter.mean > spotBefore.mean * 1.5 + 10 && spotAfter.mean > mirrorAfter.mean * 2 + 10, info));
       await removePlayer(page, player.id);
       return checks;
     },

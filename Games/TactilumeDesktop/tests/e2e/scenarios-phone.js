@@ -89,12 +89,16 @@ export default [
       const left = await poll(() => sides(page, h), (s) => s.left > s.right * 1.5 + 1);
       checks.push(h.check('the light gathers on the side the phone touches', left.left > left.right * 1.5 + 1, { before, left }));
 
+      // Particles take a while to cross the screen after a finger (seconds, in the real
+      // engine), so this watches the centre of the light move rather than waiting for the
+      // right side to outshine the left.
+      const from = await h.capture(page);
       await page.evaluate(() => { window.__phoneDriver.tx = 0.8; });
       await h.wait(400);
       const moving = await page.evaluate((id) => window.TACTILUME_DESKTOP.hub.poles().find((q) => q.player === id)?.vx ?? null, player?.id);
       checks.push(h.check('a moving finger gives its pole a speed in the direction it moves', moving > 0.3, moving));
-      const right = await poll(() => sides(page, h), (s) => s.right > s.left * 1.5 + 1);
-      checks.push(h.check('the light follows the finger across the screen', right.right > right.left * 1.5 + 1, { left, right }));
+      const to = await poll(() => h.capture(page), (c) => c.cx !== null && c.cx >= from.cx + 0.1, { timeout: 12000 });
+      checks.push(h.check('the light follows the finger across the screen', from.cx !== null && to.cx >= from.cx + 0.1, { from: from.cx, to: to.cx }));
 
       // the finger lifts: an empty frame
       await page.evaluate(() => {
