@@ -141,7 +141,8 @@ Apps/Byways/
 
 Source adapter ids, one per file in `src/core/sources/`:
 
-- **Open tier:** `wikipedia`, `commons`, `inat`, `openlibrary`, `marginalia`, `github`, `apod`, `aic`, `kagi`, `europeana`, `openverse`, `library` (the starter library), `oldweb` (GeoCities through Wayback), `itch`.
+- **Open tier:** `wikipedia`, `commons`, `inat`, `openlibrary`, `marginalia`, `github`, `apod`, `aic`, `kagi`, `europeana`, `openverse`, `library` (the starter library), `oldweb` (GeoCities through Wayback).
+- **Privileged tier (Plan 04):** `itch`. It reads live in the extension and on Android, and from its snapshot in the PWA.
 - **Probe tier:** `met`, `cleveland`, `nasaimages`, `loc`, `wiby`, `kagirandom`, `smithsonian`, `hn`.
 - **Archive (Plan 04):** `ia` for Archive non-game sources, and `vault` for Archive games.
 - **Snapshot (Plan 04):** `webring`, for webring and Neocities sites built by the data job.
@@ -202,7 +203,8 @@ The `Platform`, `VoiceEngine`, `Tts` and `SecretStore` shapes below are the only
  *    PWA: resolves true (CORS decides). Extension: permissions.request for those origins.
  *    Android: the native per-host approval dialog for http hosts (https needs none).
  *  @property {(app:App) => Promise<void>} [attach]   optional; boot calls `await platform.attach?.(app)` once the app is built
- *  @property {{launchWebAuthFlow(opts:{url:string, interactive:boolean}):Promise<string>}} [identity]
+ *  @property {{launchWebAuthFlow(opts:{url:string, interactive:boolean}):Promise<string>, getRedirectURL():Promise<string>}} [identity]
+ *    (there is no redirectUrl property; getRedirectURL() must be the first await in the click)
  *    optional; Connect OpenRouter outside the PWA. Extension (Plan 07): chrome.identity / browser.identity,
  *    with the optional "identity" permission. Android (Plan 08): an in-app login WebView that catches the
  *    callback URL. The PWA has none, and uses a redirect to the Pages callback instead.
@@ -369,10 +371,16 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   The hands-free controller and the AI plan use only these three.
 
 - `data` has the keys `tags`, `library`, `vaultStarter` and `geocities`, and each later plan adds its own.
-- **One data loader:** `src/core/data.js` exports `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities, loadSnapshot, embedBroken}>`. It is DOM-free.
-  - Plan 01 creates it with the four `src/data` files, and `ui/boot.js` calls it.
-  - Plan 04 adds `loadSnapshot(name)` (through `dataUrl`) and `embedBroken`.
+- **One data loader:** `src/core/data.js` (DOM-free) exports:
+  - `DATA_FILES` and `EMPTY_DATA`;
+  - `dataUrlFor(platformName, file)`;
+  - `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities, embedBroken}>`, which also registers the `pages` Http source (`perMinute: 30, concurrent: 2`) on `http`.
+
+  How the plans share it:
+  - Plan 01 creates it with the four `src/data` files and `dataUrlFor`. `ui/boot.js` imports and re-exports these and calls `loadAppData`, and `app.dataUrl` wraps `dataUrlFor`.
+  - Plan 04 adds `embedBroken`.
   - Plan 07's background (`bg.js`) calls the same function instead of repeating it.
+  - There is no `loadSnapshot`. Every snapshot file (`itch.json`, `vault-index.json`, `webrings.json`, `neocities.json`) is read only through `readSnapshot(ctx, file)` in `sources/index.js`, using `ctx.dataUrl`. `daily.json` is read through `app.dataUrl`.
 - `dataUrl(file) → string` (Plan 01) gives the address of a generated data file such as `daily.json`, `itch.json` or `vault-index.json`. In the PWA it is relative (`data/<file>`). In the extension and Android it is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>`, because those builds do not include the generated files.
 
 **UI conventions (Plan 01):**
@@ -381,16 +389,17 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - Views never render their own h1. Settings section pages use an h2.
   - A view that must change its heading text sets `container.closest('.view').querySelector('h1').textContent`. Daily Fate does this to show "Daily Fate (backup pick)".
   - Import keeps the heading "Import" and says "Shared with you" in the body.
-- **Open dialogs and Android Back.** Before anything else, if a `dialog[open]` exists, the router closes the topmost one and treats Back as handled. So dialogs from any plan need no Back handling of their own.
+- **Open dialogs and Android Back.** The router's `byways:back` listener runs before anything else. If a `dialog[open]` exists, it closes the topmost one and calls `event.preventDefault()` SYNCHRONOUSLY, then skips `history.back()`. So Plan 08's `attach`, which reads `defaultPrevented` right after `dispatchEvent`, reports `handled: true` even at home, and dialogs from any plan need no Back handling of their own.
 - **Android Back in the router.** `startRouter` listens for `byways:back` and reads `event.defaultPrevented` on a microtask, after every listener has run. It calls `history.back()` only when nothing prevented the event and the hash is not home (`''`, `'#'`, `'#/'`, `'#/stumble'`). At home, Back leaves the app. Plan 08's `attach` only dispatches the event. It reports `handled = prevented || not home`, and never calls `history.back()` itself.
 - **Toasts.** `showToast(message, {undo, ms = 5000, action: {label, run}} = {}) → {close()}`. With `ms: 0` a toast is sticky, and later toasts do not replace it (for example the update toast).
 - **`NetError`.** It can be built as `new NetError(kind, message = kind, {status, retryAfterMs, source} = {})` or as `new NetError({kind, message, status, retryAfterMs, source})`.
-- **`tools/check.js` CSP rule.** `expectedCsp(path) → string`:
-  - Pages in a `lab` folder get `LAB_CSP`.
-  - `lab/index.html` adds `'self'` to `frame-src`, and `dos.html` and `console.html` add `blob:` to `connect-src`.
-  - If `flash.html` needs `'unsafe-inline'`, Plan 06 adds that case.
+- **`tools/check.js` CSP rule.** `expectedCsp(path) → string` returns the exact per-page strings in the "Lab CSP" list (Plan 06 section).
+  - `LAB_CSP` is `APP_CSP` with `script-src 'self' 'wasm-unsafe-eval' blob:`, `worker-src 'self' blob:` and `connect-src 'self' blob:`. That `connect-src` has no `https:` and no localhost.
+  - `lab/index.html` adds `'self'` to `frame-src`.
+  - `console.html` adds `style-src-attr 'unsafe-inline'`.
+  - `flash.html` adds `style-src 'unsafe-inline'` only if Plan 06's e2e test shows Ruffle needs it.
 - **Other Plan 01 names:**
-  - `dataUrlFor(platformName, file)` (boot.js; `app.dataUrl` wraps it);
+  - `dataUrlFor(platformName, file)` (in `core/data.js`, re-exported by boot.js; `app.dataUrl` wraps it);
   - `renderIcons({svgPath, outDir})` (tools/icons.js);
   - `startRouter(render, win)`;
   - the unit helpers `tests/unit/helpers/async.js` (`flush()`, `deferred()`) and `tests/unit/helpers/fake-dom.js` (`fakeDocument() → {document, created}`).
@@ -407,7 +416,10 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   | `ai` | 05 |
   | `licenses` | 06 |
 
-- **Android Back.** Plan 08 dispatches a cancelable `CustomEvent('byways:back')` on `window`. An open panel, menu or help card closes itself and calls `preventDefault()`. If nothing does, the router goes back.
+- **Android Back.** Plan 08 dispatches a cancelable `CustomEvent('byways:back')` on `window`.
+  1. The router first closes any open dialog (see "Open dialogs and Android Back").
+  2. An open panel, menu or help card that is not a `<dialog>` closes itself and calls `preventDefault()`.
+  3. If nothing does, the router goes back, except at home.
 
 **UI registries (Plan 01).** Later plans add screens only through these, and each plan adds its import lines to `ui/views/index.js`:
 
@@ -621,7 +633,10 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 - `createHandsFree({engine, listener = null, reader, clock, getSettings, ui, leanBack = true, getListenMode, prepare, dispatch}) → {start(), pause(), resume(), stop(), suspend(), wake(), input(), command(id, arg), get state}`.
   - `start()` awaits `prepare() → Promise<listener|null>`, which probes and returns a fresh listener. That listener replaces the old one, which is stopped and unsubscribed.
-  - `dispatch(id, arg)` receives the listener's command events.
+  - `dispatch(id, arg, {source})` is owned by Plan 03 and receives every command. The source is `'voice' | 'key' | 'button' | 'media' | 'dialog'`.
+    - `createHandsFree` passes `{source: 'voice'}` for listener commands.
+    - In `handsfree-ui.js`, the keymap passes `'key'`, the bar `'button'` and media keys `'media'`.
+    - Plan 06's Lab stop acts only on `source === 'voice'`.
 - **One controller.** `app.handsFree` is one object for the app's whole life. `boot()` creates it by calling `installHandsFreeUi(app)` (`ui/handsfree-ui.js`) once the engine exists and BEFORE `runFirstRun`, and never replaces it.
   - `app.handsFree.start()` runs the full Start routine: probe, new listener, wake lock, media active, lean-back.
   - Plan 07's toggle and Plan 08's no-touch start call `app.handsFree.start()`.
@@ -885,7 +900,7 @@ Plan 02 creates `ui/views/settings/privacy.js` with the whole text. No other pla
 - **`buildLicenses({versions, target, pkg})`** gives Byways its `APP_VERSION`, and Atkinson Hyperlegible its `@fontsource` pin.
 - **Other Plan 06 names:** `checkVendored(root)`, `ejsGlobals({system, id, baseHref})` and `recordFlashKeys(db, fileId, keys)`.
 - **The Lab database.** The Lab's IndexedDB is `byways-lab`, and its `files` store keeps `{id, name, system, lastUsed, ruffleKeys?}`.
-- **Placeholder build tests.** Plan 01's placeholder build test is two tests:
+- **Placeholder build tests.** Plan 01 writes ONE placeholder build test: "extension and android targets write only build.json until Plans 07 and 08". Plan 06 Task 5 replaces it with two tests, and Plan 07 and Plan 08 each delete theirs by name:
   - "extension targets write only build.json and licenses.json until Plan 07", which Plan 07 deletes;
   - "android targets write only build.json, licenses.json and the Lab until Plan 08", which Plan 08 deletes.
 - **Licenses screen:** a settings section with `id:'licenses'` and `order:100`.
@@ -1028,7 +1043,7 @@ No environment variable sets the version. The release APK asset is named `byways
   - **`tests/e2e/helpers/fakes.js`:** `installFakeSpeech(page)`. Plan 08 later adds `installFakeAndroidBridge(page, opts)`.
   - **`tests/unit/helpers/fake-dom.js`:** `fakeDocument() → {document, created}`. **`tests/unit/helpers/async.js`:** `flush()` and `deferred()`.
   - **CORS preflights in `mockNet`.** It answers preflights with `access-control-allow-headers` echoing the request's `access-control-request-headers`. `*` does not cover `Authorization`, so tests that send a key would otherwise fail.
-  - **Strict console rule.** The e2e fixture fails a test on ANY console error, including 404 "Failed to load resource" messages. Specs must stage or route every same-origin file their views fetch, for example the generated `data/*.json` files, which `dist/pwa` lacks in e2e. For known harmless noise, use `test.use({ignoreProblems: [...]})`. `pageProblems` returns strings of the form `'console: <text>'` and `'pageerror: <message>'`.
+  - **Strict console rule.** The e2e fixture fails a test on ANY console error, including 404 "Failed to load resource" messages. Specs must stage or route every same-origin file their views fetch, for example the generated `data/*.json` files, which `dist/pwa` lacks in e2e. For known harmless noise, use `test.use({ignoreProblems: [...]})`. `pageProblems` returns strings of the form `'console: <text> (<url>)'` (without ` (<url>)` when the message has no source URL) and `'pageerror: <message>'`. Plan 07 adds the BrowserContext form of `mockNet`, `unmocked` and `pageProblems`.
   - **Service workers** are blocked in e2e unless a spec sets `test.use({serviceWorkers: 'allow'})`. While blocked, `navigator.serviceWorker.ready` never settles and `page.route` does not see worker requests.
   - **`installFakeSpeech` window hooks:**
     - `__say(text, final = true)`, `__voiceError(code)`, `__recognizers`, `__spoken`, `__wake = {requests, releases}`;
