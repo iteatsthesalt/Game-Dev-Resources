@@ -1615,13 +1615,14 @@ git commit -m "Wire share-in, Back, the site view and hands-free into the Androi
 - Test: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); the bar's **Talk** button in push mode (overview, Plan 03), which covers the spec's tap to talk on Android 24–32; `announce` and the e2e helper `gotoApp` (Plan 01); `platform.app` and `platform.caps.inAppSiteView` (Task 6); `openAndroid`, `button`, `sent` and the fake (Task 14).
+- Consumes: the `about` section and its `Version <APP_VERSION>` line (Plan 01 Task 13); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 12); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 11); the bar's **Talk** button in push mode (overview, Plan 03), which covers the spec's tap to talk on Android 24–32; `announce`, and the e2e helpers `gotoApp` and `expectNoSeriousA11y(page)` (`helpers/axe.js`, Plan 01); `platform.app` and `platform.caps.inAppSiteView` (Task 6); `attach`'s `goStraightToSite` rule, `openAndroid`, `button`, `sent` and the fake (Task 14); Stumble's **Next** button (Plan 02).
 - Produces: the UI for `goStraightToSite` (already in `DEFAULT_SETTINGS`), which Task 14's `attach` reads.
 
-- [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`)
+- [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`, with `import { expectNoSeriousA11y } from './helpers/axe.js';` among its imports)
 
 ```js
 const U = 'https://github.com/iteatsthesalt/Game-Dev-Resources/releases/download/byways-v9.9.9/byways-9.9.9.apk';
+const WHY = 'Always-on voice needs Android 13 and on-device speech. Use the Talk button.';
 test('About offers Download update', async ({ page }) => {
   await openAndroid(page, { update: { available: true, latest: '9.9.9', url: U } });
   await page.evaluate(() => { location.hash = '#/settings/about'; });
@@ -1649,10 +1650,9 @@ test('the PWA has no Go straight to the site', async ({ page }) => {
   await expect(page.getByLabel('Go straight to the site')).toHaveCount(0);
 });
 test('Settings says why voice is not always on', async ({ page }) => {
-  const why = 'Always-on voice needs Android 13 and on-device speech. Use the Talk button.';
-  await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: why } });
+  await openAndroid(page, { probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: WHY } });
   await page.evaluate(() => { location.hash = '#/settings/voice'; });
-  await expect(page.locator('#voice-reason')).toHaveText(why);
+  await expect(page.locator('#voice-reason')).toHaveText(WHY);
 });
 test('cloud-only voice waits for the vendor opt-in', async ({ page }) => {
   await openAndroid(page, { probe: { kind: 'none', vendor: 'google', needsDownload: false, continuous: false, reason: 'cloud-only' } });
@@ -1667,12 +1667,33 @@ test('Talk reaches native voice on Android 12 and below', async ({ page }) => {
   await button(page, 'Talk').click();
   await expect.poll(async () => (await sent('voice', 'start')).length).toBe(1);
 });
+test('Go straight to the site follows lean-back', async ({ page }) => {
+  await openAndroid(page); await page.evaluate(() => { location.hash = '#/settings/access'; });
+  await page.getByLabel('Go straight to the site').check();
+  await page.evaluate(() => { location.hash = '#/stumble'; }); await button(page, 'Start').click();
+  await expect(button(page, 'Turn off hands-free')).toBeVisible(); expect((await sent('app', 'openSite')).length).toBe(0);
+  await button(page, 'Next').click();
+  await expect.poll(async () => (await sent('app', 'openSite')).length).toBe(1);
+  const { url, title } = (await sent('app', 'openSite'))[0].args;
+  expect(url).toMatch(/^https?:\/\//); await expect(page.getByRole('heading', { name: title, exact: true })).toBeVisible();
+});
+test('the Android-only settings controls pass axe', async ({ page }) => {
+  await openAndroid(page, { update: { available: true, latest: '9.9.9', url: U },
+    probe: { kind: 'native', vendor: 'android', needsDownload: false, continuous: false, reason: WHY } });
+  await page.evaluate(() => { location.hash = '#/settings/about'; });
+  await page.getByRole('button', { name: 'Check for updates' }).click();
+  await expect(page.getByRole('button', { name: 'Download update' })).toBeVisible(); await expectNoSeriousA11y(page);
+  await page.evaluate(() => { location.hash = '#/settings/access'; });
+  await expect(page.getByLabel('Go straight to the site')).toBeVisible(); await expectNoSeriousA11y(page);
+  await page.evaluate(() => { location.hash = '#/settings/voice'; });
+  await expect(page.locator('#voice-reason')).toHaveText(WHY); await expectNoSeriousA11y(page);
+});
 ```
 
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: four of the seven new tests FAIL, waiting for **Check for updates**, the checkbox and `#voice-reason`. `the PWA has no Go straight to the site`, `cloud-only voice waits for the vendor opt-in` and `Talk reaches native voice on Android 12 and below` pass already: they pin behaviour that must not change.
+Expected: six of the nine new tests FAIL, waiting for **Check for updates**, the checkbox and `#voice-reason`. `the PWA has no Go straight to the site`, `cloud-only voice waits for the vendor opt-in` and `Talk reaches native voice on Android 12 and below` pass already: they pin behaviour that must not change.
 
 - [ ] **Step 3: Implement the three changes**
 
