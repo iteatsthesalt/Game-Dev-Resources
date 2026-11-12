@@ -2,6 +2,25 @@
 
 These are the contracts every module is written against: how files are shaped, what the simulation state looks like, the data shapes content is authored in, and the rules of stats and damage. `docs/design.md` holds the game itself (names, numbers, content lists). `docs/plan.md` is the approved plan and is a snapshot; where it differs from this file, this file wins. Once a module exists, its code and its header comment win over this file, and whoever changes an interface updates this file in the same change.
 
+## What is fixed and what is provisional
+
+The owner's instruction of 2026-11-12: **all new fresh ideas, nothing from memory.** Every idea in the game is invented for this game. Nothing is recalled from another game, from genre stock, or from an earlier project. What is known of other games is used only to recognise and reject look-alikes.
+
+Fixed, because the owner asked for it or approved it:
+
+- The frame: horde-survival runs with self-casting skills and level-up picks; a character with a class, a subclass, levels, a large shared passive tree, socketable skills that take modifiers, and gear with random modifiers.
+- One life per character. A permanent tree shared by all characters. Runs with no fixed end, left through gates. Two ways to play. The open world last.
+- The bell-city world and the title. The 2.5D look. One HTML file.
+- The machinery in this file: file shape, layers, determinism, pools, the modifier operations (`flat`, `inc`, `more`, `set`) with tags and conditions, definitions as plain data, behaviour named by id in closed registries.
+
+Provisional, to be replaced by what `docs/design/` invents:
+
+- The lists of damage types, tags, conditions, attributes and stats under "Data shapes".
+- The defender's steps and the ailment table under "Rules".
+- Item rarities, crafting jobs, enemy AI names, skill archetype names, and every display word in the table below.
+
+So that the replacement is cheap, **code never hard-codes one of these names in its logic.** Damage types, attributes, conditions and stats are rows in the tables of `10-stats.js`, and logic loops over the tables. An entity stores conditions in two fixed-length arrays indexed by the condition's row (`condT` for time left, `condV` for strength), sized `Stats.COND_MAX` (16), not in named fields. Attributes are `Stats.PRIMARIES`, and requirements and `per` modifiers accept any of them.
+
 ## Conventions
 
 **Language.** Plain JavaScript (ES2020), classic scripts, no dependencies, no build step beyond concatenation. Everything in `src/js` is joined into one `<script>` in the order `tools/modules.js` gives.
@@ -166,6 +185,8 @@ Gfx.worldToScreen(x, y, z)   Gfx.screenToWorld(sx, sy)
 
 All definitions are plain JSON. Units are metres, seconds and radians.
 
+The first five lists below (`Type`, `Family`, `Tag`, `Cond`, `Stat`) and the names `str`, `dex`, `int` are **placeholders**. The shapes that use them are the contract; the entries are not. See "What is fixed and what is provisional".
+
 ```js
 Type   = 'physical'|'fire'|'cold'|'lightning'|'void'
 Family = 'sword'|'axe'|'mace'|'dagger'|'bow'|'staff'|'wand'|'shield'|'focus'
@@ -286,7 +307,7 @@ crit      chance capped at 100; on a crit, hit_T x critMulti/100 (base 150); a c
 rate      = sigil.rate x weapon attacks per second (attacks only) x V(speed)
 ```
 
-**The defender, in order**
+**The defender, in order** (placeholder: the steps, the formulas and the ailment table after them will be replaced by the invented combat model in `docs/design/`; build the pipeline as an ordered list of small steps that is easy to swap)
 
 1. Dodge roll: no damage.
 2. Player only, evadable attacks: a running total gains `1 - min(0.75, EV / (EV + accuracy[level]))` per attack; the attack lands when the total reaches 1. This avoids streaks.

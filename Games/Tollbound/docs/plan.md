@@ -1,5 +1,7 @@
 # Tollbound: plan
 
+> **Amendment, 2026-11-12, after approval.** The owner added: "All new fresh ideas. Nothing from memory." The frame of this plan stands: the horde-survival runs, the class and level and tree and socketed-skill and gear structure, one life, the shared permanent tree, the tolls and gates, the two ways to play, the world, the look, the stages. Everything this plan filled in from genre convention is now a placeholder to be replaced by invention: the attributes, damage types, status effects, defences, class concepts, skill behaviours, item rarities and crafting jobs under "The game", the words in its glossary, and the matching lists in Appendices B and C. `engine.md` says what is fixed and what is provisional. `docs/design/` holds what was invented, and `docs/design/pool/` holds every idea that was proposed, with the ones rejected as familiar and why.
+
 ## Context
 
 You asked for a game that fuses Vampire Survivors and Halls of Torment with the class, leveling and progression of PoE2. Your answers since then set its shape.
