@@ -655,11 +655,7 @@ Both `Page` and `BrowserContext` have `route()` and `on('request')`, so only the
 - Both carry this CSP `<meta>`, exactly: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`.
 - `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
 
-- [ ] **Step 3: Write `panel.js` (boot only)**
-
-`const ext = globalThis.browser ?? globalThis.chrome`. Read `document.body.dataset.surface`, then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}` (ending in `.catch(() => {})`). Task 6 adds the panel extras and Task 7 the mic messages.
-
-- [ ] **Step 4: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
+- [ ] **Step 3: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
 
 ```js
 const DIST = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
@@ -695,7 +691,7 @@ Helpers in the same file:
 - `onlyLibrary(page)`: in an extension page, `import(chrome.runtime.getURL('core/…'))` for `SOURCES`, `openStore`, `idbBackend` and `saveSettings`. Save `{sources: <every SOURCES id → {enabled: id === 'library', fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page.
 - `stumbleTab(page, tabId)`: `page.evaluate((id) => chrome.runtime.sendMessage({ type: 'stumble', tabId: id }), tabId)`. This runs the same `stumble(tab)` handler as the toolbar click.
 
-- [ ] **Step 5: Run the spike and record the result**
+- [ ] **Step 4: Run the spike and record the result**
 
 Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
 Expected: PASS, 2 tests.
@@ -703,7 +699,7 @@ Expected: PASS, 2 tests.
 - If `service worker requests go through the mocks` gets `0`, add `process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';` as the first line of the spec and run it again. If it still gets `0`, mark that test `test.fixme` with the comment `// Service worker fetches bypass context.route here. The other tests use only the library source.`
 - Put the outcome on the spec's first comment line, either `// Headless extensions in Playwright 1.63: work.` or `// Headless extensions in Playwright 1.63: fail. CI runs this spec under xvfb-run.` Task 8 reads it.
 
-- [ ] **Step 6: Add the failing tests**
+- [ ] **Step 5: Add the failing tests**
 
 ```js
 test('toolbar Stumble loads a find in the tab', async ({ context, extId }) => {
@@ -745,14 +741,18 @@ test('Open in the Byways tab uses a new tab', async ({ context, extId }) => {
 });
 ```
 
-- [ ] **Step 7: Run them and see them fail**
+- [ ] **Step 6: Run them and see them fail**
 
 Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
-Expected: the four new tests FAIL. Before Step 3 is in the build they show a blank page, so `getByRole('heading', { level: 1 })` times out. If the pages already work, check that each test fails when `panel.js` is emptied, then restore it.
+Expected: the three page tests FAIL. `panel.js` does not exist yet, so the pages stay blank and `getByRole('heading', { level: 1 })`, the `Lab` link and the `Open` button time out. `toolbar Stumble loads a find in the tab` may already pass, because `bg.js` handles `stumble`.
 
-- [ ] **Step 8: Fix until they pass**
+- [ ] **Step 7: Write `panel.js` (boot only)**
 
-Run the Step 7 command again.
+`const ext = globalThis.browser ?? globalThis.chrome`. Read `document.body.dataset.surface`, then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}` (ending in `.catch(() => {})`). Task 6 adds the panel extras and Task 7 the mic messages.
+
+- [ ] **Step 8: Run them and see them pass**
+
+Run the Step 6 command again.
 Expected: PASS, 6 tests (or 5 and 1 fixme).
 
 - [ ] **Step 9: Commit**
