@@ -75,7 +75,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   // ---- hashing ----
 
   // Folds the 32 bits of k into h. For a fixed k every h gives a different result, and the other way round,
-  // so two lists of values that differ in one place only ever give different hashes.
+  // so two lists of whole numbers that differ in exactly one place always give different hashes.
   function fold(h, k) {
     h = Math.imul(((h ^ k) + 0x9e3779b9) | 0, 0x85ebca6b);
     h ^= h >>> 13;
@@ -84,6 +84,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   }
 
   Core.hashStr = function (text) {
+    text = String(text);
     let h = 0x811c9dc5 | 0;
     for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
     return fold(h, text.length) >>> 0;
