@@ -884,4 +884,165 @@ git add src/core/liveness.js tests/unit/liveness.test.js
 git commit -m "Add the link check for web and privileged fetch"
 ```
 
+### Task 12: Wikipedia and Wikimedia Commons
+
+**Files:**
+- Create: `src/core/sources/wikipedia.js`, `src/core/sources/commons.js`, fixtures under `tests/fixtures/http/wikipedia/` and `tests/fixtures/http/commons/`
+- Modify: `src/core/sources/index.js` (add both to `ADAPTERS`), `tests/fixtures/routes.js`
+- Test: `tests/unit/src-wikimedia.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx` and the adapter table (Task 5), `IDENT`, `makeFind`, `toPlainText`, `utcDate`.
+- Produces: the `wikipedia` and `commons` adapters.
+  - Wikipedia `random`: `GET https://en.wikipedia.org/api/rest_v1/page/random/summary` with `Api-User-Agent: IDENT`; `[]` when `type === 'disambiguation'`. Find: id `wiki:en:<titles.canonical>`, `description = extract`, `url = content_urls.desktop.page`, `imageUrl = thumbnail.source`, `licence 'CC BY-SA 4.0'`, `attribution 'Wikipedia'`, why `['Wikipedia: random article']`.
+  - Wikipedia `search(q)` and `more(find)`: `GET https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=<q>&gsrlimit=10&prop=pageimages|extracts|info&inprop=url&piprop=thumbnail&pithumbsize=640&exintro=1&explaintext=1&exlimit=10&format=json&origin=*`; `more` sends `gsrsearch=morelike:<find.title>`. Pages are sorted by `index`; `url = fullurl`. Why `['Wikipedia search']` or `['Wikipedia: more like <title>']`.
+  - Commons `random`: today's picture of the day from `GET https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` (UTC date of `ctx.clock.now()`), field `image`: title from `image.title` without `File:` and the extension, `imageUrl = image.thumbnail.source`, `url = image.file_page`, `author = image.artist.text`, `licence = image.license.type`, `description = image.description.text`, safety `curated`, why `['Wikimedia Commons: picture of the day']`.
+  - Commons `search(q)`: `GET https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<q>&gsrlimit=10&prop=imageinfo&iiprop=url|mime|size|extmetadata&iiurlwidth=1024&format=json&origin=*`. Keep only `image/jpeg|png|gif|webp` with `width ≥ 400` and a `LicenseShortName`. `title = ObjectName` (else the file name), `description = toPlainText(ImageDescription)`, `author = toPlainText(Artist)`, `attribution = '<author> · <licence> · Wikimedia Commons'`, `imageUrl = thumburl`, `url = descriptionurl`, why `['Wikimedia Commons search']`. `more` returns `[]`.
+
+Fixtures (hand-written in the documented shapes; values the tests assert):
+- `wikipedia/random-summary.json`: `type 'standard'`, `title 'Ada Lovelace'`, `titles.canonical 'Ada_Lovelace'`, `extract 'Ada Lovelace was an English mathematician. She wrote the first program.'`, `thumbnail.source 'https://upload.wikimedia.org/ada.jpg'`, `content_urls.desktop.page 'https://en.wikipedia.org/wiki/Ada_Lovelace'`. `wikipedia/random-disambiguation.json`: the same with `type 'disambiguation'`, `title 'Mercury'`.
+- `wikipedia/search.json`: `query.pages` with `"2": {index: 2, title 'Moth trap', fullurl …/Moth_trap}` and `"1": {index: 1, title 'Moth', fullurl …/Moth, thumbnail}`. `wikipedia/morelike.json`: one page, `title 'Charles Babbage'`.
+- `wikipedia/featured.json`: `image` with `title 'File:Aurora.jpg'`, `file_page 'https://commons.wikimedia.org/wiki/File:Aurora.jpg'`, `artist.text 'Jane Doe'`, `license.type 'CC BY-SA 4.0'`, `description.text 'An aurora over a lake.'`, `thumbnail.source`.
+- `commons/search.json`: three pages: `File:Old map.png` (`image/png`, width 2000, `ImageDescription '<p>An <b>old</b> map.</p>'`, `Artist '<a href="javascript:alert(1)">Ann</a>'`, `LicenseShortName 'CC BY 4.0'`, `ObjectName 'Old map'`), `File:Clip.webm` (`video/webm`) and `File:Tiny.jpg` (`image/jpeg`, width 100).
+- Routes, in this order: `morelike` search → `wikipedia/morelike.json`; other `en.wikipedia.org/w/api.php` → `wikipedia/search.json`; `page/random/summary` → `wikipedia/random-summary.json`; `feed/featured/` → `wikipedia/featured.json`; `commons.wikimedia.org/w/api.php` → `commons/search.json`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const disamb = [{ match: /page\/random\/summary/, file: 'wikipedia/random-disambiguation.json' }];
+test('wikipedia random reads a summary and sends Api-User-Agent', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await wikipedia.random(ctx);
+  assert.equal(f.id, 'wiki:en:Ada_Lovelace'); assert.equal(f.kind, 'article');
+  assert.equal(f.url, 'https://en.wikipedia.org/wiki/Ada_Lovelace'); assert.equal(f.imageUrl, 'https://upload.wikimedia.org/ada.jpg');
+  assert.equal(f.licence, 'CC BY-SA 4.0'); assert.deepEqual(f.why, ['Wikipedia: random article']); assert.deepEqual(f.tags, ['education']);
+  assert.equal(calls[0].headers['api-user-agent'], IDENT);
+});
+test('wikipedia random skips disambiguation pages', async () => {
+  const { ctx } = await adapterCtx({ extraRoutes: disamb }); assert.deepEqual(await wikipedia.random(ctx), []);
+});
+test('wikipedia search uses origin=* and keeps result order', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await wikipedia.search('moth', ctx);
+  assert.deepEqual(out.map(f => f.title), ['Moth', 'Moth trap']);
+  const u = new URL(calls[0].url); assert.equal(u.searchParams.get('origin'), '*'); assert.equal(u.searchParams.get('gsrsearch'), 'moth');
+});
+test('wikipedia more uses morelike', async () => {
+  const { ctx, calls } = await adapterCtx(); const [ada] = await wikipedia.random(ctx);
+  const out = await wikipedia.more(ada, ctx);
+  assert.equal(new URL(calls[1].url).searchParams.get('gsrsearch'), 'morelike:Ada Lovelace');
+  assert.deepEqual(out.map(f => f.title), ['Charles Babbage']);
+});
+test('commons random is the picture of the day', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await commons.random(ctx);
+  assert.ok(calls[0].url.endsWith('/api/rest_v1/feed/featured/2026/11/11'));
+  assert.equal(f.title, 'Aurora'); assert.equal(f.safety, 'curated'); assert.equal(f.author, 'Jane Doe');
+  assert.equal(f.url, 'https://commons.wikimedia.org/wiki/File:Aurora.jpg'); assert.deepEqual(f.why, ['Wikimedia Commons: picture of the day']);
+});
+test('commons turns extmetadata HTML into plain text', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await commons.search('map', ctx);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].description, 'An old map.'); assert.equal(out[0].author, 'Ann');
+  assert.equal(out[0].attribution, 'Ann · CC BY 4.0 · Wikimedia Commons');
+  assert.equal(new URL(calls[0].url).searchParams.get('gsrnamespace'), '6');
+  assert.equal(commons.fate, false);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-wikimedia.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement both adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-wikimedia.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/wikipedia.js src/core/sources/commons.js src/core/sources/index.js tests/fixtures/http/wikipedia tests/fixtures/http/commons tests/fixtures/routes.js tests/unit/src-wikimedia.test.js
+git commit -m "Add the Wikipedia and Commons adapters"
+```
+
+### Task 13: iNaturalist, Open Library and APOD
+
+**Files:**
+- Create: `src/core/sources/inat.js`, `src/core/sources/openlibrary.js`, `src/core/sources/apod.js`, fixtures under `tests/fixtures/http/{inat,openlibrary,apod}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-nature-books-space.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `makeFind`, `utcDate`.
+- Produces: the `inat`, `openlibrary` and `apod` adapters.
+  - iNat `random`: `GET https://api.inaturalist.org/v1/observations?photos=true&quality_grade=research&photo_license=cc0,cc-by,cc-by-sa&per_page=30&page=<1–100>`; `search(q)` adds `q=<q>` with `page=1`; `more(find)` uses `taxon_id=<find.meta.taxonId>`. Each result needs a photo whose `license_code` is `cc0`, `cc-by` or `cc-by-sa`. Find: id `inat:<id>`, `title = taxon.preferred_common_name || taxon.name`, `imageUrl` = that photo's `url` with `square` replaced by `large`, `url = uri`, `author = user.login`, `attribution = photo.attribution`, `licence` = the code upper-cased with spaces (`'CC BY'`, `'CC0'`), `description = '<taxon.name>, seen in <place_guess> on <observed_on>.'` (each clause left out when missing), `meta: {taxonId, published: observed_on}`, why `['iNaturalist']`.
+  - Open Library `search(q)`: `GET https://openlibrary.org/search.json?q=<q>&fields=key,title,author_name,cover_i,first_publish_year&limit=10`. `random`: `GET https://openlibrary.org/subjects/<subject>.json?limit=12&offset=<0–199>` with `subject` from `['science_fiction','poetry','cooking','history','art','travel','puzzles','games','folklore','nature']`; `more(find)` uses `find.meta.subject` (or `[]`). Find: id `ol:<key>`, `url = 'https://openlibrary.org' + key`, `imageUrl = 'https://covers.openlibrary.org/b/id/<cover>-M.jpg'` only when there is a cover, `author` = first author, `description = '<author>, <year>'`, why `['Open Library']`.
+  - APOD `random`: `GET https://api.nasa.gov/planetary/apod?api_key=<key>&count=10&thumbs=true` with `key` = secret `src:apidatagov` or `DEMO_KEY`. With `DEMO_KEY` it keeps a counter in `ctx.cache` under `apod:count:<YYYY-MM-DD>` (24 h): at 45 or more it returns `[]` without a request, and an HTTP 429 sets it to 50 before rethrowing. Find: id `apod:<date>`, `url = 'https://apod.nasa.gov/apod/ap<YYMMDD>.html'`, `imageUrl = url` for images and `thumbnail_url` for videos (a video with neither is dropped), `kind 'image'|'video'`, `description = explanation`, `author` = trimmed `copyright`, `licence` = `'© <copyright>'` or `'Public domain (NASA)'`, `meta.published = date`, why `['NASA APOD']`. `search` and `more` return `[]`.
+
+Fixtures: `inat/observations.json` with result 101 (`taxon {id 47219, name 'Apis mellifera', preferred_common_name 'Western Honey Bee'}`, `place_guess 'Oslo, Norway'`, `observed_on '2026-06-01'`, `user.login 'beefan'`, photo `https://static.inaturalist.org/photos/1/square.jpg`, `cc-by`, `attribution '(c) beefan, some rights reserved (CC BY)'`) and result 102 with `license_code null`. `openlibrary/search.json` with `/works/OL27448W` ('The Left Hand of Darkness', 'Ursula K. Le Guin', `cover_i 12345`, 1969) and `/works/OL1W` with no cover; `openlibrary/subject.json` with one work (`cover_id 777`). `apod/count.json`: `2025-03-14` image 'Pi Nebula' with `copyright ' Jane Sky '`; `2024-01-02` video with `thumbnail_url`; `2024-01-03` video without one.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('inat keeps CC photos and credits the observer', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await inat.random(ctx);
+  const u = new URL(calls[0].url);
+  assert.equal(u.searchParams.get('photo_license'), 'cc0,cc-by,cc-by-sa'); assert.equal(u.searchParams.get('per_page'), '30');
+  assert.ok(+u.searchParams.get('page') >= 1 && +u.searchParams.get('page') <= 100);
+  assert.equal(out.length, 1); const f = out[0];
+  assert.equal(f.title, 'Western Honey Bee'); assert.equal(f.imageUrl, 'https://static.inaturalist.org/photos/1/large.jpg');
+  assert.equal(f.author, 'beefan'); assert.equal(f.licence, 'CC BY');
+  assert.equal(f.description, 'Apis mellifera, seen in Oslo, Norway on 2026-06-01.');
+  await inat.more(f, ctx); assert.equal(new URL(calls[1].url).searchParams.get('taxon_id'), '47219');
+});
+test('openlibrary search builds book cards', async () => {
+  const { ctx, calls } = await adapterCtx(); const [a, b] = await openlibrary.search('le guin', ctx);
+  assert.equal(new URL(calls[0].url).searchParams.get('fields'), 'key,title,author_name,cover_i,first_publish_year');
+  assert.equal(a.url, 'https://openlibrary.org/works/OL27448W'); assert.equal(a.imageUrl, 'https://covers.openlibrary.org/b/id/12345-M.jpg');
+  assert.equal(a.description, 'Ursula K. Le Guin, 1969'); assert.equal(b.imageUrl, undefined);
+});
+test('openlibrary random reads a subject page', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await openlibrary.random(ctx);
+  assert.match(calls[0].url, /\/subjects\/[a-z_]+\.json\?limit=12&offset=\d+$/); assert.ok(f.meta.subject);
+});
+test('apod uses DEMO_KEY and maps images and videos', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await apod.random(ctx);
+  const u = new URL(calls[0].url);
+  assert.equal(u.searchParams.get('api_key'), 'DEMO_KEY'); assert.equal(u.searchParams.get('count'), '10'); assert.equal(u.searchParams.get('thumbs'), 'true');
+  assert.equal(out.length, 2);
+  assert.equal(out[0].url, 'https://apod.nasa.gov/apod/ap250314.html'); assert.equal(out[0].licence, '© Jane Sky');
+  assert.equal(out[1].kind, 'video'); assert.equal(out[1].licence, 'Public domain (NASA)');
+});
+test('apod uses your api.data.gov key and stops near the DEMO_KEY limit', async () => {
+  const keyed = await adapterCtx({ secrets: { 'src:apidatagov': 'MYKEY' } }); await apod.random(keyed.ctx);
+  assert.equal(new URL(keyed.calls[0].url).searchParams.get('api_key'), 'MYKEY');
+  const demo = await adapterCtx(); await demo.ctx.cache.set('apod:count:2026-11-11', 45, 864e5);
+  assert.deepEqual(await apod.random(demo.ctx), []); assert.equal(demo.calls.length, 0);
+});
+test('apod stops for the day after a 429', async () => {
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /api\.nasa\.gov/, file: 'apod/count.json', status: 429 }] });
+  await assert.rejects(apod.random(ctx)); assert.equal(await ctx.cache.get('apod:count:2026-11-11'), 50);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-nature-books-space.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement the three adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-nature-books-space.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/inat.js src/core/sources/openlibrary.js src/core/sources/apod.js src/core/sources/index.js tests/fixtures/http/inat tests/fixtures/http/openlibrary tests/fixtures/http/apod tests/fixtures/routes.js tests/unit/src-nature-books-space.test.js
+git commit -m "Add the iNaturalist, Open Library and APOD adapters"
+```
+
 <!-- PLAN CONTINUES -->
