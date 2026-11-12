@@ -329,6 +329,24 @@ test('15.11 step 10, no life: Tolled-for once a vigil, its time the seconds to t
   assert.equal(T2.player.alive, false);
 });
 
+test('what took the player to no life is noted for the Register: the attack, its kind and the toll', () => {
+  const S = run(sim, [], { rules: { tollSeconds: 1 } }), s = source(S), p = S.player;
+  for (let i = 0; i < 70; i++) Sim.step(S, still);           // past the first toll
+  assert.equal(S.cause, null, 'nothing yet');
+  Dmg.hitPlayer(S, MIRE, s, 0.1, 0);
+  assert.equal(S.cause, null, 'harm that leaves life is not a cause');
+  p.life = 2;
+  Dmg.hitPlayer(S, WAVE, s, 1, 1);
+  assert.deepEqual(plain(S.cause), { attack: 't.wave', kind: 'swell', toll: 1 }, 'the fall that made it Tolled-for');
+  // and the fall that kills: a press of a body has no attack id
+  const T2 = run(sim, []);
+  T2.combat.reprieved = true;
+  T2.player.life = 1;
+  Dmg.hitPlayer(T2, { type: 'drag', mult: 1 }, source(T2), 1, 0);
+  assert.deepEqual(plain(T2.cause), { attack: null, kind: 'drag', toll: 0 });
+  assert.equal(T2.result.cause, T2.cause, 'the result carries it');
+});
+
 test('Dmg.hitPlayer: a shot or an area carries its whole harm in damage, which mult does not multiply again', () => {
   const S = run(sim, []), area = S.areas.alloc();
   area.team = 1; area.damage = 7; area.ttl = 1;
@@ -581,6 +599,20 @@ test('Dmg.warning: free Heed x 0.01 + warn, +0.3 from a Sounded source, never mo
   near(Dmg.warning(T2, e), 0.75);                            // + 0.3
   const T3 = run(sim, [], { mods: [{ stat: 'heed-max', op: 'set', value: 0 }] });
   near(Dmg.warning(T3, null), 0.05);
+});
+
+test('Dmg.warning: the Register shows an attack that killed a character sooner, by what the run\'s account says of it', () => {
+  // the run's account carries warned: seconds by attack id, which Char.begin works out (0.15 s a death, three at most)
+  const account = { warned: { 't.wave': 0.3, 't.lunge': 0.45 } };
+  const S = run(sim, [], { mods: [{ stat: 'heed-max', op: 'set', value: 20 }], account });
+  near(Dmg.warning(S, null, 't.wave'), 0.2 + 0.05 + 0.3);
+  near(Dmg.warning(S, null, 't.lunge'), 0.2 + 0.05 + 0.45);
+  near(Dmg.warning(S, null, 't.mire'), 0.25);                // an attack that killed no one
+  near(Dmg.warning(S, null, null), 0.25);
+  near(Dmg.warning(S, null, 'constructor'), 0.25);           // only the account's own entries count
+  const T2 = run(sim, [], { mods: [{ stat: 'heed-max', op: 'set', value: 90 }], account });
+  assert.equal(Dmg.warning(T2, null, 't.lunge'), 1, 'all of it together is never more than 1 s');
+  near(Dmg.warning(run(sim, [], { mods: [{ stat: 'heed-max', op: 'set', value: 20 }] }), null, 't.wave'), 0.25);   // no account
 });
 
 test('Dmg.large: large by its def\'s size or by an elite rank or above', () => {

@@ -2,9 +2,9 @@
 // that runs once at boot.
 // Owns: Defs
 // Public:
-//   Defs.KINDS                       the kinds of definition: voice, knot, observance, treeSkeleton, cluster,
-//                                    legacyNode, class, calling, attack, enemy, boss, zone, puppet, prop, tileset, base,
-//                                    affix, unique, currency, favour, bequest, mode, curves, constants, trait, cause
+//   Defs.KINDS                       the kinds of definition: voice, knot, observance, plan, node, class, calling, peal,
+//                                    attack, enemy, boss, zone, puppet, prop, tileset, base, posture, bellframe, pit,
+//                                    gift, favour, bequest, mode, curves, constants, trait, cause
 //   Defs.add(kind, def) -> def       registers a definition. Cheap checks only: a known kind, a string id, an id
 //                                    not yet taken in that kind. Throws otherwise, and after Defs.finalize().
 //   Defs.get(kind, id) -> def        throws an error that names the kind and the id when there is none
@@ -23,9 +23,20 @@
 //   Defs.finalize() -> [string]      checks every definition and then freezes all of them, the registries and
 //                                    the schema. [] means valid. Each string reads "kind id: field problem".
 //
-// The kinds voice, knot, observance, favour, bequest and cause are the design's words (docs/design/01-world.md);
-// treeSkeleton, cluster, legacyNode, base, affix, unique and currency keep the shapes of the first plan until Stage 2
-// replaces them with the Plan, the Bellframe and finds (docs/design/04-progression.md).
+// The kinds are the design's words (docs/design/01-world.md and 04-progression.md):
+//   plan        the Plan's own numbers (one, 'main'): its rings and streets, and the numbers of its rules
+//   node        one place of the Plan: a door, lane, corner, square or milestone, on a ring, maybe in a straight street
+//               and on a bank, with its links to the nodes next to it
+//   base        what a find is made from: its slot, its family if it is a tool, its level, its fixed line, and the
+//               weights it gives the entries of each posture's table
+//   posture     the table of lines one of the four postures writes (Stats.POSTURES): verbs and objects
+//   bellframe   the Bellframe's own numbers (one, 'main'): what pits and ringing places cost, the true ring
+//   pit         one place of the Bellframe: the pit it opens from (none for the tenor pit), its printed grant
+//   gift        what a bell gives: one for each class without a calling and one for each calling
+//   peal        a rule of a calling, kept through a vigil for calling points
+//
+//   The shapes a game holds and changes (a character, a find, a voice in its place, a bell, the save) are not
+//   definitions: 14-character.js and 16-savedata.js keep and check them.
 //
 // A spec is {type, required, nullable?, only?, ...}. A field that is not required may be left out; null is allowed
 // only where nullable is true. An object may hold only the fields its spec lists, unless it is open.
@@ -39,9 +50,9 @@
 //        'object'             fields: {name: spec}; open: true when other fields may be there as well
 //        'shape'              shape: a name in Defs.SHAPES
 //        'union'              of: [spec, ...]; the value must fit one of them
-//        'stat' | 'tag' | 'cond' | 'harm' | 'family' | 'primary' | 'counted' | 'ailment'
+//        'stat' | 'tag' | 'cond' | 'harm' | 'family' | 'primary' | 'counted' | 'ailment' | 'posture'
 //                             the id of a row of that table in Stats (harm: a kind of harm; counted: Stats.PER;
-//                             ailment: a condition a body carries)
+//                             ailment: a condition a body carries; posture: Stats.POSTURES)
 //   enum: [word, ...]         on a string: the words allowed
 //   ref: kind                 on a string: the id of a definition of that kind. Not checked while that kind has
 //                             no definitions at all, which is how a build without (say) its puppets stays valid.
@@ -50,20 +61,25 @@
 //
 // What finalize checks beyond the specs: that a definition is what JSON can carry (no function, no undefined,
 // no NaN, only plain objects and arrays); inside every Mod and ModRange that a pair value sits on a range stat
-// only and that per.div is above 0; keys and links inside one definition (cluster and calling nodes, puppet parts,
-// a boss's attack ids); that a class and its callings name each other; that no id is both an enemy and a boss;
-// that a voice deals one kind of harm; that an enemy's guard is for a kind of harm that has one; that a favour uses
-// only flat and inc modifiers, and a plain favour switches no flag.
+// only and that per.div is above 0; keys and links inside one definition (calling nodes, puppet parts, a boss's
+// attack ids, a posture's entries); that a class and its callings name each other, and so do a gift and its calling;
+// that no id is both an enemy and a boss; that a voice deals one kind of harm; that an enemy's guard is for a kind of
+// harm that has one; the engine's rule for "more" (04-progression.md): it is found only on knots, squares, callings
+// and named finds, so a favour, a pit and a gift use only flat and inc, and no other node, base, posture or
+// observance uses more; that a plain favour switches no flag; that the links between nodes go both ways, a node
+// never links itself, a door names its class and nothing else does, a milestone stands in a street and only a lane
+// offers a choice; that a tool has a family and nothing else does; that a posture's table is one of the four, and
+// that there is one tenor pit (the one pit that opens from none).
 (function () {
   'use strict';
 
-  const KINDS = ['voice', 'knot', 'observance', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy',
-    'boss', 'zone', 'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'favour', 'bequest', 'mode', 'curves',
-    'constants', 'trait', 'cause'];
+  const KINDS = ['voice', 'knot', 'observance', 'plan', 'node', 'class', 'calling', 'peal', 'attack', 'enemy', 'boss', 'zone',
+    'puppet', 'prop', 'tileset', 'base', 'posture', 'bellframe', 'pit', 'gift', 'favour', 'bequest', 'mode', 'curves', 'constants',
+    'trait', 'cause'];
   const ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/, HEX = /^#[0-9a-fA-F]{6}$/;
   const TABLES = {
     stat: 'a stat', tag: 'a tag', cond: 'a modifier condition', harm: 'a kind of harm', family: 'a family of finds', primary: 'an attribute',
-    counted: 'something a per modifier can count', ailment: 'a condition a body carries',
+    counted: 'something a per modifier can count', ailment: 'a condition a body carries', posture: 'a posture that writes lines',
   };
 
   const lists = Object.create(null), byId = Object.create(null);   // no prototype behind them: "constructor" is not a kind
@@ -103,9 +119,12 @@
     archetype: ['ring', 'rap', 'bar', 'spark', 'cone'],            // what the first version needs (design 15.14)
     target: ['nearest', 'densest', 'random', 'farthest', 'aim', 'self'],
     triggerOn: ['kill', 'hurt', 'pull', 'trade', 'heave', 'timer'],
-    clusterShape: ['ring6', 'arc5', 'fork4', 'line3', 'diamond4'],
-    nodeKind: ['minor', 'major', 'capstone'],
-    callingKind: ['minor', 'major'],
+    knotRule: [],                                                  // the rules knots change: their registry allows them
+    promise: [],                                                   // the promises observances keep: likewise
+    pealRule: [],                                                  // the rules peals keep: likewise
+    nodeKind: ['door', 'lane', 'corner', 'square', 'milestone'],   // the kinds of node on the Plan
+    callingKind: ['lane', 'corner', 'square'],                     // a calling's small tree speaks the Plan's words
+    bank: ['flood', 'ebb'],                                        // the river's two banks on the Plan
     attackKind: ['strike', 'throw', 'press', 'spread', 'fall', 'zone'],
     attackShape: ['arc', 'line', 'circle', 'ring', 'wedge'],
     ai: ['wake', 'chase'],                                         // the common dead walk the wake; the rest steer at you
@@ -116,13 +135,10 @@
     rig: ['biped', 'quadruped', 'floater', 'crawler', 'winged', 'serpent', 'static'],
     partShape: ['box', 'taper', 'cyl', 'sphere', 'cone'],
     slot: ['tool', 'hat', 'coat', 'hands', 'girdle', 'pattens', 'token'],
-    affixType: ['prefix', 'suffix'],
-    currencyTarget: ['item', 'voice'],
-    currencyOp: ['toMagic', 'toRare', 'addMod', 'reroll', 'removeMod', 'rerollValues', 'addSocket', 'corrupt', 'levelVoice'],
     favourRarity: ['plain', 'turned'],
     favourScope: ['global', 'voices'],
     bequestScope: ['account', 'character'],
-    event: ['hit', 'kill', 'cast', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'offer', 'favour',
+    event: ['hit', 'kill', 'cast', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'grow', 'offer', 'favour',
       'telegraph', 'phase', 'drop', 'toll', 'count', 'gate', 'stroke', 'end'],
     route: ['zone', 'night'],
     levelOffer: ['none', 'node'],
@@ -150,8 +166,9 @@
   const at = (min, max) => T('number', max === undefined ? { min } : { min, max });
   const whole = (min, max) => T('int', max === undefined ? { min } : { min, max });
 
-  const text = { name: str, text: str, icon: any }, mods = list(shape('Mod')), ranges = list(shape('ModRange'));
-  const tags = list(row('tag')), vec3 = list(num, 3), req = map(at(0), either(row('primary'), word('level')));
+  const text = { name: str, text: str, icon: any }, mods = list(shape('Mod'));
+  const tags = list(row('tag')), vec3 = list(num, 3);
+  const conds = either(row('cond'), list(row('cond'), [1, 31]));   // one condition, or a list that must all hold
   const SCALED = { a: num, b: num, curve: one('curve') };          // the long form of a 'scaled' value
 
   const attack = {
@@ -168,11 +185,11 @@
 
   const SHAPES = {
     Mod: { open: false, fields: {
-      stat: row('stat'), op: one('op'), value: either(scaled, list(scaled, 2)), tags: opt(tags), cond: opt(row('cond')),
+      stat: row('stat'), op: one('op'), value: either(scaled, list(scaled, 2)), tags: opt(tags), cond: opt(conds), unless: opt(conds),
       per: opt(obj({ stat: row('counted'), div: num, cap: opt(at(0)) })), local: opt(bool),
     } },
     ModRange: { open: false, fields: {
-      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), local: opt(bool),
+      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(conds), unless: opt(conds), local: opt(bool),
       min: either(num, list(num, 2)), max: either(num, list(num, 2)),
     } },
     Trigger: { open: false, fields: { on: one('triggerOn'), chance: at(0), cooldown: at(0) } },
@@ -188,20 +205,21 @@
     }),
     knot: Object.assign({}, text, {
       attr: row('primary'), tier: whole(1, 5), requires: tags, excludes: tags, addTags: tags, mods, params: map(num), trigger: nul(shape('Trigger')),
+      rule: opt(nul(one('knotRule'))),                             // the rule it changes, if it changes one
     }),
     observance: Object.assign({}, text, {
       attr: row('primary'), tier: whole(1, 5), heed: at(20, 40), mods, aura: pinned(null),
+      promise: opt(nul(one('promise'))), params: opt(map(num)),     // the promise the thumb keeps, and its numbers
     }),
-    treeSkeleton: {
-      spokes: whole(1), rings: list(obj({ r: at(0), slots: whole(1) })), pathMods: mods, starts: map(obj({ sector: whole(0) }), ref('class')),
+    plan: {
+      name: str, text: opt(str), rings: whole(1, 12), streets: whole(3, 24),
+      ringGain: at(0), bankGain: at(0), mileGain: at(0), mileFrom: whole(0), mileMost: whole(0), loopMost: whole(0), loopShare: at(0, 100),
+      refund: at(0), look: opt(map(any)),
     },
-    cluster: {
-      name: str, anchor: obj({ sector: whole(0), ring: whole(0), slot: whole(0) }), shape: one('clusterShape'), theme: tags, entry: str,
-      nodes: list(obj({ key: str, kind: one('nodeKind'), name: str, text: opt(str), icon: opt(any), mods })),
+    node: {
+      kind: one('nodeKind'), ring: whole(1, 12), street: nul(whole(0, 23)), bank: nul(one('bank')), x: num, y: num, name: str, text: opt(str),
+      icon: opt(any), mods, choice: nul(list(row('primary'), [1, 4])), links: list(ref('node'), [1, 8]), class: opt(ref('class')),
     },
-    legacyNode: Object.assign({}, text, {
-      branch: str, row: whole(0), col: whole(0), requires: list(ref('legacyNode')), ranks: whole(1), cost: list(at(0)), mods, unlock: opt(map(any)),
-    }),
     class: {
       name: str, text: str, attrs: map(at(0), row('primary')), perLevel: map(at(0), row('primary')), base: mods, door: opt(whole(0, 5)),
       voices: list(ref('voice'), [1, 6]), startGear: list(ref('base')), trade: obj({ name: str, text: str, icon: any, recharge: at(0) }),
@@ -211,6 +229,7 @@
       class: ref('class'), name: str, text: str, points: whole(1),
       nodes: list(obj({ key: str, kind: one('callingKind'), name: str, text: opt(str), icon: opt(any), mods, requires: list(str), row: whole(0), col: whole(0) })),
     },
+    peal: Object.assign({}, text, { calling: ref('calling'), rule: nul(one('pealRule')), points: whole(1), params: opt(map(num)) }),
     attack,
     enemy,
     boss: Object.assign({}, enemy, { arena: obj({ radius: at(0) }), phases: list(phase) }),
@@ -238,14 +257,21 @@
     },
     tileset: { recipe: opt(str), span: opt(at(0.5)), colors: opt(map(either(hex, list(at(0, 1), 3)))) },
     base: {
-      name: str, slot: one('slot'), family: nul(row('family')), tags: list(str), level: whole(1), req, twoHanded: bool,
-      weapon: pinned(null), defence: nul(map(at(0))), implicit: ranges, icon: any,
+      name: str, text: opt(str), slot: one('slot'), family: nul(row('family')), level: whole(1), fixed: shape('ModRange'),
+      tables: map(obj({ verbs: opt(map(at(0))), objects: opt(map(at(0))) }), row('posture')), icon: any,
+      named: opt(bool), unlock: nul(ref('bequest')), weight: at(0),
     },
-    affix: { name: str, type: one('affixType'), group: str, weights: map(at(0)), tiers: list(obj({ ilvl: whole(1), mods: ranges })) },
-    unique: { name: str, base: ref('base'), level: whole(1), mods: ranges, flavour: str, weight: at(0), unlock: nul(ref('bequest')) },
-    currency: Object.assign({}, text, {
-      target: one('currencyTarget'), op: one('currencyOp'), requires: map(any), args: map(any), weight: at(0), level: whole(1),
-    }),
+    posture: {
+      name: str, text: opt(str),
+      verbs: list(obj({ key: str, stat: row('stat'), op: one('op'), band: list(list(num, 2), 8), grow: at(0), w: at(0) }), [1, 200]),
+      objects: list(obj({ key: str, tags, w: at(0) }), [1, 200]),
+    },
+    bellframe: {
+      pitFirst: at(0), pitGrowth: at(1), placeFirst: at(0), placeGrowth: at(1), placesMost: whole(1, 8), trueLow: at(0, 100),
+      trueHigh: at(0, 100), trueGain: at(0), weighPer: at(1), recast: at(0), deathHum: at(0),
+    },
+    pit: Object.assign({}, text, { from: nul(ref('pit')), grant: mods, x: num, y: num }),
+    gift: Object.assign({}, text, { class: ref('class'), calling: nul(ref('calling')), mods }),
     favour: Object.assign({}, text, {
       rarity: one('favourRarity'), weight: at(0), maxStacks: whole(1), group: opt(str), scope: one('favourScope'),
       requires: obj({ tags: opt(tags), class: opt(ref('class')), runLevel: opt(whole(0)) }), mods, params: opt(map(num)),
@@ -253,8 +279,8 @@
     bequest: {
       name: str, text: str, hidden: bool, scope: one('bequestScope'), on: one('event'), count: whole(1), where: map(any),
       reward: obj({
-        class: opt(ref('class')), zone: opt(ref('zone')), unique: opt(ref('unique')), planPoints: opt(whole(0)), coin: opt(at(0)),
-        hum: opt(at(0)), currency: opt(map(at(0), ref('currency'))),
+        class: opt(ref('class')), bill: opt(obj({ zone: ref('zone'), causes: list(ref('cause'), [1, 4]) })), base: opt(ref('base')),
+        observance: opt(ref('observance')), voice: opt(ref('voice')), planPoints: opt(whole(0)), coin: opt(at(0)), hum: opt(at(0)),
       }),
     },
     mode: {
@@ -268,7 +294,7 @@
     trait: { name: str, text: opt(str), mods: opt(mods) },
     cause: { name: str, text: opt(str), mods: opt(mods) },
   };
-  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'cause'];
+  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'cause', 'bellframe'];
 
   const SCHEMA = {};
   for (const kind of KINDS) SCHEMA[kind] = { open: OPEN.includes(kind), fields: Object.assign({ id }, FIELDS[kind]) };
@@ -450,13 +476,63 @@
     return keys;
   }
   const FLAG = 'flag.';                               // the prefix of the stats that switch a rule
+  // The engine's rule (04-progression.md): "more" appears only on knots, squares, callings and named finds.
+  const noMore = (list, field, why, say) => list.forEach((m, i) => {
+    if (m.op === 'more') say(field + '[' + i + '].op', '"more" is found only on knots, squares, callings and named finds, not ' + why);
+  });
+  const flatInc = (list, field, what, say) => list.forEach((m, i) => {
+    if (m.op !== 'flat' && m.op !== 'inc') say(field + '[' + i + '].op', '"' + m.op + '": ' + what + ' adds numbers with flat and inc only');
+  });
   const RULES = {
     voice: function (def, say) {
       const kinds = Object.keys(def.damage);
       if (kinds.length !== 1) say('damage', 'must name one kind of harm, not ' + kinds.length + ': every voice deals one kind');
     },
-    cluster: function (def, say) {
-      if (!keyRules(def.nodes, say).includes(def.entry)) say('entry', '"' + def.entry + '" is not the key of one of its nodes');
+    observance: function (def, say) { noMore(def.mods, 'mods', 'on an observance', say); },
+    node: function (def, say) {
+      def.links.forEach((link, i) => {
+        if (link === def.id) say('links[' + i + ']', 'is the node itself');
+        const other = byId.node.get(link);
+        if (other !== undefined && Array.isArray(other.links) && !other.links.includes(def.id)) say('links[' + i + ']', '"' + link + '" does not link back');
+      });
+      if (twice(def.links) !== undefined) say('links', 'names "' + twice(def.links) + '" twice');
+      if ((def.kind === 'door') !== (def.class !== undefined)) say('class', def.kind === 'door' ? 'is missing: a door is a class\'s start' : 'is only for a door');
+      if (def.kind === 'door' && def.mods.length > 0) say('mods', 'must be empty: a door gives nothing');
+      if (def.kind === 'milestone' && def.street === null) say('street', 'is null: a milestone stands in a straight street');
+      if (def.choice !== null && def.kind !== 'lane') say('choice', 'is only for a lane');
+      if (def.kind !== 'square') noMore(def.mods, 'mods', 'on a ' + def.kind, say);
+      const plan = byId.plan.get('main');
+      if (plan !== undefined && def.ring > plan.rings) say('ring', 'must be at most ' + plan.rings + ', the rings of the Plan, not ' + def.ring);
+      if (plan !== undefined && def.street !== null && def.street >= plan.streets) say('street', 'must be below ' + plan.streets + ', the streets of the Plan');
+    },
+    base: function (def, say) {
+      if ((def.slot === 'tool') !== (def.family !== null)) say('family', def.slot === 'tool' ? 'is null: a tool has a family' : 'is only for a tool');
+      if (def.named !== true && def.fixed.op === 'more') say('fixed.op', '"more" is found only on knots, squares, callings and named finds');
+    },
+    posture: function (def, say) {
+      if (typeof Stats.is === 'function' && !Stats.is('posture', def.id)) say('id', '"' + def.id + '" is not one of the postures that write lines');
+      const verbs = def.verbs.map((v) => v.key), objects = def.objects.map((o) => o.key);
+      if (twice(verbs) !== undefined) say('verbs', 'has two verbs with the key "' + twice(verbs) + '"');
+      if (twice(objects) !== undefined) say('objects', 'has two objects with the key "' + twice(objects) + '"');
+      def.verbs.forEach((v, i) => {
+        if (v.op !== 'flat' && v.op !== 'inc') say('verbs[' + i + '].op', '"' + v.op + '": a written line adds with flat and inc only');
+        v.band.forEach((b, k) => { if (b[0] > b[1]) say('verbs[' + i + '].band[' + k + ']', 'runs from more to less'); });
+      });
+    },
+    pit: function (def, say) {
+      flatInc(def.grant, 'grant', 'the Bellframe', say);
+      if (def.from === def.id) say('from', 'is the pit itself');
+      if (def.from === null) {                     // told of the second and later: the first stands as the tenor pit
+        for (const other of lists.pit) {
+          if (other === def) break;
+          if (other.from === null) { say('from', 'is null, and so is that of "' + other.id + '": there is one tenor pit'); break; }
+        }
+      }
+    },
+    gift: function (def, say) {
+      flatInc(def.mods, 'mods', 'the Bellframe', say);
+      const calling = def.calling === null ? undefined : byId.calling.get(def.calling);
+      if (calling !== undefined && calling.class !== def.class) say('calling', '"' + def.calling + '" belongs to the class "' + calling.class + '"');
     },
     calling: function (def, say) {
       const keys = keyRules(def.nodes, say);
@@ -471,9 +547,6 @@
         const calling = byId.calling.get(callingId);
         if (calling !== undefined && calling.class !== def.id) say('callings[' + i + ']', '"' + callingId + '" belongs to the class "' + calling.class + '"');
       });
-    },
-    legacyNode: function (def, say) {
-      if (def.cost.length !== def.ranks) say('cost', 'must hold one cost for each of its ' + def.ranks + ' ranks, not ' + def.cost.length);
     },
     enemy: function (def, say) {
       const own = def.attacks.map((a) => (typeof a === 'string' ? a : a.id)), again = twice(own);
@@ -510,6 +583,10 @@
         if (m.op !== 'flat' && m.op !== 'inc') say('mods[' + i + '].op', '"' + m.op + '": a favour adds numbers with flat and inc only');
         if (def.rarity === 'plain' && typeof m.stat === 'string' && m.stat.startsWith(FLAG)) say('mods[' + i + '].stat', '"' + m.stat + '" switches a rule, which only a turned favour does');
       });
+    },
+    peal: function (def, say) {
+      const calling = byId.calling.get(def.calling);
+      if (calling !== undefined && calling.points > 0 && def.points > calling.points) say('points', 'must be at most ' + calling.points + ', the points of its calling');
     },
     mode: function (def, say) {
       const curves = byId.curves.get('main');

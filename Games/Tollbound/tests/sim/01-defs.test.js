@@ -6,8 +6,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadSim, plain } = require('./loader.js');
 
-const KINDS = ['voice', 'knot', 'observance', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy', 'boss', 'zone',
-  'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'favour', 'bequest', 'mode', 'curves', 'constants', 'trait', 'cause'];
+const KINDS = ['voice', 'knot', 'observance', 'plan', 'node', 'class', 'calling', 'peal', 'attack', 'enemy', 'boss', 'zone', 'puppet', 'prop',
+  'tileset', 'base', 'posture', 'bellframe', 'pit', 'gift', 'favour', 'bequest', 'mode', 'curves', 'constants', 'trait', 'cause'];
 const mod = (stat, op, value, more) => Object.assign({ stat, op, value }, more);
 
 // Runs only the files named, in a context of their own: registries with nothing in them, whatever content the
@@ -28,10 +28,13 @@ function sample() {
   const calling = (id) => ({
     id, class: 'change-ringer', name: 'Stander', text: 'Leans on the stay.', points: 8,
     nodes: [
-      { key: 'a', kind: 'minor', name: 'Stay', mods: [mod('set-time', 'flat', -0.1)], requires: [], row: 0, col: 0 },
-      { key: 'b', kind: 'major', name: 'Weight', text: 'It leans.', icon: 'stay', mods: [mod('taken', 'more', -8, { cond: 'braced' })], requires: ['a'], row: 1, col: 0 },
+      { key: 'a', kind: 'lane', name: 'Stay', mods: [mod('set-time', 'flat', -0.1)], requires: [], row: 0, col: 0 },
+      { key: 'b', kind: 'square', name: 'Weight', text: 'It leans.', icon: 'stay', mods: [mod('taken', 'more', -8, { cond: 'braced' })], requires: ['a'], row: 1, col: 0 },
     ],
   });
+  const node = (id, kind, ring, street, links, more) => Object.assign({ id, kind, ring, street, bank: null, x: ring * 2, y: street === null ? 0 : street,
+    name: id, mods: [], choice: null, links }, more);
+  const band = [[1, 2], [1, 3], [2, 3], [2, 4], [3, 4], [3, 5], [4, 5], [4, 6]];
   return [
     ['puppet', {
       id: 'debug.husk', rig: 'biped', scale: 1,
@@ -58,21 +61,18 @@ function sample() {
     }],
     ['observance', {
       id: 'stability', name: 'Stability', text: 'Stay within 12 m of where you stood at the last toll.', icon: 'ring', attr: 'knee', tier: 2, heed: 30,
-      mods: [mod('damage', 'inc', 25), mod('mend-rate', 'inc', 1, { per: { stat: 'level', div: 5, cap: 10 } })], aura: null,
+      mods: [mod('damage', 'inc', 25), mod('mend-rate', 'inc', 1, { per: { stat: 'level', div: 5, cap: 10 } })], aura: null, promise: null, params: { reach: 12 },
     }],
-    ['treeSkeleton', { id: 'rose', spokes: 6, rings: [{ r: 4, slots: 6 }, { r: 8, slots: 12 }], pathMods: [mod('life-max', 'flat', 5)], starts: { 'change-ringer': { sector: 0 } } }],
-    ['cluster', {
-      id: 'stones', name: 'Stones', anchor: { sector: 1, ring: 1, slot: 3 }, shape: 'line3', theme: ['blow'], entry: 'a',
-      nodes: [
-        { key: 'a', kind: 'minor', name: 'Kerb', mods: [mod('damage', 'inc', 8, { tags: ['blow'] })] },
-        { key: 'b', kind: 'major', name: 'Toll Road', text: 'Coins last longer.', icon: 'coin', mods: [mod('cond-duration', 'inc', 20, { tags: ['coined'] })] },
-        { key: 'c', kind: 'capstone', name: 'Close', mods: [mod('flag.close', 'set', 1), mod('through.blow', 'flat', 15)] },
-      ],
+    ['plan', {
+      id: 'main', name: 'The Plan', text: 'The street plan of Tollbound.', rings: 8, streets: 12, ringGain: 15, bankGain: 60, mileGain: 25, mileFrom: 4,
+      mileMost: 10, loopMost: 12, loopShare: 50, refund: 5, look: { river: [[-40, 2], [40, -2]] },
     }],
-    ['legacyNode', {
-      id: 'tenor-pit', name: 'The Tenor Pit', text: 'A little more life.', icon: 'bell', branch: 'frame', row: 0, col: 0, requires: [], ranks: 3,
-      cost: [100, 150, 225], mods: [mod('life-max', 'flat', 4)], unlock: { class: 'change-ringer' },
-    }],
+    ['node', node('door.ringer', 'door', 1, 0, ['lane.1'], { class: 'change-ringer' })],
+    ['node', node('lane.1', 'lane', 1, 0, ['door.ringer', 'corner.1'], { choice: ['hand', 'knee'] })],
+    ['node', node('corner.1', 'corner', 2, null, ['lane.1', 'square.1'], { bank: 'flood', text: 'More harm from voices that answer a turn.', icon: 'turn',
+      mods: [mod('damage', 'inc', 8, { tags: ['turn'] })] })],
+    ['node', node('square.1', 'square', 2, 1, ['corner.1', 'mile.1'], { mods: [mod('damage', 'more', 20, { cond: 'wrong-footed' }), mod('wrong-foot-taken', 'more', 100)] })],
+    ['node', node('mile.1', 'milestone', 3, 1, ['square.1'], { mods: [mod('move-speed', 'inc', 3)] })],
     ['class', {
       id: 'change-ringer', name: 'Change-ringer', text: 'Rocks in the crowd.', attrs: { hand: 10, knee: 5 }, perLevel: { hand: 2, knee: 1 },
       base: [mod('life-max', 'flat', 10)], door: 0, voices: ['tenor-stroke'], startGear: ['bell-rope'],
@@ -81,6 +81,8 @@ function sample() {
     }],
     ['calling', calling('stander')],
     ['calling', calling('backward-ringer')],
+    ['peal', { id: 'twelve-leaning', name: 'Twelve Leaning', text: 'Keep the bell set through a toll with 12 weight leaning.', icon: null, calling: 'stander',
+      rule: null, points: 2, params: { weight: 12 } }],
     ['attack', attack('shoulder')],
     ['enemy', enemy('wake-walker')],
     ['boss', enemy('half-muffled-keeper', {
@@ -107,25 +109,33 @@ function sample() {
       boss: 'half-muffled-keeper', rules: { tollSeconds: 60 }, unlock: null, next: 'dial',
     }],
     ['base', {
-      id: 'bell-rope', name: 'Bell-rope', slot: 'tool', family: 'rope', tags: ['tool', 'rope'], level: 1, req: { level: 1, hand: 8 },
-      twoHanded: false, weapon: null, defence: null, implicit: [{ stat: 'pull-window', op: 'flat', min: 0.05, max: 0.05 }], icon: 'rope',
+      id: 'bell-rope', name: 'Bell-rope', slot: 'tool', family: 'rope', level: 1, fixed: { stat: 'pull-window', op: 'flat', min: 0.05, max: 0.05 },
+      tables: { stood: { verbs: { guard: 3 }, objects: { round: 2 } }, timed: {} }, icon: 'rope', unlock: null, weight: 10,
     }],
     ['base', {
-      id: 'jerkin', name: 'Jerkin', slot: 'coat', family: null, tags: ['coat'], level: 4, req: { knee: 12 }, twoHanded: false, weapon: null,
-      defence: { weight: 3 }, implicit: [{ stat: 'guard.blow', op: 'flat', min: 1, max: 2, local: true }], icon: null,
+      id: 'jerkin', name: 'Ringer\'s Jerkin', text: 'Worn to the rope.', slot: 'coat', family: null, level: 4,
+      fixed: { stat: 'guard.blow', op: 'flat', min: 1, max: 2, local: true }, tables: {}, icon: null, unlock: null, weight: 6,
     }],
-    ['affix', {
-      id: 'of-the-rope', name: 'of the Rope', type: 'suffix', group: 'addedBlow', weights: { tool: 100, token: 20 },
-      tiers: [
-        { ilvl: 1, mods: [{ stat: 'added.blow', op: 'flat', min: [1, 2], max: [3, 5] }] },
-        { ilvl: 20, mods: [{ stat: 'added.blow', op: 'flat', min: [4, 7], max: [9, 14], tags: ['round'] }] },
-      ],
+    ['base', {
+      id: 'great-hour', name: 'Great Hour', slot: 'token', family: null, level: 10, fixed: { stat: 'damage', op: 'more', min: 10, max: 20, cond: 'braced' },
+      tables: {}, icon: 'bell', named: true, unlock: 'first-toll', weight: 1,
     }],
-    ['unique', {
-      id: 'great-hour', name: 'Great Hour', base: 'bell-rope', level: 10, mods: [{ stat: 'damage', op: 'more', min: 10, max: 20, cond: 'braced' }],
-      flavour: 'It remembers every bell.', weight: 5, unlock: null,
+    ['posture', {
+      id: 'stood', name: 'Stood', text: 'Braced through the toll period.',
+      verbs: [{ key: 'guard', stat: 'guard.blow', op: 'flat', band: band.map((b) => b.slice()), grow: 2, w: 10 },
+        { key: 'harm', stat: 'damage', op: 'inc', band: band.map((b) => b.slice()), grow: 3, w: 6 }],
+      objects: [{ key: 'all', tags: [], w: 5 }, { key: 'round', tags: ['round'], w: 3 }],
     }],
-    ['currency', { id: 'wax', name: 'Wax', text: 'Adds a line.', icon: 'drop', target: 'item', op: 'addMod', requires: { rarity: 'magic' }, args: {}, weight: 30, level: 1 }],
+    ['bellframe', {
+      id: 'main', pitFirst: 100, pitGrowth: 1.5, placeFirst: 100, placeGrowth: 1.5, placesMost: 8, trueLow: 10, trueHigh: 30, trueGain: 5, weighPer: 8,
+      recast: 60, deathHum: 40,
+    }],
+    ['pit', { id: 'tenor', name: 'The Tenor Pit', text: 'Where the frame begins.', icon: 'bell', from: null, grant: [mod('life-max', 'flat', 4)], x: 0, y: 0 }],
+    ['pit', { id: 'treble', name: 'The Treble Pit', text: 'A little quicker.', icon: 'bell', from: 'tenor', grant: [mod('move-speed', 'inc', 2)], x: 1, y: 1 }],
+    ['gift', { id: 'ringers-gift', name: 'The Ringer\'s Gift', text: 'Pulls come sooner.', icon: 'rope', class: 'change-ringer', calling: null,
+      mods: [mod('pull-window', 'flat', 0.02)] }],
+    ['gift', { id: 'standers-gift', name: 'The Stander\'s Gift', text: 'The stay holds more.', icon: null, class: 'change-ringer', calling: 'stander',
+      mods: [mod('set-time', 'inc', -5)] }],
     ['favour', {
       id: 'funeral-biscuit', name: 'Funeral Biscuit', text: '+{0}% speed for voices that circle you', icon: 'biscuit', rarity: 'plain', weight: 10,
       maxStacks: 5, group: 'speed', scope: 'voices', requires: { tags: ['round'], class: 'change-ringer', runLevel: 2 },
@@ -137,7 +147,8 @@ function sample() {
     }],
     ['bequest', {
       id: 'first-toll', name: 'First Toll', text: 'Hear a bell.', hidden: false, scope: 'account', on: 'toll', count: 1, where: { zone: 'dial' },
-      reward: { class: 'change-ringer', zone: 'dial', unique: 'great-hour', planPoints: 1, coin: 50, hum: 5, currency: { wax: 2 } },
+      reward: { class: 'change-ringer', bill: { zone: 'dial', causes: ['drowned'] }, base: 'great-hour', observance: 'stability', voice: 'tenor-stroke',
+        planPoints: 1, coin: 50, hum: 5 },
     }],
     ['mode', {
       id: 'trial', name: 'Trial', persistent: false, route: 'night', zones: ['dial'], xpCurve: 'charXp', levelCap: 20, runLevels: 10,
@@ -172,7 +183,10 @@ test('the kinds are the ones the engine notes list, in the design\'s words', () 
   assert.deepEqual(plain(Defs.KINDS), KINDS);
   assert.deepEqual(Object.keys(Defs.SCHEMA), KINDS);
   for (const kind of KINDS) assert.deepEqual(plain(Defs.all(kind)), [], `Defs.all('${kind}') works with no entries`);
-  for (const gone of ['sigil', 'binding', 'vow', 'chime', 'deed', 'chartMod']) assert.throws(() => Defs.all(gone), /is not a kind of definition/, gone);
+  // the first plan's words, and its placeholders for the Plan, the Bellframe and finds, are gone (04-progression.md)
+  for (const gone of ['sigil', 'binding', 'vow', 'chime', 'deed', 'chartMod', 'treeSkeleton', 'cluster', 'legacyNode', 'affix', 'unique', 'currency']) {
+    assert.throws(() => Defs.all(gone), /is not a kind of definition/, gone);
+  }
 });
 
 test('add, get, has and all', () => {
@@ -305,14 +319,16 @@ test('the schema is plain data that names only kinds, shapes and word lists that
   const { Defs } = kernel();
   assert.deepEqual(JSON.parse(JSON.stringify(Defs.SCHEMA)), plain(Defs.SCHEMA), 'it survives JSON');
   const types = new Set(['string', 'number', 'int', 'bool', 'any', 'id', 'hex', 'scaled', 'array', 'map', 'object', 'shape', 'union', 'stat', 'tag',
-    'cond', 'harm', 'family', 'primary', 'counted', 'ailment']);
+    'cond', 'harm', 'family', 'primary', 'counted', 'ailment', 'posture']);
   let seen = 0, pinnedSeen = 0;
   const walk = (spec, where) => {
     seen++;
     assert.ok(types.has(spec.type), `${where}: type ${spec.type}`);
     assert.equal(typeof spec.required, 'boolean', `${where}: says whether it is required`);
     if (spec.ref !== undefined) assert.ok(KINDS.includes(spec.ref), `${where}: ref ${spec.ref}`);
-    if (spec.enum !== undefined) assert.ok(Array.isArray(spec.enum) && spec.enum.length > 0 && spec.enum.every((w) => typeof w === 'string'), `${where}: enum`);
+    // a word list is never empty, but for those a registry fills (the rules of knots, observances and peals)
+    const filled = [Defs.ENUMS.knotRule, Defs.ENUMS.promise, Defs.ENUMS.pealRule].includes(spec.enum);
+    if (spec.enum !== undefined) assert.ok(Array.isArray(spec.enum) && (spec.enum.length > 0 || filled) && spec.enum.every((w) => typeof w === 'string'), `${where}: enum`);
     if ('only' in spec) { pinnedSeen++; assert.ok(spec.only === null || ['number', 'boolean', 'string'].includes(typeof spec.only), `${where}: only`); }
     if (spec.type === 'shape') assert.ok(Defs.SHAPES[spec.shape], `${where}: shape ${spec.shape}`);
     if (spec.type === 'array' || spec.type === 'map') walk(spec.of, where + '[]');
@@ -330,7 +346,9 @@ test('the schema is plain data that names only kinds, shapes and word lists that
   assert.ok(seen > 400, 'the walk saw the whole schema');
   assert.ok(pinnedSeen >= 6, 'the fields the design keeps at one value are pinned');
   assert.deepEqual(Object.keys(Defs.SHAPES), ['Mod', 'ModRange', 'Trigger', 'Attack']);
-  assert.deepEqual(Object.keys(Defs.SHAPES.Mod.fields), ['stat', 'op', 'value', 'tags', 'cond', 'per', 'local'], 'no "from": nothing is gained as another kind');
+  assert.deepEqual(Object.keys(Defs.SHAPES.Mod.fields), ['stat', 'op', 'value', 'tags', 'cond', 'unless', 'per', 'local'],
+    'no "from": nothing is gained as another kind; unless: what must not hold (a line cut backward)');
+  assert.deepEqual(Object.keys(Defs.SHAPES.ModRange.fields), ['stat', 'op', 'tags', 'cond', 'unless', 'local', 'min', 'max']);
   assert.deepEqual(plain(Defs.SCHEMA.enemy.fields.puppet), { type: 'string', required: true, ref: 'puppet' });
   assert.deepEqual(plain(Defs.SCHEMA.voice.fields.tier), { type: 'int', required: true, min: 1, max: 5 });
   // design 15.9: a voice's crit is 0, its weapon null and its weaponPct 0; an attack is never evadable; an observance has no aura
@@ -339,7 +357,14 @@ test('the schema is plain data that names only kinds, shapes and word lists that
   assert.deepEqual(plain(Defs.SCHEMA.attack.fields.evadable), { type: 'any', required: true, only: false });
   assert.equal(Defs.SHAPES.Attack.fields.evadable, Defs.SCHEMA.attack.fields.evadable, 'an attack inside an enemy is an attack');
   assert.deepEqual(plain(Defs.SCHEMA.observance.fields.aura), { type: 'any', required: true, only: null });
-  assert.deepEqual(plain(Defs.SCHEMA.base.fields.weapon), { type: 'any', required: true, only: null }, 'no base is a weapon (design 15.2)');
+  // no base is a weapon (design 15.2): its shape has no weapon at all, and the first plan's fields of gear are gone
+  assert.deepEqual(Object.keys(Defs.SCHEMA.base.fields), ['id', 'name', 'text', 'slot', 'family', 'level', 'fixed', 'tables', 'icon', 'named', 'unlock', 'weight']);
+  assert.deepEqual(plain(Defs.SCHEMA.base.fields.fixed), { type: 'shape', required: true, shape: 'ModRange' }, 'the fixed line');
+  assert.deepEqual(plain(Defs.ENUMS.nodeKind), ['door', 'lane', 'corner', 'square', 'milestone'], 'the kinds of node on the Plan (04-progression)');
+  assert.deepEqual(plain(Defs.ENUMS.callingKind), ['lane', 'corner', 'square']);
+  assert.deepEqual(plain(Defs.ENUMS.bank), ['flood', 'ebb']);
+  assert.deepEqual(plain([Defs.ENUMS.knotRule, Defs.ENUMS.promise, Defs.ENUMS.pealRule]), [[], [], []], 'their registries fill them');
+  assert.deepEqual(plain(Defs.SCHEMA.node.fields.links), { type: 'array', required: true, of: { type: 'string', required: true, ref: 'node' }, len: [1, 8] });
   assert.deepEqual(plain(Defs.SCHEMA.observance.fields.heed), { type: 'number', required: true, min: 20, max: 40 });
   assert.deepEqual(plain(Defs.SCHEMA.enemy.fields.ai.enum), ['wake', 'chase']);
   assert.equal(Defs.SCHEMA.enemy.fields.ai.enum, Defs.ENUMS.ai, 'a word list is one array, wherever it is used');
@@ -379,8 +404,16 @@ test('a missing field, a wrong type, a word off the list, a field that is not in
   expectOne((pick) => { pick('enemy').armour = 4; }, /^enemy wake-walker: armour is not a field of this shape$/);
   expectOne((pick) => { pick('attack').kind = 'contact'; }, /^attack shoulder: kind "contact" is not one of strike, throw, press, spread, fall, zone$/);
   expectOne((pick) => { pick('attack').shape = 'cone'; }, /^attack shoulder: shape "cone" is not one of arc, line, circle, ring, wedge$/);
-  expectOne((pick) => { pick('base').twoHanded = 0; }, /^base bell-rope: twoHanded must be true or false, not 0$/);
+  expectOne((pick) => { pick('base').named = 0; }, /^base bell-rope: named must be true or false, not 0$/);
+  expectOne((pick) => { pick('base').twoHanded = false; }, /^base bell-rope: twoHanded is not a field of this shape$/);
   expectOne((pick) => { pick('base').slot = 'weapon'; }, /^base bell-rope: slot "weapon" is not one of tool, hat, coat, hands, girdle, pattens, token$/);
+  expectOne((pick) => { pick('node', 'mile.1').kind = 'capstone'; }, /^node mile\.1: kind "capstone" is not one of door, lane, corner, square, milestone$/);
+  expectOne((pick) => { pick('node', 'corner.1').bank = 'north'; }, /^node corner\.1: bank "north" is not one of flood, ebb$/);
+  expectOne((pick) => { pick('node', 'corner.1').ring = 0; }, /^node corner\.1: ring must be at least 1, not 0$/);
+  expectOne((pick) => { pick('plan').loopShare = 120; }, /^plan main: loopShare must be at most 100, not 120$/);
+  expectOne((pick) => { pick('posture').verbs[0].band.pop(); }, /^posture stood: verbs\[0\]\.band must hold 8 entries, not 7$/);
+  expectOne((pick) => { pick('bellframe').placesMost = 9; }, /^bellframe main: placesMost must be at most 8, not 9$/);
+  expectOne((pick) => { pick('peal').points = 0; }, /^peal twelve-leaning: points must be at least 1, not 0$/);
   expectOne((pick) => { pick('puppet').parts[0].size = [1, 2]; }, /^puppet debug\.husk: parts\[0\]\.size must hold 3 entries, not 2$/);
   expectOne((pick) => { pick('class').palette[1] = 'blue'; }, /^class change-ringer: palette\[1\] "blue" must be a colour written as #rrggbb$/);
   expectOne((pick) => { pick('class').trade.recharge = -8; }, /^class change-ringer: trade\.recharge must be at least 0, not -8$/);
@@ -406,16 +439,24 @@ test('the fields the design keeps at one value hold only that value', () => {
   expectOne((pick) => { pick('attack').evadable = true; }, /^attack shoulder: evadable must be false, not true$/);
   expectOne((pick) => { pick('enemy').attacks[1].evadable = true; }, /^enemy wake-walker: attacks\[1\]\.evadable must be false, not true$/);
   expectOne((pick) => { pick('observance').aura = { radius: 6, enemyMods: [] }; }, /^observance stability: aura must be null, not \{"radius":6,"enemyMods":\[\]\}$/);
-  expectOne((pick) => { pick('base').weapon = { damage: { blow: [3, 7] }, aps: 1.3 }; }, /^base bell-rope: weapon must be null, not /);
+  // no tool is a weapon (design 15.2): a base cannot even say it is one
+  expectOne((pick) => { pick('base').weapon = { damage: { blow: [3, 7] }, aps: 1.3 }; }, /^base bell-rope: weapon is not a field of this shape$/);
+  expectOne((pick) => { pick('base').weapon = null; }, /^base bell-rope: weapon is not a field of this shape$/);
 });
 
 test('fields that may be left out or null, and shapes that are open', () => {
   assert.deepEqual(problems((pick) => {
     delete pick('voice').fx.puppet;                    // an optional field
-    delete pick('cluster').nodes[1].text;
+    delete pick('node', 'corner.1').text;
     delete pick('mode').zones;
     delete pick('favour').group;
-    delete pick('legacyNode').unlock;
+    delete pick('base', 'great-hour').named;
+    pick('base', 'great-hour').fixed.op = 'inc';       // (not named, it may not use more)
+    delete pick('plan').look;
+    delete pick('observance').promise;
+    delete pick('observance').params;
+    delete pick('knot').rule;
+    delete pick('peal').params;
     delete pick('zone').place;
     delete pick('zone').start;
     delete pick('class').door;
@@ -425,7 +466,7 @@ test('fields that may be left out or null, and shapes that are open', () => {
     pick('voice').icon = { glyph: 'bell', tint: 2 };   // 'any'
     pick('enemy').loot = null;
     pick('enemy').guard = {};                          // the kinds' own guards, then
-    pick('base', 'jerkin').defence = { weight: 12 };
+    pick('bellframe').anything = { more: 'numbers' };  // an open kind
   }), []);
 });
 
@@ -447,10 +488,14 @@ test('links between definitions must lead somewhere', () => {
   expectOne((pick) => { pick('zone').tileset = 'sand'; }, /^zone dial: tileset names the tileset "sand"/);
   expectOne((pick) => { pick('zone').place[0].prop = 'statue'; }, /^zone dial: place\[0\]\.prop names the prop "statue"/);
   expectOne((pick) => { pick('prop').puppet = 'statue'; }, /^prop bell-post: puppet names the puppet "statue"/);
-  expectOne((pick) => { pick('unique').base = 'lantern'; }, /^unique great-hour: base names the base "lantern"/);
-  expectOne((pick) => { pick('bequest').reward.currency = { coin: 1 }; }, /^bequest first-toll: reward\.currency\.coin \(the key\) names the currency "coin"/);
-  expectOne((pick) => { pick('treeSkeleton').starts = { sexton: { sector: 1 } }; }, /^treeSkeleton rose: starts\.sexton \(the key\) names the class "sexton"/);
-  expectOne((pick) => { pick('legacyNode').requires = ['second-pit']; }, /^legacyNode tenor-pit: requires\[0\] names the legacyNode "second-pit"/);
+  expectOne((pick) => { pick('bequest').reward.base = 'lantern'; }, /^bequest first-toll: reward\.base names the base "lantern"/);
+  expectOne((pick) => { pick('bequest').reward.bill.causes = ['drowned', 'burnt']; }, /^bequest first-toll: reward\.bill\.causes\[1\] names the cause "burnt"/);
+  expectOne((pick) => { pick('bequest').reward.currency = { coin: 1 }; }, /^bequest first-toll: reward\.currency is not a field of this shape$/);
+  expectOne((pick) => { pick('node', 'door.ringer').class = 'sexton'; }, /^node door\.ringer: class names the class "sexton"/);
+  expectOne((pick) => { pick('pit', 'treble').from = 'second-pit'; }, /^pit treble: from names the pit "second-pit"/);
+  expectOne((pick) => { pick('gift').class = 'verger'; }, /^gift ringers-gift: class names the class "verger"/);
+  expectOne((pick) => { pick('peal').calling = 'organist'; }, /^peal twelve-leaning: calling names the calling "organist"/);
+  expectOne((pick) => { pick('base').unlock = 'nothing'; }, /^base bell-rope: unlock names the bequest "nothing"/);
   expectOne((pick) => { pick('mode').zones = ['dial', 'ropewalk']; }, /^mode trial: zones\[1\] names the zone "ropewalk"/);
   expectOne((pick) => { pick('enemy').attacks[0] = 'lunge'; }, /^enemy wake-walker: attacks\[0\] names the attack "lunge"/);
   expectOne((pick) => { pick('favour').requires.class = 'verger'; }, /^favour funeral-biscuit: requires\.class names the class "verger"/);
@@ -477,18 +522,25 @@ test('every stat, tag and condition inside a modifier is checked against the tab
   expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { per: { stat: 'knee', div: 0 } })); }, /^voice tenor-stroke: mods\[1\]\.per\.div must be above 0$/);
   expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', '5')); }, /^voice tenor-stroke: mods\[1\]\.value must be a number or \{a, b, curve\}, not "5"$/);
   expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { local: 1 })); }, /^voice tenor-stroke: mods\[1\]\.local must be true or false, not 1$/);
-  // deeper places: a cluster node, a calling node, a class's base, an affix tier, a unique, an observance
+  // deeper places: a node, a calling node, a class's base, a base's fixed line, a pit, a gift, a posture, an observance
   expectOne((pick) => { pick('observance').mods[0].stat = 'takn'; }, /^observance stability: mods\[0\]\.stat "takn" is not a stat$/);
-  expectOne((pick) => { pick('cluster').nodes[2].mods[0].tags = ['burning']; }, /^cluster stones: nodes\[2\]\.mods\[0\]\.tags\[0\] "burning" is not a tag$/);
+  expectOne((pick) => { pick('node', 'corner.1').mods[0].tags = ['burning']; }, /^node corner\.1: mods\[0\]\.tags\[0\] "burning" is not a tag$/);
   expectOne((pick) => { pick('calling').nodes[1].mods[0].cond = 'standing'; }, /^calling stander: nodes\[1\]\.mods\[0\]\.cond "standing" is not a modifier condition$/);
   expectOne((pick) => { pick('class').base[0].stat = 'life'; }, /^class change-ringer: base\[0\]\.stat "life" is not a stat$/);
-  expectOne((pick) => { pick('treeSkeleton').pathMods[0].stat = 'hp'; }, /^treeSkeleton rose: pathMods\[0\]\.stat "hp" is not a stat$/);
-  expectOne((pick) => { pick('affix').tiers[1].mods[0].tags = ['rond']; }, /^affix of-the-rope: tiers\[1\]\.mods\[0\]\.tags\[0\] "rond" is not a tag$/);
-  expectOne((pick) => { pick('unique').mods[0].cond = 'brace'; }, /^unique great-hour: mods\[0\]\.cond "brace" is not a modifier condition$/);
-  expectOne((pick) => { pick('base').implicit[0].stat = 'critChance'; }, /^base bell-rope: implicit\[0\]\.stat "critChance" is not a stat$/);
+  expectOne((pick) => { pick('pit', 'treble').grant[0].stat = 'hp'; }, /^pit treble: grant\[0\]\.stat "hp" is not a stat$/);
+  expectOne((pick) => { pick('gift').mods[0].tags = ['rond']; }, /^gift ringers-gift: mods\[0\]\.tags\[0\] "rond" is not a tag$/);
+  expectOne((pick) => { pick('base', 'great-hour').fixed.cond = 'brace'; }, /^base great-hour: fixed\.cond "brace" is not a modifier condition$/);
+  expectOne((pick) => { pick('base').fixed.stat = 'critChance'; }, /^base bell-rope: fixed\.stat "critChance" is not a stat$/);
+  expectOne((pick) => { pick('posture').verbs[1].stat = 'fury'; }, /^posture stood: verbs\[1\]\.stat "fury" is not a stat$/);
+  expectOne((pick) => { pick('posture').objects[1].tags = ['rounds']; }, /^posture stood: objects\[1\]\.tags\[0\] "rounds" is not a tag$/);
   expectOne((pick) => { pick('favour').mods[0].tags = ['rounds']; }, /^favour funeral-biscuit: mods\[0\]\.tags\[0\] "rounds" is not a tag$/);
   expectOne((pick) => { pick('trait').mods[0].stat = 'moveSpeed'; }, /^trait swift: mods\[0\]\.stat "moveSpeed" is not a stat$/);
-  expectOne((pick) => { pick('legacyNode').mods[0].op = 'add'; }, /^legacyNode tenor-pit: mods\[0\]\.op "add" is not one of/);
+  expectOne((pick) => { pick('pit').grant[0].op = 'add'; }, /^pit tenor: grant\[0\]\.op "add" is not one of/);
+  // a condition may be a list of conditions, and so may unless; each is checked
+  assert.deepEqual(problems((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { cond: ['braced', 'in-water'], unless: ['faint'] })); }), []);
+  expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { cond: ['braced', 'wet'] })); }, /^voice tenor-stroke: mods\[1\]\.cond\[1\] "wet" is not a modifier condition$/);
+  expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { unless: 'drowned' })); }, /^voice tenor-stroke: mods\[1\]\.unless "drowned" is not a modifier condition$/);
+  expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 5, { cond: [] })); }, /^voice tenor-stroke: mods\[1\]\.cond must hold 1 to 31 entries, not 0$/);
   // other fields that name table rows
   expectOne((pick) => { pick('voice').tags.push('magic'); }, /^voice tenor-stroke: tags\[1\] "magic" is not a tag$/);
   expectOne((pick) => { pick('voice').attr = 'str'; }, /^voice tenor-stroke: attr "str" is not an attribute$/);
@@ -498,7 +550,8 @@ test('every stat, tag and condition inside a modifier is checked against the tab
   expectOne((pick) => { pick('enemy').guard = { holy: 10 }; }, /^enemy wake-walker: guard\.holy \(the key\) "holy" is not a kind of harm$/);
   expectOne((pick) => { pick('enemy').attacks[1].ailment = 'rot'; }, /^enemy wake-walker: attacks\[1\]\.ailment "rot" is not a condition a body carries$/);
   expectOne((pick) => { pick('attack').type = 'fire'; }, /^attack shoulder: type "fire" is not a kind of harm$/);
-  expectOne((pick) => { pick('base').req = { level: 2, dexterity: 4 }; }, /^base bell-rope: req\.dexterity \(the key\) "dexterity" is not an attribute$/);
+  expectOne((pick) => { pick('base').tables = { kneeling: {} }; }, /^base bell-rope: tables\.kneeling \(the key\) "kneeling" is not a posture that writes lines$/);
+  expectOne((pick) => { pick('node', 'lane.1').choice = ['hand', 'luck']; }, /^node lane\.1: choice\[1\] "luck" is not an attribute$/);
   expectOne((pick) => { pick('class').perLevel.luck = 3; }, /^class change-ringer: perLevel\.luck \(the key\) "luck" is not an attribute$/);
   expectOne((pick) => { pick('favour').requires.tags = ['round', 'sorcery']; }, /^favour funeral-biscuit: requires\.tags\[1\] "sorcery" is not a tag$/);
 });
@@ -507,12 +560,12 @@ test('what a spec cannot say about a modifier: pairs and ranges', () => {
   expectOne((pick) => { pick('voice').mods.push(mod('life-max', 'flat', [1, 2])); }, /^voice tenor-stroke: mods\[1\]\.value is a pair, but life-max is a single number$/);
   expectOne((pick) => { pick('voice').mods.push(mod('added.blow', 'flat', [1, 2, 3])); }, /^voice tenor-stroke: mods\[1\]\.value must hold 2 entries, not 3$/);
   expectOne((pick) => { pick('voice').mods.push(mod('damage', 'inc', 10, { from: 'blow' })); }, /^voice tenor-stroke: mods\[1\]\.from is not a field of this shape$/);
-  expectOne((pick) => { pick('unique').mods[0].min = 30; }, /^unique great-hour: mods\[0\]\.min is above max$/);
-  expectOne((pick) => { pick('unique').mods[0].max = [1, 2]; }, /^unique great-hour: mods\[0\]\.max must be a pair exactly when min is one$/);
-  expectOne((pick) => { pick('base').implicit[0].min = [1, 2]; pick('base').implicit[0].max = [2, 3]; }, /^base bell-rope: implicit\[0\]\.min is a pair, but pull-window is a single number$/);
-  assert.deepEqual(problems((pick) => { pick('unique').mods.push({ stat: 'added.drag', op: 'flat', min: [1, 2], max: [3, 4] }); }), [], 'a rolled range on a range stat');
-  expectOne((pick) => { delete pick('unique').mods[0].max; }, /^unique great-hour: mods\[0\]\.max is missing$/);
-  expectOne((pick) => { pick('unique').mods[0].value = 5; }, /^unique great-hour: mods\[0\]\.value is not a field of this shape$/);
+  expectOne((pick) => { pick('base', 'great-hour').fixed.min = 30; }, /^base great-hour: fixed\.min is above max$/);
+  expectOne((pick) => { pick('base', 'great-hour').fixed.max = [1, 2]; }, /^base great-hour: fixed\.max must be a pair exactly when min is one$/);
+  expectOne((pick) => { pick('base').fixed.min = [1, 2]; pick('base').fixed.max = [2, 3]; }, /^base bell-rope: fixed\.min is a pair, but pull-window is a single number$/);
+  assert.deepEqual(problems((pick) => { pick('base').fixed = { stat: 'added.drag', op: 'flat', min: [1, 2], max: [3, 4] }; }), [], 'a rolled range on a range stat');
+  expectOne((pick) => { delete pick('base', 'great-hour').fixed.max; }, /^base great-hour: fixed\.max is missing$/);
+  expectOne((pick) => { pick('base', 'great-hour').fixed.value = 5; }, /^base great-hour: fixed\.value is not a field of this shape$/);
 });
 
 test('the rules of the design that a spec cannot say', () => {
@@ -529,6 +582,15 @@ test('the rules of the design that a spec cannot say', () => {
   // an observance holds 20 to 40 Heed
   expectOne((pick) => { pick('observance').heed = 50; }, /^observance stability: heed must be at most 40, not 50$/);
   expectOne((pick) => { pick('observance').heed = 10; }, /^observance stability: heed must be at least 20, not 10$/);
+  // "more" is found only on knots, squares, callings and named finds; the Bellframe adds with flat and inc (04-progression)
+  expectOne((pick) => { pick('node', 'corner.1').mods[0].op = 'more'; }, /^node corner\.1: mods\[0\]\.op "more" is found only on knots, squares, callings and named finds, not on a corner$/);
+  expectOne((pick) => { pick('node', 'mile.1').mods[0].op = 'more'; }, /^node mile\.1: mods\[0\]\.op "more" is found only on .*, not on a milestone$/);
+  expectOne((pick) => { pick('observance').mods[0].op = 'more'; }, /^observance stability: mods\[0\]\.op "more" is found only on .*, not on an observance$/);
+  expectOne((pick) => { pick('base').fixed.op = 'more'; }, /^base bell-rope: fixed\.op "more" is found only on knots, squares, callings and named finds$/);
+  expectOne((pick) => { pick('pit').grant[0].op = 'more'; }, /^pit tenor: grant\[0\]\.op "more": the Bellframe adds numbers with flat and inc only$/);
+  expectOne((pick) => { pick('gift').mods[0].op = 'set'; }, /^gift ringers-gift: mods\[0\]\.op "set": the Bellframe adds numbers with flat and inc only$/);
+  expectOne((pick) => { pick('posture').verbs[0].op = 'more'; }, /^posture stood: verbs\[0\]\.op "more": a written line adds with flat and inc only$/);
+  assert.deepEqual(problems((pick) => { pick('knot').mods[1].op = 'more'; pick('calling').nodes[1].mods[0].op = 'more'; }), [], 'knots and callings may');
 });
 
 test('scaled values are a number or {a, b, curve}', () => {
@@ -551,17 +613,18 @@ test('a definition must be what JSON can carry', () => {
   expectOne((pick) => { pick('voice').fx.seen = new Map(); }, /^voice tenor-stroke: fx\.seen is not a plain object/);
   expectOne((pick) => { pick('zone').rules.big = 10n; }, /^zone dial: rules\.big is bigint, which JSON cannot carry$/);
   expectOne((pick) => { pick('enemy').aiParams.self = pick('enemy'); }, /^enemy wake-walker: aiParams\.self holds itself, which JSON cannot carry$/);
-  expectOne((pick) => { pick('cluster').nodes[1].mods[0].value = () => 5; }, /^cluster stones: nodes\[1\]\.mods\[0\]\.value is a function/);
+  expectOne((pick) => { pick('node', 'corner.1').mods[0].value = () => 5; }, /^node corner\.1: mods\[0\]\.value is a function/);
   // the same object used in two places is fine: it is frozen anyway
-  assert.deepEqual(problems((pick) => { const shared = ['blow']; pick('cluster').theme = shared; pick('cluster').nodes[0].mods[0].tags = shared; }), []);
+  assert.deepEqual(problems((pick) => { const shared = ['blow']; pick('posture').objects[1].tags = shared; pick('node', 'corner.1').mods[0].tags = shared; }), []);
 });
 
 test('keys and links inside one definition', () => {
-  expectOne((pick) => { pick('cluster').entry = 'z'; }, /^cluster stones: entry "z" is not the key of one of its nodes$/);
-  expectOne((pick) => { pick('cluster').nodes[2].key = 'a'; }, /^cluster stones: nodes has two nodes with the key "a"$/);
   expectOne((pick) => { pick('calling').nodes[1].requires = ['a', 'q']; }, /^calling stander: nodes\[1\]\.requires "q" is not the key of another of its nodes$/);
   expectOne((pick) => { pick('calling').nodes[1].requires = ['b']; }, /^calling stander: nodes\[1\]\.requires "b" is not the key of another of its nodes$/);
-  expectOne((pick) => { pick('legacyNode').cost = [100, 150]; }, /^legacyNode tenor-pit: cost must hold one cost for each of its 3 ranks, not 2$/);
+  expectOne((pick) => { pick('posture').verbs[1].key = 'guard'; }, /^posture stood: verbs has two verbs with the key "guard"$/);
+  expectOne((pick) => { pick('posture').objects[0].key = 'round'; }, /^posture stood: objects has two objects with the key "round"$/);
+  expectOne((pick) => { pick('posture').verbs[0].band[3] = [5, 4]; }, /^posture stood: verbs\[0\]\.band\[3\] runs from more to less$/);
+  expectOne((pick) => { pick('posture').id = 'kneeling'; }, /^posture kneeling: id "kneeling" is not one of the postures that write lines$/);
   expectOne((pick) => { pick('boss').phases[0].loop[0] = 'stomp'; }, /^boss half-muffled-keeper: phases\[0\]\.loop\[0\] "stomp" is not one of its attacks$/);
   expectOne((pick) => { pick('boss').phases[1].onEnter = ['echo']; }, /^boss half-muffled-keeper: phases\[1\]\.onEnter\[0\] "echo" is not one of its attacks$/);
   expectOne((pick) => { pick('enemy').attacks[1].id = 'shoulder'; }, /^enemy wake-walker: attacks has two attacks with the id "shoulder"$/);
@@ -569,6 +632,34 @@ test('keys and links inside one definition', () => {
   expectOne((pick) => { pick('puppet').parts[1].color = 'gold'; }, /^puppet debug\.husk: parts\[1\]\.color "gold" is not in its palette$/);
   expectOne((pick) => { pick('puppet').parts.push(Object.assign({}, pick('puppet').parts[0])); }, /^puppet debug\.husk: parts has two parts with the key "torso"$/);
   expectOne((pick) => { pick('mode').xpCurve = 'heroXp'; }, /^mode trial: xpCurve "heroXp" is not a list in the curves "main"$/);
+});
+
+test('the Plan: links go both ways and never to the node itself; doors, milestones and lanes are what they say', () => {
+  expectOne((pick) => { pick('node', 'mile.1').links.push('lane.1'); }, /^node mile\.1: links\[1\] "lane\.1" does not link back$/);
+  expectOne((pick) => { pick('node', 'mile.1').links = ['mile.1', 'square.1']; }, /^node mile\.1: links\[0\] is the node itself$/);
+  expectOne((pick) => { pick('node', 'mile.1').links = ['square.1', 'square.1']; }, /^node mile\.1: links names "square\.1" twice$/);
+  expectOne((pick) => { pick('node', 'mile.1').links = []; pick('node', 'square.1').links.pop(); }, /^node mile\.1: links must hold 1 to 8 entries, not 0$/);
+  expectOne((pick) => { delete pick('node', 'door.ringer').class; }, /^node door\.ringer: class is missing: a door is a class's start$/);
+  expectOne((pick) => { pick('node', 'lane.1').class = 'change-ringer'; }, /^node lane\.1: class is only for a door$/);
+  expectOne((pick) => { pick('node', 'door.ringer').mods = [mod('life-max', 'flat', 1)]; }, /^node door\.ringer: mods must be empty: a door gives nothing$/);
+  expectOne((pick) => { pick('node', 'mile.1').street = null; }, /^node mile\.1: street is null: a milestone stands in a straight street$/);
+  expectOne((pick) => { pick('node', 'corner.1').choice = ['hand']; }, /^node corner\.1: choice is only for a lane$/);
+  expectOne((pick) => { pick('node', 'mile.1').ring = 9; }, /^node mile\.1: ring must be at most 8, the rings of the Plan, not 9$/);
+  expectOne((pick) => { pick('node', 'mile.1').street = 12; }, /^node mile\.1: street must be below 12, the streets of the Plan$/);
+  // finds: a tool has a family and nothing else does
+  expectOne((pick) => { pick('base').family = null; }, /^base bell-rope: family is null: a tool has a family$/);
+  expectOne((pick) => { pick('base', 'jerkin').family = 'rope'; }, /^base jerkin: family is only for a tool$/);
+  // the Bellframe: one tenor pit; a gift's calling is of the gift's class
+  expectOne((pick) => { pick('pit', 'treble').from = null; }, /^pit treble: from is null, and so is that of "tenor": there is one tenor pit$/);
+  expectOne((pick) => { pick('pit', 'treble').from = 'treble'; }, /^pit treble: from is the pit itself$/);
+  const both = problems((pick, defs) => {
+    defs.push(['class', Object.assign({}, pick('class'), { id: 'verger', callings: ['beadle', 'wand-bearer'] })]);
+    defs.push(['calling', Object.assign({}, pick('calling'), { id: 'beadle', class: 'verger' })], ['calling', Object.assign({}, pick('calling'), { id: 'wand-bearer', class: 'verger' })]);
+    pick('gift', 'standers-gift').class = 'verger';
+  });
+  assert.deepEqual(both, ['gift standers-gift: calling "stander" belongs to the class "change-ringer"']);
+  // a peal gives at most what its calling holds
+  expectOne((pick) => { pick('peal').points = 9; }, /^peal twelve-leaning: points must be at most 8, the points of its calling$/);
 });
 
 test('a class and its callings name each other, and an enemy and a boss never share an id', () => {

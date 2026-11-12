@@ -23,7 +23,8 @@ const frame = (mx, my, trade = false, heave = false) => ({ mx, my, ax: 1, ay: 0,
 const BASE = { life: Stats.stat('life-max').base };
 const STATE = ['cfg', 'mode', 'zone', 'rules', 'curves', 'rng', 'step', 't', 'toll', 'tollAt', 'tollSteps', 'threat', 'phase', 'player', 'mods',
   'sheet', 'skills', 'enemies', 'shots', 'areas', 'pickups', 'minions', 'grid', 'region', 'props', 'gate', 'boss', 'offer', 'offerQueue', 'favours',
-  'buffs', 'events', 'eventCount', 'eventStart', 'eventsDropped', 'haul', 'coin', 'bank', 'hum', 'kills', 'counters', 'dirty', 'result', 'uid', 'debug'];
+  'buffs', 'events', 'eventCount', 'eventStart', 'eventsDropped', 'haul', 'coin', 'bank', 'hum', 'kills', 'counters', 'cause', 'dirty', 'result', 'uid',
+  'debug'];
 // a voice of the tests' own, in the shape of docs/engine.md
 const voice = (id, more) => Object.assign({
   id, name: 'Spark', text: '', icon: null, attr: 'hand', tier: 1, tags: ['thrown'], weapon: null, archetype: 'spark', target: 'nearest', rate: 1,
@@ -41,7 +42,7 @@ test('a new run has the state the header of 20-sim.js lists, and nothing else', 
   assert.equal(S.zone, Defs.get('zone', 'debug'));
   assert.equal(S.curves, Defs.get('curves', 'main'));
   assert.deepEqual([S.step, S.t, S.toll, S.threat, S.phase, S.uid], [0, 0, 0, 0, 'play', 0]);
-  assert.deepEqual([S.gate, S.boss, S.offer, S.result, S.debug, S.dirty], [null, null, null, null, null, false]);
+  assert.deepEqual([S.gate, S.boss, S.offer, S.result, S.debug, S.dirty, S.cause], [null, null, null, null, null, false, null]);
   assert.deepEqual([S.coin, S.hum, S.kills, S.eventCount, S.eventStart, S.eventsDropped], [0, 0, 0, 0, 0, 0]);
   assert.deepEqual(plain([S.offerQueue, S.favours, S.buffs, S.haul, S.bank, S.counters, S.skills, S.mods]), [[], {}, [], [], { coin: 0, finds: [] }, {}, [], []]);
   assert.deepEqual([S.enemies.cap, S.shots.cap, S.areas.cap, S.pickups.cap, S.minions.cap], [600, 500, 120, 400, 40], 'the hard caps');
@@ -519,6 +520,40 @@ test('what this file does itself sits at fixed places between the systems', () =
   assert.equal(S.step, 15);
 });
 
+test('the systems of Sim.system run once a step, in their order, after the favours and before the sheets are rebuilt', () => {
+  const sim = withSystems(), heard = [];
+  sim.Sim.system('first', (run) => { sim.calls.push('first'); heard.push([run.step, run.eventCount, run.dirty]); run.dirty = true; });
+  sim.Sim.system('second', (run) => { sim.calls.push('second'); });
+  assert.throws(() => sim.Sim.system('first', () => {}), /two systems named "first"/);
+  assert.throws(() => sim.Sim.system('nameless'), /needs a name and a function/);
+  assert.deepEqual(plain(sim.Sim.systems()), ['first', 'second']);
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, mods: [] }), sheet = S.sheet;
+  sim.Favours.step = (run) => { sim.calls.push('Favours.step'); sim.Sim.emit(run, 'favour', 0, 0, 1, 1, 'tithe'); };
+  sim.Sim.step(S, idle);
+  assert.deepEqual(sim.calls.slice(-4), ['Favours.step', 'first', 'second', 'Offers.step']);
+  assert.deepEqual(heard[0], [0, 1, false], 'it sees the events of its own step, and the clock has not moved yet');
+  assert.ok(S.sheet !== sheet, 'what it marked dirty is rebuilt in the same step');
+  assert.throws(() => sim.Sim.system('late', () => {}), /register "late" while the file loads/);
+  // a debug scene runs them too
+  const D = sim.Sim.debugScene(5, 1);
+  sim.calls.length = 0;
+  sim.Sim.step(D, idle);
+  assert.ok(sim.calls.includes('first') && sim.calls.includes('second'));
+});
+
+test('a run with a character is marked dirty at every toll, so the Plan\'s toll rings rebuild the sheet', () => {
+  const sim = kernel(), seen = [];
+  sim.Char.mods = (c, run) => { seen.push(run.toll); return []; };
+  const S = sim.Sim.create({ zone: 'debug', seed: 1, char: { level: 1, observances: [] }, rules: { tollSeconds: 1 } });
+  for (let i = 0; i < 60; i++) sim.Sim.step(S, idle);
+  assert.deepEqual([seen, S.toll, S.dirty], [[0], 1, true], 'the toll rang at the end of the 60th step, which marked the run');
+  sim.Sim.step(S, idle);
+  assert.deepEqual([seen, S.dirty], [[0, 1], false], 'and the next step rebuilt the sheet with the toll counted');
+  const T = Sim.create({ zone: 'debug', seed: 1, rules: { tollSeconds: 1 } });
+  run(T, 60, idle);
+  assert.equal(T.dirty, false, 'a run without a character is not');
+});
+
 test('in a debug scene the director, the enemies and the boss stand aside', () => {
   const sim = withSystems(), S = sim.Sim.debugScene(20, 4), x = S.enemies.items[0].x;
   sim.Sim.step(S, idle);
@@ -797,7 +832,7 @@ test('leave ends the run; an unknown command is warned about and ignored', () =>
   assert.equal(S.phase, 'ended');
   assert.deepEqual(plain(S.result), {
     outcome: 'left', mode: 'household', zone: 'debug', seed: 2, steps: 90, time: 1.5, tolls: 0, threat: 0, kills: 4, coin: 12, banked: 5, hum: 3, runLevel: 2,
-    haul: 2, eventsDropped: 0,
+    haul: 2, eventsDropped: 0, cause: null,
   });
   assert.equal(Sim.result(S), S.result);
   assert.deepEqual(events(S), [{ k: 'end', x: 0, y: 0, a: 0, b: 4, id: 'left' }]);

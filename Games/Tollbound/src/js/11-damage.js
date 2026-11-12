@@ -18,7 +18,9 @@
 //       area (it has a team) carries its harm in damage already, so for it d = source.damage x scale. scale: a
 //       factor (the keeper's echo is 0.3). seen: the warning the player had, which is the wound's depth (a Blow's
 //       wind-up, the whole fill of a Swell as shown, 0 for Drag). The caller has done step 1, the shape and the
-//       lee. Emits 'hurt', and 'wound' through Player.wound.
+//       lee. Emits 'hurt', and 'wound' through Player.wound. When the harm takes the player to no life, S.cause
+//       becomes {attack, kind, toll}: the attack's id (null for a press, a rider or the ground), the id of the kind
+//       of harm, and S.toll: what the Register will name if the character dies of it.
 //   Dmg.tick(S)                 phase 8, every 15th step: the Drag ticks of 15.12. The dead whose edge is within
 //                               0.1 m of yours press you (damage x press / 4 each); each rider on you deals its Drag
 //                               / 4, and riders on a large dead do the same to it; each Drag zone of the dead you
@@ -46,8 +48,10 @@
 //                               a voice by its own fields (len above 0: a lane of half-width r_area along angle;
 //                               a3 above 0: a wedge of that opening round angle; else a circle), an area of the dead
 //                               by its def's shape ('wedge' and 'arc' with def.angle, 'line' with len, else a circle)
-//   Dmg.warning(S, source) -> seconds    added to the fill of a Swell aimed at the player: free Heed x 0.01 + warn
-//                               (+ 0.3 when source is Sounded), at most 1. The Dial's shadow is the vigil's.
+//   Dmg.warning(S, source, attack) -> seconds    added to the fill of a Swell aimed at the player: free Heed x 0.01
+//                               + warn (+ 0.3 when source is Sounded) + what the Register gives for that attack (its
+//                               id: S.cfg.account.warned[attack], the seconds Char.begin worked out from the deaths it
+//                               caused), at most 1 in all. The Dial's shadow is the vigil's.
 //   Dmg.large(e) -> boolean     its def's size is 'large', or its rank is elite or above
 //   Dmg.POSE = {still: 0, braced: 1, moving: 2, striding: 3}    the values of the field pose
 // Shared with 21-player.js, which runs the same rules for the player:
@@ -165,7 +169,7 @@
       const mods = e.traits[i] && e.traits[i].mods;
       for (let j = 0; mods && j < mods.length; j++) {
         const m = mods[j];
-        if (m.stat !== TAKEN || m.cond !== undefined || !fits(m.tags, tags)) continue;
+        if (m.stat !== TAKEN || m.cond !== undefined || m.unless !== undefined || !fits(m.tags, tags)) continue;
         const v = typeof m.value === 'number' ? m.value : Stats.scaled(m.value, 1);
         if (m.op === 'flat') flat += v;
         else if (m.op === 'inc') inc += v;
@@ -515,9 +519,10 @@
   // ---- a hit on the player ----
 
   // Falling to no life: Tolled-for once a vigil, until the next toll; a second fall is death. A seal does not hold
-  // back a fall: it breaks first.
-  function fall(S, p) {
+  // back a fall: it breaks first. What brought the player down is noted for the Register (S.cause).
+  function fall(S, p, id, t) {
     p.life = 0;
+    S.cause = { attack: id, kind: TYPES[t].id, toll: S.toll };
     const c = S.combat;
     if (c && !c.reprieved) {
       c.reprieved = true;
@@ -564,7 +569,7 @@
       }
     }
     Sim.emit(S, 'hurt', p.x, p.y, lost, t, id);
-    if (p.life <= 0) fall(S, p);                                     // 10 no life
+    if (p.life <= 0) fall(S, p, id, t);                              // 10 no life
     return lost;
   }
 
@@ -708,8 +713,16 @@
     return free > 0 ? free : 0;
   }
 
-  Dmg.warning = function (S, source) {
-    let w = freeHeed(S) * WARN_PER_HEED + S.sheet.stats.warn;
+  // the Register: each attack that killed one of the Household's characters shows sooner to every later one
+  function registered(S, attack) {
+    const account = S.cfg.account, warned = account && account.warned;
+    if (!warned || typeof attack !== 'string' || !Object.prototype.hasOwnProperty.call(warned, attack)) return 0;
+    const w = warned[attack];
+    return w > 0 ? w : 0;
+  }
+
+  Dmg.warning = function (S, source, attack) {
+    let w = freeHeed(S) * WARN_PER_HEED + S.sheet.stats.warn + registered(S, attack);
     if (source && source.condT && carries(source, SOUNDING)) w += SOUND_EARLY;
     return w < 0 ? 0 : w > WARN_MOST ? WARN_MOST : w;
   };

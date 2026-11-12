@@ -52,11 +52,17 @@
 //                        prefix  the row stands for every id that starts with this ('flag.', 'param.')
 //   Stats.WANTS        {voice: 10, knot: 6, line: 4}   what a voice and a knot want of their attribute for each
 //                                                tier, and a find for each written line (section 14 of the design)
+//   Stats.POSTURES     [{id, cond, attr}]        the four things a toll period can be spent doing, which write the
+//                                                lines of finds (04-progression.md, "How lines are written"): stood
+//                                                (Braced), strode (Striding), pressed (crowded) and timed (the toll
+//                                                found you at a landmark). cond: the condition a line it writes works
+//                                                under; attr: the attribute a find mostly written by it wants (14)
+//   Stats.POSTURE      {id: row number}
 //   Stats.LEVEL_MAX    20                        the top level of a Scaled value
 // Public, functions:
 //   Stats.stat(id) -> row | null                 the row of a stat id, also for 'flag.<id>' and 'param.<key>'
 //   Stats.is(table, id) -> boolean               table: 'stat' | 'tag' | 'cond' | 'harm' (Stats.TYPES) | 'family' |
-//                                                'primary' | 'counted' (Stats.PER) | 'ailment'
+//                                                'primary' | 'counted' (Stats.PER) | 'ailment' | 'posture'
 //   Stats.condMask(conds) -> number              a set of conditions from an array of ids (a number passes through)
 //   Stats.scaled(value, level) -> number         a Scaled at an owner level: a number is itself; {a, b, curve} runs
 //                                                from a at level 1 to b at level 20, 'lin' in equal steps, 'exp' by
@@ -71,11 +77,12 @@
 //                                                the value of one stat from a list of modifiers:
 //                                                  clamp(set ?? (base + flat) * max(0, 1 + inc/100) * product(1 + more/100), min, max)
 //                                                A modifier counts when its stat is the one asked for, all its tags
-//                                                are among tags, its cond (if any) is in conds (an array of ids or a
-//                                                mask) and it is not local. A "per" modifier is multiplied by
-//                                                min(cap, floor(primaries[per.stat] / per.div)). Of several "set" the
-//                                                lowest wins. A Scaled value that was not resolved counts at level 1.
-//                                                For a range stat this is the low end.
+//                                                are among tags, its condition holds for conds (an array of ids or a
+//                                                mask; see "Conditions" below) and it is not local. A "per" modifier
+//                                                is multiplied by min(cap, floor(primaries[per.stat] / per.div)). Of
+//                                                several "set" the lowest wins. A Scaled value that was not resolved
+//                                                counts at level 1. For a range stat this is the low end.
+//   Stats.holds(mod, conds) -> boolean           whether a modifier's condition holds for conds (a mask or ids)
 //   Stats.queryRange(mods, stat, tags, conds, primaries, out) -> out      both ends, as out[0] and out[1]
 //   Stats.sheet(mods, ctx) -> Sheet              ctx: {level, weapon?, observances?, favours?, finds?, debts?, conds?}
 //   Stats.skillSheet(mods, voiceInst, sheet) -> SkillSheet
@@ -124,13 +131,22 @@
 //                                  (rows with chance), and what its seconds are multiplied by (cond-duration)
 //   params,                        {[key]: number}: the voice's params at its level, plus its knots' params, then
 //                                  modifiers of param.<key>
-//   targetMods,                    [{stat, op, value, hi, cond, kinds, skill}]: modifiers whose condition is about the
-//                                  body struck, left out of everything above for the hit code to apply. cond is a bit
-//                                  number, kinds a mask of the kind indices whose tags it fits, skill is true when it
+//   targetMods,                    [{stat, op, value, hi, cond, unless, kinds, skill}]: modifiers whose condition is
+//                                  about the body struck, left out of everything above for the hit code to apply. cond
+//                                  is the mask of the body's conditions that must hold and unless the mask of those
+//                                  that must not (the player's part of a mixed condition is settled when the sheet is
+//                                  made); kinds a mask of the kind indices whose tags it fits; skill is true when it
 //                                  fits the voice without a kind.
 // }
 // The tags of one kind of harm: the kind's id, and 'dot' if the kind ticks, else 'hit'. A voice's harm of a kind is
 // worked out with its tags and that kind's; everything else on its sheet with its tags and those of the kinds it deals.
+//
+// Conditions. A modifier's cond is one condition id or a list of ids, every one of which must hold; its unless is one
+// id or a list, none of which may hold (a written line cut backward works "while not Braced": unless 'braced'). An id
+// that is not in the tables never holds: in cond it keeps the modifier out for good, in unless it keeps nothing out.
+// A modifier any of whose conditions is about the body struck (a t- condition) never counts in a sheet's own numbers:
+// a voice's sheet sets it aside in targetMods, and the player's sheet leaves it out. Stats.query asks no such
+// question: it counts whatever holds for the conds it is given.
 (function () {
   'use strict';
 
@@ -163,6 +179,14 @@
       { stat: 'damage', op: 'inc', value: 1, div: 1, tags: ['timed'] },
       { stat: 'heed-max', op: 'flat', value: 1, div: 1 },
       { stat: 'warn', op: 'flat', value: 0.05, div: 10 }] },
+  ];
+  // what a toll period was spent doing, which writes a line on each find carried (04-progression.md): the condition
+  // the line works under, and the attribute a find mostly written that way wants (02-combat.md, section 14)
+  const POSTURES = [
+    { id: 'stood', cond: 'braced', attr: 'knee' },
+    { id: 'strode', cond: 'striding', attr: 'heel' },
+    { id: 'pressed', cond: 'crowded', attr: 'hand' },
+    { id: 'timed', cond: 'after-quarter', attr: 'ear' },
   ];
   // what a sheet's ctx brings for "per" modifiers: character level (from 1), observances kept, favours taken this
   // vigil, finds carried, and the Surety's debts. Whoever changes one of them sets S.dirty.
@@ -250,7 +274,7 @@
     rows.forEach((r, i) => { if (typeof r[key] === 'string') map[r[key]] = i; });
     return map;
   };
-  const TYPE = index(TYPES, 'id'), AILMENT = index(AILMENTS, 'id'), RULE = index(AILMENTS, 'rule');
+  const TYPE = index(TYPES, 'id'), AILMENT = index(AILMENTS, 'id'), RULE = index(AILMENTS, 'rule'), POSTURE = index(POSTURES, 'id');
   const PER = PRIMARIES.map((p) => p.id).concat(COUNTS);
   const TAGS = TYPES.map((t) => t.id).concat(FAMILIES, ROLE_TAGS, AILMENTS.map((a) => a.id));
   const CONDS = PLAYER_CONDS.map((id) => ({ id, target: false, ailment: null }))
@@ -307,13 +331,17 @@
   const SETS = {
     tag: new Set(TAGS), cond: new Set(CONDS.map((c) => c.id)), harm: new Set(TYPES.map((t) => t.id)), family: new Set(FAMILIES),
     primary: new Set(PRIMARIES.map((p) => p.id)), counted: new Set(PER), ailment: new Set(AILMENTS.map((a) => a.id)),
+    posture: new Set(POSTURES.map((p) => p.id)),
   };
+  for (const p of POSTURES) Core.assert(COND[p.cond] !== undefined && SETS.primary.has(p.attr), 'Stats: the posture ' + p.id + ' names what is not in the tables');
   const NO_TAGS = Object.freeze([]), NONE = Object.freeze({});
 
   Stats.TYPES = TYPES; Stats.TYPE = TYPE; Stats.FAMILIES = FAMILIES; Stats.PRIMARIES = PRIMARIES; Stats.PER = PER;
   Stats.AILMENTS = AILMENTS; Stats.AILMENT = AILMENT; Stats.RULE = RULE; Stats.COND_MAX = COND_MAX; Stats.TAGS = TAGS;
   Stats.CONDS = CONDS; Stats.COND = COND; Stats.STATS = STATS; Stats.WANTS = WANTS; Stats.LEVEL_MAX = LEVEL_MAX;
-  Core.deepFreeze([TYPES, TYPE, FAMILIES, PRIMARIES, PER, AILMENTS, AILMENT, RULE, TAGS, CONDS, COND, STATS, WANTS, INHERENT, KIND_TAGS]);
+  Stats.POSTURES = POSTURES; Stats.POSTURE = POSTURE;
+  Core.deepFreeze([TYPES, TYPE, FAMILIES, PRIMARIES, PER, AILMENTS, AILMENT, RULE, TAGS, CONDS, COND, STATS, WANTS, INHERENT, KIND_TAGS,
+    POSTURES, POSTURE]);
 
   Stats.stat = function (id) {
     const known = BY_ID[id];
@@ -382,6 +410,47 @@
   let aLo = 0, aHi = 0, aInc = 0, aMore = 1, aSet = 0, aSetHi = 0, aHasSet = false;
   let vLo = 0, vHi = 0;
 
+  // ---- conditions: a modifier's cond (all must hold) and unless (none may hold), each one id or a list ----
+
+  const NEVER = -1;                               // what needOf gives for a cond that names an unknown id
+
+  // the mask of the conditions a cond field asks for, or NEVER when it names one the tables lack
+  function needOf(c) {
+    if (c === undefined) return 0;
+    if (typeof c === 'string') { const b = COND[c]; return b === undefined ? NEVER : 1 << b; }
+    let m = 0;
+    for (let i = 0; i < c.length; i++) {
+      const b = COND[c[i]];
+      if (b === undefined) return NEVER;
+      m |= 1 << b;
+    }
+    return m;
+  }
+
+  // the mask of the conditions an unless field forbids; an unknown id forbids nothing
+  function noneOf(u) {
+    if (u === undefined) return 0;
+    if (typeof u === 'string') { const b = COND[u]; return b === undefined ? 0 : 1 << b; }
+    let m = 0;
+    for (let i = 0; i < u.length; i++) { const b = COND[u[i]]; if (b !== undefined) m |= 1 << b; }
+    return m;
+  }
+
+  function holds(m, conds) {
+    if (m.cond === undefined && m.unless === undefined) return true;
+    const need = needOf(m.cond);
+    return need !== NEVER && (conds & need) === need && (conds & noneOf(m.unless)) === 0;
+  }
+
+  // is any of a modifier's conditions about the body struck?
+  function aboutTarget(m) {
+    if (m.cond === undefined && m.unless === undefined) return false;
+    const need = needOf(m.cond);
+    return need !== NEVER && ((need | noneOf(m.unless)) & TARGET_BITS) !== 0;
+  }
+
+  Stats.holds = function (m, conds) { return holds(m, condMask(conds)); };
+
   function within(few, many) {                    // is every tag of the first list in the second?
     for (let i = 0; i < few.length; i++) {
       let found = false;
@@ -406,17 +475,17 @@
     vHi *= times;
   }
 
-  // stat: only modifiers of this stat count (null: the list is of one stat already).
-  function fold(mods, stat, tags, conds, prim) {
+  // stat: only modifiers of this stat count (null: the list is of one stat already). sheet: the modifiers about the
+  // body struck are left out, as a sheet's own numbers leave them.
+  function fold(mods, stat, tags, conds, prim, sheet) {
     aLo = 0; aHi = 0; aInc = 0; aMore = 1; aSet = 0; aSetHi = 0; aHasSet = false;
     if (!mods) return;
     for (let i = 0; i < mods.length; i++) {
       const m = mods[i];
       if (stat !== null && m.stat !== stat) continue;
       if (m.local === true) continue;
-      if (m.cond !== undefined) {
-        const bit = COND[m.cond];
-        if (bit === undefined || ((conds >>> bit) & 1) === 0) continue;
+      if (m.cond !== undefined || m.unless !== undefined) {
+        if (!holds(m, conds) || (sheet === true && aboutTarget(m))) continue;
       }
       if (m.tags !== undefined && !within(m.tags, tags)) continue;
       amount(m, prim);
@@ -437,8 +506,9 @@
     return r.int ? floor(v + 1e-9) : v;
   }
 
+  // the value of one stat on a sheet (the modifiers about the body struck left out)
   function value(list, r, tags, conds, prim) {
-    fold(list, null, tags, conds, prim);
+    fold(list, null, tags, conds, prim, true);
     return finish(r, r.base, false);
   }
 
@@ -559,11 +629,11 @@
       let lo = 0, hi = 0;
       if ((kinds >>> t) & 1) {
         const id = TYPES[t].id, own = def.damage[id], held = armed ? weapon.damage[id] : undefined, r = BY_ID[ADDED[t]];
-        fold(by.get(ADDED[t]), null, hitTags[t], conds, prim);
+        fold(by.get(ADDED[t]), null, hitTags[t], conds, prim, true);
         lo = (scaled(own[0], level) + (held ? held[0] * toolPct : 0) + finish(r, r.base, false) * def.eff) * part;
         hi = (scaled(own[1], level) + (held ? held[1] * toolPct : 0) + finish(r, r.base, true) * def.eff) * part;
       }
-      fold(by.get(DAMAGE), null, hitTags[t], conds, prim);
+      fold(by.get(DAMAGE), null, hitTags[t], conds, prim, true);
       const scale = (aInc > -100 ? 1 + aInc / 100 : 0) * aMore;
       ss.baseMin[t] = lo; ss.baseMax[t] = hi; ss.inc[t] = aInc; ss.more[t] = aMore;
       ss.min[t] = lo * scale; ss.max[t] = hi * scale;
@@ -590,20 +660,23 @@
     for (const key in ss.params) {
       const list = by.get(PARAM + key);
       if (list === undefined) continue;
-      fold(list, null, skillTags, conds, prim);
+      fold(list, null, skillTags, conds, prim, true);
       ss.params[key] = finish(PARAM_ROW, ss.params[key], false);
     }
 
-    // modifiers that depend on the body struck cannot be settled here: they are set aside, worth and reach worked out
+    // modifiers that depend on the body struck cannot be settled here: they are set aside, worth and reach worked out.
+    // The player's part of a condition that is about both is settled now, against the conditions of this sheet.
     for (let i = 0; i < all.length; i++) {
-      const m = all[i], bit = m.cond === undefined ? undefined : COND[m.cond];
-      if (bit === undefined || !CONDS[bit].target || m.local === true) continue;
+      const m = all[i];
+      if (m.local === true || !aboutTarget(m)) continue;
+      const need = needOf(m.cond), none = noneOf(m.unless), ownNeed = need & ~TARGET_BITS;
+      if ((conds & ownNeed) !== ownNeed || (conds & none & ~TARGET_BITS) !== 0) continue;
       const skill = m.tags === undefined || within(m.tags, skillTags);
       let fit = 0;
       for (let t = 0; t < n; t++) if (m.tags === undefined || within(m.tags, hitTags[t])) fit |= 1 << t;
       if (fit === 0 && !skill) continue;
       amount(m, prim);
-      ss.targetMods.push({ stat: m.stat, op: m.op, value: vLo, hi: vHi, cond: bit, kinds: fit, skill });
+      ss.targetMods.push({ stat: m.stat, op: m.op, value: vLo, hi: vHi, cond: need & TARGET_BITS, unless: none & TARGET_BITS, kinds: fit, skill });
     }
     return ss;
   };
@@ -613,7 +686,7 @@
     const list = ss.targetMods;
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
-      if (m.stat !== DAMAGE || ((m.kinds >>> t) & 1) === 0 || ((conds >>> m.cond) & 1) === 0) continue;
+      if (m.stat !== DAMAGE || ((m.kinds >>> t) & 1) === 0 || (conds & m.cond) !== m.cond || (conds & m.unless) !== 0) continue;
       if (m.op === 'inc') inc += m.value;
       else if (m.op === 'more') more *= m.value > -100 ? 1 + m.value / 100 : 0;
     }

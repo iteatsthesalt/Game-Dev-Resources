@@ -12,13 +12,19 @@
 //                                a heading record every 0.1 s; the class rule's step, then the turn rule (a turn of
 //                                more than turn-limit from a heading of the last 0.5 s, above 30% of top speed,
 //                                lays wrong-footed for 0.5 s, unless the class rule took the turn as its own act);
-//                                the trade on input.trade; the heave (input.heave: nothing to throw in Stage 1, so it
-//                                does nothing); mending and scars; and S.player.conds, where braced, striding,
-//                                crowded and in-water must hold 0.25 s before the mask changes (S.dirty when it does)
+//                                the trade on input.trade; the heave on input.heave, when heaveCd has run out:
+//                                Items.heave(S) throws the find (12-items' package; it returns true when it threw one,
+//                                and heaveCd becomes heave-recharge); mending and scars; and S.player.conds, where
+//                                braced, striding, crowded and in-water must hold 0.25 s before the mask changes
+//                                (S.dirty when it does)
 //   Player.pickups(S)            phase 10. Pickups of kind 0 (an ember: value is experience into runXp; when runXp
 //                                reaches S.curves.runXp[min(runLevel, 69)] it is spent and the run level rises, to
-//                                the mode's runLevels), 1 (coin: value into S.coin) and 2 (a find, into S.haul) are
-//                                drawn in from within pickup-reach and taken on touching. Kind 3 is the favours'.
+//                                the mode's runLevels; and into the experience of the run's character, kept at once,
+//                                by Char.gain, which may raise the character's level: then S.dirty and a 'grow'
+//                                event), 1 (coin: value into S.coin; none is taken in full mourning, while the sheet
+//                                has the flag full-mourning) and 2 (a find, into S.haul) are drawn in from within
+//                                pickup-reach and taken on touching. Kind 3 is the favours'. A pickup whose state is
+//                                below 0 is held back by a system (an observance's promise) and is left lying.
 //   Player.classRun(classId, level?) -> {class, level, mods, voices}
 //                                the cfg fields of a run without a character: the class's attributes as flat
 //                                modifiers (attrs + perLevel x (level - 1)), its base modifiers, and its voices as
@@ -57,7 +63,8 @@
 // recharge it starts; id = the class id), 'mend' (x, y the wound; a = the life given back since the last, at most
 // four a second; id 'whole' when it closed), 'scar' (x, y the wound; a = the greatest life lost), 'wound' (x, y the
 // wound's centre; a = the life this harm put in it; b = its depth now; id = 'open' or 'join'), 'pickup' (x, y; a =
-// kind, b = value) and 'level' (x, y the player; a = the new run level). No 'heave' in Stage 1: nothing is carried.
+// kind, b = value), 'level' (x, y the player; a = the new run level) and 'grow' (x, y the player; a = the character's
+// new level). The 'heave' event is the finds' (Items.heave).
 (function () {
   'use strict';
 
@@ -72,6 +79,7 @@
   const HOLD = 0.25;             // seconds a flickering condition must hold before the mask changes
   const CROWD = 3, CROWD_REACH = 3, LADEN = 4, FAINT = 0.35, AT_POST = 6, AFTER_QUARTER = 8;
   const DRAW_SPEED = 12, TOUCH = 0.3;       // pickups fly in at this speed and are taken this near your edge
+  const MOURNING = 'full-mourning';         // the flag of full mourning (Char.mods gives it): no coin is picked up
   const MEND_TELL = 15;          // steps between two 'mend' events of one wound
   const RINGER = 'change-ringer', PULL_TURN = 120, PULL_GAP = 0.4;
 
@@ -231,7 +239,8 @@
       if (most > st['turn-limit']) Dmg.lay(S, p, FOOTING, FOOT_SECONDS + DT, most, 0);
     }
     if (f.trade && p.tradeCd <= 0) trade(S, p, rule);
-    // the heave (input.heave): it throws the find with the most notches; no find is carried in Stage 1
+    // the heave (input.heave): it throws the find with the most notches, by the finds' own rule
+    if (f.heave && p.heaveCd <= 0 && typeof Items.heave === 'function' && Items.heave(S) === true) p.heaveCd = st['heave-recharge'];
     mend(S, p, st);
     scars(S, st);
     conds(S, p, st);
@@ -382,6 +391,12 @@
         p.runLevel++;
         Sim.emit(S, 'level', p.x, p.y, p.runLevel, 0, null);
       }
+      // the character's experience is kept the moment it is earned (04-progression.md)
+      const char = S.cfg.char;
+      if (char && typeof Char.gain === 'function' && Char.gain(char, o.value, S.mode) > 0) {
+        S.dirty = true;
+        Sim.emit(S, 'grow', p.x, p.y, char.level, 0, null);
+      }
     } else if (o.kind === 1) {
       S.coin += o.value;
     } else {
@@ -396,9 +411,10 @@
     const p = S.player;
     if (!p.alive || S.phase === 'ended') return;
     const reach = S.sheet.stats['pickup-reach'], items = S.pickups.items, step = DRAW_SPEED * DT;
+    const noCoin = S.sheet.flags[MOURNING] === true;          // full mourning: no coin may be picked up
     for (let i = 0; i < S.pickups.n; i++) {
       const o = items[i];
-      if (!o.alive || o.kind < 0 || o.kind > 2) continue;
+      if (!o.alive || o.kind < 0 || o.kind > 2 || o.state < 0 || (noCoin && o.kind === 1)) continue;
       const dx = p.x - o.x, dy = p.y - o.y, d2 = dx * dx + dy * dy, touch = p.r + (o.r > 0 ? o.r : 0) + TOUCH;
       if (d2 <= touch * touch) { take(S, p, o); continue; }
       if (d2 > reach * reach) continue;

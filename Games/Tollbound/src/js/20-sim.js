@@ -22,6 +22,14 @@
 //   Sim.fields(kind) -> [name]       the fields of a kind, built in and added
 //   Sim.state(name, make)            gives every run a slot S[name] = make(S), for a system's own state
 //   Sim.source(fn)                   fn(S, out) adds modifiers to every sheet rebuild: out.push(mod)
+//   Sim.system(name, fn)             fn(S) runs once in every step, at step 11b of the order below (after the favours,
+//                                    before the sheets are rebuilt), in the order the systems were registered, in a
+//                                    debug scene too. It is how a system of Stage 2 joins the step from its own file
+//                                    (the finds' notches, the observances' promises, the bequests): it reads this
+//                                    step's events (S.events: 'kill', 'hurt', 'pickup' and the rest) and S.toll,
+//                                    which rose at the end of the step before when a toll rang. Declared while the
+//                                    file loads, as Sim.state is.
+//   Sim.systems() -> [name]          the systems registered, in their order
 //   Sim.COMMON = 0, Sim.ELITE = 1, Sim.MINIBOSS = 2, Sim.BOSS = 3     the ranks of an enemy (a keeper is Sim.BOSS)
 //   Sim.NO_INPUT                     the InputFrame of a player who does nothing
 //
@@ -55,9 +63,14 @@
 //   S.haul, S.coin, S.bank       the finds carried, the coin carried (both unbanked: lost at death), and what
 //                                ringing down has banked, {coin, finds}
 //   S.hum, S.kills, S.counters   the Hum heard this vigil; S.kills is counted here, in the deaths phase
-//   S.dirty                      set it to true when modifiers changed; the sheets are rebuilt in the same step
+//   S.cause                      null | {attack, kind, toll}: the harm that last took the player to no life (the fall
+//                                that made it Tolled-for, or the one that killed it): the attack's id (null for the
+//                                press of a body, a rider or the ground), the id of its kind of harm, and the toll it
+//                                came at. 11-damage.js sets it; the Register is written from it.
+//   S.dirty                      set it to true when modifiers changed; the sheets are rebuilt in the same step. A
+//                                run with a character is marked so at every toll, for the toll rings of the Plan.
 //   S.result                     null | {outcome, mode, zone, seed, steps, time, tolls, threat, kills, coin, banked, hum,
-//                                runLevel, haul (how many finds), eventsDropped}
+//                                runLevel, haul (how many finds), eventsDropped, cause (S.cause)}
 //   S.uid                        the last uid given out
 //   S.debug                      null | the state of Sim.debugScene
 //
@@ -79,10 +92,11 @@
 //                                      here and only here.
 //   10  Player.pickups(S)
 //   11  Favours.step(S)                the row; walk-in favours rise, are taken, sink
+//   11b each system of Sim.system, in its order
 //   12  Sim.rebuild(S), if S.dirty
 //   13  Offers.step(S)
 //   14  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event (just before it, what was made in
-//       this step gets its px, py)
+//       this step gets its px, py); a run with a character is marked dirty at the toll
 // A step that began in 'play' runs to its end even if the run ends or an offer opens on the way.
 // In a debug scene (S.debug) steps 2, 4 and 7 are replaced by the scene's own rule: every enemy circles the
 // spot where the player began. Without Player.step, the move vector of the input walks the player.
@@ -174,7 +188,7 @@
     },
     skill: { inst: null, sheet: null, cd: 0, t: 0, n: 0, target: 0, a0: 0, a1: 0, a2: 0, a3: 0 },
   };
-  const states = [], sources = [];
+  const states = [], sources = [], systems = [];
   let made = null;               // the factories, built when the first run is created; from then on the fields are fixed
 
   Sim.field = function (kind, name, value) {
@@ -202,6 +216,15 @@
     Core.assert(typeof fn === 'function', 'Sim.source needs a function (S, out)');
     sources.push(fn);
   };
+
+  Sim.system = function (name, fn) {
+    Core.assert(made === null, 'Sim.system: systems are fixed once a run exists; register "' + name + '" while the file loads');
+    Core.assert(typeof name === 'string' && name !== '' && typeof fn === 'function', 'Sim.system needs a name and a function (S)');
+    for (let i = 0; i < systems.length; i++) Core.assert(systems[i].name !== name, 'Sim.system: there are two systems named "' + name + '"');
+    systems.push({ name, fn });
+  };
+
+  Sim.systems = function () { return systems.map((s) => s.name); };
 
   // make() gives a sealed object with every field of the table; reset(o) puts every field back to its default.
   // The first object is built with Object.defineProperty and the rest are copies of it, which keeps all of them
@@ -285,7 +308,7 @@
       grid: new Core.Grid(rules.gridCell), region: null, props: null,
       gate: null, boss: null, offer: null, offerQueue: [], favours: {}, buffs: [],
       events: [], eventCount: 0, eventStart: 0, eventsDropped: 0,
-      haul: [], coin: 0, bank: { coin: 0, finds: [] }, hum: 0, kills: 0, counters: {},
+      haul: [], coin: 0, bank: { coin: 0, finds: [] }, hum: 0, kills: 0, counters: {}, cause: null,
       dirty: false, result: null, uid: 0, debug: null,
     };
     const pool = (kind, cap) => new Core.Pool(F[kind].make, cap, function (o) { F[kind].reset(o); o.uid = ++S.uid; });
@@ -461,6 +484,7 @@
     deaths(S);
     if (typeof Player.pickups === 'function') Player.pickups(S);
     if (typeof Favours.step === 'function') Favours.step(S);
+    for (let i = 0; i < systems.length; i++) systems[i].fn(S);
     if (S.dirty) Sim.rebuild(S);
     if (typeof Offers.step === 'function') Offers.step(S);
     holdAll(S, before);
@@ -470,6 +494,7 @@
       S.toll++;
       S.tollAt += S.tollSteps;
       Sim.emit(S, 'toll', p.x, p.y, S.toll, 0, null);
+      if (S.cfg.char) S.dirty = true;            // the toll rings of the Plan: a node of ring N works from toll N - 1
     }
     return true;
   };
@@ -512,7 +537,7 @@
     return {
       outcome, mode: S.mode.id, zone: S.zone.id, seed: S.cfg.seed, steps: S.step, time: S.t, tolls: S.toll, threat: S.threat,
       kills: S.kills, coin: S.coin, banked: S.bank.coin, hum: S.hum, runLevel: S.player.runLevel, haul: S.haul.length,
-      eventsDropped: S.eventsDropped,
+      eventsDropped: S.eventsDropped, cause: S.cause,
     };
   }
 

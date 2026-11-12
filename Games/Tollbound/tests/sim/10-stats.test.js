@@ -54,6 +54,13 @@ test('the kinds of harm, the families and the attributes are the rows of section
   assert.deepEqual(plain(Stats.PER), ['knee', 'heel', 'hand', 'ear', 'level', 'observances', 'favours', 'finds', 'debts']);
   assert.deepEqual(plain(Stats.WANTS), { voice: 10, knot: 6, line: 4 }, 'section 14: what a voice, a knot and a written line want');
   assert.equal(Stats.LEVEL_MAX, 20);
+  // what a toll period was spent doing writes the line (04-progression): its condition, and what a find of it wants (14)
+  assert.deepEqual(plain(Stats.POSTURES), [
+    { id: 'stood', cond: 'braced', attr: 'knee' }, { id: 'strode', cond: 'striding', attr: 'heel' },
+    { id: 'pressed', cond: 'crowded', attr: 'hand' }, { id: 'timed', cond: 'after-quarter', attr: 'ear' },
+  ]);
+  assert.deepEqual(plain(Stats.POSTURE), { stood: 0, strode: 1, pressed: 2, timed: 3 });
+  assert.equal(Stats.is('posture', 'pressed') && !Stats.is('posture', 'crowded'), true);
 });
 
 test('the conditions a body carries are the fifteen rows of section 15.5', () => {
@@ -285,6 +292,36 @@ test('a conditional modifier counts only while its condition holds', () => {
   assert.equal(q([mod('damage', 'inc', 30, { cond: 'noSuchCondition' })], 'damage', [], 0xffffffff), 100, 'an unknown condition never holds');
 });
 
+test('a condition may be a list, all of which must hold; unless names what must not hold', () => {
+  // a corner on the Flood bank (02-combat 15.7, 04-progression): Braced, and in water
+  const bank = [mod('damage', 'inc', 50, { cond: ['braced', 'in-water'] })];
+  near(q(bank, 'damage', [], ['braced']), 100);
+  near(q(bank, 'damage', [], ['in-water']), 100);
+  near(q(bank, 'damage', [], ['braced', 'in-water', 'faint']), 150);
+  near(q(bank, 'damage', [], ['braced', 'in-water', 'faint']), q([mod('damage', 'inc', 50, { cond: 'braced' })], 'damage', [], ['braced']));   // a list of one or many
+  // a line cut backward: it works while you are not Braced
+  const backward = [mod('move-speed', 'inc', 20, { unless: 'braced' })];
+  near(q(backward, 'move-speed', [], []), 5.4);
+  near(q(backward, 'move-speed', [], ['striding']), 5.4);
+  near(q(backward, 'move-speed', [], ['braced']), 4.5);
+  // both at once, and unless as a list: none of them may hold
+  const both = [mod('heed-max', 'flat', 10, { cond: 'dry', unless: ['faint', 'scarred'] })];
+  assert.deepEqual([[], ['dry'], ['dry', 'faint'], ['dry', 'scarred'], ['faint']].map((c) => q(both, 'heed-max', [], c)), [100, 110, 100, 100, 100]);
+  // an unknown id: in cond nothing ever holds; in unless it keeps nothing out
+  assert.equal(q([mod('heed-max', 'flat', 5, { cond: ['dry', 'nowhere'] })], 'heed-max', [], 0xffffffff), 100);
+  assert.equal(q([mod('heed-max', 'flat', 5, { unless: 'nowhere' })], 'heed-max', [], []), 105);
+  assert.deepEqual([Stats.holds(both[0], ['dry']), Stats.holds(both[0], ['dry', 'faint']), Stats.holds(mod('life-max', 'flat', 1), 0)], [true, false, true]);
+});
+
+test('on a sheet, a modifier about the body struck never counts in the sheet\'s own numbers, whatever its unless', () => {
+  const mods = [mod('move-speed', 'inc', 20, { unless: 't-braced' }), mod('heed-max', 'flat', 10, { cond: ['dry', 't-near'] }),
+    mod('heed-max', 'flat', 1, { cond: 'dry' })];
+  const sheet = Stats.sheet(mods, { conds: ['dry'] });
+  assert.deepEqual([sheet.stats['move-speed'], sheet.stats['heed-max']], [4.5, 101], 'only the one about the player alone');
+  // while Stats.query counts what holds for the conds it is given, as before
+  near(q(mods, 'move-speed', [], []), 5.4);
+});
+
 test('a per modifier is multiplied by what it counts, up to its cap', () => {
   const per = (stat, div, cap) => (cap === undefined ? { per: { stat, div } } : { per: { stat, div, cap } });
   const prim = { knee: 47, heel: 9, hand: 0, ear: 0, level: 12, observances: 2, favours: 5, finds: 3, debts: 4 };
@@ -513,9 +550,10 @@ test('a voice\'s sheet, worked by hand: a Blow voice, a knot and a spread of mod
 
   // what is about the body struck is kept apart, and applies hit by hit: the list's Wrong-footed more, and the
   // Hand's +1% a point against bodies within 3 m (20 points)
+  // (cond and unless are masks of the body's conditions: what must hold, and what must not)
   assert.deepEqual(plain(ss.targetMods), [
-    { stat: 'damage', op: 'more', value: 40, hi: 40, cond: St.COND['t-wrong-footed'], kinds: 0b111, skill: true },
-    { stat: 'damage', op: 'inc', value: 20, hi: 20, cond: St.COND['t-near'], kinds: 0b111, skill: true },
+    { stat: 'damage', op: 'more', value: 40, hi: 40, cond: 1 << St.COND['t-wrong-footed'], unless: 0, kinds: 0b111, skill: true },
+    { stat: 'damage', op: 'inc', value: 20, hi: 20, cond: 1 << St.COND['t-near'], unless: 0, kinds: 0b111, skill: true },
   ]);
   near(St.hitMult(ss, T.blow, 0), 1.7 * 1.56);
   near(St.hitMult(ss, T.blow, St.condMask(['t-wrong-footed'])), 1.7 * 1.56 * 1.4);
@@ -616,13 +654,13 @@ test('modifiers about the body struck are set aside with the kinds they reach', 
     mod('heed-max', 'flat', 9, { cond: 't-keeper', local: true }),            // local: never
   ];
   const ss = St.skillSheet(mods, { id: 'tenor', level: 1, knots: [] }, St.sheet(mods, { level: 11 }));
-  const all = 0b111;
+  const all = 0b111, c = (id) => 1 << St.COND[id];
   assert.deepEqual(plain(ss.targetMods), [
-    { stat: 'damage', op: 'inc', value: 30, hi: 30, cond: St.COND['t-keeper'], kinds: all, skill: true },
-    { stat: 'damage', op: 'more', value: 50, hi: 50, cond: St.COND['t-braced'], kinds: bit('drag'), skill: false },
-    { stat: 'shove', op: 'flat', value: 4, hi: 4, cond: St.COND['t-large'], kinds: all, skill: true },
-    { stat: 'damage', op: 'inc', value: 15, hi: 15, cond: St.COND['t-coined'], kinds: bit('blow') | bit('swell'), skill: true },
-    { stat: 'damage', op: 'inc', value: 10, hi: 10, cond: St.COND['t-near'], kinds: all, skill: true },
+    { stat: 'damage', op: 'inc', value: 30, hi: 30, cond: c('t-keeper'), unless: 0, kinds: all, skill: true },
+    { stat: 'damage', op: 'more', value: 50, hi: 50, cond: c('t-braced'), unless: 0, kinds: bit('drag'), skill: false },
+    { stat: 'shove', op: 'flat', value: 4, hi: 4, cond: c('t-large'), unless: 0, kinds: all, skill: true },
+    { stat: 'damage', op: 'inc', value: 15, hi: 15, cond: c('t-coined'), unless: 0, kinds: bit('blow') | bit('swell'), skill: true },
+    { stat: 'damage', op: 'inc', value: 10, hi: 10, cond: c('t-near'), unless: 0, kinds: all, skill: true },
   ]);
   assert.equal(ss.inc[T.blow], 0, 'none of them is in the sheet\'s own numbers');
   const keeper = St.condMask(['t-keeper']), many = St.condMask(['t-keeper', 't-coined', 't-braced']);
@@ -632,6 +670,31 @@ test('modifiers about the body struck are set aside with the kinds they reach', 
   near(St.hitMult(ss, T.drag, many), 1.3 * 1.5);
   near(St.hitMult(ss, T.swell, many), 1.45);
   near(St.hitMult(ss, T.blow, many | St.condMask(['t-near'])), 1.55);
+});
+
+test('a condition about both the player and the body struck: the player\'s part is settled with the sheet, the body\'s hit by hit', () => {
+  const St = withVoices(), T = St.TYPE, c = (id) => 1 << St.COND[id];
+  const mods = [
+    mod('hand', 'flat', 10),
+    mod('damage', 'inc', 40, { cond: ['braced', 't-keeper'] }),             // while you are Braced, against a keeper
+    mod('damage', 'more', 50, { unless: 't-braced' }),                      // against a body that is not Braced
+    mod('damage', 'inc', 25, { cond: 'striding', unless: ['t-large'] }),    // while you Stride, against the small
+  ];
+  const at = (conds) => St.skillSheet(mods, { id: 'tenor', level: 1, knots: [] }, St.sheet(mods, { conds }));
+  const braced = at(['braced']), striding = at(['striding']);
+  assert.deepEqual(plain(braced.targetMods.filter((m) => m.cond !== c('t-near'))), [
+    { stat: 'damage', op: 'inc', value: 40, hi: 40, cond: c('t-keeper'), unless: 0, kinds: 0b111, skill: true },
+    { stat: 'damage', op: 'more', value: 50, hi: 50, cond: 0, unless: c('t-braced'), kinds: 0b111, skill: true },
+  ], 'Braced: the Striding one is gone; the rest wait for the body');
+  assert.deepEqual(plain(striding.targetMods.filter((m) => m.cond !== c('t-near')).map((m) => [m.value, m.cond, m.unless])),
+    [[50, 0, c('t-braced')], [25, 0, c('t-large')]]);
+  assert.equal(braced.inc[T.blow], 0, 'none of them is in the sheet\'s own numbers');
+  near(St.hitMult(braced, T.blow, 0), 1.5);
+  near(St.hitMult(braced, T.blow, c('t-braced')), 1);
+  near(St.hitMult(braced, T.blow, c('t-keeper')), 1.4 * 1.5);
+  near(St.hitMult(braced, T.blow, c('t-keeper') | c('t-braced')), 1.4);
+  near(St.hitMult(striding, T.blow, 0), 1.25 * 1.5);
+  near(St.hitMult(striding, T.blow, c('t-large') | c('t-keeper')), 1.5);
 });
 
 test('the tool\'s path is kept but never taken: an armed voice takes a tool\'s speed and family, and no harm of it', () => {

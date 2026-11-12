@@ -24,7 +24,8 @@
 //                                    Exact during a step, as the dead read it; between two steps (the player has
 //                                    moved for the coming step's time already counted) it is one step more recent.
 //   Enemies.fill(S, e, attack, x, y) -> seconds   how long a Swell of e's aimed at the player fills when it is first
-//                                    shown at (x, y): its windup, plus Dmg.warning(S, e), less the district's rule
+//                                    shown at (x, y): its windup, plus Dmg.warning(S, e, attack.id) (Heed, warn, a
+//                                    Sounded body, the Register), less the district's rule
 //                                    there (the Dial's shadow: 0.3 s), never under 0.3 s
 //   Enemies.swell(S, e, attack, x, y, angle, scale, fill) -> area | null   shows a Swell of the dead: an area of
 //                                    S.areas with team 1 (see "Swells" below) and a 'telegraph' event. null when
@@ -385,7 +386,7 @@
   }
 
   Enemies.fill = function (S, e, A, x, y) {
-    let f = A.windup + (typeof Dmg.warning === 'function' ? Dmg.warning(S, e) : 0);
+    let f = A.windup + (typeof Dmg.warning === 'function' ? Dmg.warning(S, e, A.id) : 0);
     const sh = S.vigil ? S.vigil.shade : null;
     if (sh && sh.on && Enemies.shaded(S, x, y)) f -= sh.warn;
     return f > FILL_LEAST ? f : FILL_LEAST;
