@@ -1910,110 +1910,98 @@ Expected: PASS, 4 tests.
 - [ ] **Step 6: Commit**
 
 ```bash
-git add package.json package-lock.json src/assets/fonts src/ui/views/settings/access.js src/ui/styles/app.css src/ui/styles/themes.css src/ui/views/index.js tests/unit/fonts.test.js tests/e2e/settings-access.spec.js
+git add package.json package-lock.json src/assets/fonts src/ui/views/settings/access.js src/ui/styles/app.css src/ui/views/index.js tests/unit/fonts.test.js tests/e2e/settings-access.spec.js
 git commit -m "Add accessibility settings and the Atkinson Hyperlegible font"
 ```
 
-### Task 12: axe checks on every view
+### Task 13: axe checks on the hands-free screens
 
 **Files:**
-- Modify: `package.json`, `package-lock.json`
 - Create: `tests/e2e/axe.spec.js`
 - Modify, only if axe flags them: the view or style file that renders each flagged node (from Plans 01–03)
 
 **Interfaces:**
-- Consumes: `mockNet`, `installFakeSpeech`; the routes and settings sections registered so far; `AxeBuilder` from `@axe-core/playwright`.
-- Produces: `tests/e2e/axe.spec.js`, with a `VIEWS` array at the top. Plans 04–06 append their routes (`#/daily`, `#/vault`, the Lab page) to it.
+- Consumes: `test`, `expect`, `stageLibrary` (`helpers/net.js`), `gotoApp` (`helpers/app.js`), `installFakeSpeech` (`helpers/fakes.js`) and `expectNoSeriousA11y(page)` (`helpers/axe.js`, Plan 01, which already installs `@axe-core/playwright@4.14.0` and runs the WCAG 2.2 AA tags); the settings sections registered so far. Plan 01's smoke test already checks every main view and the high-contrast theme.
+- Produces: nothing new.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the test**
 
 ```js
-import { test, expect } from '@playwright/test';
-import AxeBuilder from '@axe-core/playwright';
-import { mockNet } from './helpers/net.js';
+// tests/e2e/axe.spec.js
+import { readFileSync } from 'node:fs';
+import { test, expect, stageLibrary } from './helpers/net.js';
+import { gotoApp } from './helpers/app.js';
 import { installFakeSpeech } from './helpers/fakes.js';
+import { expectNoSeriousA11y } from './helpers/axe.js';
 
-const VIEWS = ['#/stumble', '#/feed', '#/saved', '#/settings'];
-
-async function serious(page) {
-  const { violations } = await new AxeBuilder({ page }).analyze();
-  return violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
-}
-async function ready(page) {
-  await mockNet(page); await installFakeSpeech(page);
-  await page.goto('./#/stumble');
-}
+const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
+test.beforeEach(async ({ page }) => { await installFakeSpeech(page); await stageLibrary(page, small); });
 
 test('every first-run step', async ({ page }) => {
-  await ready(page);
-  const skip = page.getByRole('button', { name: 'Skip' });
-  while (await skip.isVisible()) { expect(await serious(page)).toEqual([]); await skip.click(); }
+  await page.goto('./#/stumble');
+  const checked = [];
+  for (let id; (id = await page.locator('[data-firstrun]').getAttribute('data-firstrun', { timeout: 2000 }).catch(() => null)); ) {
+    await expectNoSeriousA11y(page); checked.push(id);
+    await page.getByRole('button', { name: 'Skip' }).click();
+    await expect(page.locator(`[data-firstrun="${id}"]`)).toHaveCount(0);
+  }
+  expect(checked).toEqual(expect.arrayContaining(['welcome', 'interests', 'handsfree']));
 });
 
-test('every view and settings section', async ({ page }) => {
-  await ready(page);
-  const skip = page.getByRole('button', { name: 'Skip' });
-  while (await skip.isVisible()) await skip.click();
-  await page.goto('./#/settings');
+test('every settings section', async ({ page }) => {
+  await gotoApp(page, '#/settings');
   const sections = await page.locator('a[href^="#/settings/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
   expect(sections).toEqual(expect.arrayContaining(['#/settings/voice', '#/settings/access']));
-  for (const hash of [...VIEWS, ...sections]) {
+  for (const hash of sections) {
     await page.goto('./' + hash);
-    await page.waitForLoadState('networkidle');
-    expect(await serious(page), hash).toEqual([]);
+    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expectNoSeriousA11y(page);
   }
 });
 
-test('hands-free running, the help card and the high-contrast theme', async ({ page }) => {
-  await ready(page);
-  const skip = page.getByRole('button', { name: 'Skip' });
-  while (await skip.isVisible()) await skip.click();
+test('hands-free running, the help card and high contrast', async ({ page }) => {
+  await gotoApp(page, '#/stumble');
   await page.getByRole('button', { name: 'Start' }).click();
-  expect(await serious(page)).toEqual([]);
+  await expect(page.locator('#hf-listening')).toHaveText('Listening');
+  await expectNoSeriousA11y(page);
   await page.keyboard.press('?');
-  expect(await serious(page)).toEqual([]);
+  await expectNoSeriousA11y(page);
   await page.getByRole('button', { name: 'Close' }).click();
-  await page.goto('./#/settings/access');
-  await page.getByLabel('Theme').selectOption({ label: 'High contrast' });
-  await page.goto('./#/stumble');
-  expect(await serious(page)).toEqual([]);
+  await page.evaluate(() => { document.documentElement.dataset.theme = 'high-contrast'; });
+  await expectNoSeriousA11y(page);
 });
 ```
 
-- [ ] **Step 2: Run it to verify it fails**
-
-Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/axe.spec.js`
-Expected: FAIL with `Cannot find package '@axe-core/playwright'`.
-
-- [ ] **Step 3: Add the package**
-
-Run: `npm install --save-dev --save-exact @axe-core/playwright@4.14.0`
-
-- [ ] **Step 4: Run it and fix what it finds**
+- [ ] **Step 2: Run it**
 
 Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/axe.spec.js`
-Expected: PASS, 3 tests. If a test lists violations, fix each one in the file that renders the named node (a missing label, low contrast, a duplicate id, a button under 44 px) and run again. Never disable an axe rule.
+Expected: PASS, 3 tests, or a list of violations to fix in Step 3.
 
-- [ ] **Step 5: Run the whole suite**
+- [ ] **Step 3: Fix what it finds**
+
+Fix each listed violation in the file that renders the named node (a missing label, low contrast, a duplicate id, a button under 44 px) and run Step 2 again until it passes. Never disable an axe rule.
+
+- [ ] **Step 4: Run the whole suite**
 
 Run: `npm test` and then `npm run e2e`
-Expected: PASS for both, with no unmocked requests reported.
+Expected: PASS for both; the shared `test` fixture reports no unmocked requests, CSP violations or page errors.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
-git add package.json package-lock.json tests/e2e/axe.spec.js
-git commit -m "Check every view with axe"
+git add tests/e2e/axe.spec.js
+git commit -m "Check the hands-free screens with axe"
 ```
 
-Before committing, also `git add` each file you changed in Step 4, by its exact path.
+Before committing, also `git add` each file you changed in Step 3, by its exact path.
 
 ---
 
 ## Notes for later plans
 
-- Plan 04: the Vault's **Play** (an embed) and the play watchdog call `app.handsFree.pause()` when its state is `'active'`, so lean-back resumes only on an explicit resume (§6.5).
-- `voice/grammar.js`, `voice/listener.js`, `voice/reader.js` and `handsfree.js` take the engine, TTS and clock as parameters. The extension and Android plans supply their own `VoiceEngine` and `Tts`, map native error codes onto `VoiceErrorCode`, and reuse `installHandsFreeUi` unchanged.
-- `effectiveListenMode` already treats `{kind:'native', continuous:true}` as always-on, and `describeEngine` already has the `native` line.
+- Plan 04: the Vault's **Play** (an embed) and the play watchdog call `app.handsFree?.pause()`. `pause()` does nothing unless lean-back is active, so it is safe in any state, and lean-back resumes only on an explicit resume (§6.5).
+- Plan 06: `app.handsFree` is one object for the app's life, so `connectLab` can hold it from boot. `dispatch(id, arg)` in `handsfree-ui.js` is the one dispatcher for keys, the bar, media keys, the search dialog and voice; add the Lab stop there.
+- Plans 07 and 08: boot calls `installHandsFreeUi(app)` for every shell. `app.handsFree.start()` runs the whole Start routine (probe, a fresh listener, wake lock), with or without a click. `voice/grammar.js`, `voice/listener.js`, `voice/reader.js` and `handsfree.js` take the engine, TTS and clock as parameters; the extension and Android plans supply their own `VoiceEngine` and `Tts` and map native error codes onto `VoiceErrorCode`.
+- Plan 07: the side panel's platform sets `caps.leanBack: false`, and `installHandsFreeUi` then creates the controller with `leanBack: false` (voice and read-aloud, no auto-advance).
+- Plan 08: `effectiveListenMode` treats `{kind:'native', continuous:true}` as always on and other native statuses as push or tap to talk. A cloud-only recogniser before opt-in must report `{kind:'none', vendor, reason:'cloud-only'}` (overview) for the opt-in to show. `describeEngine` names any `native` vendor other than `android`.
 - `platform-shells.md`: Android WebView has no `speechSynthesis` and no Media Session, so Plan 08 must bridge native TTS and a native media session; the WebView mic grant is limited to `RESOURCE_AUDIO_CAPTURE` on the app's own origin.

@@ -37,7 +37,7 @@
 
 1. **Hostile text and links in source data.** An Artist field holding `<a href="javascript:…">`, an HN `story_text` with `<script>`, or a `data:` image URL must show as plain text and the bad link or image must be dropped. Pinned by `makeFind drops non-http image urls` (Task 1), `commons turns extmetadata HTML into plain text` (Task 12) and the e2e `card shows markup as plain text` (Task 22).
 2. **Double presses.** Pressing Next (or Space, or saying "next") twice fast must give two different finds and add each to the seen-set once. Pinned by `two concurrent next calls return different finds` (Task 20).
-3. **Offline versus used up.** With the network down, Stumble must say it can't reach the sources, not that you have seen everything, even with the starter library on, and must never hang. Pinned by `every source failing gives the unreachable message` and `a slow source never holds up a find and is skipped after 8 s` (Task 20).
+3. **Offline versus used up.** With the network down, Stumble must say it can't reach the sources, not that you have seen everything, even with the starter library on, and must never hang. Pinned by `every source failing gives the unreachable message, even with the library on` and `a slow source never holds up a find and is skipped after 8 s` (Task 20).
 4. **Broken, old or future share links and backup files.** A truncated `#s=` link, a payload with `v: 2`, or a backup with the wrong `format` must show a clear message and change nothing. Pinned by `decodeShare rejects v2 and garbage` (Task 9), `importBackup rejects a foreign file and writes nothing` (Task 10) and the e2e `a broken share link shows a message` (Task 26).
 5. **Injected finds that should never show.** Search or AI results that are already seen, on a blocked domain, duplicated, or tagged with ids not in `tags.json` must be dropped or cleaned before they reach a card. Pinned by `inject drops seen, blocked, duplicate and unknown-tag finds` (Task 20).
 
@@ -1546,7 +1546,7 @@ git commit -m "Add the starter library adapter and check the registry"
   - `inject(finds, origin) → Promise<number>`: `origin` is `'search'` or `'ai'`; serialised with `next`. It keeps the given order, drops finds that are seen (`await seen.has(url)`), in the dead set, on a blocked domain, hidden-tagged, failing the Family filter or duplicated (in the batch or the queue), removes tags that are not ids in `data.tags`, and resolves to the number it queued.
   - `taste() → Taste`, `setTaste(t)` (saves to the `taste` store under `'taste'` and emits `taste`), `on(event, fn) → unsubscribe` for `find`, `empty`, `error` (`{source, error}`, never shown) and `taste`; `pool() → Find[]`; `reload() → Promise<void>`, which reads the taste and the dead set from the store again and empties the pool, the queue and the prepared finds (Task 29 calls it after a backup import).
   - Empty reasons (exact, exported as `EMPTY_REASONS`): `exhausted: 'You have seen everything we have right now. Turn on more sources in Settings, or try Fate.'`; `unreachable: "Can't reach any source right now. Check your connection and try again."`, given when a refill ends with no eligible candidate and every network-source call in its last round failed with a `NetError` of kind `network`, `timeout` or `circuit` (an HTTP error or a bad reply means the source was reached); `aiEmpty: 'No search results waiting. Type a search to start.'`; and Fate's own reasons from Task 6.
-- Test helper `engineFor({entries, settings, transport, extraRoutes, only = ['library'], adapters, secrets}) → Promise<{engine, calls, store, ctx, platform, registered}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, merges `settings` over `DEFAULT_SETTINGS`, turns off every `SOURCES` id not in `only` (entries in `settings.sources` win), and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps` from `ctx.caps`, `persistStorage` that counts calls in `platform.persisted`). `adapters`, when given, become `createEngine`'s `sources` and `only` is ignored. `secrets` (a getter) is passed through. The engine gets `ctx.http` wrapped so that `register` calls are recorded in `registered` (id → rate).
+- Test helper `engineFor({entries = [], settings, transport, extraRoutes, only = ['library'], adapters, secrets}) → Promise<{engine, calls, store, ctx, platform, registered}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, merges `settings` over `DEFAULT_SETTINGS`, turns off every `SOURCES` id not in `only` (entries in `settings.sources` win), and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps` from `ctx.caps`, `persistStorage` that counts calls in `platform.persisted`). `adapters`, when given, become `createEngine`'s `sources` and `only` is ignored. `secrets` (a getter) is passed through. The engine gets `ctx.http` wrapped so that `register` calls are recorded in `registered` (id → rate).
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1675,12 +1675,12 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/engine.js`.
 
 - [ ] **Step 3: Add `engineFor` and implement the engine core**
 
-`pickNext` gets a sync `seenHas` that checks the hashes shown this session and the session's dead set; the pool itself is filtered through `await seen.has(url)` when candidates arrive. `recentDomains` is `history.recentDomains(10)`. `react` and `rabbit` come in Task 21; leave them out here.
+`pickNext` gets a sync `seenHas` that checks the hashes shown this session and the session's dead set; the pool itself is filtered through `await seen.has(url)` when candidates arrive. `recentDomains` is `history.recentDomains(10)`. Fate's `accept` is `(f) => eligible(f, {seenHas, taste, recentDomains: [], familyFilter})`. `react`, `rabbit`, link checks and prefetch come in Task 21; leave them out here.
 
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/engine.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Commit**
 

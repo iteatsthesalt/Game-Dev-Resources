@@ -75,7 +75,7 @@
 
 **Interfaces:**
 - Consumes: `createHttp({transport, clock}) → Http` (`register`, `request`, `getJson`); `NetError` (`kind`, `status`); `createCache(store, clock)`; `openStore(memoryBackend())`; `fakeClock(start)` with `advance(ms)`.
-- Produces: `createIaClient({http, cache, clock}) → IaClient`, where `IaClient = {search({q, fl, sort, rows, page}) → Promise<{numFound, docs}>, count(q) → Promise<number>, metadata(id) → Promise<object|null>, wayback(url, timestamp) → Promise<{url, timestamp}|null>}`. `sharedIaClient({http, cache, clock}) → IaClient` returns one client per `http` object. Test helpers `fakeFetch(routes, {clock}?) → {fetch(url, init) → Promise<Response>, calls: Array<{url, init, at}>}` (routes are `[RegExp, (url, init) => ({status?, body?, headers?}) | Promise<…>]`; an object body is sent as JSON; a responder that throws makes `fetch` reject; unmatched URLs get 404), `instantClock(start = Date.UTC(2026, 10, 11, 12)) → {now, setTimeout, clearTimeout}`, whose `setTimeout(fn, ms)` adds `ms` to `now` and runs `fn` on `setImmediate`, and `readFixture(path) → string`, which reads `tests/fixtures/http/<path>` as UTF-8.
+- Produces: `createIaClient({http, cache, clock}) → IaClient`, where `IaClient = {search({q, fl, sort, rows, page}) → Promise<{numFound, docs}>, count(q) → Promise<number>, metadata(id) → Promise<object|null>, wayback(url, timestamp) → Promise<{url, timestamp}|null>}`. Failures reject with `NetError`; the circuit pause rejects with `kind: 'circuit'`. `sharedIaClient({http, cache, clock}) → IaClient` returns one client per `http` object. Test helpers `fakeFetch(routes, {clock}?) → {fetch(url, init) → Promise<Response>, calls: Array<{url, init, at}>}` (routes are `[RegExp, (url, init) => ({status?, body?, headers?}) | Promise<…>]`; the first match answers; an object body is sent as JSON and a string as text; a responder that throws makes `fetch` reject; unmatched URLs get 404), `instantClock(start = Date.UTC(2026, 10, 11, 12)) → {now, setTimeout, clearTimeout}`, whose `setTimeout(fn, ms)` runs `fn` on `setImmediate` after adding `ms` to `now` (a cleared timer adds nothing), and `readFixture(path) → string`, which reads `tests/fixtures/http/<path>` as UTF-8.
 
 - [ ] **Step 1: Write the helpers, then the failing tests**
 
@@ -108,8 +108,8 @@ test('metadata returns the result object, and null for an empty reply', async ()
   // /metadata/msdos_Whizz_1994/metadata → {result: {mediatype: 'software', emulator: 'dosbox'}}; /metadata/nope/metadata → {}; /metadata/blank/metadata → {result: {}}
   assert.deepEqual(await ia.metadata('msdos_Whizz_1994'), { mediatype: 'software', emulator: 'dosbox' });
   assert.equal(net.calls[0].url, 'https://archive.org/metadata/msdos_Whizz_1994/metadata');
-  assert.equal(await ia.metadata('nope'), null);
-  assert.equal(await ia.metadata('blank'), null);
+  clock.advance(1000); assert.equal(await ia.metadata('nope'), null);
+  clock.advance(1000); assert.equal(await ia.metadata('blank'), null);
 });
 test('requests start at least 1000 ms apart', async () => {
   const p = ['a', 'b', 'c'].map((q) => ia.count(q));
@@ -132,10 +132,17 @@ test('two 429s in a row pause the queue for 5 minutes', async () => {
   ok = true; clock.advance(300000);
   assert.equal(await ia.count('d'), 2);
 });
+test('a 429 with Retry-After: 30 holds the queue for 30 s', async () => {
+  // responder: the first call answers 429 with Retry-After: 30, later calls 200
+  await assert.rejects(ia.count('a'), { status: 429, retryAfterMs: 30000 });
+  const p = ia.count('b'); await flush(); clock.advance(29999); await flush();
+  assert.equal(net.calls.length, 1);
+  clock.advance(1); assert.equal(await p, 2); assert.equal(net.calls.at(-1).at, 30000);
+});
 test('searches are cached for 24 h and metadata for 7 days', async () => {
   await ia.count('a'); await ia.count('a'); assert.equal(net.calls.length, 1);
   clock.advance(86400001); await ia.count('a'); assert.equal(net.calls.length, 2);
-  await ia.metadata('msdos_Whizz_1994'); clock.advance(6 * 86400000); await ia.metadata('msdos_Whizz_1994');
+  clock.advance(1000); await ia.metadata('msdos_Whizz_1994'); clock.advance(6 * 86400000); await ia.metadata('msdos_Whizz_1994');
   assert.equal(net.calls.length, 3);
   clock.advance(86400001); await ia.metadata('msdos_Whizz_1994'); assert.equal(net.calls.length, 4);
 });
@@ -148,7 +155,7 @@ test('wayback returns the closest snapshot as https, and null when archived_snap
   assert.equal(u.searchParams.get('url'), 'http://www.geocities.com/Area51/1234/');
   assert.equal(u.searchParams.get('timestamp'), '2009');
   assert.deepEqual(hit, { url: 'https://web.archive.org/web/20091027000000/http://www.geocities.com/Area51/1234/', timestamp: '20091027000000' });
-  assert.equal(await ia.wayback('http://www.geocities.com/gone/', '2009'), null);
+  clock.advance(1000); assert.equal(await ia.wayback('http://www.geocities.com/gone/', '2009'), null);
 });
 test('sharedIaClient returns one client per http object', () => {
   assert.equal(sharedIaClient({ http, cache, clock }), sharedIaClient({ http, cache, clock }));

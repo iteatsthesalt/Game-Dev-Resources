@@ -533,6 +533,21 @@ test('a failing permission query still tries the engine, and a not-allowed error
   assert.deepEqual(ext.messages, [{ type: 'openPermission' }]);
   assert.deepEqual(errors, [{ code: 'not-allowed' }]);
 });
+
+test('toggleListening starts hands-free from idle, but only after a press on the page', async () => {
+  const calls = []; const start = async () => { calls.push(['start']); };
+  assert.equal(await toggleListening(fakeHf({ state: 'idle', listening: false }, calls), { activated: false, start }), 'needs-start');
+  assert.deepEqual(calls, []);
+  assert.equal(await toggleListening(fakeHf({ state: 'idle', listening: false }, calls), { activated: true, start }), 'started');
+  assert.deepEqual(calls, [['start']]);
+});
+
+test('toggleListening turns the mic off, then on again', async () => {
+  const calls = []; const start = async () => { calls.push(['start']); };
+  assert.equal(await toggleListening(fakeHf({ state: 'active', listening: true }, calls), { activated: false, start }), 'stopped');
+  assert.equal(await toggleListening(fakeHf({ state: 'paused', listening: false }, calls), { activated: false, start }), 'listening');
+  assert.deepEqual(calls, [['command', 'stopListening'], ['setListening', true]]);
+});
 ```
 
 - [ ] **Step 2: Run the tests and see them fail**
@@ -544,26 +559,33 @@ Expected: FAIL with `Cannot find module` for `src/platform/extension.js`.
 
 - `createExtSecrets(ext)`: keys are stored as `secret:<id>` in `ext.storage.local`. `get` returns `null` when the key is missing. `list` returns the ids with the prefix removed and ignores other keys.
 - `gateVoice(inner, {win, ext})`: `probe`, `install`, `stop` pass through. `on('result'|'state')` subscribe to `inner`. `on('error')` subscribes to the gate's own list, which receives every inner error. `start(opts)` queries `win.navigator.permissions.query({name: 'microphone'})`. On `'granted'`, or when the query rejects, it calls `inner.start(opts)`. Otherwise it sends `{type: 'openPermission'}` and emits `{code: 'not-allowed'}`. An inner `not-allowed` error also sends `{type: 'openPermission'}`.
+- `originPattern(url)` (internal) is `<scheme>://<hostname>/*`, with no port: a match pattern without one matches every port.
+- `requestDataCollection(ext, kinds)`: when `ext.runtime.getManifest()` declares `browser_specific_settings.gecko.data_collection_permissions.optional` (Firefox), it calls `ext.permissions.request({data_collection: kinds})` as its first statement and resolves the answer. A throw, synchronous or not, resolves `false`, as from a Firefox that does not know `data_collection`, so nothing is sent without consent. Without that key (Chrome and Edge) it resolves `true` and calls nothing.
+- `toggleListening(hf, {activated, start})`: from `'idle'` it resolves `'needs-start'` when `activated` is false (a page that was never pressed cannot start speech), else awaits `start()` and resolves `'started'`. In any other state it runs `hf.command('stopListening')` when `hf.listening` (`'stopped'`), or else `hf.setListening(true)` (`'listening'`).
 - `createExtensionPlatform({ext, win, surface})`:
-  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`.
+  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`. When `init.privileged` is set and the method is `HEAD`, it first checks `await ext.permissions.contains({origins: [originPattern(url)]})`. For a host Byways has no access to, the request also gets `mode: 'no-cors'`: Plan 02's privileged link check then gets an opaque reply with status 0, which `checkLive` counts as live, the same reachability check the web app makes. Every other request keeps CORS, which host permissions lift.
   - `voice`: `createNoVoice()` for `'background'`, else `gateVoice(createWebVoice(win), {win, ext})`.
   - `tts`: for `'background'`, a silent `Tts` (`speak` resolves, `voices` resolves `[]`); else `createWebTts(win.speechSynthesis)`.
-  - `openFind(find, how)`: `how` defaults to `'current'` for `'panel'` and `'tab'` for the other surfaces. `'current'` queries `{active: true, currentWindow: true}`, calls `ext.tabs.update(tab.id, {url})`, then sets `storage.session['find:<id>'] = {find, branch: null, why: find.why}`. `'tab'` and `'inapp'` call `ext.tabs.create({url})`.
+  - `openFind(find, how = 'tab')` throws `Error('not an http(s) link')` unless `isHttpUrl(find.url)`. `'current'` queries `{active: true, currentWindow: true}`, calls `ext.tabs.update(tab.id, {url})`, then sets `storage.session['find:<id>'] = {find, branch: null, why: find.why}`. `'tab'` and `'inapp'` call `ext.tabs.create({url})`.
   - `share(data)`: `win.navigator.share` when it exists (`'shared'`, or `'cancelled'` on `AbortError`). Otherwise it copies `data.url ?? data.text` and returns `'copied'`.
   - `files.save(name, blob)` uses an `<a download>` with an object URL. `files.pick(accept, multiple)` uses a hidden `<input type=file>`. Both are only used on page surfaces.
   - `media` and `wakeLock` come from `createWebMedia(win.navigator)` and `createWebWakeLock(win.navigator, win.document)` when `win.document` exists, and are no-ops otherwise.
+  - `requestOrigins(origins)`: maps each http(s) origin or URL to `originPattern`, drops the rest, and calls `ext.permissions.request({origins: patterns})` as its first statement, with no `await` before it, so the click's user gesture still counts. It resolves the answer, or `false` on a throw or an empty list. Plan 05's buttons for a custom endpoint and for a model on the local network call it.
+  - `identity.getRedirectURL()` calls `ext.permissions.request({permissions: ['identity']})` as its first statement, rejects with `Error('identity permission refused')` on `false`, then resolves `ext.identity.getRedirectURL()`. `identity.launchWebAuthFlow({url, interactive})` resolves `ext.identity.launchWebAuthFlow({url, interactive})`. Connect OpenRouter calls `getRedirectURL()` first in its click and uses the result as `callback_url`.
+  - `requestDataCollection(kinds)` is `requestDataCollection(ext, kinds)`.
+  - `leanBack` is `surface !== 'panel'`.
   - `secrets: createExtSecrets(ext)`, the `caps` above, and `persistStorage` resolves `true` (the manifest has `unlimitedStorage`).
 
 - [ ] **Step 4: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-platform.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 16 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/platform/extension.js tests/unit/ext-platform.test.js
-git commit -m "Add the extension platform with storage.local secrets and a mic gate"
+git commit -m "Add the extension platform with storage.local secrets, a mic gate and permission requests"
 ```
 
 ### Task 4: Background handlers and wiring
