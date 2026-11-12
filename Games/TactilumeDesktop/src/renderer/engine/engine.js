@@ -116,8 +116,12 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
   function watchLoss(device) {
     device.lost.then((info) => {
       if (disposed || info.reason === 'destroyed' || device !== gpu.device) return;
-      if (recreated) { onLost?.(info); return; }
-      recreated = true;
+      // a device broken by presenting is not a lost GPU: going offscreen fixes it for good,
+      // so it does not use up the one recreation
+      if (!PRESENT_BROKEN.test(info.message)) {
+        if (recreated) { onLost?.(info); return; }
+        recreated = true;
+      }
       rebuild(info);
     });
   }

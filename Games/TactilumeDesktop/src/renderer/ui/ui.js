@@ -69,7 +69,10 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
     const info = await bridge.link.info();
     if (info.qrSvg) qr.src = svgImage(info.qrSvg);
     qr.hidden = !info.qrSvg;
-    address.textContent = info.url || 'The phone link is off. Check that this computer is on a network.';
+    address.textContent = info.url
+      || (info.running
+        ? 'No local network found. Connect this computer to the same Wi-Fi or network as the phone.'
+        : 'The phone link could not start.');
     allow.checked = !!info.allowNew;
     players.replaceChildren(...hub.players().filter((p) => p.kind === 'phone').map((p) => {
       const li = document.createElement('li');

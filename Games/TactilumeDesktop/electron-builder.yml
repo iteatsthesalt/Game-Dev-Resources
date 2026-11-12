@@ -1,0 +1,43 @@
+# Packaging for Windows, macOS and Linux: `npm run dist` builds dist/ and then packs it.
+# The builds are unsigned for now, so Windows SmartScreen and macOS Gatekeeper warn on the
+# first launch.
+#
+# First version, written by the spine. The shell-ui part owns this file and replaces it.
+appId: app.tactilume.desktop
+productName: Tactilume
+directories:
+  output: release
+# main.cjs bundles its dependencies, so the app needs only what the build made
+files:
+  - dist/**/*
+  - package.json
+asar: true
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+# installs for the current person only, so no administrator rights are needed
+nsis:
+  oneClick: true
+  perMachine: false
+
+mac:
+  category: public.app-category.entertainment
+  identity: null
+  target:
+    - target: dmg
+      arch: [arm64, x64]
+  extendInfo:
+    NSMicrophoneUsageDescription: Tactilume listens to the microphone only when you choose it, to move the light with sound.
+
+linux:
+  category: AudioVideo
+  executableName: tactilume
+  # a .deb needs a maintainer; without an e-mail in package.json it is named here
+  maintainer: Tactilume
+  target:
+    - AppImage
+    - deb
+
+publish: null

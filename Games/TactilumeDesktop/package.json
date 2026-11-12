@@ -12,7 +12,7 @@
   "scripts": {
     "build": "node tools/build.mjs",
     "start": "node tools/build.mjs && electron .",
-    "unit": "node --test tests/unit/",
+    "unit": "node --test \"tests/unit/*.test.js\"",
     "e2e": "node tests/e2e/run.js",
     "test": "npm run build && npm run unit && npm run e2e",
     "smoke": "electron . --smoke",
