@@ -20,9 +20,12 @@ import apod from './apod.js';
 import marginalia from './marginalia.js';
 import github from './github.js';
 import hn from './hn.js';
+import aic from './aic.js';
+import met from './met.js';
+import cleveland from './cleveland.js';
 
 // Each adapter task adds one import above this line and one entry below it.
-const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn];
+const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland];
 
 /** id -> adapter, in the order of ADAPTERS. */
 export const SOURCES = Object.fromEntries(ADAPTERS.map(adapter => [adapter.id, adapter]));

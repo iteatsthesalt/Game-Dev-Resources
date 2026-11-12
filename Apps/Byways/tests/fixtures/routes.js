@@ -17,4 +17,8 @@ export default [
   { match: /api\.github\.com\/search\/repositories/, file: 'github/search.json' },
   { match: /hn\.algolia\.com\/api\/v1\/search_by_date/, file: 'hn/search.json' },
   { match: /hn\.algolia\.com\/api\/v1\/search/, file: 'hn/search.json' },
+  { match: /api\.artic\.edu\/api\/v1\/artworks\/search/, file: 'aic/search.json' },
+  { match: /collectionapi\.metmuseum\.org\/public\/collection\/v1\.1\/search/, file: 'met/search.json' },
+  { match: /collectionapi\.metmuseum\.org\/public\/collection\/v1\/objects\//, file: 'met/object.json' },
+  { match: /openaccess-api\.clevelandart\.org\/api\/artworks\//, file: 'cleveland/artworks.json' },
 ];
