@@ -66,7 +66,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | `tests/fixtures/routes.js`, `tests/fixtures/http/ping.json` | Network fixtures |
 | `.github/workflows/byways.yml`, `.github/workflows/pages.yml` | CI and Pages deploy |
 
-The e2e helpers are the overview's "one set of e2e helpers": `net.js` and `fakes.js` (Task 10), `axe.js` (Task 10) and `app.js` (Task 13). Later plans import them and define no copies.
+The e2e helpers are the overview's "one set of e2e helpers": `net.js`, `fakes.js` and `axe.js` (Task 10), and `app.js` (Task 13). Later plans import them and define no copies.
 
 **Import-time rule:** no module in `src/ui/` or `src/platform/` touches `window` or `document` at import time, so Node unit tests can import them. Only `bootFromShell()` runs on load, and only when `document.documentElement.dataset.shell` is set.
 
@@ -285,7 +285,7 @@ git commit -m "Add URL normalisation and plain-text helpers"
 
 - [ ] **Step 1: Write the failing tests**
 
-`tests/unit/clock.test.js`:
+Write `tests/unit/helpers/async.js` first (the two helpers under **Files**), then `tests/unit/clock.test.js`:
 
 ```js
 test('fakeClock runs due timers in order and sets now', () => {

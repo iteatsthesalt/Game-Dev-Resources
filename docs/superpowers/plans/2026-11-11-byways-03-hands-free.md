@@ -492,7 +492,7 @@ git commit -m "Add read-aloud with sentence-level pause"
   - `createHandsFree({engine, listener = null, reader, clock, getSettings, ui, leanBack = true, getListenMode = () => 'always', prepare, dispatch}) → HandsFree`:
     - `leanBack: false` (the extension side panel, §6.5) gives voice commands and read-aloud but nothing that advances by itself (Task 5);
     - `getListenMode() → 'always'|'push'|'off'`;
-    - `prepare() → Promise<Listener|null>`, optional: `start()` awaits it first and uses the listener it returns in place of the current one, stopping the old one and removing its handlers. A rejected `prepare()` counts as `null`;
+    - `prepare() → Promise<listener|null>` (a `createListener` object), optional: `start()` awaits it first and uses the listener it returns in place of the current one, stopping the old one and removing its handlers. A rejected `prepare()` counts as `null`;
     - `dispatch(id, arg)`, optional: the listener's `command` events go to it instead of to `command(id, arg)`, so the UI has one dispatch point.
   - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find, why = null), hold(reason), release(reason), talk(on), setMuted(on), get muted, get state}`, with states `'idle'|'active'|'paused'|'suspended'`.
   - `ui` is the contract's `{show(result), announce(text, opts), setState(state), countdown(secondsLeft|null), openHelp(), navigate(route), search(text)}` plus `act(id) → Promise<void>` (press the visible card button for that command) and `recap(shown: Find[])`.
@@ -711,6 +711,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/handsfree.js`.
 - [ ] **Step 3: Implement `src/core/handsfree.js` (state machine and command routing)**
 
 Rules the tests do not spell out:
+- `effectiveListenMode`: kind `'none'` gives `'off'`. `'auto'` gives `'always'` for `web-local` and continuous `native`, and `'push'` for everything else, as the overview's `DEFAULT_SETTINGS` comment says (spec §6.2's table would keep continuous cloud engines always on; the overview wins). Any other mode is returned as it is.
 - `start()` does nothing unless idle, or while an earlier `start()` is still running. It awaits `prepare` when given, goes active (`ui.setState('active')`), starts the mic when `getListenMode()` is `'always'`, and begins a new session list for the recap. It then reads the find on screen (the last find given to `showing`, else `engine.current()`) and puts it in that list. Only when both are `null` does it call `engine.next` and `ui.show` the result. It does not announce `Lean-back on`.
 - `start()` and `command()` resolve once the find is shown, and never wait for read-aloud.
 - `engine.next` gets `{mode: settings.mode}`, or `{mode:'fate'}` for `fate`. In `ai` mode the engine serves the search results waiting in its queue, and an `{empty}` result follows Task 5's rule.

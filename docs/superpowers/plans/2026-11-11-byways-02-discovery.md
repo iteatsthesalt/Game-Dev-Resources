@@ -1689,25 +1689,27 @@ git add src/core/engine.js tests/unit/helpers/fixture-http.js tests/unit/engine.
 git commit -m "Add the engine with the pool, modes, queue, search and feed"
 ```
 
-### Task 21: Engine reactions, Rabbit Hole and link checks
+### Task 21: Engine reactions, Rabbit Hole, link checks and prefetch
 
 **Files:**
 - Modify: `src/core/engine.js`
 - Test: `tests/unit/engine-react.test.js`
 
 **Interfaces:**
-- Consumes: `applyReaction`, `describeChange` (Task 3), `createRabbitHole` (Task 7), `checkLive` (Task 11), `engineFor` (Task 20).
+- Consumes: `applyReaction`, `describeChange` (Task 3), `eligible` (Task 4), `createRabbitHole` (Task 7), `checkLive` (Task 11), `engineFor` (Task 20).
 - Produces, on `Engine`:
-  - `react(find, reaction, extra?) → Promise<{message, undo() → Promise<void>}>`. It applies `applyReaction`, saves the taste and emits `taste`. `undo()` restores the taste from before and reverses the side effect. Side effects and messages (exact):
-    - `like`, `dislike`, `lessTopic`, `neverSite`: `describeChange(change)`. `neverSite` also drops that domain from the pool and the queue.
+  - `react(find, reaction, extra?) → Promise<{message, undo() → Promise<void>}>`. It applies `applyReaction`, saves the taste and emits `taste`. `undo()` restores the taste from before and reverses the side effect. Messages use `describeChange(change, labelOf)` with the `data.tags` labels. Side effects and messages (exact):
+    - `like`, `dislike`, `lessTopic`, `neverSite`: `describeChange(change, labelOf)`. `neverSite` also drops that domain from the pool, the queue and the prepared finds.
     - `save`: adds to `extra.collectionId ?? await collections.getCurrent()`; message `'Saved to <collection name>.'`; the first save of the session calls `platform.persistStorage()`.
-    - `broken`: writes `health['broken:<hash64(normalizeUrl(url))>'] = {t, url}` and hides the find for good (the engine loads these keys into its dead set at start); message `'Thanks. This find is hidden now.'`, or `'Thanks. ' + describeChange(change)` when `extra.blockDomain`.
-  - `rabbit`: `createRabbitHole({sources: () => <enabled adapters>, ctx, seenHas, pool: () => engine.pool()})`. While `rabbit.trail()` is not empty, `next()` serves `rabbit.next()` as `{find, branch: 'rabbit', why: 'rabbit hole'}`, or `{empty: true, reason: EMPTY_REASONS.rabbitDry}` with `rabbitDry: 'This Rabbit Hole has run dry. Climb out to stumble on.'`.
-  - Link checks: when `settings.checkLinks` is on, a find from `kagi` or `kagirandom`, or injected with origin `'ai'`, is passed to `checkLive(url, {transport: platform.transport, privileged: platform.caps.privilegedFetch})` before it is returned. A dead find goes into the session dead set and the next candidate is tried. With `checkLinks` off, `platform.transport` is never called.
+    - `broken`: writes `health['broken:<hash64(normalizeUrl(url))>'] = {t, url}` and hides the find for good (the engine loads these keys into its dead set at start); message `'Thanks. This find is hidden now.'`, or `'Thanks. ' + describeChange(change, labelOf)` when `extra.blockDomain`.
+  - `rabbit`: the engine's wrapper around `createRabbitHole({sources: () => <enabled adapters>, ctx, seenHas, pool: () => engine.pool(), accept})`, where `accept` is Fate's (Task 20). It has the hole's `start(find)`, `trail()`, `climbOut()` and `useAi(fn|null)`, and its `next() → Promise<Find|null>` also adds the find to `seen` and `history` and emits `find` with `{find, branch: 'rabbit', why: 'rabbit hole'}`, so a direct call (Plan 07) behaves like Stumble. `useAi(fn)` hands the hole a wrapped `fn` whose finds are link-checked first when **Check links** is on. While the trail is not empty, `next()` serves the hole right after the history forward entry: `{find, branch: 'rabbit', why: 'rabbit hole'}`, or `{empty: true, reason: EMPTY_REASONS.rabbitDry}` with `rabbitDry: 'This Rabbit Hole has run dry. Climb out to stumble on.'`.
+  - **Link checks.** When `settings.checkLinks` is on, a find from `kagi` or `kagirandom`, one injected with origin `'ai'`, or one from the Rabbit Hole AI hook is checked with `checkLive(url, {transport: platform.transport, privileged: platform.caps.privilegedFetch})` before `next` or `feed` hands it out. Each URL is checked at most once per session. A dead find goes into the session dead set and the next candidate is tried. With `checkLinks` off, `platform.transport` is never called.
+  - **Prefetch** (§7.3, "at most 3 finds ahead"). After each Tuned `next`, the engine prepares up to 3 more Tuned picks in the background (`pickNext` with the last prepared pick as `current`, their domains counted in the cooldown) and link-checks those that need it. After each `inject` it link-checks the first 3 queued finds the same way. A Tuned `next` serves the oldest prepared pick that is still eligible and drops the ineligible ones, so it answers at once when picks are ready. Fate, AI mode and the Rabbit Hole are not prepared ahead.
 
 - [ ] **Step 1: Write the failing test**
 
 ```js
+// `fake` and `flush` are the helpers from engine.test.js
 const lib = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://s${i}.example.com/`, title: `Site ${i}`, blurb: 'A toy.', tags: ['toy'], kind: 'site', added: '2026-11-01' }));
 const F = (t) => makeFind({ source: 'kagi', kind: 'site', title: t, tags: ['web'], safety: 'curated', url: `https://${t}.example.org/` });
 test('like explains itself and undo puts the taste back', async () => {

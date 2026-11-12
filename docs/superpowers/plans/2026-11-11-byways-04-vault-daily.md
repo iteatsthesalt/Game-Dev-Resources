@@ -74,7 +74,7 @@
 - Test: `tests/unit/ia-client.test.js`
 
 **Interfaces:**
-- Consumes: `createHttp({transport, clock}) → Http` (`register`, `request`, `getJson`); `NetError` (`kind`, `status`); `createCache(store, clock)`; `openStore(memoryBackend())`; `fakeClock(start)` with `advance(ms)`.
+- Consumes: `createHttp({transport, clock}) → Http` (`request`, `getJson`); `new NetError(kind, message, {status, retryAfterMs, source})`; `createCache(store, clock)`; `openStore(memoryBackend())`; `fakeClock(start)` with `advance(ms)`.
 - Produces: `createIaClient({http, cache, clock}) → IaClient`, where `IaClient = {search({q, fl, sort, rows, page}) → Promise<{numFound, docs}>, count(q) → Promise<number>, metadata(id) → Promise<object|null>, wayback(url, timestamp) → Promise<{url, timestamp}|null>}`. Failures reject with `NetError`; the circuit pause rejects with `kind: 'circuit'`. `sharedIaClient({http, cache, clock}) → IaClient` returns one client per `http` object. Test helpers `fakeFetch(routes, {clock}?) → {fetch(url, init) → Promise<Response>, calls: Array<{url, init, at}>}` (routes are `[RegExp, (url, init) => ({status?, body?, headers?}) | Promise<…>]`; the first match answers; an object body is sent as JSON and a string as text; a responder that throws makes `fetch` reject; unmatched URLs get 404), `instantClock(start = Date.UTC(2026, 10, 11, 12)) → {now, setTimeout, clearTimeout}`, whose `setTimeout(fn, ms)` runs `fn` on `setImmediate` after adding `ms` to `now` (a cleared timer adds nothing), and `readFixture(path) → string`, which reads `tests/fixtures/http/<path>` as UTF-8.
 
 - [ ] **Step 1: Write the helpers, then the failing tests**
@@ -170,21 +170,22 @@ Expected: FAIL with "Cannot find module '…/src/core/ia/client.js'".
 
 - [ ] **Step 3: Implement `createIaClient` and `sharedIaClient` in `src/core/ia/client.js`**
 
-It calls `http.register('ia', {perMinute: 60, concurrent: 2})` and sends every request as `http.request(url, {source: 'ia'})` with no headers. Base URL `https://archive.org`. Build query strings with `URLSearchParams.append`, one `fl[]` and one `sort[]` per value. `metadata` and a `{}` or `{result: {}}` reply both give `null`. `wayback` returns `null` unless `closest.available` is true, and rewrites a leading `http://web.archive.org/` to `https://web.archive.org/`. Cache keys: `ia:s:<url>` for 86400000 ms, `ia:m:<id>` and `ia:w:<url>|<timestamp>` for 604800000 ms. Only successful replies are cached; errors never are. `sharedIaClient` keeps a `WeakMap` keyed by `http`. The queue:
+It sends every request as `http.request(url, {source: 'ia'})` with no headers, and never calls `http.register('ia', …)`: Plan 01's `Http` pauses a registered source for 60 s on a 429 or 503 without `Retry-After`, so this queue alone owns Archive pacing and backoff. Base URL `https://archive.org`. Build query strings with `URLSearchParams.append`, one `fl[]` and one `sort[]` per value. `metadata` and a `{}` or `{result: {}}` reply both give `null`. `wayback` returns `null` unless `closest.available` is true, and rewrites a leading `http://web.archive.org/` to `https://web.archive.org/`. Cache keys: `ia:s:<url>` for 86400000 ms, `ia:m:<id>` and `ia:w:<url>|<timestamp>` for 604800000 ms. A cache hit answers without joining the queue. Only successful replies are cached; errors never are. `sharedIaClient` keeps a `WeakMap` keyed by `http`. `Http` throws a `NetError` for any status of 400 or more, so the queue reads statuses from thrown errors:
 
 ```js
-// state: lastStart = -Infinity, active = 0, waiting = [], streak = 0, pausedUntil = 0, timer = null
-// pump(): if (clock.now() < pausedUntil) reject every waiting job with new NetError({kind: 'circuit', source: 'ia'}); return
+// state: lastStart = -Infinity, holdUntil = 0, active = 0, waiting = [], streak = 0, pausedUntil = 0, timer = null
+// pump(): if (clock.now() < pausedUntil) { reject every waiting job with new NetError('circuit', 'Archive paused after two 429s in a row', {source: 'ia'}); return }
 //         if (active >= 2 || !waiting.length || timer) return
-//         wait = lastStart + 1000 - clock.now(); if (wait > 0) { timer = clock.setTimeout(() => { timer = null; pump() }, wait); return }
-//         lastStart = clock.now(); active++; run the first job; on settle: active--; pump()
-// on a reply: status 429 → streak++, and when streak === 2 → pausedUntil = clock.now() + 300000, streak = 0. Any other reply → streak = 0.
+//         wait = max(lastStart + 1000, holdUntil) - clock.now(); if (wait > 0) { timer = clock.setTimeout(() => { timer = null; pump() }, wait); return }
+//         lastStart = clock.now(); active++; run the first job (on settle: active--; pump()); pump()
+// a job that throws a NetError with status 429: streak++, and at streak === 2 → pausedUntil = clock.now() + 300000, streak = 0. Any other outcome → streak = 0.
+// a NetError with status 429 or 503 and retryAfterMs > 0 also sets holdUntil = max(holdUntil, clock.now() + retryAfterMs).
 ```
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/ia-client.test.js`
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -215,7 +216,7 @@ Values (verbatim from §10.1):
 
 - [ ] **Step 1: Write the failing tests**
 
-`seq = (...v) => () => v.shift()`. A stub `ia` records `count` and `search` arguments.
+`seq = (...v) => () => v.shift()`. Each test gets a fresh `cache = createCache(await openStore(memoryBackend()), fakeClock(0))` and a stub `ia = {metadata, count, search}` that answers as the test's comment says and records `metadataCalls` (a count), `countArgs` (each `q`) and `searchArgs` (each params object).
 
 ```js
 test('collections match the spec and leave out the dropped ids', () => {
@@ -241,10 +242,10 @@ test('gemScore matches the formula', () => {
   assert.ok(Math.abs(s({ downloads: 100, year: 1990, avg_rating: 5, num_reviews: 1 }, cur) - 0.592406) < 1e-6);
   assert.ok(Math.abs(s({ downloads: 1, year: 1990 }) - 0.68) < 1e-6);
 });
-test('gemWhy gives the chips', () => {
-  assert.deepEqual(gemWhy({ downloads: 312, collection: ['softwarelibrary_msdos_shareware'], year: '1994', avg_rating: 4.5, num_reviews: 3 }), ['312 downloads', 'MS-DOS Shareware', '1994', '★4.5 (3)']);
-  assert.deepEqual(gemWhy({ downloads: 1, collection: 'softwarelibrary_c64_games', year: 1985 }), ['1 download', 'C64 Games', '1985']);
-  assert.deepEqual(gemWhy({ downloads: 1234, collection: [] }), ['1,234 downloads']);
+test('gemWhy gives the chips, the pool first', () => {
+  assert.deepEqual(gemWhy({ downloads: 312, collection: ['softwarelibrary_msdos_shareware'], year: '1994', avg_rating: 4.5, num_reviews: 3 }), ['Internet Archive: MS-DOS Shareware', '312 downloads', '1994', '★4.5 (3)']);
+  assert.deepEqual(gemWhy({ downloads: 1, collection: 'softwarelibrary_c64_games', year: 1985 }), ['Internet Archive: C64 Games', '1 download', '1985']);
+  assert.deepEqual(gemWhy({ downloads: 1234, collection: [] }), ['Internet Archive', '1,234 downloads']);
 });
 test('iaDocToFind builds an Archive game find', () => {
   const f = iaDocToFind({ identifier: 'msdos_Whizz_1994', title: 'Whizz', creator: 'Flair', year: '1994', downloads: 312, collection: ['softwarelibrary_msdos_shareware'] }, { kind: 'game' });
@@ -253,7 +254,7 @@ test('iaDocToFind builds an Archive game find', () => {
   assert.equal(f.embedUrl, 'https://archive.org/embed/msdos_Whizz_1994');
   assert.equal(f.imageUrl, 'https://archive.org/services/img/msdos_Whizz_1994');
   assert.equal(f.author, 'Flair'); assert.equal(f.attribution, 'Internet Archive'); assert.equal(f.safety, 'curated');
-  assert.deepEqual(f.tags, ['retro']); assert.deepEqual(f.why, ['312 downloads', 'MS-DOS Shareware', '1994']);
+  assert.deepEqual(f.tags, ['retro']); assert.deepEqual(f.why, ['Internet Archive: MS-DOS Shareware', '312 downloads', '1994']);
   assert.deepEqual(f.meta, { identifier: 'msdos_Whizz_1994', downloads: 312, year: 1994, collection: 'softwarelibrary_msdos_shareware', platform: 'DOS' });
   assert.equal(iaDocToFind({ identifier: 'bad id/../x', title: 'X' }, { kind: 'game' }), null);
 });
@@ -277,7 +278,7 @@ test('validateCollections keeps verified ids and caches nothing when the Archive
   const n = metadataCalls; await validateCollections(ia, cache); assert.ok(metadataCalls > n);
 });
 test('shelfGems takes a random page and sorts by gem score', async () => {
-  // stub count → 250; search → docs with downloads 3000, 312, 20 (titles 'Big', 'Mid', 'Tiny'), all year 1990
+  // stub count → 250; search → docs {identifier 'big', title 'Big', downloads 3000}, {'mid', 'Mid', 312}, {'tiny', 'Tiny', 20}, all year 1990
   const finds = await shelfGems(ia, VAULT_COLLECTIONS.shelves[0], { rand: seq(0, 0.5), currentYear: 2026, skip: new Set(['ia:big']) });
   assert.equal(searchArgs[0].page, 2);
   assert.ok(searchArgs[0].q.startsWith('collection:(softwarelibrary_msdos_shareware)'));
@@ -309,7 +310,7 @@ Expected: FAIL with "Cannot find module '…/src/core/ia/vault.js'".
 
 - `gemScore`: `clip = x => Math.min(1, Math.max(0, x))`. `low = clip(1 − ln(max(downloads, 1)) / ln(3000))`, or 0 when `downloads` is missing or not a number. `curated` is 1 when any of the doc's collections is in `curated`. `age = clip((currentYear − year) / 40)`, or 0 without a 4-digit year. `rated` is 1 when `avg_rating ≥ 4` and `num_reviews ≥ 2`. Return `0.5·low + 0.2·curated + 0.2·age + 0.1·rated`.
 - Field rules (shared by every function): a value that is an array uses its first item; `year` counts only when it matches `/^\d{4}$/`; the identifier must match `/^[A-Za-z0-9][A-Za-z0-9._-]*$/`, or `iaDocToFind` returns `null`; a missing title falls back to the identifier.
-- `gemWhy`: downloads as `n.toLocaleString('en-US') + ' download' + (n === 1 ? '' : 's')`; the label of the first known collection; the year; and `★<avg rounded to 1 decimal, trailing .0 dropped> (<num_reviews>)` when `avg_rating > 0` and `num_reviews ≥ 1`. Leave out any chip whose field is missing.
+- `gemWhy`: first the pool chip, `'Internet Archive: ' + <label of the first known collection>` or `'Internet Archive'` (Plan 02's first-chip rule, and the §5.3 example "Internet Archive: MS-DOS Shareware · 312 downloads"); then downloads as `n.toLocaleString('en-US') + ' download' + (n === 1 ? '' : 's')`; the year; and `★<avg rounded to 1 decimal, trailing .0 dropped> (<num_reviews>)` when `avg_rating > 0` and `num_reviews ≥ 1`. Leave out any chip after the first whose field is missing.
 - `iaDocToFind`: source `'vault'` for `kind: 'game'`, else `'ia'`. Tags `['retro']` for games, else `[]`. `why` defaults to `gemWhy(doc)` for games and `['Internet Archive']` otherwise. `meta.platform` is the label of the shelf that holds `meta.collection`, or `null`.
 - `validateCollections`: check ids one at a time with `ia.metadata(id)`, and keep an id when `mediatype === 'collection'`. Cache the list under `'ia:valid:' + ids.join(',')` for 604800000 ms. If any call throws, return the passing ids plus the verified ids among those that threw, and cache nothing.
 - `shelfGems`: use the shelf's collections (filtered by `valid` when it is given), pick one with `rand()`, `N = ia.count(gemQuery(id, 1).q)`, and return `[]` when N is 0. Then `page = 1 + floor(rand() · ceil(min(N, 10000) / 100))`. Drop docs whose `'ia:' + identifier` is in `skip`, sort by `gemScore` (highest first, `curated: CURATED_COLLECTIONS`) and map with `iaDocToFind(doc, {kind: 'game'})`.
