@@ -15,7 +15,7 @@
       "id": "customs-02",
       "area": "combat-model",
       "name": "Tale, Weight and Term",
-      "idea": "There are no kinds of harm; protection is reckoned three ways. By tale: the thing falls after a set count of blows, however light: 3 for a child, 6 for a woman, 9 for a man. By weight: a flat amount is taken off every blow, so only heavy blows count. By term: it cannot be harmed until a set number of seconds has run while it stands within 5 m of the player. A hit matters more when it suits the reckoning: many, heavy or patient. The player's wards work the same.",
+      "idea": "Harm is counted three ways: by tale (how many blows), by weight (how heavy each), by term (how long it stays). Each of the dead answers to one. Tale-bound: it falls after a set count of blows, however light: 3 for a child, 6 for a woman, 9 for a man. Weight-bound: a flat amount comes off every blow, so only heavy ones count. Term-bound: nothing harms it until the player has stood within 5 m for a set number of seconds. The player's wards are bound the same ways.",
       "source": "The Exchequer took payment by tale (counted), by weight, or held over for a term; the death knell counted nine strokes for a man, six for a woman, three for a child.",
       "nearest": "Hit-count shields, flat armour thresholds and stand-here timers each exist separately in many games. Here they are the only three protections there are, and they replace typed damage altogether.",
       "cost": "small"
@@ -33,7 +33,7 @@
       "id": "customs-04",
       "area": "condition",
       "name": "Forfeit",
-      "idea": "Applied to the thing that harms the player, when a skill, vow or pick says so. If the offender was moving when it struck (a charger, a thrown or rolling thing), all of it is forfeit: it changes sides for 6 s, then falls. If it was standing still, only the part that struck is forfeit: it cannot strike for 6 s but still walks and blocks. A ground effect counts as standing: the patch that harmed the player goes dark for 6 s. Forfeit things give experience only if the player lays them.",
+      "idea": "Falls on whatever harms the player, when a skill, vow or pick says so. If the offender was moving when it struck (a charger, a thrown or rolling thing), all of it is forfeit: it changes sides for 6 s, then falls. If it was standing still, only the part that struck is forfeit: it cannot strike for 6 s but still walks and blocks. A ground patch counts as standing and goes dark for 6 s. Forfeit things give experience only if the player lays them.",
       "source": "Under the law of deodand a thing that caused a death was forfeit: if it was in motion the whole of it, if at rest only the part that struck.",
       "nearest": "Charm and disarm effects. Which of the two happens here is decided by whether the attacker was moving when it hit, so the player can choose how to be struck.",
       "cost": "small"
@@ -87,7 +87,7 @@
       "id": "customs-10",
       "area": "attribute",
       "name": "Pole, Wick and Stone",
-      "idea": "Three attributes, each a personal measure. Pole is the character's yardstick: every reach and area in a skill is written in Poles (1 Pole is 1 m plus 1% per point). Wick is their clock: every duration they cause is written in Wicks (1 s plus 1% per point). Stone is their weight: harm per blow, and how much unbanked loot they carry before slowing, are written in Stones. Nothing has a minimum. Instead gear is cut to a measure, such as Pole 40: within 5 points of it the item fits and its properties gain 25%.",
+      "idea": "Three personal measures. Pole is the character's yardstick: skill reach and area are written in Poles (1 Pole is 1 m plus 1% per point). Wick is their clock: durations are written in Wicks (1 s plus 1% per point). Stone is their weight: harm per blow, and how much unbanked loot they carry before slowing, are written in Stones. Nothing has a minimum. Instead gear is cut to a measure, such as Pole 40: within 5 points of it the item fits and its properties gain 25%.",
       "source": "Old measures came from the trades: the pole or perch of land, the inch of candle that timed an auction, the stone of the market weigh-beam.",
       "nearest": "Area, duration and damage stats, and attribute requirements on gear. Here the attributes are the units the skill text is written in, and gear rewards matching a value exactly rather than exceeding it.",
       "cost": "data"
@@ -96,7 +96,7 @@
       "id": "customs-11",
       "area": "class",
       "name": "Sexton",
-      "idea": "Digs the graves and rings the bell. The thumb's new verb is to stop: stand still for 2.5 s and the Sexton finishes a grave underfoot, a 2 m pit. The next 6 dead to walk into it drop in and are laid; then it closes. At most 4 graves lie open. The Sexton fights in stops and starts, digging ahead of the crowd and leading it across. Starting skill, Spadeful: every 1.2 s throws grave-earth over the nearest dead within 5 m, harming it and slowing it 30% for 2 s.",
+      "idea": "Digs the graves and rings the bell. The thumb's new verb is to stop: stand still for 2.5 s and the Sexton finishes a grave underfoot, a 2 m pit. The next 6 dead to walk into it drop in and are laid; then it closes. At most 4 graves lie open. The Sexton digs ahead of the crowd and leads it across. Starting skill, Spadeful: every 1.2 s throws grave-earth over the nearest dead within 5 m, harming it and slowing it 30% for 2 s.",
       "source": "The sexton dug the parish graves, and a grave is the one place the dead are meant to stay.",
       "nearest": "Trap-laying characters, and bonuses for standing still in some horde games. Here standing still is construction time, and what is built is a hole that fills up and closes.",
       "cost": "medium"
@@ -114,16 +114,16 @@
       "id": "customs-13",
       "area": "class",
       "name": "Knocker-up",
-      "idea": "Paid to wake workers by tapping bedroom windows with a long pole. Every house-front has windows. When the Knocker-up passes within 4 m of one, the pole taps it: the house wakes for 10 s and the living inside pelt the street, harming all dead within 4 m of that wall each second. A house cannot be woken again for 20 s. The thumb hugs the walls and plans a round of house-fronts; open ground is the worst place to be. Starting skill, Rap: strikes one dead between 1.5 and 4.5 m away, never nearer.",
+      "idea": "Paid to wake workers by tapping bedroom windows with a long pole. When the Knocker-up passes within 4 m of a house window, the pole taps it: the house wakes for 10 s and the living inside pelt the street, harming all dead within 4 m of that wall each second. A house cannot be woken again for 20 s. The thumb hugs the walls and plans a round of house-fronts. Starting skill, Rap: strikes one dead between 1.5 and 4.5 m away, never nearer.",
       "source": "Knockers-up walked a round before dawn tapping clients' upper windows with a long pole and did not leave until the sleeper showed at the glass.",
-      "nearest": "Characters who switch on turrets or shrines by passing them. Here the turrets are the district's own houses, so the class's strength is a route along walls.",
+      "nearest": "Characters who switch on turrets or shrines by passing them. Here the turrets are the district's own houses, so the class's power lies in a route along walls.",
       "cost": "medium"
     },
     {
       "id": "customs-14",
       "area": "class",
       "name": "Ferryman",
-      "idea": "Takes fares. One quiet dead at a time waits at a landing stair holding up a coin. Walk through it and it climbs on the Ferryman's back: 15% slower while loaded. Carry it to the opposite stair, marked by a lamp, and it steps off for good, paying experience equal to 10 kills and one coin. Below half life the fare slips off. The thumb plays there-and-back crossings through the horde instead of circles. Starting skill, Sweep: every 1.5 s the oar swings a 3 m half-circle behind the direction of travel, since rowers face backwards.",
+      "idea": "Takes fares. One quiet dead at a time waits at a landing stair holding up a coin. Walk through it and it climbs on the Ferryman's back: 15% slower while loaded. Carry it to the opposite stair, marked by a lamp, and it steps off for good, paying experience equal to 10 kills and one coin. Below half life the fare slips off. The thumb plays there-and-back crossings through the horde. Starting skill, Sweep: every 1.5 s the oar swings a 3 m half-circle behind the direction of travel.",
       "source": "Ferrymen carried passengers between named stairs for a fixed fare, and the coins on a corpse's eyes were called the fare for the last crossing.",
       "nearest": "Delivery and escort objectives. Here it is one class's whole way of levelling, and the passenger is one of the dead, paid off instead of killed.",
       "cost": "medium"
@@ -132,7 +132,7 @@
       "id": "customs-15",
       "area": "class",
       "name": "Toll-keeper",
-      "idea": "Keeps the bar at bridge and gate. One button plants the toll-post where the keeper stands. A bar then runs from post to keeper, up to 7 m long, and moves as the keeper moves. Every dead thing the bar passes over pays toll: harm equal to one blow, doubled each time the same thing pays again within 10 s. Because the dead chase the keeper, circling the post sweeps the bar through them like a clock hand. Beyond 7 m the bar drops until the keeper returns. Starting skill: the bar itself.",
+      "idea": "Keeps the bar at bridge and gate. One button plants the toll-post where the keeper stands. A bar then runs from post to keeper, up to 7 m long, and moves as the keeper moves. Every dead thing the bar passes over pays toll: harm equal to one blow, doubled each time the same thing pays again within 10 s. Because the dead chase the keeper, circling the post sweeps the bar through them like a clock hand. Starting skill: the bar itself.",
       "source": "A turnpike was a bar across the road beside the toll-house, swung aside for those who paid, and the charge was levied again at every passing.",
       "nearest": "Tether and beam-between-two-points weapons in arcade shooters. Here one end is fixed by the player, the charge doubles per crossing, and the play pattern is an orbit round a post.",
       "cost": "medium"
@@ -141,7 +141,7 @@
       "id": "customs-16",
       "area": "class",
       "name": "Glazier",
-      "idea": "Carries a leaded panel of coloured glass on a pole. Each district has one fixed great light: a rose window, a beacon, the moon low in one quarter. The panel throws a coloured patch on the ground, 3 m wide, lying 2 to 5 m from the Glazier on the side away from that light. Only dead standing in the patch are harmed, 4 times a second. The thumb keeps the light at its back and the crowd down-light; where a building blocks the light, the patch fails. Starting skill: the patch.",
+      "idea": "Carries a leaded panel of coloured glass on a pole. Each district has one fixed great light: a rose window, a beacon, a low moon. The panel throws a coloured patch on the ground, 3 m wide, lying 2 to 5 m from the Glazier on the side away from that light. Only dead standing in the patch are harmed, 4 times a second. The thumb keeps the light at its back and the crowd down-light; where a building blocks the light, the patch fails. Starting skill: the patch.",
       "source": "Leaded glass is small coloured panes held in lead cames, and what it does is throw a patch of coloured light on the floor away from the window.",
       "nearest": "Fixed-offset damage zones and flashlight cones. Here the direction of the offset belongs to the district, not the character, so the class plays differently on every map and uses the game's real light.",
       "cost": "medium"
@@ -150,7 +150,7 @@
       "id": "customs-17",
       "area": "class",
       "name": "Organ-blower",
-      "idea": "Pumps the bellows so the organ can speak. Skills never cast while the Blower moves. Walking fills the wind-chest, 1 unit per metre, up to 30; a weight on a string above the figure shows how full it is. Standing still lets the wind out: all skills cast at 3 times their rate, spending 10 units a second, and stop when the chest is empty. The thumb alternates a 30 m run with a 3 s stand and must choose where to make it. Starting skill, Stop: a pipe note harming a cone 6 m long.",
+      "idea": "Pumps the organ's bellows. Skills never cast while the Blower moves. Walking fills the wind-chest, 1 unit per metre, up to 30; a weight on a string above the figure shows how full it is. Standing still lets the wind out: all skills cast at 3 times their rate, spending 10 units a second, and stop when the chest is empty. The thumb alternates a 30 m run with a 3 s stand. Starting skill, Stop: a pipe note harming a cone 6 m long.",
       "source": "An organ made no sound unless a blower pumped its bellows by hand, and a tell-tale weight showed how much wind was left.",
       "nearest": "Charge-by-moving items and stand-to-fire characters. Here movement is the only fuel and standing the only trigger, with the gauge hung above the figure.",
       "cost": "small"
@@ -231,7 +231,7 @@
       "id": "customs-26",
       "area": "calling",
       "name": "Rose-wright (from Glazier)",
-      "idea": "The second button plants the Glazier's panel in the ground, where it stands until the next toll and keeps throwing its patch from the district's fixed light; a new panel is carried at once. Up to 3 stand at a time. Planted patches harm at half strength, but where patches overlap their strengths add, and a patch that falls on another panel passes through it and is thrown a second time, further on. The Rose-wright builds a window across a street and fights in the pool of colour behind it.",
+      "idea": "The second button plants the Glazier's panel in the ground, where it stands until the next toll and keeps throwing its patch from the district's fixed light; a new panel is carried at once. Up to 3 stand at a time. Planted patches harm at half force, but where patches overlap their harm adds, and a patch that falls on another panel passes through it and is thrown a second time, further on. The Rose-wright builds a window across a street and fights in the pool of colour behind it.",
       "source": "A rose window is many small panels set in one frame, each throwing its own colour onto the same floor.",
       "nearest": "Placed turrets. These have no aim of their own: where they act is fixed by the map's one light, so placing them is geometry rather than coverage.",
       "cost": "medium"
@@ -240,7 +240,7 @@
       "id": "customs-27",
       "area": "skill",
       "name": "Sale by Candle",
-      "idea": "Every 12 s an inch of candle is set down at the thickest group within 8 m and burns for 4 to 7 s, the length unknown. While it burns, every blow the player lands on dead within 4 m of it is a bid: its harm is also added to a pot. When the flame dies the whole pot falls on the one dead thing the player struck last. The flame flares for 0.5 s before it dies; the player uses that warning to step beside the target that ought to win.",
+      "idea": "Every 12 s an inch of candle is set down at the thickest group within 8 m and burns for 4 to 7 s. While it burns, every blow the player lands on dead within 4 m of it is a bid: its harm is also added to a pot. When the flame dies the whole pot falls on the one dead thing the player struck last. The flame flares for 0.5 s before it dies; the player uses that warning to step beside the target that ought to win.",
       "source": "In a sale by candle the last bid before the flame went out took the lot, and Pepys noted that the wick flares just before it dies.",
       "nearest": "Abilities that store damage and release it on one marked target. Here the store is filled by fighting a crowd, the winner is whoever was struck last, and the end is random with a short tell.",
       "cost": "small"
@@ -285,7 +285,7 @@
       "id": "customs-32",
       "area": "skill",
       "name": "Split Tally",
-      "idea": "Every 6 s the skill cuts a tally against the 8 dead nearest the player; each carries its half, shown as a pale stick on its chest, for 10 s. Every point of harm the player deals to such a body is also notched on the stick. When the player passes within 1.5 m of it, the two halves are fitted and the whole notched sum is dealt again at once. A half nobody fits lapses unpaid. The skill rewards a build that wounds from far off and a thumb that then brushes past.",
+      "idea": "Every 6 s the skill cuts a tally against the 8 dead nearest the player; each carries its half, shown as a pale stick on its chest, for 10 s. Every point of harm the player deals to such a body is also notched on the stick. When the player passes within 1.5 m of it, the two halves are fitted and the whole notched sum is dealt again at once. A half nobody fits lapses unpaid. Wound from far off, then brush past.",
       "source": "A debt was notched on a stick that was then split lengthwise; creditor and debtor each kept half, and the debt was proved when the halves were fitted together.",
       "nearest": "Mark-and-detonate skills. Here the trigger is physical nearness, so collecting is a risk taken with the thumb, and the amount is exactly what was notched.",
       "cost": "small"
@@ -303,7 +303,7 @@
       "id": "customs-34",
       "area": "skill",
       "name": "Lamp and Long Shadow",
-      "idea": "Every 8 s the skill lights the nearest street-lamp within 8 m for 12 s; districts have lamps about 15 m apart. A lit lamp makes every dead thing within 9 m of it throw a real cast shadow on the ground, pointing away from the lamp and as long as the thing's distance from it. For the player's skills that shadow counts as part of the body: whatever strikes the shadow strikes its owner. The player fights with a lamp between themselves and the crowd, so the shadows reach toward them.",
+      "idea": "Every 8 s the skill lights the nearest street-lamp within 8 m for 12 s. A lit lamp makes every dead thing within 9 m of it throw a real cast shadow on the ground, pointing away from the lamp and as long as the thing's distance from it. For the player's skills that shadow counts as part of the body: whatever strikes the shadow strikes its owner. The player fights with a lamp between themselves and the crowd, so the shadows reach toward them.",
       "source": "Lamplighters walked a fixed round lighting each street-lamp with a long pole, and a low lamp makes every figure throw a long shadow behind it.",
       "nearest": "Folk tales of pinning someone by their shadow, and enlarged hit areas on marked enemies. Here the enlargement is the visible shadow drawn by the game's real light, so its direction and length are read straight off the screen.",
       "cost": "medium"
@@ -312,7 +312,7 @@
       "id": "customs-35",
       "area": "skill",
       "name": "Founder's Pit",
-      "idea": "Every 20 s a casting pit 2 m across is dug where the player stands and stays open 12 s. Each dead thing that falls within 5 m of it pours into the mould, shown as a rising level. When the 12 s are up the bell is struck once. With 8 or more poured it rings: harm to everything within 2 m plus 0.3 m per body, equal to a quarter of the summed full life of the bodies poured. With fewer it cracks and does nothing. The player must commit to holding one spot.",
+      "idea": "Every 20 s a casting pit 2 m across is dug where the player stands and stays open 12 s. Each dead thing that falls within 5 m of it pours into the mould, shown as a rising level. When the 12 s are up the bell is struck once. With 8 or more poured it rings: harm to everything within 2 m plus 0.3 m per body, equal to a quarter of the summed full life of the bodies poured. With fewer it cracks and does nothing.",
       "source": "Great bells were cast in a pit dug beside the tower they were meant for, and a short pour made a cracked bell fit only to be broken up.",
       "nearest": "Totems charged by nearby kills. This one is all or nothing at a known count, and its size is the bodies themselves.",
       "cost": "small"
@@ -330,7 +330,7 @@
       "id": "customs-37",
       "area": "skill",
       "name": "Hatchment",
-      "idea": "Every 14 s a lozenge 7 m across is laid on the ground at the player's feet for 8 s, split down its length into a black half and a white half. Dead standing on black take 50% more harm from everything; dead standing on white deal 50% less. The same binds the player: on black the player takes 50% more, on white deals 50% less. The split runs along the direction the player was walking when it was laid, so the thumb sets the board and then picks a side.",
+      "idea": "Every 14 s a lozenge 7 m across is laid on the ground at the player's feet for 8 s, split down its length into a black half and a white half. Dead standing on black take 50% more harm; dead standing on white deal 50% less. The same binds the player: on black the player takes 50% more, on white deals 50% less. The split runs along the direction the player was walking when it was laid, so the thumb sets the board and then picks a side.",
       "source": "A hatchment showed the dead person's arms on a lozenge whose ground was black behind the dead spouse's half and white behind the survivor's.",
       "nearest": "Buff and debuff zones. This is one zone with two opposite halves whose rule binds the player as well, so the question is always who is standing where.",
       "cost": "small"
@@ -357,7 +357,7 @@
       "id": "customs-40",
       "area": "modifier",
       "name": "Foil",
-      "idea": "The skill keeps only half its harm, the stock. The other half is left on the target as a foil, shown as a notch, for 8 s. When a different skill of the same character next strikes that target, the halves fit: the foil is paid at double, so the pair together deal 150% of the first skill's harm. Striking again with the same skill only renews the foil. Cost: alone the skill is at half strength; it needs a partner skill that reaches the same bodies within 8 s.",
+      "idea": "The skill keeps only half its harm, the stock. The other half is left on the target as a foil, shown as a notch, for 8 s. When a different skill of the same character next strikes that target, the halves fit: the foil is paid at double, so the pair together deal 150% of the first skill's harm. Striking again with the same skill only renews the foil. Cost: alone the skill does half its harm; it needs a partner skill that reaches the same bodies within 8 s.",
       "source": "One half of a split tally was worth nothing by itself; stock and foil proved the debt only when the two were fitted.",
       "nearest": "Supports that reward alternating two damage types. This pairs two particular skills on the same body, and a half that is never fitted is simply lost.",
       "cost": "small"
@@ -384,7 +384,7 @@
       "id": "customs-43",
       "area": "modifier",
       "name": "Narrowing Border",
-      "idea": "At each toll the skill's area starts 80% wider than normal and its harm 40% lower. With every cast after that, the area shrinks by a tenth of normal and the harm rises by a tenth, until the area is at 50% and the harm at 190%; the next toll sets it wide again. Cost: the skill is never one thing for long. It clears the small dead in the first seconds after a toll and is a narrow heavy blow by the time that toll's strong ones are what is left.",
+      "idea": "At each toll the skill's area starts 80% wider than normal and its harm 40% lower. With every cast after that, the area shrinks by a tenth of normal and the harm rises by a tenth, until the area is at 50% and the harm at 190%; the next toll sets it wide again. Cost: the skill is never one thing for long: wide and weak when the toll's crowd arrives, narrow and heavy once only its strong ones are left.",
       "source": "Mourning stationery carried a black border that was made narrower at each stage of the mourning term.",
       "nearest": "Ramping buffs that reset on a timer. Here size is traded for weight step by step, and the reset is the district bell.",
       "cost": "data"
@@ -411,7 +411,7 @@
       "id": "customs-46",
       "area": "reserved",
       "name": "Full Mourning",
-      "idea": "Holds 4 inches of the pool. The character wears full black, and the dead cannot make the wearer out beyond 7 m: those farther off lose them and walk to where they last saw them. But nothing bright may be taken in full mourning: coin and gear are not picked up, only experience; they lie where they fell. At every third toll the mourning lightens a grade: grey, seen at 10 m, coin allowed; then lavender, seen at 14 m. To return to black the vow must be dropped and taken again at a gate.",
+      "idea": "Holds 4 inches of the pool. The character wears full black, and the dead cannot make the wearer out beyond 7 m: those farther off lose them and walk to where they last saw them. But nothing bright may be taken in full mourning: coin and gear are not picked up, only experience. At every third toll the mourning lightens a grade: grey, seen at 10 m, coin allowed; then lavender, seen at 14 m. To return to black the vow must be dropped and taken again at a gate.",
       "source": "Full mourning forbade anything shiny, even jewellery other than jet, and lightened by set stages to grey and then lavender.",
       "nearest": "Stealth effects that shorten enemy sight. This one forbids loot while it holds and wears off in grades timed by the bell.",
       "cost": "small"
@@ -420,7 +420,7 @@
       "id": "customs-47",
       "area": "reserved",
       "name": "Tell the Bees",
-      "idea": "Holds 3 inches of the pool. A hive rides on the character's back and its bees fetch every pickup within 10 m. In return the bees must be told of every important death: within 10 s of an elite or keeper falling anywhere in the district, the player must stand still for 1 s while the character knocks on the hive. If a death goes untold the bees leave until the next toll, taking what they were carrying. Each telling also sends the bees to drive the 5 nearest dead back 3 m.",
+      "idea": "Holds 3 inches of the pool. A hive rides on the character's back and its bees fetch every pickup within 10 m. In return the bees must be told of every important death: within 10 s of an elite or keeper falling anywhere in the district, the player must stand still for 1 s. If a death goes untold the bees leave until the next toll, taking what they were carrying. Each telling also sends the bees to drive the 5 nearest dead back 3 m.",
       "source": "Bees had to be told of a death in the household, with a knock on the hive, or they would leave or stop making honey.",
       "nearest": "Pickup-magnet companions. This one carries a duty that makes the player stand still for a second at the worst moment, just after a big kill.",
       "cost": "small"
@@ -429,7 +429,7 @@
       "id": "customs-48",
       "area": "reserved",
       "name": "Deodand",
-      "idea": "Holds 3 inches of the pool. Once every 10 s, the next thing that harms the character is declared deodand. If it was moving when it struck, it changes sides for 6 s and then falls; if it was standing, it cannot strike for 6 s; a ground patch goes dark for 6 s. The holder is paid its appraised value: coin equal to 5% of that thing's full life. Because the first harm in each 10 s is the one seized, the player can choose what to be struck by, and walk into a charger on purpose.",
+      "idea": "Holds 3 inches of the pool. Once every 10 s, the next thing that harms the character is declared deodand. If it was moving when it struck, it changes sides for 6 s; if it was standing, it cannot strike for 6 s; a ground patch goes dark for 6 s. The holder is paid its appraised value: coin equal to 5% of that thing's full life. Since the first harm in each 10 s is the one seized, the player can pick it, and walk into a charger on purpose.",
       "source": "The coroner's jury named the object that had caused a death, appraised it, and declared it forfeit as a deodand.",
       "nearest": "Thorns and reflect effects. This seizes the attacker instead of hurting it, pays by what the attacker was worth, and rewards choosing which blow to take.",
       "cost": "small"
@@ -465,7 +465,7 @@
       "id": "customs-52",
       "area": "pick",
       "name": "Short Tally",
-      "idea": "Take any one of the other picks on offer at double strength, but as a tally: the character holds the stock and the gate holds the foil. The tally must be fitted by leaving through a gate within three tolls. If the third toll passes and the character is still in the district, the tally is void: the doubled pick is removed, and so is the pick taken before it. A way to burn bright for under four minutes and then go.",
+      "idea": "Take any one of the other picks on offer at double effect, but as a tally: the character holds the stock and the gate holds the foil. The tally must be fitted by leaving through a gate within three tolls. If the third toll passes and the character is still in the district, the tally is void: the doubled pick is removed, and so is the pick taken before it. A way to burn bright for under four minutes and then go.",
       "source": "A tally bound both parties to a day of reckoning; after that day an unmatched half was a stick of firewood.",
       "nearest": "Timed power-ups. This one is ended by the player choosing to leave, and overstaying costs an extra pick.",
       "cost": "small"
@@ -501,7 +501,7 @@
       "id": "customs-56",
       "area": "enemy",
       "name": "The Coin-Eyed",
-      "idea": "One of the properly buried, coins still on its eyes, so it cannot see. It walks in a dead straight line at walking pace until it bumps a wall or a body, then turns to face the last loud sound, the player's most recent cast, and sets off straight again. It harms by walking into things, the other dead included. Read it by two bright discs on its face and a ruler-straight path. Step aside and let it pass; it drops its two coins when laid, so a line of them is worth leading into a wall.",
+      "idea": "Properly buried, coins still on its eyes, so it cannot see. It walks in a dead straight line until it bumps a wall or a body, then turns to face the last loud sound, the player's most recent cast, and sets off straight again. It harms by walking into things, the other dead included. Read it by two bright discs on its face and a ruler-straight path. Step aside; it drops its two coins when laid, so a line of them is worth leading into a wall.",
       "source": "Coins were laid on the eyes of the dead to keep them shut and to pay the ferryman.",
       "nearest": "Blind enemies that hunt by sound in stealth games. Here blindness makes a straight-line walker inside a homing horde, and the coins are its loot.",
       "cost": "small"
@@ -510,7 +510,7 @@
       "id": "customs-57",
       "area": "enemy",
       "name": "The Mute",
-      "idea": "A hired mourner still at its post. It never moves: it stands in a doorway, gate or lane-mouth holding a tall wand draped in cloth, and does no harm. But within 5 m of it nothing makes a sound, so the player's skills do not cast there, while the dead around it fight as usual. Read it by the tall black pole and its perfect stillness. The cure is to walk up and jostle it: a touch knocks the wand down for 6 s, and in that time it falls to two blows.",
+      "idea": "A hired mourner still at its post. It never moves: it stands in a doorway, gate or lane-mouth holding a tall wand draped in cloth, and does no harm. But within 5 m of it nothing makes a sound, so the player's skills do not cast there. Read it by the tall black pole and its perfect stillness. The cure is to walk up and jostle it: a touch knocks the wand down for 6 s, and in that time it falls to two blows.",
       "source": "Hired mutes stood silent at the door of a house of death holding wands draped in black crape.",
       "nearest": "Silence fields cast by enemy spellcasters. This one is a harmless standing figure that guards exits, and the answer is to go and bump into it.",
       "cost": "small"
@@ -519,7 +519,7 @@
       "id": "customs-58",
       "area": "enemy",
       "name": "The Bier Party",
-      "idea": "Four dead bearers carry a fifth on a bier along the district's corpse road toward the bell. They ignore the player, never leave the road, never turn back, and pause 3 s at each resting stone to set the bier down. If the bier reaches the lychgate the body is received and rises as an elite at the next toll. Lay the bearers on the move and the bier is dropped: the body wakes at once, angry. Lay them while the bier rests on a stone and it sleeps on, and is the player's to search.",
+      "idea": "Four dead bearers carry a fifth on a bier along the district's corpse road toward the bell. They ignore the player, never leave the road, and pause 3 s at each resting stone to set the bier down. If the bier reaches the lychgate the body is received and rises as an elite at the next toll. Lay the bearers on the move and the bier is dropped: the body wakes at once. Lay them while the bier rests on a stone and it sleeps on, and can be searched.",
       "source": "Bearers carried the bier along the corpse road and might set it down only at the resting stones.",
       "nearest": "Caravans and escorts to be intercepted. Here where the player strikes matters more than whether, and the map marks the right places in advance.",
       "cost": "medium"
@@ -528,7 +528,7 @@
       "id": "customs-59",
       "area": "enemy",
       "name": "The Mortsafe",
-      "idea": "A dead thing that rose with its iron cage still locked on. Caged, it shuffles slowly toward the player and can neither strike nor be harmed. The lock has a term of 6 s, shown as six bars that vanish one by one, and every blow that lands on the cage puts one bar back. When the last bar goes it bursts out, three times as fast and striking hard, but with little life. Skills that keep hitting it keep it harmless and waste their blows; to be rid of it the player must walk away, let it open, and meet it.",
+      "idea": "Risen with its iron cage still locked on. Caged, it shuffles toward the player and can neither strike nor be harmed. The lock has a term of 6 s, shown as six bars that vanish one by one, and every blow on the cage puts one bar back. When the last bar goes it bursts out, three times as fast and striking hard, but with little life. Skills that keep hitting it keep it harmless and waste their blows; the player must walk away, let it open, and meet it.",
       "source": "A mortsafe was an iron cage locked over a new grave for a term of weeks, then taken off once the body was past use to the anatomists.",
       "nearest": "Shielded enemies with a break window. Here hitting the shield renews it, so the answer is to stop attacking, which self-casting skills make hard.",
       "cost": "small"
@@ -539,14 +539,14 @@
       "name": "The Searcher",
       "idea": "An old woman with a white wand, risen to finish her round. She keeps 7 m from the player and levels the wand, drawn as a white line. If the line rests unbroken on the player for 3 s she reports the cause: for 15 s every dead thing in the district deals 50% more harm to that character. The line is broken by any body standing in it, so the player hides behind the horde itself. She has little life but backs away from whoever comes at her.",
       "source": "Searchers of the dead were old women who examined each body, carried a white wand so that people could keep clear of them, and reported the cause to the parish clerk.",
-      "nearest": "Snipers with a visible aiming line. This one strengthens the others instead of shooting, and the cover the player uses is the enemy crowd.",
+      "nearest": "Snipers with a visible aiming line. This one emboldens the others instead of shooting, and the cover the player uses is the enemy crowd.",
       "cost": "small"
     },
     {
       "id": "customs-61",
       "area": "enemy",
       "name": "The Link-boy",
-      "idea": "A dead child with a torch, a real light. It does not chase: it runs 4 m ahead of the player in whatever direction the player is heading, as link-boys led night walkers, and never strikes. Dead standing in its torchlight can see their way and move 40% faster. So it is always lighting the ground the player is about to run onto. Read it by the small figure and the bright pool ahead. A sharp turn leaves it behind for 2 s; one blow lays it, but only skills that reach forward can catch it.",
+      "idea": "A dead child with a torch, a real light. It does not chase: it runs 4 m ahead of the player in whatever direction the player is heading, and never strikes. Dead standing in its torchlight can see their way and move 40% faster. So it is always lighting the ground the player is about to run onto. Read it by the small figure and the bright pool ahead. A sharp turn leaves it behind for 2 s; one blow lays it, but only skills that reach forward can catch it.",
       "source": "Link-boys carried torches ahead of people walking at night for a farthing, and some led their customers to waiting robbers.",
       "nearest": "Support enemies that carry a buff zone. This one takes its position from the player's own heading, so it punishes running in a straight line.",
       "cost": "small"
@@ -563,8 +563,8 @@
     {
       "id": "customs-63",
       "area": "enemy",
-      "name": "The Deodand",
-      "idea": "Not a body but a forfeit thing: the cartwheel, millstone or fallen clapper that once killed someone. It rolls in straight lines at twice walking pace, bouncing off walls like a struck ball and harming whatever it runs over, dead or living. It cannot be destroyed. Its next two bounces are drawn on the ground. If it strikes the player it is forfeit again, this time to them: for 15 s it bends its path toward the nearest dead after every bounce, then stops for good. Being hit once is how to own it.",
+      "name": "The Forfeit Wheel",
+      "idea": "A forfeit thing, not a body: the cartwheel, millstone or fallen clapper that once killed someone. It rolls in straight lines at twice walking pace, bouncing off walls and harming whatever it runs over, dead or living. It cannot be destroyed. Its next two bounces are drawn on the ground. If it strikes the player it is forfeit again, this time to them: for 15 s it bends its path toward the nearest dead after every bounce, then stops for good. Being hit once is how to own it.",
       "source": "A deodand was the object that had caused a death, such as a cartwheel, forfeit because it had moved to the death.",
       "nearest": "Indestructible bouncing hazards in arcade games. This one changes owner when it hurts the player, so taking the hit is a tactic.",
       "cost": "small"
@@ -573,7 +573,7 @@
       "id": "customs-64",
       "area": "enemy",
       "name": "Resurrection-men",
-      "idea": "Living thieves, in pairs, with sack and spade. They run against the flow of the horde to wherever bodies and pickups lie thickest, stuff up to 6 into the sack in 3 s, and make for the district's edge. What they carry off is gone. They never strike, and the dead ignore them. Two blows drop one and spill the sack. They are also a free way to be rid of bodies that would stand again at the toll, so sometimes the player lets them work and guards only the coin.",
+      "idea": "Living thieves, in pairs, with sack and spade. They run against the flow of the horde to wherever bodies and pickups lie thickest, stuff up to 6 into the sack in 3 s, and make for the district's edge. They never strike, and the dead ignore them. Two blows drop one and spill the sack. They are also a free way to be rid of bodies that would stand again at the toll, so sometimes the player lets them work and guards only the coin.",
       "source": "Body-snatchers dug up the newly buried by night to sell to anatomists, which is why graves were caged and watched.",
       "nearest": "Loot goblins and pickup thieves. These take the player's uncollected leavings, and because they also remove bodies they are sometimes welcome.",
       "cost": "small"
@@ -582,7 +582,7 @@
       "id": "customs-65",
       "area": "enemy",
       "name": "The Layer",
-      "idea": "Sixteen dead from a plague pit, risen as they were laid: one flat rank four by four, white with lime, locked shoulder to shoulder. The layer moves as a single slab 4 m square, slowly, and turns no faster than 30 degrees a second. Nothing can push through it or part it, and it harms along its whole leading edge. Its members fall one by one, leaving gaps; when 8 are gone it breaks up into ordinary dead. Read the white square. Get round to its side, where it cannot turn in time.",
+      "idea": "Sixteen dead from a plague pit, risen as they were laid: one flat rank four by four, white with lime, locked shoulder to shoulder. The layer moves as a single slab 4 m square, slowly, and turns no faster than 30 degrees a second. Nothing can push through it or part it, and it harms along its whole leading edge. Its members fall one by one, leaving gaps; when 8 are gone it breaks up into ordinary dead. Get round to its side, where it cannot turn in time.",
       "source": "Plague dead were tipped into pits in layers and covered with lime, without coffins or separate graves.",
       "nearest": "Shield-wall formations in strategy games. In a horde game this is one rigid slab that the player out-turns rather than outruns.",
       "cost": "small"
@@ -591,7 +591,7 @@
       "id": "customs-66",
       "area": "boss",
       "name": "Keeper of the Passing Bell",
-      "idea": "The sexton who would not ring. Phase one, the tellers: three sets of three strokes, each a ring spreading from him to 12 m in 1.5 s with one 60-degree gap, the gap shown 1 s ahead as a pale wedge. Phase two, below 60% life, the age: one stroke for every level the character has, each a 2 m circle drawn under the player 0.8 s before it lands. Phase three, below 25%: he digs graves, outlined 1.2 s before they open; he is laid only by leading him across one of his own.",
+      "idea": "Phase one, the tellers: three sets of three strokes, each a ring spreading from him to 12 m in 1.5 s with one 60-degree gap, the gap shown 1 s ahead as a pale wedge. Phase two, below 60% life, the age: one stroke for every level the character has, each a 2 m circle drawn under the player 0.8 s before it lands. Phase three, below 25%: he digs graves, outlined 1.2 s before they open; he is laid only by leading him across one of his own.",
       "source": "The death knell told the sex of the dead by sets of three strokes and then the age, one stroke for each year.",
       "nearest": "Ring-with-a-gap boss patterns are common. The barrage whose length is the player's own level, and a keeper finished by his own graves, are the parts I have not seen.",
       "cost": "medium"
@@ -600,7 +600,7 @@
       "id": "customs-67",
       "area": "boss",
       "name": "Keeper of the Chantry Bell",
-      "idea": "He has no life to lose. He has an endowment, a chest of 600 coin shown beside him, and every attack is a mass that must be paid for. Phase one, trentals: lines of sound shown 0.7 s ahead, 5 coin each. Phase two, below 400, obits: a 9 m circle shown 2.5 s ahead, 60 coin. Phase three, below 150, he begs: quick cheap strokes, 2 coin each. He falls when the chest is empty. The player drains it by baiting costly attacks and by robbing the chest: stand on it 2 s to take 30 coin, kept.",
+      "idea": "He has no life, only an endowment: a chest of 600 coin beside him. Every attack is a mass that must be paid for. Phase one, trentals: lines of sound shown 0.7 s ahead, 5 coin each. Phase two, below 400, obits: a 9 m circle shown 2.5 s ahead, 60 coin. Phase three, below 150, he begs: quick cheap strokes, 2 coin each. He falls when the chest is empty. The player baits costly attacks, or robs the chest: stand on it 2 s to take 30 coin, kept.",
       "source": "A chantry was an endowment that paid a priest to sing masses for one soul for exactly as long as the money lasted.",
       "nearest": "Survive-the-timer bosses and bosses that tire. Here the timer is a visible purse that the boss spends by attacking and the player can rob.",
       "cost": "medium"
@@ -609,7 +609,7 @@
       "id": "customs-68",
       "area": "boss",
       "name": "Keeper of the Pest Bell",
-      "idea": "The searcher-general. Phase one, the search: a white line follows the player; where it rests 2 s, thickening as a warning, she names the character's most-used skill and seals it for 10 s. Phase two, below 65% life, the Bill: the three kinds of dead this character has laid most in this vigil rise again, 30 bodies in the same proportions, from mounds shown 2 s ahead. Phase three, below 30%: the house is shut. Four walls are outlined for 2 s, then close a 10 m square round the player and her for a term of 20 s.",
+      "idea": "Phase one, the search: a white line follows the player; where it rests 2 s, thickening, the searcher-general names the character's most-used skill and seals it for 10 s. Phase two, below 65% life, the Bill: the three kinds of dead this character has laid most in this vigil rise again, 30 bodies in the same proportions, from mounds shown 2 s ahead. Phase three, below 30%: the house is shut. Four walls, outlined 2 s ahead, close a 10 m square round her and the player for 20 s.",
       "source": "Searchers reported each death's cause for the weekly Bills of Mortality, and a plague house was shut up for a term with its people inside.",
       "nearest": "Bosses that summon helpers. The helpers here are a replay of the player's own kill count, so the fight differs with how the vigil was played.",
       "cost": "medium"
@@ -618,7 +618,7 @@
       "id": "customs-69",
       "area": "boss",
       "name": "Keeper of the Sanctuary Bell",
-      "idea": "The floor is lit by a hearse of 15 candles. In each of three rounds, every pattern the keeper finishes (lines of sound, shown 1 s ahead) puts one candle out, and the lit ground shrinks toward the middle; the player's skills pick only targets standing in light. The last candle is carried behind the altar: 4 s of dark, in which a faint glow marks the one safe spot, then the crash, harming everything elsewhere. The candle returns, all 15 relight, and the keeper kneels open to harm for 6 s.",
+      "idea": "The floor is lit by a hearse of 15 candles. In each of three rounds, every pattern the keeper finishes (lines of sound, shown 1 s ahead) puts one candle out, and the lit ground shrinks; the player's skills pick only targets standing in light. The last candle is carried behind the altar: 4 s of dark, in which a faint glow marks the one safe spot, then the crash, harming everything elsewhere. The candle returns, all 15 relight, and the keeper kneels open to harm for 6 s.",
       "source": "At Tenebrae fifteen candles on a triangular hearse were put out one by one, the last was hidden, a crash was made in the dark, and the candle was brought back.",
       "nearest": "Shrinking-arena and find-the-safe-spot boss phases. The device here is the game's real lighting, counted down as candles in a fixed liturgical order.",
       "cost": "medium"
@@ -627,7 +627,7 @@
       "id": "customs-70",
       "area": "district",
       "name": "The Lychway",
-      "idea": "One pale corpse road 6 m wide crosses the district from the far gate to the lychgate under the bell, past five resting stones. The dead rise at the far end and walk the road like a current; they leave it only for a living person within 8 m, and cannot turn back along it. Each toll that reach grows 2 m. The player fights from the banks, darting in. Shapes: flat slab road, low box stones, a gate of two posts and a tapered roof, cone yews. Colours: yew black-green, wet slate, bone, tallow yellow, rust.",
+      "idea": "One pale corpse road 6 m wide crosses the district from the far gate to the lychgate under the bell, past five resting stones. The dead rise at the far end and walk the road like a current; they leave it only for a living person within 8 m, and cannot turn back along it. The player fights from the banks, darting in. Shapes: flat slab road, low box stones, a gate of two posts and a tapered roof, cone yews. Colours: yew green, wet slate, bone, tallow yellow, rust.",
       "source": "Outlying hamlets carried their dead to the mother church along one fixed corpse road, with resting stones on the way and a lychgate at the end.",
       "nearest": "Lane maps in tower defence. In a horde-survival game, a horde with a known course that is fought from the side is unusual.",
       "cost": "medium"
@@ -636,7 +636,7 @@
       "id": "customs-71",
       "area": "district",
       "name": "The Shut Parish",
-      "idea": "No dead come in from the edges. Every house door bears a red cross with a term: the cross fades until the door opens and 5 to 12 dead come out, so the player always knows which doors are due. Standing 2 s at a door nails it shut for one more toll, but twice as many then come out. A dead-cart circles a fixed route taking every body and pickup within 2 m. Shapes: box houses, crosses of two thin boxes, a cart of one box and two cylinders, a pale pit disc. Colours: lime white, ox-blood, tar, straw, pewter.",
+      "idea": "No dead come in from the edges. Every house door bears a red cross with a term: the cross fades until the door opens and 5 to 12 dead come out. Standing 2 s at a door nails it shut for one more toll, but twice as many then come out. A dead-cart circles a fixed route taking every body and pickup within 2 m. Shapes: box houses, crosses of two thin boxes, a cart of one box and two cylinders. Colours: lime white, ox-blood, tar, straw, pewter.",
       "source": "A plague house was shut up for a set term with a red cross on the door, and the dead-cart made its round for the bodies.",
       "nearest": "Spawner doors in arcade shooters. Here every door shows its timer and can be put off at a price.",
       "cost": "medium"
@@ -645,7 +645,7 @@
       "id": "customs-72",
       "area": "district",
       "name": "The Close",
-      "idea": "Three rings of ground lie round the cathedral door, marked by stone crosses at 30 m, 15 m and 4 m. The dead deal 20% less harm in the outer ring, 40% less in the middle, 70% less at the door. But sanctuary is granted for a term: each character has 40 s of each ring per vigil, counted only while standing in it and shown as three shrinking bands. A spent ring is ordinary ground. Shapes: flagstone slabs, crosses of two boxes on steps, a west front of tapered boxes. Colours: limestone, lead grey, verdigris, candle gold, window blue.",
+      "idea": "Three rings lie round the cathedral door, marked by crosses at 30 m, 15 m and 4 m. The dead deal 20% less harm in the outer ring, 40% less in the middle, 70% less at the door. But sanctuary is granted for a term: each character has 40 s of each ring per vigil, counted while standing in it. A spent ring is ordinary ground. Shapes: flagstone slabs, crosses of two boxes on steps, a west front of tapered boxes. Colours: limestone, lead grey, verdigris, candle gold, window blue.",
       "source": "Beverley's sanctuary lay in rings marked by crosses, the penalty for seizing a fugitive rising toward the centre, and sanctuary lasted a fixed number of days.",
       "nearest": "Safe zones and defensive ground. These are graded, and each is a personal ration of seconds that the player spends across the vigil.",
       "cost": "small"
@@ -654,7 +654,7 @@
       "id": "customs-73",
       "area": "district",
       "name": "The Tron",
-      "idea": "A market square of 30 stalls round a weigh-beam. Nothing may be sold before the bell: for 15 s after every toll the stalls open, and walking into one buys what it shows (a binding, a pick, a mend) for carried coin, with no pause. The toll that opens the market also raises the danger, so every bell is a dash to a stall. A stall the dead are pushed into overturns and is shut for the vigil. Shapes: box stalls with tapered striped awnings, a post-and-beam scale, a stepped cross. Colours: awning red, cream, cobble grey, brass, wet wood.",
+      "idea": "A market square of 30 stalls round a weigh-beam. Nothing may be sold before the bell: for 15 s after every toll the stalls open, and walking into one buys what it shows for carried coin, with no pause. The same toll raises the danger, so every bell is a dash to a stall. A stall the dead are pushed into overturns and is shut for the vigil. Shapes: box stalls with tapered striped awnings, a post-and-beam scale, a stepped cross. Colours: awning red, cream, cobble grey, brass, wet wood.",
       "source": "Markets opened on the market bell, and selling before it rang was the offence of forestalling.",
       "nearest": "Mid-run shops. These are physical, open only in the dangerous seconds after each bell, and can be destroyed by the fight.",
       "cost": "medium"
@@ -681,7 +681,7 @@
       "id": "customs-76",
       "area": "tree",
       "name": "The Ossuary Rule",
-      "idea": "Each road of the tree has room for six fresh graves. The six nodes most recently taken on a road work in full. When a seventh is taken, the oldest is lifted to the ossuary: it stays owned and keeps the path joined, but works at half strength. A deep road therefore has six strong nodes at its tip and a tail of half-strength ones, while five short roads have everything in full. The planner weighs depth against breadth, and the order of taking matters because order decides what is lifted.",
+      "idea": "Each road of the tree has room for six fresh graves. The six nodes most recently taken on a road work in full. When a seventh is taken, the oldest is lifted to the ossuary: it stays owned and keeps the path joined, but gives half. A deep road has six full nodes at its tip and a tail of halved ones, while five short roads have everything in full. The planner weighs depth against breadth, and the order of taking matters because order decides what is lifted.",
       "source": "Graves were reused after a term: the old bones were lifted and stacked in the ossuary to make room for the new dead.",
       "nearest": "Diminishing returns on stacking one stat. This works by age along a path, is visible node by node, and makes the order of purchase matter.",
       "cost": "small"
@@ -708,7 +708,7 @@
       "id": "customs-79",
       "area": "gear",
       "name": "Bequests",
-      "idea": "Every item is something left by will. It carries 2 to 5 legacies, each a rolled property with a named heir: 'to my sexton', 'to one who keeps two vows', 'to one who has stood three tolls'. A legacy works only while its wearer answers the description. There are no tiers: an item is as good as the fit between its heirs and its wearer. To change one, contest the will before the scrivener: strike the heir out of one legacy so that it works for anyone, and one other legacy, of the scrivener's choosing, is voided.",
+      "idea": "Every item is something left by will. It carries 2 to 5 legacies, each a rolled property with a named heir: 'to my sexton', 'to one who keeps two vows'. A legacy works only while its wearer answers the description. There are no tiers: an item is as good as the fit between its heirs and its wearer. To change one, contest the will before the scrivener: strike the heir out of one legacy so that it works for anyone, and one other legacy, of the scrivener's choosing, is voided.",
       "source": "Goods and mourning rings passed by will to named persons, and contesting a will could win one claimant a legacy at another's cost.",
       "nearest": "Conditional affixes and class-restricted items. Here every property has its own condition, and crafting trades the number of properties for their freedom, one legacy at a time.",
       "cost": "data"
@@ -717,7 +717,7 @@
       "id": "customs-80",
       "area": "gear",
       "name": "Halves",
-      "idea": "Items drop as halves. A half is a notched stick: each notch is one property and its width is its size. A half can be worn alone at face value. Two halves whose notches fall in the same places (the same properties in the same order, at any widths) can be fitted into one whole item, with the widths added and one new notch cut where they join. Worth lies in finding the partner. To change a half, have one notch recut wider; each recut shortens the stick, and a stick has three recuts in it.",
+      "idea": "Items drop as halves. A half is a notched stick: each notch is one property and its width is its size. A half can be worn alone at face value. Two halves whose notches fall in the same places (the same properties in the same order, at any widths) can be fitted into one whole item, with the widths added and one new notch cut where they join. To change a half, have one notch recut wider; each recut shortens the stick, and a stick has three recuts in it.",
       "source": "Exchequer tallies recorded sums as notches of set widths, and a stock fitted only its own foil.",
       "nearest": "Fusing duplicate items, and two-piece sets. This is a search for a matching pattern rather than a matching name, with a hard limit on rework.",
       "cost": "small"
@@ -726,7 +726,7 @@
       "id": "customs-81",
       "area": "gear",
       "name": "Appraisal",
-      "idea": "An item enters the world blank, with four empty lines. The first four different kinds of elite it helps to lay each write one line: a property drawn at random from that kind's own short list (a Mute's list is about silence and stillness, a Bier Party's about roads and carrying) with a rolled size. The player shapes an item by choosing what it is used on first. To change it, forfeit a line to the Crown: the line is struck out, a little coin is paid, and the space waits for the next new kind.",
+      "idea": "An item enters the world blank, with four empty lines. The first four different kinds of elite it helps to lay each write one line: a property drawn at random from that kind's own short list (a Mute's is about silence, a Bier Party's about roads) with a rolled size. The player shapes an item by choosing what it is used on first. To change it, forfeit a line to the Crown: the line is struck out, a little coin is paid, and the space waits for the next new kind.",
       "source": "A coroner's jury appraised the thing that had caused a death, and it was the death that gave the object its standing in law.",
       "nearest": "Weapons that earn traits from tracked kills. Here the kills decide which pool each random property is drawn from, in the order they happen.",
       "cost": "small"
@@ -735,7 +735,7 @@
       "id": "customs-82",
       "area": "gear",
       "name": "Terms of Mourning",
-      "idea": "Every item is found in full mourning, draped in crape, with one property showing and three veiled. Wearing it advances its term, counted in tolls stood while it is worn. At 8 tolls it lightens to grey and the second property shows; at 24, lavender and the third; at 60 it is out of mourning and the fourth shows at 150% of its roll. To change an item, send it to the dyer: it goes back to black, every property not yet shown is rolled afresh, and the count starts again.",
+      "idea": "Every item is found in full mourning, with one property showing and three veiled. Wearing it advances its term, counted in tolls stood while it is worn. At 8 tolls it lightens to grey and the second property shows; at 24, lavender and the third; at 60 it is out of mourning and the fourth shows at 150% of its roll. To change an item, send it to the dyer: it goes back to black, every property not yet shown is rolled afresh, and the count starts again.",
       "source": "Mourning was worn for fixed terms and lightened by stages, and cloth was sent back to the dyer to be made black again.",
       "nearest": "Unidentified items, and gear that levels with use. This reveals itself by time worn at risk, and a reroll costs the time already put in.",
       "cost": "small"
@@ -744,7 +744,7 @@
       "id": "customs-83",
       "area": "event",
       "name": "Bier-right",
-      "idea": "A murdered body lies on a bier in the open, marked by a tall candle. Three elite dead, the suspects, arrive together and hunt the player. Custom says a corpse bleeds when its murderer comes near: each time a suspect passes within 2 m of the bier, the bier either stays pale or runs red. Lead them past it, one at a time if possible, to find the guilty one. Lay the guilty one first and the body gives up an item with one property more than usual; lay an innocent first and the body rises as a fourth elite.",
+      "idea": "A murdered body lies on a bier in the open. Three elite dead, the suspects, arrive and hunt the player. Custom says a corpse bleeds when its murderer comes near: each time a suspect passes within 2 m of the bier, the bier either stays pale or runs red. Lead them past it one at a time to find the guilty one. Lay the guilty one first and the body gives up an item with an extra property; lay an innocent first and the body rises as a fourth elite.",
       "source": "By bier-right, suspects were made to approach or touch the corpse, which was believed to bleed afresh at its murderer.",
       "nearest": "Pick-the-right-target puzzles. The test here is carried out by steering hostile elites past a spot on the ground in the middle of the fight.",
       "cost": "small"
@@ -753,7 +753,7 @@
       "id": "customs-84",
       "area": "event",
       "name": "Sanctuary",
-      "idea": "Each district's church door has a knocker. Once per vigil the player may grasp it by standing at it 1 s. For a term of 40 s no dead thing may touch the character, the character's skills fall silent, and the whole build is open to change: bindings moved, points spent, vows swapped. The bell does not wait and the dead do not leave: every one that arrives stands in a ring 3 m off. When the term ends, or the player lets go, the character must break out through whatever has gathered.",
+      "idea": "Each district's church door has a knocker. Once per vigil the player may grasp it by standing at it 1 s. For a term of 40 s no dead thing may touch the character, the character's skills fall silent, and the whole build is open to change: bindings moved, points spent, vows swapped. The bell does not wait: every dead thing that arrives stands in a ring 3 m off. When the term ends, or the player lets go, the character must break out through whatever has gathered.",
       "source": "A fugitive who grasped the sanctuary knocker could not be seized for a set number of days, while his pursuers kept watch outside.",
       "nearest": "Safe rooms and rest points. This one is taken in the middle of the fight, runs on a clock, and collects a siege round itself as its price.",
       "cost": "small"
@@ -762,7 +762,7 @@
       "id": "customs-85",
       "area": "event",
       "name": "The Candle Lot",
-      "idea": "A lot is set on a block in the open: one item, shown. Beside it an inch of candle burns for an unknown time between 15 and 30 s, flaring for its last second. When the flame dies, the lot goes to whoever is standing on the block, living or dead. If that is the player, the item is theirs. If it is one of the dead, that body puts the item on and becomes an elite with its properties; lay it to take the item back. If nobody stands there, the lot is withdrawn.",
+      "idea": "A lot is set on a block in the open: one item, shown. Beside it an inch of candle burns for an unknown time between 15 and 30 s, flaring for its last second. When the flame dies, the lot goes to whoever is standing on the block, living or dead. If that is the player, the item is theirs. If it is one of the dead, that body puts the item on and becomes an elite with its properties; lay it to take the item back.",
       "source": "At a sale by candle the lot fell to the last bidder standing when the flame went out, and nobody knew when that would be.",
       "nearest": "King-of-the-hill and capture points. Here only the unknown final instant counts, and losing creates an enemy that wears the prize.",
       "cost": "small"
@@ -771,7 +771,7 @@
       "id": "customs-86",
       "area": "event",
       "name": "Hue and Cry",
-      "idea": "A living body-snatcher breaks cover with a sack and runs for the far edge of the district, 60 m away. A cry goes up from the windows, and all who hear must join: for as long as he runs, every dead thing within 20 m of him chases him instead of the player. If the dead catch him, the stolen body in the sack wakes among them as an elite. If the player touches him first he drops the sack (an item and 10 coin), the cry ends, and the horde turns back, strung out along the route of the chase.",
+      "idea": "A living body-snatcher breaks cover with a sack and runs for the far edge of the district, 60 m away. The cry goes up, and all who hear must join: for as long as he runs, every dead thing within 20 m of him chases him instead of the player. If the dead catch him, the stolen body in the sack wakes among them as an elite. If the player touches him first he drops the sack (an item and 10 coin), the cry ends, and the horde turns back.",
       "source": "Raising the hue and cry obliged everyone within hearing to leave what they were doing and pursue the felon.",
       "nearest": "Chase-the-loot-carrier events. In this one the horde is chasing him too, so it is a race against the enemies and a rest from them at once.",
       "cost": "small"
@@ -780,7 +780,7 @@
       "id": "customs-87",
       "area": "event",
       "name": "Rogation",
-      "idea": "Seven bound-stones stand round the district's edge, where the dead come in. Passing within 2 m of a stone strikes it with the willow wand and it is remembered, lit, for two tolls. For each remembered stone the player's skills reach 4% further. If all seven are lit at once the bounds are beaten: until the next toll nothing rises inside them, and the district's danger steps back one toll. The circuit is some 300 m of the most dangerous ground on the map, so it is a plan, never an accident.",
+      "idea": "Seven bound-stones stand round the district's edge, where the dead come in. Passing within 2 m of a stone strikes it with the willow wand and it is remembered, lit, for two tolls. For each remembered stone the player's skills reach 4% further. If all seven are lit at once the bounds are beaten: until the next toll nothing rises inside them, and the district's danger steps back one toll. The circuit is some 300 m of the most dangerous ground on the map, so it is a plan.",
       "source": "Each year the parish walked its boundary and struck every mark with willow wands so that the bounds would be remembered.",
       "nearest": "Shrine and beacon circuits. This one is laid along the edge the enemies enter by, fades stone by stone, and pays in full only while the whole ring is held together.",
       "cost": "small"
@@ -798,7 +798,7 @@
       "id": "customs-89",
       "area": "legacy",
       "name": "Hung in the Hall",
-      "idea": "Whatever kills a character is forfeit to the household. The kind of dead, or the keeper, that dealt the last blow is hung in the hall as a deodand, appraised at the dead character's level. Every later character deals 1% more harm to that kind per 5 levels of appraisal and sees its attacks marked 0.2 s sooner. A kind is replaced only by a higher appraisal. Echoes are paid on top, 10 for each level appraised. Dying to something new, with a high character, is the richest way to lose one.",
+      "idea": "Whatever kills a character is forfeit to the household. The kind of dead, or the keeper, that dealt the last blow is hung in the hall as a deodand, appraised at the dead character's level. Every later character deals 1% more harm to that kind per 5 levels of appraisal and sees its attacks marked 0.2 s sooner. A kind is replaced only by a higher appraisal. Echoes are paid on top, 10 for each level appraised. Dying to something new is the richest way to lose a character.",
       "source": "The thing that had caused a death was appraised by the coroner's jury and forfeited, its value put to pious use.",
       "nearest": "Bestiary bonuses earned by kills, and nemesis systems that promote whoever killed you. Here the reward comes from being killed, once per kind, and is sized by what was lost.",
       "cost": "small"
@@ -825,7 +825,7 @@
       "id": "customs-92",
       "area": "frame-twist",
       "name": "Arrears",
-      "idea": "A twist on one life and the tolls. Harm does not come off life when it lands. It is chalked on a slate as arrears, shown beside the life bar. At each toll the slate is presented: life falls by the arrears and the slate is wiped. A character dies only at a toll, or at the instant arrears reach twice its remaining life. Between tolls arrears can be worked off: every experience pickup collected pays 1 point. The seconds before each bell are spent going back into the killing ground to pay.",
+      "idea": "A twist on one life and the tolls. Harm does not come off life when it lands. It is chalked on a slate as arrears. At each toll the slate is presented: life falls by the arrears and the slate is wiped. A character dies only at a toll, or at the instant arrears reach twice its remaining life. Between tolls arrears can be worked off: every experience pickup collected pays 1 point. The seconds before each bell are spent going back into the killing ground to pay.",
       "source": "A toll is both the stroke of a bell and a sum owed at a fixed point, and debts chalked on a slate fell due on a set day.",
       "nearest": "Delayed-damage pools cleared by a button, and regaining lost health by striking back quickly. Here one shared clock, the district bell, does all the collecting.",
       "cost": "medium"
@@ -834,7 +834,7 @@
       "id": "customs-93",
       "area": "frame-twist",
       "name": "Abjuration",
-      "idea": "A twist on one life. At no life a standing character need not die. Once in each district it may abjure: it is given a cross, its skills fall silent, and it has 40 s to walk the straight marked road to the nearest gate. The dead may jostle it but not harm it; if it is pushed, or steps, more than 3 m off the road, it dies. Reaching the gate saves the character, but all it carries is forfeit and that district is closed to it for good. A character that has abjured all five has nowhere left to stand.",
+      "idea": "A twist on one life. At no life a standing character need not die. Once in each district it may abjure: it is given a cross, its skills fall silent, and it has 40 s to walk the straight marked road to the nearest gate. The dead may jostle but not harm it; pushed or stepping more than 3 m off the road, it dies. Reaching the gate saves the character, but all it carries is forfeit and that district is closed to it for good.",
       "source": "A felon in sanctuary could save his life by abjuring the realm: walking straight to an assigned port with a cross, losing his goods and never returning.",
       "nearest": "Second-wind and last-stand rules. This buys the life with a permanent loss of territory, five times at most, and it has to be walked.",
       "cost": "medium"
@@ -852,7 +852,7 @@
       "id": "customs-95",
       "area": "frame-twist",
       "name": "A Wake for Your Dead",
-      "idea": "A twist on the two ways to play. The one-sitting run through five districts is always a wake held for one of the player's dead standing characters, chosen at the start. The new character begins as that one's class with its first three picks already taken. Each district completed is one watch of the night. If all five are kept, the dead character's name goes on the bede-roll and whatever it left in the permanent tree gives double from then on. If the wake is broken by death, it may be held again.",
+      "idea": "A twist on the two ways to play. The one-sitting run through five districts is always a wake held for one of the player's dead standing characters, chosen at the start. The new character begins as that one's class with its first three picks already taken. Each district completed is one watch of the night. If all five are kept, the dead character's name goes on the bede-roll and whatever it left in the permanent tree gives double from then on. A broken wake may be held again.",
       "source": "A body was watched through the night before burial, and the names of the dead were entered on a bede-roll to be read aloud.",
       "nearest": "Run modes that revisit a past character's grave or ghost. Here the short mode exists to complete the long mode's deaths, and inherits their opening choices.",
       "cost": "small"
@@ -861,7 +861,7 @@
       "id": "customs-96",
       "area": "frame-twist",
       "name": "The Bell Tells What Comes",
-      "idea": "A twist on the tolls. Each toll is not one stroke but a count. First the tellers: nine strokes if the coming 75 s will bring mostly large dead, six for middling, three for small and many. Then, after a pause, one quick stroke for each elite that will rise, and a single low stroke if a gate will open. Nothing of this is shown on screen. A player who counts knows the next interval; one who does not is surprised by it. An option draws the count as marks, for play without sound.",
+      "idea": "A twist on the tolls. Each toll is not one stroke but a count. First the tellers: nine strokes if the coming 75 s will bring mostly large dead, six for middling, three for small and many. Then, after a pause, one quick stroke for each elite that will rise, and a single low stroke if a gate will open. A player who counts knows the next interval; one who does not is surprised by it. An option draws the count as marks, for play without sound.",
       "source": "Hearers of the death knell counted the tellers and the strokes of age to learn who had died before any news reached them.",
       "nearest": "Wave previews shown as icons. This puts the preview only in the synthesized bell, as a code the player learns to count.",
       "cost": "small"
