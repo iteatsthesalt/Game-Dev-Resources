@@ -96,9 +96,9 @@ Web → native request: `{"id":"<string>","ch":"<channel>","op":"<op>","args":{�
 | Channel | Ops (args → result) | Events (data) |
 |---|---|---|
 | `app` | `hello` {} → `{versionName, versionCode, sdk, micConsent}`; `ready` {} → `true`; `checkUpdate` {} → `{available, latest, url}`; `openExternal` {url} → `true`; `openSite` {url, title} → `true`; `closeSite` {} → `true`; `siteControls` {state} → `true`; `auth` {url} → the callback URL | `shared` {text}; `siteNext`, `sitePause`, `siteStop`, `siteClosed`, `paused`, `resumed` (data `{}`) |
-| `fetch` | `request` {url, method, headers, body} → `{status, statusText, headers, body, url}`; `abort` {fetchId} → `true`; `approve` {host} → `boolean` (host without IPv6 brackets) | — |
+| `fetch` | `request` {url, method, headers, body, redirect} → `{status, statusText, headers, body, url}` (`redirect` is `'follow'` or `'error'`); `abort` {fetchId} → `true`; `approve` {host} → `boolean` (host without IPv6 brackets) | — |
 | `voice` | `probe` {allowCloud} → `VoiceStatus`; `install` {} → `boolean`; `start` {lang, phrases, allowCloud} → `true`; `stop` {} → `true` | `result` {text, final}; `state` {listening}; `error` {code} |
-| `tts` | `speak` {text, voiceURI, rate, volume} → `true` at the end of the utterance; `cancel` {} → `true`; `voices` {} → `[{uri, name, lang, local}]` | — |
+| `tts` | `speak` {text, voiceURI, rate, volume, lang} → `true` at the end of the utterance; `cancel` {} → `true`; `voices` {} → `[{uri, name, lang, local}]` | — |
 | `media` | `setActive` {on} → `true` | `next`, `previous`, `playPause` (data `{}`) |
 | `share` | `send` {title, text, url} → `'shared'` | — |
 | `files` | `save` {name, mime, base64} or {name, mime, saveId} → `'saved'\|'cancelled'`; `append` {saveId, base64} → `true` | — |
@@ -375,9 +375,10 @@ git commit -m "Add the native fetch URL policy"
 - Produces (pure JVM, `java.net.HttpURLConnection` only):
 
 ```kotlin
-data class FetchRequest(val url: String, val method: String = "GET", val headers: Map<String, String> = emptyMap(), val body: String? = null)
+data class FetchRequest(val url: String, val method: String = "GET", val headers: Map<String, String> = emptyMap(), val body: String? = null,
+                        val redirect: String = "follow")   // "error": any redirect fails, as fetch's redirect: 'error' does
 data class FetchResponse(val status: Int, val statusText: String, val headers: Map<String, String>, val body: String, val url: String)
-class FetchError(val code: String) : Exception(code)   // policy codes, "timeout", "network", "too-large", "redirects", "aborted"
+class FetchError(val code: String) : Exception(code)   // policy codes, "timeout", "network", "too-large", "redirects", "redirect", "aborted"
 class FetchCall { val isCancelled: Boolean; fun cancel() }   // cancel() also disconnects the open connection
 class NativeFetch(private val approved: () -> Set<String>, private val connectTimeoutMs: Int = 15_000,
                   private val readTimeoutMs: Int = 90_000, private val maxBytes: Int = FetchPolicy.MAX_BYTES) {
@@ -432,6 +433,7 @@ class NativeFetch(private val approved: () -> Set<String>, private val connectTi
   assertEquals("not-local", code { nf.execute(FetchRequest("$base/pub")) })
 }
 @Test fun stopsAfterFiveRedirects() = assertEquals("redirects", code { nf.execute(FetchRequest("$base/loop")) })
+@Test fun refusesRedirectsWhenAsked() = assertEquals("redirect", code { nf.execute(FetchRequest("$base/a", redirect = "error")) })
 @Test fun timesOut() {
   assertEquals("timeout", code { NativeFetch({ setOf("127.0.0.1") }, readTimeoutMs = 300).execute(FetchRequest("$base/sleep")) })
 }
@@ -458,7 +460,7 @@ Expected: FAIL to compile with `Unresolved reference 'NativeFetch'`.
 
 - Check `call.isCancelled` and `FetchPolicy.check(url, approved())` before every hop. A `Deny` throws `FetchError(deny.code)`.
 - `instanceFollowRedirects = false`, `useCaches = false`, the two timeouts. Copy request headers except `cookie`, `cookie2`, `host` and `content-length` (any case). Never install a `CookieHandler`.
-- Redirects (301, 302, 303, 307, 308): resolve `Location` against the current URL and loop, at most 5 hops, then `redirects`. 303 always becomes GET without a body, and so do 301 and 302 after a POST. 307 and 308 keep the method and body. On a hop whose origin (scheme, host and port) differs from the original URL's, drop `authorization`, `proxy-authorization`, `x-api-key`, `x-goog-api-key` and `api-key`, because keys go only to their own provider's host.
+- Redirects (301, 302, 303, 307, 308): resolve `Location` against the current URL and loop, at most 5 hops, then `redirects`. 303 always becomes GET without a body, and so do 301 and 302 after a POST. 307 and 308 keep the method and body. With `redirect = "error"` (Plan 05 sends it with every key), the first redirect throws `redirect` instead. On a hop whose origin (scheme, host and port) differs from the original URL's, drop `authorization`, `proxy-authorization`, `x-api-key`, `x-goog-api-key` and `api-key`, because keys go only to their own provider's host.
 - The open `HttpURLConnection` is held by `call`; `cancel()` calls its `disconnect()`, and any `IOException` after a cancel becomes `aborted`.
 - Read `errorStream` for status ≥ 400. Stop with `too-large` once more than `maxBytes` bytes arrive (or when `Content-Length` says so). Decode with the `charset` from `Content-Type`, else UTF-8.
 - Header names are lower-cased, and repeated values are joined with `", "`. The null status-line key is skipped.
@@ -466,7 +468,7 @@ Expected: FAIL to compile with `Unresolved reference 'NativeFetch'`.
 
 - [ ] **Step 4: Run it to see it pass**
 
-Run: the Step 2 command, or the green half of **CI checks** after Step 5. Expected: PASS (12 tests).
+Run: the Step 2 command, or the green half of **CI checks** after Step 5. Expected: PASS (13 tests).
 
 - [ ] **Step 5: Commit**
 
