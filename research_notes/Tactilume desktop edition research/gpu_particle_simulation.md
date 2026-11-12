@@ -6,25 +6,27 @@ Findings tagged "(search summary, not verified)" were seen only in a search-resu
 
 One extra data point came from the research coordinator rather than a published source: a local SwiftShader (CPU software) measurement, which is not GPU performance data (see Q1).
 
+Fact-check pass (12 November 2026): decision-critical claims were re-checked against primary sources read through raw.githubusercontent.com, including Chromium release tags for Electron 45 (156.0.8078.96) and 157.0.8103.81. Tags: [Verified: URL] means confirmed, [Verified correction: URL] means the sentence was changed, and [Unverified] means it could not be checked. The Verification section at the end lists the results.
+
 ## 1. Scale: memory layout (SoA vs AoS, f16/unorm packing), per-particle update cost, and what 10M to 100M particles at 60 to 240 fps requires
 
 ### Takeaway
 Simple per-particle updates (forces from a few poles, analytic flow fields) are bound by memory bandwidth. The best measured WebGPU figure found is about 10M particles at about 63 fps on a 2016 GTX 1060, including rendering. So 10M particles at 120 to 240 fps on current desktop GPUs is realistic once bytes per particle are cut. 100M particles is mainly a bandwidth and buffer-limit problem: it needs about 16 bytes per particle or less, arrays split under per-binding size limits, 2D dispatch, and no neighbour search across the full set.
 
 ### Cited Findings
-- TU Wien bachelor thesis "Particle System in WebGPU" (Benedikt Peter, February 2023): using compute shaders, ten million particles are simulated and rendered at about 63 fps on a GTX 1060, drawn as textured quads. Vertex pulling performed notably better than instancing on recent high-end GPUs (rendering detail, out of scope) — [TU Wien PETER-2023-PSW](https://www.cg.tuwien.ac.at/research/publications/2023/PETER-2023-PSW/) (search summary, not verified)
+- TU Wien bachelor thesis "Particle System in WebGPU" (Benedikt Peter, February 2023): using compute shaders, ten million particles are simulated and rendered at about 63 fps on a GTX 1060, drawn as textured quads. Vertex pulling performed notably better than instancing on recent high-end GPUs (rendering detail, out of scope) — [TU Wien PETER-2023-PSW](https://www.cg.tuwien.ac.at/research/publications/2023/PETER-2023-PSW/) (search summary, not verified) [Unverified: host blocked, no GitHub copy found]
 - three.js `webgpu_compute_particles` (current master): 200,000 particles, with positions, velocities and colours as three separate `instancedArray(particleCount, 'vec3')` storage buffers. That is a structure-of-arrays (SoA) layout. The example also has a separate "Hit Particles" compute kernel over all particles, dispatched apart from the per-frame update — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_particles.html)
 - three.js `webgpu_tsl_compute_attractors_particles`: count = 2^18 = 262,144 particles, with separate position and velocity buffers (SoA) — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_tsl_compute_attractors_particles.html)
 - three.js `webgpu_compute_points`: 300,000 2D particles with `vec2` position and `vec2` velocity buffers (SoA, 8 B per attribute) — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_points.html)
 - three.js `webgpu_compute_particles_snow`: 100,000 particles. It uses separate position, scale and static-position buffers (`vec3`) and a data buffer (`vec4`), plus a 1024 × 1024 render target (`collisionPosRT`) for scene collision — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_particles_snow.html)
-- Measured copy-kernel bandwidth through Dawn (Gridwise OneSweep probe at 2^24 keys, run in Node): Apple M1 Max 360–370 GB/s; NVIDIA V100 808 GB/s — [Gridwise docs/sort.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/sort.md)
+- Measured copy-kernel bandwidth through Dawn (Gridwise OneSweep probe at 2^24 keys, run in Node): Apple M1 Max 360–370 GB/s; NVIDIA V100 808 GB/s — [Gridwise docs/sort.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/sort.md) [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/docs/sort.md] The M1 Max figure is about 90% of its 400 GB/s rated bandwidth (see gpu_light_rendering.md section 1).
 - Levien measured these prefix-sum rates:
-  - GTX 1080, decoupled look-back prototype on Vulkan: 2.05 ms for 64Mi u32 values, or 31.2 billion elements/s — [Levien 2020 post source](https://github.com/raphlinus/raphlinus.github.io/blob/main/_posts/2020-04-21-prefix-sum.md)
+  - GTX 1080, decoupled look-back prototype on Vulkan: 2.05 ms for 64Mi u32 values, or 31.2 billion elements/s — [Levien 2020 post source](https://github.com/raphlinus/raphlinus.github.io/blob/main/_posts/2020-04-21-prefix-sum.md) [Verified: same file]
   - AMD 5700 XT, Vulkan "compatibility mode" scan: about 48 billion elements/s, "basically the same as memcpy" — [Levien 2021 post source](https://github.com/raphlinus/raphlinus.github.io/blob/main/_posts/2021-11-04-prefix-sum-portable.md)
-- **Software-renderer data point (not GPU data):** the research coordinator measured a 32-byte-per-particle compute step plus a 1-pixel additive point draw in headless Chromium 153 on a 4-core SwiftShader software adapter. It took about 22 ms for 20k particles and about 131 ms for 300k. Source: coordinator's local measurement of 2026-11-12, not published. It only shows that the pipeline runs on a CPU implementation. Gridwise warns that spin-wait-based code (such as emulated subgroups) can stall on CPU-based WebGPU implementations — [Gridwise docs/scan-and-reduce.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/scan-and-reduce.md)
+- **Software-renderer data point (not GPU data):** the research coordinator measured a 32-byte-per-particle compute step plus a 1-pixel additive point draw in headless Chromium 153 on a 4-core SwiftShader software adapter. It took about 22 ms for 20k particles and about 131 ms for 300k. Source: coordinator's local measurement of 2026-11-12, not published. [Verified: coordinator measurement (no URL); this container reports 4 CPU cores via `nproc`] It only shows that the pipeline runs on a CPU implementation. Gridwise warns that spin-wait-based code (such as emulated subgroups) can stall on CPU-based WebGPU implementations — [Gridwise docs/scan-and-reduce.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/scan-and-reduce.md) [Verified: Gridwise's subgroup-strategy page names SwiftShader CI runners as the case, https://github.com/gridwise-webgpu/gridwise/blob/HEAD/docs/subgroup-strategy.md]
 - three.js `webgpu_compute_particles_fluid` (MLS-MPM) instead packs particles into one struct array (array of structures, AoS): `particleArray = new Float32Array(maxParticles * particleStructSize)` — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_particles_fluid.html)
 - webgpu-samples "particles": 50,000 particles in one interleaved buffer whose per-particle struct includes a lifetime field — [webgpu-samples particles main.ts](https://github.com/webgpu/webgpu-samples/blob/main/sample/particles/main.ts)
-- Babylon.js `GPUParticleSystem` uses a capacity of 1,000,000 as its documented example. `activeParticleCount` can limit GPU work below capacity, and the random-number texture defaults to the largest supported size (16K) — [Babylon.js docs source](https://github.com/BabylonJS/Documentation/blob/master/content/features/featuresDeepDive/particles/particle_system/gpu_particles.md). The docs page still describes only the WebGL2 transform-feedback path (since v3.2). The current source picks a `ComputeShaderParticleSystem` platform, a WGSL compute shader named `gpuUpdateParticles`, whenever the engine reports `supportComputeShaders` (WebGPU), and falls back to `WebGL2ParticleSystem` otherwise. `IsSupported` is `supportTransformFeedbacks || supportComputeShaders` — [gpuParticleSystem.pure.ts](https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Particles/gpuParticleSystem.pure.ts); [computeShaderParticleSystem.pure.ts](https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Particles/computeShaderParticleSystem.pure.ts)
+- Babylon.js `GPUParticleSystem` uses a capacity of 1,000,000 as its documented example. `activeParticleCount` can limit GPU work below capacity, and the random-number texture defaults to the largest supported size (16K) — [Babylon.js docs source](https://github.com/BabylonJS/Documentation/blob/master/content/features/featuresDeepDive/particles/particle_system/gpu_particles.md). The docs page still describes only the WebGL2 transform-feedback path (since v3.2). The current source picks a `ComputeShaderParticleSystem` platform, a WGSL compute shader named `gpuUpdateParticles`, whenever the engine reports `supportComputeShaders` (WebGPU), and falls back to `WebGL2ParticleSystem` otherwise. `IsSupported` is `supportTransformFeedbacks || supportComputeShaders` — [gpuParticleSystem.pure.ts](https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Particles/gpuParticleSystem.pure.ts); [computeShaderParticleSystem.pure.ts](https://github.com/BabylonJS/Babylon.js/blob/master/packages/dev/core/src/Particles/computeShaderParticleSystem.pure.ts) [Verified: https://github.com/BabylonJS/Babylon.js/blob/HEAD/packages/dev/core/src/Particles/gpuParticleSystem.pure.ts]
 - Unity says VFX Graph can process millions of simultaneous particles, against thousands for the legacy Particle System — [Unity Learn](https://learn.unity.com/course/creative-core-vfx/tutorial/experiment-with-vfx-graph?version=6.0) (search summary, not verified). A third-party guide gives roughly 1M to 5M as a practical range on high-end PCs; this is unverified — [uhiyama-lab](https://uhiyama-lab.com/en/notes/unity/unity-vfx-graph-guide/) (search summary, not verified)
 - Anecdotal browser figures (fluid simulation, not simple particles): about 36 fps at about 1.13M particles on an RTX 3080 Ti in Chrome on Windows. An M1 Max user estimated about 15 fps at 1M "by feel". Both come from comments on the Splash MLS-MPM thread — [Reddit r/GraphicsProgramming (mirror)](https://redlib.hackliberty.org/r/GraphicsProgramming/comments/1jh3pd2/splash_a_realtime_fluid_simulation_in_browsers/mjfn4ij/?context=3) (search summary, not verified)
 - Splash's `million` branch has a "very large" mode of 1.6M particles, which the author says is "very close to the memory limit of the buffer size" — [Splash README](https://github.com/matsuoka-601/Splash)
@@ -37,20 +39,20 @@ Simple per-particle updates (forces from a few poles, analytic flow fields) are 
   - maxComputeWorkgroupStorageSize: 16,384 bytes
   - maxStorageBuffersPerShaderStage: 8
 
-  [WebGPU spec source (gpuweb/gpuweb spec/index.bs)](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs)
-- Spec defaults are guaranteed minimums. Adapters can expose more, but higher limits must be requested explicitly at device creation — [MDN GPUSupportedLimits](https://developer.mozilla.org/en-US/docs/Web/API/GPUSupportedLimits) (search summary, not verified). web3dsurvey reports that 92% of surveyed Windows systems, and 100% of NVIDIA ones, expose maxStorageBufferBindingSize ≥ 2,147,483,644 bytes (about 2 GiB) — [web3dsurvey](https://web3dsurvey.com/webgpu/limits/maxStorageBufferBindingSize/platform/Windows) (search summary, not verified)
+  [WebGPU spec source (gpuweb/gpuweb spec/index.bs)](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs) [Verified: same file]
+- Spec defaults are guaranteed minimums. Adapters can expose more, but higher limits must be requested explicitly at device creation — [MDN GPUSupportedLimits](https://developer.mozilla.org/en-US/docs/Web/API/GPUSupportedLimits) (search summary, not verified) [Verified: the spec's `requiredLimits` rules, https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]. web3dsurvey reports that 92% of surveyed Windows systems, and 100% of NVIDIA ones, expose maxStorageBufferBindingSize ≥ 2,147,483,644 bytes (about 2 GiB) — [web3dsurvey](https://web3dsurvey.com/webgpu/limits/maxStorageBufferBindingSize/platform/Windows) (search summary, not verified) [Unverified: survey host blocked] This fits Dawn's source: D3D12 has no documented limit, so Dawn assumes 2 GiB and Chrome's tiers report exactly 2,147,483,644 bytes on every Windows adapter except pre-Adreno 8xx Qualcomm chips (2^28). No Windows adapter can report 4 GiB−4. [Verified: https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://github.com/google/dawn/blob/main/src/dawn/native/Limits.cpp]
 - With default limits, one buffer holds at most 67,108,864 u32 elements (maxBufferSize) and one storage binding at most 33,554,432 (maxStorageBufferBindingSize) — [webgpu-radix-sort README](https://github.com/kishimisu/WebGPU-Radix-Sort)
 - Core WGSL, with no optional feature, provides packing built-ins: `pack4x8unorm`, `pack4x8snorm`, `pack2x16unorm`, `pack2x16snorm`, `pack2x16float` and their unpack counterparts, such as `unpack2x16float` — [WGSL spec source (gpuweb/gpuweb wgsl/index.bs)](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs)
-- f16 arithmetic needs the optional `"shader-f16"` device feature plus `enable f16;` in WGSL. Chrome's guidance for ML tensors: f16 halves the memory, and because GPU work is often bandwidth-bound this "can often mean shaders run twice as fast". Data can also be stored in low precision and expanded to f32 in the shader without f16 support. The intent-to-ship cited up to 25% gains for ALU-bound work and 50% for memory-bound work — [Chrome "New in WebGPU 120"](https://developer.chrome.com/blog/new-in-webgpu-120) (search summary, not verified); [Intel: Revving up WebGPU applications with f16](https://intel.com/content/www/us/en/developer/articles/community/revving-up-webgpu-applications-with-power-of-f16.html) (search summary, not verified)
+- f16 arithmetic needs the optional `"shader-f16"` device feature plus `enable f16;` in WGSL. Chrome's guidance for ML tensors: f16 halves the memory, and because GPU work is often bandwidth-bound this "can often mean shaders run twice as fast". Data can also be stored in low precision and expanded to f32 in the shader without f16 support. The intent-to-ship cited up to 25% gains for ALU-bound work and 50% for memory-bound work — [Chrome "New in WebGPU 120"](https://developer.chrome.com/blog/new-in-webgpu-120) (search summary, not verified); [Intel: Revving up WebGPU applications with f16](https://intel.com/content/www/us/en/developer/articles/community/revving-up-webgpu-applications-with-power-of-f16.html) (search summary, not verified) [Verified (version only): BCD gives `shader-f16` in Chrome 120 and Safari 26, not Firefox, https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; the speed-up figures remain Unverified]
 - Measured throughput of a bandwidth-heavy WebGPU primitive, the wgpu_sort key-value radix sort:
 
   | GPU | 1M pairs | 8M pairs | 20M pairs |
   |---|---|---|---|
   | RTX A5000 | 0.317 ms | 1.64 ms | 3.98 ms |
   | AMD R9 380 | 2.76 ms | 18.8 ms | 46.1 ms |
-  | Intel HD 4600 | 38.7 ms | 295 ms | – |
+  | Intel HD 4600 | 38.7 ms | 295 ms | 732 ms |
 
-  [wgpu_sort README](https://github.com/KeKsBoTer/wgpu_sort)
+  [wgpu_sort README](https://github.com/KeKsBoTer/wgpu_sort) [Verified correction: https://github.com/KeKsBoTer/wgpu_sort/blob/HEAD/README.md (the Intel 20M cell was missing; the figures are averages of 1,000 runs in native wgpu, not a browser)]
 - Tutorial sites claim 60 fps at 1M to 2M particles without showing benchmark data. Treat them as unreliable — [markaicode](https://www.markaicode.com/webgpu-physics-simulation-1m-particles/) (search summary, not verified)
 
 ### Inferences
@@ -71,7 +73,7 @@ Simple per-particle updates (forces from a few poles, analytic flow fields) are 
   - Position: 3 × 21-bit fixed point in 2 × u32 (8 B), relative to the world box, giving about 1/2,000,000 of the box per axis. Keep 3 × f32 (12 B) for the interactive tier.
   - Velocity: 3 × f16 via `pack2x16float` (6 B), plus a 16-bit slot for age, species and behaviour bits (8 B total).
   - Colour: derive at render time from species, speed and age instead of storing it (0 B), or use `pack4x8unorm` (4 B) only when a particle truly needs its own colour.
-  - Size check: 100M × 16 B = 1.6 GB per copy, which fits a single about 2 GiB binding on most Windows/NVIDIA adapters. 100M × 32 B = 3.2 GB does not.
+  - Size check: 100M × 16 B = 1.6 GB per copy, which fits a single about 2 GiB binding on most Windows/NVIDIA adapters. 100M × 32 B = 3.2 GB does not. On Windows the limits are exact: every D3D12 adapter reports a 2 GiB `maxBufferSize` and a 2,147,483,644-byte binding, so 1.6 GB fits but no single array above 2 GiB does; 4 GiB−4 bindings exist only on Metal and non-NVIDIA Vulkan. [Verified: https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/google/dawn/blob/main/src/dawn/native/Limits.cpp]
 - **SoA vs AoS:**
   - SoA, as the three.js examples use it, lets partial passes (cell binning, hashing, grid splats) read only positions (8 to 12 B) instead of the whole struct. Each array also stays under the per-binding size limit.
   - The cost: each array uses one of the 8 default storage-buffer slots per shader stage.
@@ -86,7 +88,7 @@ Simple per-particle updates (forces from a few poles, analytic flow fields) are 
 
 ### Gaps
 - No primary WebGPU benchmark at 100M particles was found. The largest measured WebGPU figure found is the thesis's 10M at about 63 fps on a GTX 1060, read only as a search summary because the thesis host was blocked.
-- Only two measured WebGPU (Dawn) copy bandwidths were found: Apple M1 Max at 360–370 GB/s and NVIDIA V100 at 808 GB/s, both from the Gridwise docs. Bandwidths for current consumer desktop GPUs (GeForce RTX 40/50, Radeon RX 7000/9000, Intel Arc, Apple M3/M4) could not be retrieved before the search budget ran out. The bandwidth arithmetic above needs checking against vendor spec sheets or a copy-kernel probe on the target GPUs.
+- Only two measured WebGPU (Dawn) copy bandwidths were found: Apple M1 Max at 360–370 GB/s and NVIDIA V100 at 808 GB/s, both from the Gridwise docs. Bandwidths for current consumer desktop GPUs (GeForce RTX 40/50, Radeon RX 7000/9000, Intel Arc, Apple M3/M4) could not be retrieved before the search budget ran out. gpu_light_rendering.md has rated figures: RTX 4090 1,008 GB/s and M1 Max 400 GB/s [Verified: https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/HEAD/README.md], and RTX 5090 1,792, RTX 5070 672 and RX 9070 XT about 640 GB/s [Unverified: search summaries]. The bandwidth arithmetic above needs checking against vendor spec sheets or a copy-kernel probe on the target GPUs.
 - The coordinator's SwiftShader timings (about 22 ms for 20k and about 131 ms for 300k particles) are CPU-software numbers. They say nothing about GPU cost.
 - No measured WebGPU comparison of SoA vs AoS, or of f16-packed vs f32 particle state, was found.
 - Practical limits for Unreal Niagara GPU particles were not researched.
@@ -110,7 +112,7 @@ Methods that read neighbours (SPH/PBF, boids, Particle Life) top out at roughly 
   - Because neighbour search is expensive, SPH maxed out at about 30,000 particles on integrated graphics.
   - MLS-MPM, which needs no neighbour search, raised that to about 100,000 on integrated graphics and about 300,000 on "decent GPUs".
   - SPH mode is a known crash on Mac.
-  - [WebGPU-Ocean README](https://github.com/matsuoka-601/webgpu-ocean)
+  - [WebGPU-Ocean README](https://github.com/matsuoka-601/webgpu-ocean) [Verified: https://github.com/matsuoka-601/webgpu-ocean/blob/HEAD/README.md]
 - blub (Andreas Reich, MIT), a GPU-driven 3D hybrid Lagrangian/Eulerian fluid using wgpu (PIC/FLIP/APIC; implements APIC) — [Wumpf/blub README](https://github.com/wumpf/blub):
   - Particle-to-grid is "tricky & costly to do in parallel". The options are 8 atomic adds per particle, or a gather in which particles form per-cell linked lists via atomic exchange into a "linked list head pointer grid" and each grid cell walks 8 neighbouring lists.
   - Particles drift apart in memory over time, which slows sampling, so every n steps they are re-binned to cells.
@@ -130,12 +132,12 @@ Methods that read neighbours (SPH/PBF, boids, Particle Life) top out at roughly 
   - Needs only 1 simulation step per frame. Pressure uses the Tait equation with γ = 1 instead of 5, which is more stable, and stiffness k is raised a lot to compensate for lower incompressibility.
   - An extra P2G pass builds a density grid. The author says its overhead is "not that much" because only one float is scattered per particle.
   - The `million` branch reaches 1.6M particles.
-  - [Splash README](https://github.com/matsuoka-601/Splash)
+  - [Splash README](https://github.com/matsuoka-601/Splash) [Verified: https://github.com/matsuoka-601/Splash/blob/HEAD/README.md]
 - three.js `webgpu_compute_particles_fluid` ("MLS-MPM particle simulation running in compute shaders"):
   - Five kernels: clearGrid, p2g1, p2g2, updateGrid, g2p.
   - 64³ grid with `fixedPointMultiplier = 1e7`. Cell structs hold atomic i32 x, y, z and mass; the code comments that "webgpu only supports int atomics".
   - Up to 131,072 particles (8192 × 16); the default is 32,768.
-  - [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_particles_fluid.html)
+  - [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_particles_fluid.html) [Verified: grid, multiplier, comment and maximum read from the same file]
 - EA SEED PB-MPM ("A Position Based Material Point Method", Chris Lewin, SIGGRAPH 2024) has a WebGPU reference implementation under BSD-3-Clause. The main branch is heavily optimized; the `siggraph2024` branch is more readable. The README says Firefox did not work at the time of writing — [electronicarts/pbmpm](https://github.com/electronicarts/pbmpm)
 - holtsetio "Flow" is MLS-MPM on the three.js WebGPURenderer, started from WebGPU-Ocean and styled after Refik Anadol's artworks. It is MIT-licensed — [holtsetio/flow](https://github.com/holtsetio/flow). The author notes that TSL is young, bugs are common, and hand-written WGSL/GLSL will likely outperform it — [three.js forum](https://discourse.threejs.org/t/mls-mpm-simulation-with-webgpu-and-threejs/77686) (search summary, not verified)
 - matsuoka-601's Codrops write-up: about 100,000 particles in real time on an iGPU, and about 400,000 on an RTX 3060 mobile laptop GPU — [Codrops article](https://tympanus.net/codrops/2025/02/26/webgpu-fluid-simulations-high-performance-real-time-rendering/) (search summary, not verified); [Codrops author page](https://tympanus.net/codrops/author/matsuoka_601) (search summary, not verified)
@@ -237,7 +239,7 @@ Methods that read neighbours (SPH/PBF, boids, Particle Life) top out at roughly 
 ## 3. GPU building blocks in WebGPU: prefix sum, radix sort, stream compaction, indirect dispatch, double buffering, determinism
 
 ### Takeaway
-WebGPU gives no forward-progress guarantee between workgroups, so classic decoupled look-back is not portable. Gridwise reports it can lock up Apple machines, and PlayCanvas enables its OneSweep sort only on NVIDIA. Use multi-pass reduce-then-scan or Decoupled Fallback for scans (Gridwise DLDF, Apache-2.0), and a portable radix sort with OneSweep gated by vendor. Prefer counting sort for cell binning, and fixed-point integer atomics for order-independent, deterministic accumulation. Subgroups are available in Chromium 134+, but a fallback path is still needed.
+WebGPU gives no forward-progress guarantee between workgroups, so classic decoupled look-back is not portable. Gridwise reports it can lock up Apple machines, and PlayCanvas enables its OneSweep sort only on NVIDIA. Use multi-pass reduce-then-scan or Decoupled Fallback for scans (Gridwise DLDF, Apache-2.0), and a portable radix sort with OneSweep gated by vendor. Prefer counting sort for cell binning, and fixed-point integer atomics for order-independent, deterministic accumulation. Subgroups are available in Chromium 134+, but a fallback path is still needed. [Verified: BCD gives `subgroups` in Chrome 134 and Safari 27.3, not Firefox, https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json]
 
 ### Cited Findings
 - **Forward progress and Apple (Gridwise docs, verified):**
@@ -247,7 +249,7 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
   - Gridwise adds a fallback so that a stalled tile processor redundantly computes per-tile reductions, and claims scans run "at full memory bandwidth, even on hardware without forward-progress guarantees".
   - Without hardware subgroups, the non-chained `HierarchicalScan` ran roughly 20–30× faster than `DLDFScan` with emulated subgroups on an Apple M1 Max.
   - Gridwise's subgroup emulation spin-waits on flags in workgroup memory, and "it can stall on implementations that do not guarantee forward progress between the invocations of a workgroup, such as CPU-based WebGPU renderers".
-  - [Gridwise docs/scan-and-reduce.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/scan-and-reduce.md); [Merrill & Garland 2016](https://research.nvidia.com/publication/2016-03_single-pass-parallel-prefix-scan-decoupled-look-back)
+  - [Gridwise docs/scan-and-reduce.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/scan-and-reduce.md); [Merrill & Garland 2016](https://research.nvidia.com/publication/2016-03_single-pass-parallel-prefix-scan-decoupled-look-back) [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/docs/scan-and-reduce.md]
 - **WebGPU ordering between dispatches (Gridwise docs):**
   - WebGPU inserts the needed barriers between compute passes.
   - Within one pass, "each dispatch is its own synchronization scope, so a dispatch sees the storage writes of the dispatches before it".
@@ -272,7 +274,7 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
     - Proposed fix: "instead of simply spinning waiting" for another partition's aggregate, do some fallback work, which "restores correct operation even on devices with the weakest forward progress properties". This is the idea later built as Decoupled Fallback.
   - 2021, "Prefix sum on portable compute shaders" (published at [raphlinus.github.io](https://raphlinus.github.io/gpu/2021/11/17/prefix-sum-portable.html)) — [post source](https://github.com/raphlinus/raphlinus.github.io/blob/main/_posts/2021-11-04-prefix-sum-portable.md):
     - Decoupled look-back runs "about 1.5x" faster than tree reduction.
-    - "WebGPU in its present form cannot run the decoupled look-back algorithm at all", because "Metal is simply missing an atomic barrier type that is necessary". The WebGPU spec was changed to reflect the weaker barrier (gpuweb PR #2297).
+    - "WebGPU in its present form cannot run the decoupled look-back algorithm at all", because "Metal is simply missing an atomic barrier type that is necessary". The WebGPU spec was changed to reflect the weaker barrier (gpuweb PR #2297). [Verified: same file]
     - Uniformity analysis (FXC on DX12) also rejected the shader.
     - On an AMD 5700 XT under Vulkan, the barrier-based "compatibility mode" scan reached about 48 G elements/s, "basically the same as memcpy".
     - He concluded that piet-gpu (now Vello) would "focus on tree reduction".
@@ -285,22 +287,25 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
     - Scan and reduce use Decoupled Lookback / Fallback (DLDF). Radix sort uses Adinets and Merrill's OneSweep with a chained scan and fallback.
     - Uses subgroup instructions where supported and emulates them otherwise. Scan supports u32, i32 and f32 with Add, Min, Max and Multiply; sort supports u32, i32, f32 and u64 keys.
     - Ascending key-value sort is stable.
-    - The sort requires `maxComputeWorkgroupStorageSize: 32768`, above the 16,384 default.
+    - The sort requires `maxComputeWorkgroupStorageSize: 32768`, above the 16,384 default. [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/README.md] Windows D3D12 adapters report 32,768 and the SwiftShader CI adapter measured 32,768. [Verified: https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; coordinator measurement]
+    - Licence: Apache-2.0 (LICENSE.txt; package.json `license` "Apache-2.0", version 0.1.0). [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/LICENSE.txt]
   - Limits:
     - At most 2^30 items, because the two most significant bits are status bits.
     - Input lengths must be a multiple of 4.
     - 8 bits per pass.
     - Works with subgroups up to 128 lanes. The warp-level multisplit (WLMS) mask is one u32 when `subgroupMaxSize` ≤ 32 (Apple, NVIDIA), and a `vec4<u32>` on AMD RDNA (32 to 64 lanes).
+    - Each pass's tile must hold (256 ÷ subgroup width) × 256 digit-histogram entries, so it needs at least 8 keys per thread with 32-lane subgroups; tiles that do not fit workgroup memory are refused. [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/docs/sort.md] At SwiftShader's measured subgroup width of 4 that would be 64 keys per thread, about a 64 KiB tile against a 32 KiB limit, so the sort may be refused in CI unless Gridwise falls back to its 32-wide emulation there. [Unverified: inference from the rule above and the coordinator measurement]
   - Measured per-pass times at 2^24 keys, through Dawn in Node:
     - Apple M1 Max (copy kernel 360–370 GB/s): 32-bit keys take 2.6 ms at the default 15 keys/thread, and 1.8 ms at 11. 64-bit key-value runs at about 100 GB/s, 29% of copy.
     - NVIDIA V100 (copy 808 GB/s): 32-bit keys take 0.585 ms, 230 GB/s or 28% of copy. 64-bit key-value takes about 1.31 ms, 308 GB/s or 38%.
-  - Where the V100's 64-bit key-value pass time goes: 38% moving the bytes, about 38% work inside each tile, 20% scattered writes, and ≤5% decoupled look-back (fallbacks on 4–6% of tiles). For 32-bit keys, look-back was about 22% of a pass.
+  - Where the V100's 64-bit key-value pass time goes: 38% moving the bytes, about 38% work inside each tile, 20% scattered writes, and ≤5% decoupled look-back (fallbacks on 4–6% of tiles). For 32-bit keys, look-back was about 22% of a pass. [Verified: https://github.com/gridwise-webgpu/gridwise/blob/HEAD/docs/sort.md]
 - **PlayCanvas WebGPU radix sort (MIT)** — [compute-radix-sort.js](https://github.com/playcanvas/engine/blob/main/src/scene/graphics/radix-sort/compute-radix-sort.js); [compute-radix-sort-onesweep.js](https://github.com/playcanvas/engine/blob/main/src/scene/graphics/radix-sort/compute-radix-sort-onesweep.js):
   - A "portable" backend that needs no subgroups and runs on every WebGPU device.
   - A OneSweep backend (8-bit digits, single sweep) enabled only for NVIDIA, validated on Turing+ and Ampere.
   - The code comments say other vendors "either lack forward-progress guarantees (Apple) or have shown correctness issues in the lookback (Mali / Imagination / some Adreno)".
   - OneSweep needs subgroups with a runtime size ≤ 32, because the binning shader uses 32-bit ballot masks. Dawn/D3D12 may report a maximum of 128, and some Chrome/Dawn builds on Windows report 0.
   - The OneSweep backend's `sort()` defaults to 16-bit keys, so 2 passes.
+  - [Verified: https://github.com/playcanvas/engine/blob/HEAD/src/scene/graphics/radix-sort/compute-radix-sort.js; https://github.com/playcanvas/engine/blob/HEAD/src/scene/graphics/radix-sort/compute-radix-sort-onesweep.js] Two details the first pass missed: the OneSweep file says the lookback can make progress on "NVIDIA Turing+, AMD GCN+, Intel Gen9+", but the selector still enables it only when `adapter.info.vendor` is "nvidia"; and its WGSL is a port of b0nes164/GPUSorting (MIT), so a WebGPU OneSweep port does exist, inside PlayCanvas.
 - **linebender GPU sorting wiki:** Onesweep depends on a hardcoded subgroup size of 32 and is hard to port. The wiki points to Lichtso's Onesweep-inspired sort in splatter — [linebender wiki](https://linebender.org/wiki/gpu/sorting/) (search summary, not verified)
 - **Other WebGPU sorts:**
   - webgpu-radix-sort (npm, MIT per its package.json `license` field; WebGPU-Ocean's package.json lists it as a dependency, `^1.0.7`) — [README](https://github.com/kishimisu/WebGPU-Radix-Sort); [package.json](https://github.com/kishimisu/WebGPU-Radix-Sort/blob/main/package.json); [WebGPU-Ocean package.json](https://github.com/matsuoka-601/webgpu-ocean/blob/main/package.json):
@@ -311,27 +316,28 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
   - splatter (Rust/wgpu): Onesweep radix sort, with the block sort not WLMS because WebGPU lacked subgroups, plus stream compaction via indirect drawing — [README](https://github.com/Lichtso/splatter)
   - A three.js bitonic sort example on 16,384 elements — [three.js example source](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_compute_sort_bitonic.html)
 - **Subgroups status:**
-  - Chrome "New in WebGPU 134" (2025-02-26): the subgroups feature is now available. Request `"subgroups"` at device creation, plus `"shader-f16"` to use f16 with subgroups — [Chrome blog](https://developer.chrome.com/blog/new-in-webgpu-134) (search summary, not verified)
-  - Subgroup size control appears in Chrome's 151–152 notes (published 2026-08-12) — [Chrome blog](https://developer.chrome.com/blog/new-in-webgpu-151-152) (search summary, not verified)
+  - Chrome "New in WebGPU 134" (2025-02-26): the subgroups feature is now available. Request `"subgroups"` at device creation, plus `"shader-f16"` to use f16 with subgroups — [Chrome blog](https://developer.chrome.com/blog/new-in-webgpu-134) (search summary, not verified) [Verified (version): BCD gives Chrome 134, https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json]
+  - Subgroup size control appears in Chrome's 151–152 notes (published 2026-08-12) — [Chrome blog](https://developer.chrome.com/blog/new-in-webgpu-151-152) (search summary, not verified) [Verified (version): BCD gives `subgroup-size-control` in Chrome 152, same file]
   - Chromium has intents to ship `subgroup_id` and `subgroup_uniformity` — [blink-dev subgroup_id](https://groups.google.com/a/chromium.org/g/blink-dev/c/SV75BHCUJz0) (search summary, not verified); [blink-dev subgroup_uniformity](https://groups.google.com/a/chromium.org/g/blink-dev/c/ifPjq5LNyOA) (search summary, not verified)
-  - caniuse lists Firefox as unsupported through version 156. Its desktop Chrome data looked inconsistent in the summary — [caniuse](https://caniuse.com/wf-webgpu-subgroups) (search summary, not verified)
+  - caniuse lists Firefox as unsupported through version 156. Its desktop Chrome data looked inconsistent in the summary — [caniuse](https://caniuse.com/wf-webgpu-subgroups) (search summary, not verified) [Verified: BCD lists no Firefox support for `subgroups` and gives Safari 27.3, https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json]
 - **WGSL spec (editor's draft):** includes `subgroupAdd`, `subgroupExclusiveAdd`, `subgroupInclusiveAdd`, `subgroupBallot` and `subgroupShuffle`, plus a `subgroup_size_control` extension with an `@subgroup_size` attribute — [WGSL spec source](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs)
 - **Subgroups proposal (gpuweb):**
-  - Adapters expose `subgroupMinSize`, which can be as low as 4, and `subgroupMaxSize` (64 on Vulkan-class, 128 on D3D12). No shader may launch with a `subgroup_size` outside that range.
+  - Adapters expose `subgroupMinSize` and `subgroupMaxSize`. Vulkan reports the driver's values; on Metal, which has no query before pipeline compilation, the proposal uses fixed bounds of 4 and 64; on D3D12 the minimum is `WaveLaneCountMin` and the maximum is 128. No shader may launch with a `subgroup_size` outside that range. [Verified correction: https://github.com/gpuweb/gpuweb/blob/main/proposals/subgroups.md (the earlier text read the Metal column as "Vulkan-class")] The SwiftShader CI adapter measured a subgroup size of 4. [Verified: coordinator measurement]
   - In compute shaders, `subgroup_size` is uniform.
   - A `subgroup_uniformity` diagnostic flags subgroup calls that uniformity analysis cannot prove to be in uniform control flow.
   - [gpuweb proposals/subgroups.md](https://github.com/gpuweb/gpuweb/blob/main/proposals/subgroups.md)
   - Gridwise notes that WebGPU does not fix a subgroup size, and that some hardware may use different sizes in different kernels of the same application. Its emulation uses 32-wide virtual subgroups — [Gridwise docs/subgroup-strategy.md](https://github.com/gridwise-webgpu/gridwise/blob/main/docs/subgroup-strategy.md)
 - **Atomics in WGSL:**
   - `atomic<T>` requires T to be u32 or i32.
-  - An `atomic_vec2u_min_max` extension (feature `"atomic-vec2u-min-max"`) adds `atomic<vec2<u32>>`, an unsigned 64-bit value. It supports only `atomicStoreMin` and `atomicStoreMax`, which return nothing.
-  - [WGSL spec source](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs)
+  - An `atomic_vec2u_min_max` extension (feature `"atomic-vec2u-min-max"`) adds `atomic<vec2<u32>>`, an unsigned 64-bit value. It supports only `atomicStoreMin` and `atomicStoreMax`, which return nothing, and only in the storage address space (not workgroup memory).
+  - [WGSL spec source](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs) [Verified: same file]
+  - Availability: Dawn enables the feature on D3D12 with int64 atomics, on Vulkan with `shaderBufferInt64Atomics` and `shaderInt64`, and on Metal on Apple9, or Mac2 with Apple8 (M2 and later). Chrome exposes it by default from Chromium 157; Electron 45 (Chromium 156) exposes it only with `--enable-webgpu-developer-features`. [Verified: https://github.com/google/dawn/blob/main/src/dawn/native/metal/PhysicalDeviceMTL.mm; https://github.com/google/dawn/blob/main/src/dawn/native/vulkan/PhysicalDeviceVk.cpp; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc; https://github.com/chromium/chromium/blob/157.0.8103.81/gpu/command_buffer/service/webgpu_decoder_impl.cc]
   - gpuweb issue #4894, "wgsl: support atomics on f32 (in workgroup and storage buffer)" — [gpuweb issue #4894](https://github.com/gpuweb/gpuweb/issues/4894):
     - Opened 2024-09-24; still open, in Milestone 3.
     - The proposed polyfill uses `bitcast` and a u32 `atomicCompareExchangeWeak` loop. A spec editor warned that "the polyfill is dubious when you don't have forward progress guarantee".
     - November 2025 WGSL committee resolution: "Move forward with a proposal doc which lists available features", at least as an optional `enable` feature.
     - An October 2026 comment reported no hangs with the polyfill, but a compare-and-swap loop on global memory much slower than an integer workgroup-memory path.
-    - Read via WebFetch's model-generated summary of the issue page, so the quotes may be inexact.
+    - Read via WebFetch's model-generated summary of the issue page, so the quotes may be inexact. [Unverified: the issue page and GitHub API were not reachable during the fact-check; the WGSL spec still allows only u32 and i32 atomic types]
 - **Indirect dispatch and usage scopes:**
   - A culling or compaction pass writes the workgroup count into a buffer, and an indirect dispatch reads it; a barrier is needed in between — [Vulkan tutorial: indirect dispatch](https://docs.vulkan.org/tutorial/latest/Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/02_indirect_dispatch.html) (search summary, not verified)
   - WebGPU exposes `dispatchWorkgroupsIndirect(indirectBuffer, indirectOffset)`. In a compute pass, each dispatch is its own usage scope — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs)
@@ -353,7 +359,8 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
   - Always keep a no-subgroup path. Gridwise's emulation shows how.
 - **Vendor gating:**
   - Enable single-pass look-back scans and OneSweep only when `adapter.info.vendor` is NVIDIA, as PlayCanvas does. Everywhere else, use multi-pass portable kernels or DLDF.
-  - AMD and Intel desktop behaviour under WebGPU was not documented in the sources found, so treat them as non-validated until tested.
+  - Chrome fills `adapter.info.vendor` and `architecture` (SwiftShader reports "google" and "swiftshader") but may leave `description` empty, so gate on vendor and architecture, not on the description string. [Verified: coordinator measurement, 12 November 2026 (no URL)]
+  - AMD and Intel desktop behaviour under WebGPU was not documented in the sources found, so treat them as non-validated until tested. PlayCanvas's OneSweep notes claim lookback progress on AMD GCN+ and Intel Gen9+, but PlayCanvas has validated only NVIDIA. [Verified: https://github.com/playcanvas/engine/blob/HEAD/src/scene/graphics/radix-sort/compute-radix-sort-onesweep.js]
 - **Stream compaction:**
   - Atomic append (atomicAdd on a counter) is cheapest but gives a nondeterministic order.
   - Scan-based compaction (flag, exclusive scan, scatter) is stable and deterministic.
@@ -373,7 +380,7 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
 - **Fixed-point range:**
   - With a 1e7 multiplier, an i32 holds only about ±214.7. Dense cells accumulating mass × velocity can overflow.
   - Choose a scale per quantity (mass versus momentum), clamp contributions, or split values into high and low i32 words.
-- **64-bit min/max atomics:** where `"atomic-vec2u-min-max"` is available, `atomicStoreMax` on a packed (priority, payload) value could implement "winner-takes-all" grid writes, for example the dominant species per cell. Its availability was not verified.
+- **64-bit min/max atomics:** where `"atomic-vec2u-min-max"` is available, `atomicStoreMax` on a packed (priority, payload) value could implement "winner-takes-all" grid writes, for example the dominant species per cell. Availability is now known (see the atomics findings above): not on M1 Macs, storage buffers only, and in Electron 45 only behind the developer flag. [Verified correction: https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc]
 
 ### Gaps
 - The linebender sorting wiki could not be read because the host was blocked; the Gridwise docs were read from their GitHub sources instead.
@@ -381,10 +388,10 @@ WebGPU gives no forward-progress guarantee between workgroups, so classic decoup
 - No measured WebGPU prefix-sum or radix-sort timings were found on current AMD Radeon, Intel Arc or recent GeForce desktop GPUs. The exceptions are the dated GPUs in the wgpu_sort table and Gridwise's V100 and M1 Max figures.
 - Forward-progress behaviour on AMD and Intel under WebGPU is undocumented in the sources found. Gridwise's fallback makes the scan safe regardless, but the PlayCanvas OneSweep path has no fallback.
 - Not determined as of November 2026:
-  - Safari's subgroup support.
-  - The browser shipping status of `"atomic-vec2u-min-max"`.
+  - Safari's subgroup support. Now resolved: Safari 27.3 per BCD. [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json]
+  - The browser shipping status of `"atomic-vec2u-min-max"`. Now resolved for Chrome: default from Chromium 157, developer flag in 156. [Verified: Chromium release tags 156.0.8078.96 and 157.0.8103.81]
   - Whether Vello's current shaders use Decoupled Fallback. The Vello README was checked, but not the shader tree.
-- No LICENSE file was found at the default path for webgpu-radix-sort or wgpu_sort. Their licences above come from the package.json and Cargo.toml metadata fields.
+- No LICENSE file was found at the default path for webgpu-radix-sort or wgpu_sort. Their licences above come from the package.json and Cargo.toml metadata fields. [Verified: LICENSE and LICENSE.md return 404 for both; package.json says MIT and Cargo.toml says BSD-2-Clause]
 
 ## 4. Emission and life cycle at scale: ring buffers, dead lists, atomic counters
 
@@ -406,7 +413,7 @@ At 10M to 100M particles, a fixed pool where each particle respawns in place, or
 - **AMD (Gareth Thomas, GDC 2014):** a persistent dead list, an alive list rebuilt each frame, and an emit shader that consumes free indices from the dead list. Because the alive count exists only on the GPU, drawing uses indirect APIs — [slides](https://www.slideshare.net/slideshow/holy-smoke-faster-particle-rendering-using-direct-compute-by-gareth-thomas/35656271) (search summary, not verified)
 - **Bevy Hanabi:**
   - In WGSL, emission claims a free slot with an atomic subtract on the dead count and appends the particle to the alive list with an atomic add — [Medium: GPU Particle Research — Bevy Hanabi, Part 1](https://medium.com/@Sou1gh0st/gpu-particle-research-bevy-hanabi-part-1-9797d3f08535) (search summary, not verified)
-  - Hanabi is a GPU particle system for Bevy built on compute shaders, running on wasm through WebGPU since v0.13 (Bevy 0.14), dual-licensed MIT OR Apache-2.0 — [djeedai/bevy_hanabi](https://github.com/djeedai/bevy_hanabi)
+  - Hanabi is a GPU particle system for Bevy built on compute shaders, running on wasm through WebGPU since v0.13 (Bevy 0.14), dual-licensed MIT OR Apache-2.0 — [djeedai/bevy_hanabi](https://github.com/djeedai/bevy_hanabi) [Verified: https://github.com/djeedai/bevy_hanabi/blob/HEAD/README.md; LICENSE-MIT and LICENSE-APACHE2 present]
 - **No-compaction alternative:** dead particles are marked by zero alpha and every particle is processed every frame, because the CPU does not know the alive count — [Juan Diego Montoya: Particles I](https://juandiegomontoya.github.io/particles.html) (search summary, not verified)
 - **Indirect counts:** a compute pass collects live IDs into a buffer, and a second dispatch is sized from the counter with vkCmdDispatchIndirect — [Vulkan tutorial](https://docs.vulkan.org/tutorial/latest/Advanced_Vulkan_Compute/07_GPU_Driven_Pipelines/02_indirect_dispatch.html) (search summary, not verified)
 - **Image-weighted spawn positions** come from a probability-map mip pyramid — [webgpu-samples particles](https://github.com/webgpu/webgpu-samples/blob/main/sample/particles/main.ts)
@@ -479,7 +486,7 @@ Looping over every force source per particle costs O(N·K), which is fine for 32
 ### Gaps
 - No published WebGPU benchmark of force-grid splatting with many simultaneous inputs was found.
 - No sources on audio-reactive GPU particle systems, or on phone-to-desktop input latency, were retrieved before the search budget ran out.
-- The availability of the "float32-blendable" and "float32-filterable" features across browsers and GPUs in November 2026 was not verified.
+- The availability of the "float32-blendable" and "float32-filterable" features across browsers and GPUs in November 2026 was not verified. Now resolved for browsers: BCD gives `float32-blendable` in Chrome 132, Safari 26 and Firefox 158, and `float32-filterable` in Chrome 119 only. Dawn enables both on every D3D12 adapter, `float32-blendable` on every Metal adapter, and both per format on Vulkan (webgpu_desktop_capabilities.md Q2). [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp]
 
 ## 6. Stability and safety: NaN guards, CFL limits, timestep control and sub-stepping at variable refresh (60 to 480 Hz)
 
@@ -491,6 +498,7 @@ WGSL lets compilers assume that NaN and Inf never occur. A NaN check written as 
   - Implementations may assume that overflow, infinities and NaNs are not present during shader execution.
   - If a runtime expression produces one anyway, the result is an indeterminate value.
   - Const-expressions or override-expressions that overflow or evaluate to NaN or Inf are shader-creation or pipeline-creation errors.
+  - [Verified: same file; the spec adds that `min` and `max` "may not return the expected result" because of this assumption]
 - WebGPU-Ocean needs 2 substeps per frame and still occasionally explodes because the timestep is "a bit too large". Recomputing volume each step is what allows the large timestep — [WebGPU-Ocean README](https://github.com/matsuoka-601/webgpu-ocean)
 - Splash reaches 1 substep per frame by lowering the Tait exponent γ from 5 to 1 and raising stiffness, trading incompressibility for stability — [Splash README](https://github.com/matsuoka-601/Splash)
 - The three.js attractors example clamps speed to `maxSpeed`, damps velocity every step, and wraps positions with `mod` to keep particles in bounds — [three.js attractors example](https://github.com/mrdoob/three.js/blob/master/examples/webgpu_tsl_compute_attractors_particles.html)
@@ -533,6 +541,7 @@ WGSL lets compilers assume that NaN and Inf never occur. A NaN check written as 
 - **Testing on software adapters:**
   - Headless Chromium with SwiftShader is useful for correctness tests in CI. NaN guards, dead-list counters, determinism of fixed-point P2G and indirect-argument clamping can all be checked there; the coordinator's run of a 32-byte-per-particle step shows the pipeline executes on SwiftShader.
   - Any kernel that spin-waits on other invocations should be kept out of those runs, or given a non-spinning path. Gridwise warns that its subgroup emulation can stall on CPU-based WebGPU implementations, and decoupled look-back without fallback can hang where forward progress isn't guaranteed.
+  - The CI adapter's shape differs from desktop GPUs: subgroup size 4, 32 KiB workgroup storage, 10 storage buffers per stage, 1 GiB buffers and no `shader-f16` or `atomic-vec2u-min-max`. Kernels that assume 32-wide subgroups, or the Gridwise sort (Q3), may fail or be refused there for that reason rather than because of a bug. [Verified: coordinator measurement, 12 November 2026 (no URL)]
 
 ### Gaps
 - Glenn Fiedler's "Fix Your Timestep!" and other canonical timestep references could not be retrieved before the search budget ran out. The accumulator pattern above is standard practice but is not cited here.
@@ -558,6 +567,8 @@ Licence status was read directly from each repository's LICENSE file or README, 
 | [playcanvas/engine](https://github.com/playcanvas/engine) | WebGPU portable radix sort, plus NVIDIA-gated OneSweep | MIT-style text ("Permission is hereby granted, free of charge…", © 2011-2026 PlayCanvas Ltd.) |
 | [djeedai/bevy_hanabi](https://github.com/djeedai/bevy_hanabi) | Rust/Bevy GPU particles in WGSL; WebGPU on wasm | MIT OR Apache-2.0 |
 
+[Verified: every licence in this table re-read from the repository's LICENSE file on 12 November 2026 (webgpu-samples LICENSE.txt, three.js LICENSE, Babylon.js license.md, PlayCanvas LICENSE, bevy_hanabi LICENSE-MIT and LICENSE-APACHE2)]
+
 **MPM and fluid simulations**
 
 | Reference | What it contains | Licence |
@@ -571,17 +582,21 @@ Licence status was read directly from each repository's LICENSE file or README, 
 | [PavelDoGreat/WebGL-Fluid-Simulation](https://github.com/PavelDoGreat/WebGL-Fluid-Simulation) | Touch-splat stable fluids (WebGL; concept reference) | MIT |
 | [SebLague/Fluid-Sim](https://github.com/SebLague/Fluid-Sim) | Unity compute-shader SPH; concept reference with development videos | MIT (© 2023 Sebastian Lague) |
 
+[Verified: webgpu-ocean (MIT, © 2025 matsuoka-601), Splash (MIT), pbmpm (BSD-3-Clause, LICENSE.md, © 2024 Electronic Arts) and blub (MIT, © 2020 Andreas Reich) re-read from their LICENSE files; WaterBall, flow, WebGL-Fluid-Simulation and Fluid-Sim were not re-checked]
+
 **Prefix sums and sorting**
 
 | Reference | What it contains | Licence |
 |---|---|---|
 | [gridwise-webgpu/gridwise](https://github.com/gridwise-webgpu/gridwise) | DLDF scan/reduce, OneSweep radix sort, subgroup emulation; npm `gridwise` | Apache-2.0 |
-| [b0nes164/GPUPrefixSums](https://github.com/b0nes164/GPUPrefixSums) | Decoupled Fallback; survey of scans; WGPU testbed | MIT |
-| [b0nes164/GPUSorting](https://github.com/b0nes164/GPUSorting) | DeviceRadixSort and OneSweep in D3D12, CUDA and Unity; no WebGPU port in the README | MIT (© 2024 Thomas Smith) |
+| [b0nes164/GPUPrefixSums](https://github.com/b0nes164/GPUPrefixSums) | Decoupled Fallback; survey of scans; WGPU testbed | MIT (© 2024 Thomas Smith), and the same LICENSE file also carries CUB's BSD-3-Clause text for CUB-derived code [Verified correction: https://github.com/b0nes164/GPUPrefixSums/blob/HEAD/LICENSE] |
+| [b0nes164/GPUSorting](https://github.com/b0nes164/GPUSorting) | DeviceRadixSort and OneSweep in D3D12, CUDA and Unity; no WebGPU port in the README (PlayCanvas ships a WGSL port of its OneSweep) | MIT (© 2024 Thomas Smith) for its own code, but the LICENSE file also covers bundled FidelityFX SDK and DirectStorage code (MIT), CUB code (BSD-3-Clause) and bb_segsort code under LGPL-2.1, so check which licence covers each file before vendoring [Verified correction: https://github.com/b0nes164/GPUSorting/blob/HEAD/LICENSE] |
 | [linebender/vello](https://github.com/linebender/vello) | GPU 2D renderer where Decoupled Fallback development continued (per GPUPrefixSums) | Apache-2.0 OR MIT; research shader files also Unlicense |
 | [kishimisu/WebGPU-Radix-Sort](https://github.com/kishimisu/WebGPU-Radix-Sort) | 4-way radix sort and scan; npm `webgpu-radix-sort`; used by WebGPU-Ocean | MIT per package.json `license` field (no LICENSE file found) |
 | [KeKsBoTer/wgpu_sort](https://github.com/KeKsBoTer/wgpu_sort) | Rust key-value radix sort with benchmarks | BSD-2-Clause per Cargo.toml `license` field (no LICENSE file found) |
 | [Lichtso/splatter](https://github.com/Lichtso/splatter) | Rust/wgpu Onesweep-style sort | Not checked |
+
+[Verified: Gridwise (Apache-2.0, LICENSE.txt), Vello (LICENSE-MIT and LICENSE-APACHE present), webgpu-radix-sort (MIT in package.json v1.0.7, no LICENSE file) and wgpu_sort (BSD-2-Clause in Cargo.toml, no LICENSE file) re-read on 12 November 2026]
 
 **Smaller demos and N-body**
 
@@ -592,7 +607,7 @@ Licence status was read directly from each repository's LICENSE file or README, 
 | [lechebs/nbody](https://github.com/lechebs/nbody) | CUDA Barnes-Hut; performance reference only | Not checked |
 
 - **WebGPU and WGSL specifications** (editor's drafts on GitHub, used here for limits, atomics, packing and floating-point rules): W3C documents — [gpuweb/gpuweb](https://github.com/gpuweb/gpuweb)
-- **Browser support:** WebGPU is available in all major browsers, per Khronos's SIGGRAPH 2026 WebGL/WebGPU slides — [Khronos SIGGRAPH 2026](https://www.khronos.org/developers/linkto/webgl-and-webgpu-sigg26) (search summary, not verified)
+- **Browser support:** WebGPU is available in all major browsers, per Khronos's SIGGRAPH 2026 WebGL/WebGPU slides — [Khronos SIGGRAPH 2026](https://www.khronos.org/developers/linkto/webgl-and-webgpu-sigg26) (search summary, not verified) [Verified with limits: BCD gives Chrome 113, Firefox 141 (Windows; Apple-silicon Macs from 145/147; not Linux or Intel Macs) and Safari 26, https://github.com/mdn/browser-compat-data/blob/main/api/GPU.json]
 
 ### Inferences
 - **Reuse policy:** for an original commercial product, prefer re-implementing algorithms from the papers. The key ones are:
@@ -603,7 +618,7 @@ Licence status was read directly from each repository's LICENSE file or README, 
   - Merrill/Garland and Adinets/Merrill scans and sorts
   - Decoupled Fallback
 
-  Use Gridwise (Apache-2.0) or PlayCanvas-style sorts as dependencies or references. Code vendored from MIT or BSD sources needs its copyright notice kept. Apache-2.0 code also carries NOTICE and patent terms.
+  Use Gridwise (Apache-2.0) or PlayCanvas-style sorts as dependencies or references. Code vendored from MIT or BSD sources needs its copyright notice kept. Apache-2.0 code also carries NOTICE and patent terms. Do not copy files from GPUSorting without checking them: its LICENSE includes LGPL-2.1 code (bb_segsort), whose terms differ from MIT. [Verified: https://github.com/b0nes164/GPUSorting/blob/HEAD/LICENSE]
 - **Best starting points per subsystem:**
   - Simple compute particles: webgpu-samples (computeBoids, particles) and the three.js compute examples.
   - MLS-MPM: WebGPU-Ocean, Splash and the three.js fluid example. All three show fixed-point P2G at 10^5 to 10^6 particles.
