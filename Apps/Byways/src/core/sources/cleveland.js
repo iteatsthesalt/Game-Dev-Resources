@@ -40,7 +40,9 @@ async function total(ctx) {
   const known = await ctx.cache.get(TOTAL_KEY);
   if (known !== undefined) return known;
   const body = await ctx.http.getJson(artworksUrl({ limit: '1' }), { source: ID });
-  const count = Number.isFinite(body?.info?.total) ? body.info.total : 0;
+  const count = body?.info?.total;
+  // A reply without a usable total is not remembered, so the next call asks again.
+  if (!Number.isFinite(count) || count <= 0) return 0;
   await ctx.cache.set(TOTAL_KEY, count, TOTAL_TTL_MS);
   return count;
 }

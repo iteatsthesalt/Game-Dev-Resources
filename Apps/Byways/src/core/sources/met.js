@@ -40,8 +40,9 @@ function objectFind(item) {
 
 async function objects(ctx, ids) {
   const list = (Array.isArray(ids) ? ids : []).filter(id => typeof id === 'number' || typeof id === 'string');
-  const items = await Promise.all(list.map(id => cachedJson(ctx, ID, `${API}/v1/objects/${encodeURIComponent(id)}`, { ttlMs: OBJECT_TTL_MS })));
-  return items.map(objectFind).filter(Boolean);
+  // One stale id (a 404) must not sink the others, so each lookup settles on its own and failures are dropped.
+  const settled = await Promise.allSettled(list.map(id => cachedJson(ctx, ID, `${API}/v1/objects/${encodeURIComponent(id)}`, { ttlMs: OBJECT_TTL_MS })));
+  return settled.filter(result => result.status === 'fulfilled').map(result => objectFind(result.value)).filter(Boolean);
 }
 
 /** The size of the public-domain collection with images, read once a day. */
@@ -49,7 +50,9 @@ async function total(ctx) {
   const known = await ctx.cache.get(TOTAL_KEY);
   if (known !== undefined) return known;
   const body = await ctx.http.getJson(searchUrl({ limit: '1', offset: '0' }), { source: ID });
-  const count = Number.isFinite(body?.total) ? body.total : 0;
+  const count = body?.total;
+  // A reply without a usable total is not remembered, so the next call asks again.
+  if (!Number.isFinite(count) || count <= 0) return 0;
   await ctx.cache.set(TOTAL_KEY, count, DAY_MS);
   return count;
 }
