@@ -94,7 +94,7 @@ const menus = async function () {
   view.parts('box', new Float32Array(32), 1);
   view.lights(new Float32Array(8), 1);
   const decals = new Float32Array(2 * Gfx.DECAL_STRIDE), discs = new Float32Array(2 * Gfx.DISC_STRIDE), boards = new Float32Array(2 * Gfx.BILLBOARD_STRIDE);
-  decals.set([10, 0, 3, 0, 1, 0, 1, 0, 10, 6, 2, 0, 1, 0, 1, 1]);          // a bare ring, and one filled in
+  decals.set([10, 0, 3, 0, 1, 0, 1, 0, 1, 0, 0, 10, 6, 2, 0, 1, 0, 0.3, 1, 1, 0, 0]);   // a bare ring, and one filled in at its own alpha
   discs.set([0, 0, 2, 1, 0, 0, 1, 500, 0, 1, 1, 1, 1, 1]);                // a red disc in the middle, and one far off the canvas
   boards.set([-10, 0, 0, 1, 0, 0, 1, 1, 0, -10, 6, 4, 1, 1, 1, 0, 1, 0]);  // on the ground, and 4 metres above it
   view.decals(decals, 2);
@@ -487,7 +487,7 @@ const vigil = async function () {
   T.check('the title is closed and nothing pauses', UI.top() === null && !UI.pausing() && ui.children.length === 0);
   const pools = [S.enemies, S.shots, S.pickups];
   T.check('the run has a player, and pools of enemies, shots and pickups', !!S.player && typeof S.player.x === 'number' && typeof S.player.y === 'number' &&
-    pools.every((p) => !!p && !!p.items && typeof p.n === 'number' && p.items.length >= p.n) && S.enemies.n > 0, pools.map((p) => p && p.n));
+    pools.every((p) => !!p && !!p.items && typeof p.n === 'number' && p.items.length >= p.n), pools.map((p) => p && p.n));
 
   // ---- the frame loop steps it ----
   // Time is what the frames say has passed: under load the browser hands frames out late and then in a hurry,
@@ -504,6 +504,8 @@ const vigil = async function () {
   T.check('Game.sim(5) advances the run by 300 steps', S.step - before === 300 && simmed === 300, { before: before, after: S.step, returned: simmed, phase: S.phase });
   T.check('the time of the run follows its steps', Math.abs(S.t - S.step / 60) < 1e-6, [S.t, S.step]);
   T.check('Game.sim posts its steps as not live', count.steps - posted === 300 && count.live === live, count);
+  // A vigil of the Dial opens on an empty plaza; the first of the dead come about a second in.
+  T.check('the dead have come onto the ground', S.enemies.n > 0, S.enemies.n);
 
   // ---- the picture ----
   const seen = await picture(), spot = Object.assign({}, Gfx.worldToScreen(S.player.x, S.player.y, 0));

@@ -70,7 +70,8 @@
   for (const kind of KINDS) { lists[kind] = []; byId[kind] = new Map(); }
   let closed = false;
 
-  const known = (kind, who) => Core.assert(lists[kind] !== undefined, who + ': "' + kind + '" is not a kind of definition');
+  // The message is built only when the kind is unknown: Defs.has and Defs.get are called in hot paths.
+  const known = (kind, who) => { if (lists[kind] === undefined) Core.assert(false, who + ': "' + kind + '" is not a kind of definition'); };
 
   Defs.KINDS = KINDS;
 

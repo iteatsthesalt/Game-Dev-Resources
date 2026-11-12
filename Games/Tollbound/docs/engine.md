@@ -632,6 +632,8 @@ Dmg.large(e) -> boolean                              its def's size is 'large', 
 Dmg.POSE = {still: 0, braced: 1, moving: 2, striding: 3}     the values of the field pose
 ```
 
+As built, it also exports `Dmg.carries(body, row)`, `Dmg.inside(area, x, y, r)` (the one test of an area's circle, wedge or lane that the scene also uses) and the posture helpers the player shares with the dead (`Dmg.posture`, `record`, `turn`, `SAMPLE`, `FAST`). `Dmg.hitPlayer` takes a source that has a `team` (a shot or an area) as already carrying its whole harm, so `attack.mult` is not applied again; a body's attack is scaled by `mult`.
+
 It names the rows `wrong-footed`, `in-procession`, `sounded`, `coiled`, `swing`, `sealed`, `tolled-for` and `clung` (Drag of riders), and the modifier conditions of a body struck (section 15.7). Events: `'hit'` (x, y the body; a = H; b = the mask of kinds dealt), `'hurt'` (x, y the player; a = the life lost, 0 while Tolled-for; b = the kind index; id = the attack's id, or null for a press, a rider or the ground), `'wound'` (x, y the wound's centre; a = the life this harm put in it; b = its depth now, seconds; id = `'open'` or `'join'`).
 
 ### 21-player.js (combat). Owns: Player, Buffs
@@ -682,6 +684,8 @@ Skills.step(S)                           phase 6: casting, then the voices' shot
                                          voice that spoke (x, y where; a = slot; id = the voice id)
 Skills.speak(S, slot, times) -> boolean  makes a voice speak now, cooldown or not: the pull
 ```
+
+As built: an archetype's `cast(S, slot, forced)` takes a third argument, true when the pull makes the voice speak. `Skills` also exports the helpers the archetypes share (`silenced`, `kind`, `pick`, `point`, `count`, `strike`, `circle`, `wedge`, `lane`, `area`, `areaStep`, `strokes`, `find`, `where`) and the constants `FILL`, `ZONE`, `MARK`, `LANDED`, `TICK`, `LEE`, `AGAIN`. A voice's area is a Swell that spreads from `x, y` when its `a0` is 1 and falls when it is 0. Voices may target `'mark'` (where the player last stood still 0.5 s). The combat package keeps two more slots: `S.combat` (the class id, whether Tolled-for has come this vigil, the conditions' hold timers, the last pull, the bell-post's place) and `S.voices` (pending pull strokes, each voice's last hit, the mark); `S.wounds` has one more array, `told`. `Player` also exports `turn(S, seconds)`, `wound(S, life, depth)` and `scar(S, i)`, and a class rule's `step` returns true when the turn was its own act (a pull is never a wrong-foot).
 
 The voices silenced by ringing down are the last `S.ringing.silent` voices of the loadout (the vigil's slot); none speaks while the player carries `tolled-for`. A Swell of a voice is an area with team 0, drawn like the dead's (below).
 
@@ -752,6 +756,8 @@ Its memory between steps lives in `Sim.state('bot', ...)`. `Game.sim(seconds, {b
 ### 71-hud.js and the screens (screens). Owns: Hud, Glyphs
 
 `71-hud.js` draws into `#hud` on the notice `'frame'`, and keeps `Hud` for what tests and other screens read (`Hud.stats`, for one). From the run it shows: the life bar (`S.player.life` in the class colour, the life lying in `S.wounds` as a pale part, `S.wounds.scarred` as a dark end, against `S.sheet.stats['life-max']`); the Heed bar under it (free Heed bright: `heed-max`, all free in Stage 1); the row (`S.row.ids`, the first `S.row.raised` places raised; each favour's `icon`); the toll ring in the last 3 s before `S.tollAt` and a tick at each quarter of `S.tollSteps`; the count as marks when the setting asks (from `'count'` events); the haul (`S.haul`, one box a find; none in Stage 1); the buttons, through `Input.button('A', {icon, cooldown: S.player.tradeCd / (trade recharge x trade-recharge / 100)})` and `Input.button('B', {hidden: true})` while there is nothing to heave; Tolled-for (the player carries the row `tolled-for`) as a grey screen. `73-screens.js` registers `'title'` (it starts a vigil of the Dial with `Player.classRun('change-ringer')`) and `'results'` (opened with `{S, result}`: the outcome, `result.tolls`, `kills`, `coin`, `banked`, `time`). The favours themselves rise in the world and are drawn by the scene; the screens show the row.
+
+As built: `Glyphs.define(id, paint)` registers an icon recipe (paint gets helpers that draw outlined, flat-shaded unit shapes); `Glyphs.icon(spec) -> canvas` (a new one, for page elements; spec an id or `{id, size, ink, dpr}`), `Glyphs.image(spec)` (a cached canvas for `drawImage`), `Glyphs.draw(ctx, spec, x, y, size)`, `Glyphs.pick(...ids)`, `has`, `ids`, `slug`, and the palette `Glyphs.C`; an unknown id gets a token whose shape and colour come from its hash. `Hud.stats` is a live record of what the HUD last drew, and `71-hud.js` defines the setting `hud.count` (draw the count as marks; off by default). In a debug scene, which has no class, the HUD shows both buttons plainly. While Tolled-for, the view greys the world itself (`post.grey`, which keeps what glows, the far lychgate's lamps among it); the HUD lays a grey of its own only where the scene does not.
 
 ### The figures and the scene (figures)
 
