@@ -856,4 +856,355 @@ git add src/core/handsfree.js tests/unit/handsfree-leanback.test.js
 git commit -m "Add the lean-back loop with dwell, cue and session length"
 ```
 
+### Task 6: Web voice engine
+
+**Files:**
+- Modify: `src/platform/web-voice.js` (keep Plan 01's `createNoVoice`)
+- Test: `tests/unit/web-voice.test.js`
+
+**Interfaces:**
+- Consumes: the `VoiceEngine` and `VoiceStatus` shapes.
+- Produces: `createWebVoice(win, {lang = 'en-US'} = {}) → VoiceEngine` and `vendorFromUA(ua) → 'google'|'apple'|'microsoft'|'mozilla'`.
+
+`probe({allowCloud})` results. `continuous` is `!/Android/i.test(ua)`; `vendor` is `vendorFromUA(win.navigator.userAgent)` except where shown as `null`:
+
+| Recogniser | `available({langs:[lang], processLocally:true})` | allowCloud | Result |
+|---|---|---|---|
+| none | — | any | `{kind:'none', vendor:null, needsDownload:false, continuous:false, reason:'This browser has no speech recognition.'}` |
+| yes | `'available'` | any | `{kind:'web-local', vendor:null, needsDownload:false, continuous, reason:null}` |
+| yes | `'downloadable'` or `'downloading'` | false | `{kind:'none', vendor, needsDownload:true, continuous, reason:'Download offline voice to use voice on this device.'}` |
+| yes | `'downloadable'` or `'downloading'` | true | `{kind:'web-cloud', vendor, needsDownload:true, continuous, reason:null}` |
+| yes | `'unavailable'`, or no `available` | false | `{kind:'none', vendor, needsDownload:false, continuous, reason:'Voice on this browser is sent to <Vendor>. Turn on cloud voice to use it.'}` |
+| yes | `'unavailable'`, or no `available` | true | `{kind:'web-cloud', vendor, needsDownload:false, continuous, reason:null}` |
+
+`<Vendor>` is `Google`, `Apple`, `Microsoft` or `Mozilla`. `kind:'none'` with a non-null `vendor` means "cloud voice would work after the opt-in"; the UI relies on this. The working test start of §6.2 is the listener's `firstTry` rule (Task 2) on the first real start.
+
+- [ ] **Step 1: Write the failing tests**
+
+The test file defines `fakeWin({ua, prefix = 'SpeechRecognition', available, phrases = true})`. Its recogniser class records every instance in `win.instances`, has a writable `quality` property, counts `start()` and `abort()` calls, and offers `inst.fire(type, props)` to dispatch to `on<type>` handlers. `available` (a string) adds the static `available()` and an `install()` that records its argument and resolves `true`. `phrases` adds `win.SpeechRecognitionPhrase = class { constructor(phrase, boost) { Object.assign(this, { phrase, boost }); } }`.
+
+```js
+import { createWebVoice, vendorFromUA } from '../../src/platform/web-voice.js';
+const UA = {
+  chrome: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+  edge: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0',
+  firefox: 'Mozilla/5.0 (X11; Linux x86_64; rv:160.0) Gecko/20100101 Firefox/160.0',
+  safari: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 15_1) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/19.1 Safari/605.1.15',
+  crios: 'Mozilla/5.0 (iPhone; CPU iPhone OS 19_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) CriOS/142.0 Mobile/15E148 Safari/604.1',
+  android: 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36',
+};
+
+test('vendorFromUA', () => {
+  assert.deepEqual(Object.values(UA).map(vendorFromUA), ['google', 'microsoft', 'mozilla', 'apple', 'apple', 'google']);
+});
+
+test('probe follows the table', async () => {
+  const p = (o, allowCloud) => createWebVoice(fakeWin(o)).probe({ allowCloud });
+  assert.equal((await p({ ua: UA.chrome, prefix: null }, true)).reason, 'This browser has no speech recognition.');
+  assert.deepEqual(await p({ ua: UA.chrome, available: 'available' }, false),
+    { kind: 'web-local', vendor: null, needsDownload: false, continuous: true, reason: null });
+  assert.deepEqual(await p({ ua: UA.edge, available: 'downloadable' }, false),
+    { kind: 'none', vendor: 'microsoft', needsDownload: true, continuous: true, reason: 'Download offline voice to use voice on this device.' });
+  assert.equal((await p({ ua: UA.edge, available: 'downloading' }, true)).kind, 'web-cloud');
+  assert.deepEqual(await p({ ua: UA.android, prefix: 'webkitSpeechRecognition' }, false),
+    { kind: 'none', vendor: 'google', needsDownload: false, continuous: false,
+      reason: 'Voice on this browser is sent to Google. Turn on cloud voice to use it.' });
+  assert.deepEqual(await p({ ua: UA.safari, prefix: 'webkitSpeechRecognition' }, true),
+    { kind: 'web-cloud', vendor: 'apple', needsDownload: false, continuous: true, reason: null });
+});
+
+test('install asks for the on-device pack for the language', async () => {
+  const win = fakeWin({ ua: UA.chrome, available: 'downloadable' });
+  assert.equal(await createWebVoice(win, { lang: 'en-GB' }).install(), true);
+  assert.deepEqual(win.installedWith, { langs: ['en-GB'], processLocally: true });
+  assert.equal(await createWebVoice(fakeWin({ ua: UA.android })).install(), false);
+});
+
+test('start on-device sets processLocally, command quality and phrases', async () => {
+  const win = fakeWin({ ua: UA.chrome, available: 'available' });
+  await createWebVoice(win).start({ lang: 'en-US', phrases: ['next', 'go back'], allowCloud: false });
+  const r = win.instances[0];
+  assert.equal(r.lang, 'en-US'); assert.equal(r.continuous, true); assert.equal(r.interimResults, true);
+  assert.equal(r.processLocally, true); assert.equal(r.quality, 'command');
+  assert.deepEqual(r.phrases.map((x) => [x.phrase, x.boost]), [['next', 5], ['go back', 5]]);
+  assert.equal(r.starts, 1);
+});
+
+test('start with no phrases or no phrase support leaves phrases unset', async () => {
+  for (const [phrases, list] of [[true, []], [false, ['next']]]) {
+    const win = fakeWin({ ua: UA.chrome, available: 'available', phrases });
+    await createWebVoice(win).start({ lang: 'en-US', phrases: list, allowCloud: false });
+    assert.equal(win.instances[0].phrases, undefined);
+  }
+});
+
+test('start without allowCloud on a cloud-only browser never constructs a recogniser', async () => {
+  for (const o of [{ ua: UA.android }, { ua: UA.safari, prefix: 'webkitSpeechRecognition' }, { ua: UA.edge, available: 'downloadable' }]) {
+    const win = fakeWin(o);
+    await assert.rejects(createWebVoice(win).start({ lang: 'en-US', phrases: [], allowCloud: false }), /Cloud voice is off/);
+    assert.equal(win.instances.length, 0);
+  }
+});
+
+test('cloud start does not ask for on-device processing', async () => {
+  const win = fakeWin({ ua: UA.android });
+  await createWebVoice(win).start({ lang: 'en-US', phrases: [], allowCloud: true });
+  assert.notEqual(win.instances[0].processLocally, true);
+});
+
+test('events map to result, state and error', async () => {
+  const win = fakeWin({ ua: UA.chrome, available: 'available' });
+  const v = createWebVoice(win), got = [];
+  for (const ev of ['result', 'state', 'error']) v.on(ev, (p) => got.push([ev, p]));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  const r = win.instances[0];
+  r.fire('start');
+  r.fire('result', { resultIndex: 0, results: [Object.assign([{ transcript: ' Next ' }], { isFinal: true })] });
+  r.fire('error', { error: 'network' });
+  r.fire('end');
+  assert.deepEqual(got, [['state', { listening: true }], ['result', { text: 'Next', final: true }],
+    ['error', { code: 'network' }], ['state', { listening: false }]]);
+  v.stop();
+  assert.equal(r.aborts, 1);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/unit/web-voice.test.js`
+Expected: FAIL with `SyntaxError: The requested module '../../src/platform/web-voice.js' does not provide an export named 'createWebVoice'`.
+
+- [ ] **Step 3: Implement `createWebVoice` and `vendorFromUA` in `src/platform/web-voice.js`**
+
+- `vendorFromUA`: `Edg/` → microsoft; `CriOS|FxiOS|EdgiOS|iPhone|iPad` or `Safari/` without `Chrome/` → apple; `Firefox/` → mozilla; else google.
+- The recogniser is `win.SpeechRecognition || win.webkitSpeechRecognition`. `start` re-checks `available(...)`: on-device only when it returns `'available'`; otherwise it needs `allowCloud`, or it rejects with `new Error('Cloud voice is off.')` before constructing anything.
+- Set `quality = 'command'` only when `'quality' in rec`. Each result from `resultIndex` emits `{text: transcript.trim(), final: isFinal}`. `stop()` calls `abort()`.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --test tests/unit/web-voice.test.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/web-voice.js tests/unit/web-voice.test.js
+git commit -m "Add the web voice engine with on-device first"
+```
+
+### Task 7: Web speech output and media keys
+
+**Files:**
+- Modify: `src/platform/web-tts.js`
+- Modify: `src/platform/web-media.js` (keep Plan 01's `createWebWakeLock`)
+- Test: `tests/unit/web-tts.test.js`, `tests/unit/web-media.test.js`
+
+**Interfaces:**
+- Consumes: the `Tts` and `Platform['media']` shapes; `fakeClock`.
+- Produces:
+  - `createWebTts(speechSynthesis, {Utterance = globalThis.SpeechSynthesisUtterance, clock = realClock} = {}) → Tts`. `speak` also takes `opts.lang` (default `'en-US'`).
+  - `createWebMedia(navigator, {silentAudio = false, createAudio, createObjectURL} = {}) → Platform['media']`.
+  - `silentWavBlob() → Blob`: 1 s of 8 kHz, mono, 8-bit silence (`audio/wav`, 8044 bytes). A `blob:` URL is used because the CSP's `media-src` has no `data:`.
+
+The TTS tests use `fakeSynth(voiceLists)`: `getVoices()` returns the next list from `voiceLists` on each call (the last one repeats), `speak(u)` records `u`, `cancel()` counts, and `addEventListener('voiceschanged', fn)` stores `fn` (omitted when the test passes `{noEvents:true}`). `FakeUtterance` stores `text` and dispatches `onend` and `onerror`. Voices: `local = {voiceURI:'local-en', name:'Local English', lang:'en-US', localService:true}`, `net = {voiceURI:'net-en', name:'Online English', lang:'en-US', localService:false}`, `fr = {voiceURI:'local-fr', name:'Local French', lang:'fr-FR', localService:true}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/web-tts.test.js
+test('voices lists local voices first', async () => {
+  const tts = createWebTts(fakeSynth([[net, local]]), { Utterance: FakeUtterance, clock: fakeClock(0) });
+  assert.deepEqual(await tts.voices(), [
+    { uri: 'local-en', name: 'Local English', lang: 'en-US', local: true },
+    { uri: 'net-en', name: 'Online English', lang: 'en-US', local: false }]);
+});
+
+test('voices waits for voiceschanged', async () => {
+  const synth = fakeSynth([[], [local]]);
+  const p = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) }).voices();
+  synth.fireVoicesChanged();
+  assert.equal((await p).length, 1);
+});
+
+test('voices polls every 250 ms when voiceschanged never fires, and gives up at 2 s', async () => {
+  const clock = fakeClock(0);
+  const p = createWebTts(fakeSynth([[], [], [local]], { noEvents: true }), { Utterance: FakeUtterance, clock }).voices();
+  clock.advance(250); await flush(); clock.advance(250); await flush();
+  assert.equal((await p).length, 1);
+  const c2 = fakeClock(0);
+  const q = createWebTts(fakeSynth([[]], { noEvents: true }), { Utterance: FakeUtterance, clock: c2 }).voices();
+  c2.advance(2000); await flush();
+  assert.deepEqual(await q, []);
+});
+
+test('speak prefers a local voice for the language and resolves on end', async () => {
+  const synth = fakeSynth([[net, fr, local]]);
+  const tts = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) });
+  const p = tts.speak('Hello.', { lang: 'en-GB' }); await flush();
+  const u = synth.spoken[0];
+  assert.equal(u.voice.voiceURI, 'local-en'); assert.equal(u.lang, 'en-GB'); assert.equal(u.rate, 1); assert.equal(u.volume, 1);
+  u.onend(); await p;
+});
+
+test('speak honours voiceURI, rate and volume, and resolves on error', async () => {
+  const synth = fakeSynth([[local, net]]);
+  const tts = createWebTts(synth, { Utterance: FakeUtterance, clock: fakeClock(0) });
+  const p = tts.speak('Hi.', { voiceURI: 'net-en', rate: 1.5, volume: 0.5 }); await flush();
+  const u = synth.spoken[0];
+  assert.deepEqual([u.voice.voiceURI, u.rate, u.volume], ['net-en', 1.5, 0.5]);
+  tts.cancel(); u.onerror({ error: 'interrupted' }); await p;
+  assert.equal(synth.cancels, 1);
+});
+
+// tests/unit/web-media.test.js
+function fakeNav() {
+  const handlers = {};
+  return { handlers, mediaSession: { playbackState: 'none', setActionHandler: (a, fn) => { handlers[a] = fn; } } };
+}
+
+test('setHandlers maps the headset keys', () => {
+  const nav = fakeNav(), calls = [];
+  createWebMedia(nav).setHandlers({ next: () => calls.push('next'), previous: () => calls.push('back'), playPause: () => calls.push('pp') });
+  for (const a of ['nexttrack', 'previoustrack', 'play', 'pause']) nav.handlers[a]();
+  assert.deepEqual(calls, ['next', 'back', 'pp', 'pp']);
+});
+
+test('setActive sets the playback state; no Media Session is a no-op', () => {
+  const nav = fakeNav(), m = createWebMedia(nav);
+  m.setActive(true); assert.equal(nav.mediaSession.playbackState, 'playing');
+  m.setActive(false); assert.equal(nav.mediaSession.playbackState, 'paused');
+  const bare = createWebMedia({});
+  bare.setHandlers({ next() {} }); bare.setActive(true);
+});
+
+test('the silent-audio fallback plays a looping blob while active', async () => {
+  const audio = { plays: 0, pauses: 0, play() { this.plays++; return Promise.resolve(); }, pause() { this.pauses++; } };
+  const m = createWebMedia(fakeNav(), { silentAudio: true, createAudio: () => audio, createObjectURL: () => 'blob:x' });
+  m.setActive(true);
+  assert.deepEqual([audio.src, audio.loop, audio.plays], ['blob:x', true, 1]);
+  m.setActive(false); assert.equal(audio.pauses, 1);
+  const off = { plays: 0, play() { this.plays++; } };
+  createWebMedia(fakeNav(), { createAudio: () => off }).setActive(true);
+  assert.equal(off.plays, 0);
+});
+
+test('silentWavBlob is a valid 1 s WAV', async () => {
+  const b = silentWavBlob(), bytes = new Uint8Array(await b.arrayBuffer());
+  assert.equal(b.type, 'audio/wav'); assert.equal(bytes.length, 8044);
+  assert.equal(new TextDecoder().decode(bytes.slice(0, 4)), 'RIFF');
+  assert.equal(new TextDecoder().decode(bytes.slice(8, 12)), 'WAVE');
+  assert.equal(bytes[44], 128); assert.equal(bytes[8043], 128);
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js`
+Expected: FAIL. `voices lists local voices first` fails on order or shape, and `silentWavBlob` is not exported.
+
+- [ ] **Step 3: Implement the changes**
+
+- `web-tts.js`: `voices()` uses `getVoices()`, then `voiceschanged`, then polling every 250 ms through `clock`, giving up at 2000 ms. The sort is stable, local first. `speak` picks `voiceURI` when it matches, else the first local voice whose `lang` starts with the first two letters of `opts.lang`, else leaves `voice` unset. It resolves on `onend` or `onerror`.
+- `web-media.js`: each `setActionHandler` call sits in its own `try`, because unsupported actions throw. The silent audio element is created on the first `setActive(true)` and reused.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js`
+Expected: PASS, 5 and 4 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/web-tts.js src/platform/web-media.js tests/unit/web-tts.test.js tests/unit/web-media.test.js
+git commit -m "Prefer local voices and add Media Session keys"
+```
+
+### Task 8: Key map
+
+**Files:**
+- Create: `src/ui/keymap.js`
+- Test: `tests/unit/keymap.test.js`
+
+**Interfaces:**
+- Consumes: `COMMANDS` (Task 1).
+- Produces:
+  - `keyToCommand(e, settings) → string|null`, where `e = {key, target, ctrlKey, altKey, metaKey, repeat}` and `target` may be `null`;
+  - `installKeymap({getSettings, dispatch, onTalk, target = document}) → () => void` (uninstall). `onTalk(true)` on V down and `onTalk(false)` on V up, under the same rules as other single keys.
+
+`keymap.js` must not touch `document` at import time, so Node can import it.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+import { keyToCommand, installKeymap } from '../../src/ui/keymap.js';
+import { COMMANDS } from '../../src/core/voice/grammar.js';
+const on = { singleKeyShortcuts: true }, off = { singleKeyShortcuts: false };
+const k = (key, target = { tagName: 'BODY' }, extra = {}) => ({ key, target, ctrlKey: false, altKey: false, metaKey: false, repeat: false, ...extra });
+
+test('every command key maps to its command', () => {
+  for (const c of COMMANDS.filter((c) => c.key)) assert.equal(keyToCommand(k(c.key), on), c.id, c.key);
+  assert.equal(keyToCommand(k('x'), on), null);
+  assert.equal(keyToCommand(k('v'), on), null);
+});
+
+test('letters ignore case; modifiers and repeats are ignored', () => {
+  assert.equal(keyToCommand(k('L'), on), 'like');
+  assert.equal(keyToCommand(k('l', undefined, { ctrlKey: true }), on), null);
+  assert.equal(keyToCommand(k('s', undefined, { metaKey: true }), on), null);
+  assert.equal(keyToCommand(k(' ', undefined, { repeat: true }), on), null);
+});
+
+test('keys are ignored in text fields and frames, Esc included', () => {
+  const fields = [{ tagName: 'INPUT', type: 'text' }, { tagName: 'INPUT', type: 'search' }, { tagName: 'TEXTAREA' },
+    { tagName: 'SELECT' }, { tagName: 'DIV', isContentEditable: true }, { tagName: 'IFRAME' }];
+  for (const t of fields) for (const key of ['l', ' ', 'Escape', '/']) assert.equal(keyToCommand(k(key, t), on), null);
+  assert.equal(keyToCommand(k('l', { tagName: 'INPUT', type: 'range' }), on), 'like');
+});
+
+test('Space on a focused control is left to the control', () => {
+  const controls = [{ tagName: 'BUTTON' }, { tagName: 'A' }, { tagName: 'SUMMARY' },
+    { tagName: 'INPUT', type: 'checkbox' }, { tagName: 'INPUT', type: 'radio' },
+    { tagName: 'DIV', getAttribute: (n) => (n === 'role' ? 'button' : null) }];
+  for (const t of controls) assert.equal(keyToCommand(k(' ', t), on), null);
+  assert.equal(keyToCommand(k('l', { tagName: 'BUTTON' }), on), 'like');
+});
+
+test('turning single keys off leaves only Esc', () => {
+  for (const c of COMMANDS.filter((c) => c.key && c.key !== 'Escape')) assert.equal(keyToCommand(k(c.key), off), null);
+  assert.equal(keyToCommand(k('Escape'), off), 'stop');
+});
+
+test('installKeymap dispatches, prevents default and handles hold V', () => {
+  const t = new EventTarget(), got = [], talk = [];
+  const undo = installKeymap({ getSettings: () => on, dispatch: (id) => got.push(id), onTalk: (v) => talk.push(v), target: t });
+  const fire = (type, key, extra = {}) => { const e = Object.assign(new Event(type, { cancelable: true }), { key, ...extra }); t.dispatchEvent(e); return e; };
+  assert.equal(fire('keydown', '/').defaultPrevented, true);
+  fire('keydown', 'v'); fire('keydown', 'v', { repeat: true }); fire('keyup', 'v');
+  assert.deepEqual(got, ['search']); assert.deepEqual(talk, [true, false]);
+  undo(); fire('keydown', 'l');
+  assert.deepEqual(got, ['search']);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/unit/keymap.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/ui/keymap.js`.
+
+- [ ] **Step 3: Implement `src/ui/keymap.js`**
+
+Text fields are `TEXTAREA`, `SELECT`, `isContentEditable`, and `INPUT` of any type except `checkbox`, `radio`, `button`, `submit`, `reset` and `range`. Controls that own Space are `BUTTON`, `A`, `SUMMARY`, checkbox and radio inputs, and `role` values `button`, `checkbox`, `switch`, `menuitem`, `tab` and `option`. A target without `tagName` counts as the page body.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --test tests/unit/keymap.test.js`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/keymap.js tests/unit/keymap.test.js
+git commit -m "Add the single-key map with a text-field guard"
+```
+
 <!-- PLAN CONTINUES -->
