@@ -36,7 +36,7 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 - **Contended WebGPU atomics:** 62B ops/s on an RTX 4090 and 20B on an M1 Max, to a single address (aggregated); MIT. [Verified: PW]
 - **Aras (August 2025):** compute about 5x faster than built-in points on 30+ GPUs. A search summary ties the 5x to 4M points in 5x5 px (the dense case), with no subgroup tricks. [Unverified]
 - **Earlier Schütz papers:** 144.7B points/s (2022); 5.3x to 10x over GL_POINTS (2019). (search summary)
-- **Additive cost.** Additive splats issue an atomic for every particle, so plan on 1B to 10B splats/s on high-end GPUs until benchmarked. 100M x 3 atomics per frame is several milliseconds, too slow for 240 Hz. Mitigations: per-tile workgroup accumulation, Morton order, fewer channels, stochastic bilinear splats, subgroups. (Inference)
+- **Additive cost.** Additive splats issue an atomic for every particle, so plan on 1B to 10B splats/s on high-end GPUs until benchmarked; 100M particles are too slow for 240 Hz. Mitigations: per-tile accumulation, Morton order, fewer channels, subgroups. (Inference)
 - **`subgroups`:** Chrome 134+ (Linux 144+), not Firefox; present on the measured adapter with size 4. [Verified: BCD; Measured]
 
 ## 2. Limits and features to request
@@ -78,7 +78,7 @@ This is the fact-checked digest of gpu_light_rendering.md (WebGPU light renderin
 ## 6. Photosensitive safety
 - **WCAG 2.3.1 passes** with no more than 3 general and/or 3 red flashes in any 1 s, or a concurrent flash area of no more than 0.006 sr (25% of any 10° field). [Verified: WCAG-T]
 - **General flash:** opposing changes of 10% or more of maximum relative luminance, with the darker state below 0.80. **Red flash (WCAG 2.2):** a transition to or from R/(R+G+B) of 0.8 or more, with a chromaticity change above 0.2 in CIE 1976 UCS. [Verified: WCAG-T]
-- **Exceptions and field size:** fine balanced patterns (squares under 0.1°) are exempt. A 10° field is about 341x256 px at 1024x768 (15 to 17 inch screen at 22 to 26 inches). [Verified: WCAG-T]
+- **Exceptions and field size:** fine balanced patterns (squares under 0.1°) are exempt; a 10° field is about 341x256 px at 1024x768. [Verified: WCAG-T]
 - **HDR / non-sRGB:** test the highest-dynamic-range version. A flash is a change of 20 cd/m^2 or more with the darker state below 160 cd/m^2 (BT.1702); at 160 cd/m^2 or more, a Michelson contrast of 1/17 or more. [Verified: WCAG-U] The BT.1702-2 and -3 texts were not read [Unverified].
 - **IRIS** (BSD-3-Clause): it fails more than 3 flashes/s, 2 to 3 flashes/s over 5 s, and patterns lasting 0.5 s or more. Transitions trigger at ±0.1 luminance or ±20 red, and it warns above 2 flashes/s. It takes a video (`-v`) and is not a certification. [Verified: IRIS]
 - **Guard** (Inference): measure the final frame on a coarse grid, in nits for HDR. Use a 10° window from screen size (about 450 px at 1440p on a 27-inch screen at 60 cm). Enforce at 2 flashes/s with a gain map, in under 0.05 ms.
