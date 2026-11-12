@@ -33,14 +33,24 @@ export function createWebWakeLock(navigator, document) {
   let wanted = false;
   let sentinel = null;
 
-  async function acquire() {
-    if (!navigator.wakeLock) return;
-    try {
-      sentinel = await navigator.wakeLock.request('screen');
-    } catch { /* refused: the screen may simply sleep */ }
+  let pending = null;
+
+  // One request at a time. A lock that arrives after off() is released at once, never stored.
+  function acquire() {
+    if (!navigator.wakeLock) return Promise.resolve();
+    if (pending) return pending;
+    pending = (async () => {
+      try {
+        const lock = await navigator.wakeLock.request('screen');
+        if (wanted) sentinel = lock;
+        else await lock.release();
+      } catch { /* refused or already released: the screen may simply sleep */ }
+      finally { pending = null; }
+    })();
+    return pending;
   }
 
-  const needsLock = () => wanted && (!sentinel || sentinel.released);
+  const needsLock = () => wanted && !pending && (!sentinel || sentinel.released);
 
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && needsLock()) acquire();
@@ -49,7 +59,7 @@ export function createWebWakeLock(navigator, document) {
   return {
     async on() {
       wanted = true;
-      if (needsLock()) await acquire();
+      if (pending || needsLock()) await acquire();
     },
     async off() {
       wanted = false;

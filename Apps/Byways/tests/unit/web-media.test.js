@@ -24,6 +24,19 @@ test('wake lock re-acquires when the page is visible again and stops after off',
   await wl.off(); assert.equal(held[1].released, true);
   doc.dispatchEvent(new Event('visibilitychange')); await flush(); assert.equal(held.length, 2);
 });
+test('off() while a wake lock request is pending releases the lock that arrives', async () => {
+  const held = []; let resolveRequest;
+  const nav = { wakeLock: { request: type => new Promise(resolve => {
+    resolveRequest = () => { const s = { type, released: false, release: async () => { s.released = true; } }; held.push(s); resolve(s); }; }) } };
+  const doc = Object.assign(new EventTarget(), { visibilityState: 'visible' }); const wl = createWebWakeLock(nav, doc);
+  const starting = wl.on();
+  doc.dispatchEvent(new Event('visibilitychange'));
+  await wl.off();
+  resolveRequest(); await starting; await flush();
+  assert.equal(held.length, 1, 'a visibility change during a pending request starts no second request');
+  assert.equal(held[0].released, true);
+  doc.dispatchEvent(new Event('visibilitychange')); await flush(); assert.equal(held.length, 1);
+});
 test('a refused or missing wake lock resolves quietly', async () => {
   await createWebWakeLock({ wakeLock: { request: async () => { throw new DOMException('no', 'NotAllowedError'); } } }, new EventTarget()).on();
   await createWebWakeLock({}, new EventTarget()).on();
