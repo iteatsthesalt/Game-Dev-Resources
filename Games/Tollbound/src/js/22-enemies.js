@@ -211,6 +211,16 @@
     return Core.mod(atan2(dy, dx) - sh.from, TAU) <= sh.span;
   };
 
+  // Enemies.shaded for one of the dead, whose shade sh is on: the same test, but it takes the body, not its
+  // coordinates, since a number handed across a call the engine does not inline is boxed, garbage in the loop over
+  // the dead. (Only bodies of the dead come here, so the engine sees one shape of object.)
+  function inShade(sh, e) {
+    const dx = e.x - sh.x, dy = e.y - sh.y;
+    if (dx * dx + dy * dy > sh.reach * sh.reach) return false;
+    const a = atan2(dy, dx) - sh.from;
+    return ((a % TAU) + TAU) % TAU <= sh.span;    // Core.mod(a, TAU), written out
+  }
+
   // ---- the wake ----
 
   function noteWake(S, p, length) {
@@ -298,13 +308,14 @@
     return true;
   }
 
-  function paceOf(S, e, gate, grade) {
-    if (grade === FULL) return 0;
+  // sets the body's pace for this step (it writes the field rather than return the number, which would be boxed)
+  function setPace(S, e, gate, grade) {
+    if (grade === FULL) { e.pace = 0; return; }
     let v = e.speed * gate;
     if (grade === HALF) v *= 0.5;
     if (e.condN[PROC] === 1) v *= PROC_SPEED;
     const sh = S.vigil ? S.vigil.shade : null;
-    if (sh && sh.on && Enemies.shaded(S, e.x, e.y)) v *= sh.speed;
+    if (sh && sh.on && inShade(sh, e)) v *= sh.speed;
     const hop = e.def.aiParams.hop;
     if (hop > 0) {                                 // quick hops: fast on the way up, slow on the way down
       const s = sin(TAU * (e.t / hop + (e.uid % 7) / 7));
@@ -312,7 +323,7 @@
     }
     const riders = e.condN[CLUNG];
     if (riders > 0) v *= 1 - RIDER_SLOW * riders;
-    return v > 0 ? v : 0;
+    e.pace = v > 0 ? v : 0;
   }
 
   // how fast the body's cooldowns run: mourning and coils
@@ -641,7 +652,7 @@
       e.t += DT;
       const grade = mourning(e);
       if (e.uid % WAKE_EVERY === turn) procession(S, e, p, since);
-      e.pace = paceOf(S, e, gate, grade);
+      setPace(S, e, gate, grade);
       if (held(e)) {
         e.vx = 0;
         e.vy = 0;
