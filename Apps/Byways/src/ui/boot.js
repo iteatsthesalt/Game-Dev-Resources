@@ -12,12 +12,31 @@ import { announce, focusMain } from './a11y.js';
 import { applyAccessSettings } from './theme.js';
 import { getView, startRouter } from './router.js';
 import { runFirstRun } from './firstrun.js';
+import { showToast } from './toast.js';
 import './views/index.js';
 
 export { DATA_FILES, EMPTY_DATA, dataUrlFor, loadAppData };
 
 export const STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.';
 export const VIEW_FAILED_MESSAGE = 'This view failed to load.';
+export const UPDATE_MESSAGE = 'Update available, reload';
+
+// Set once the person chose to reload, so the controllerchange that a first install also fires
+// (clients.claim()) does not reload the page.
+let reloading = false;
+
+function offerUpdate(reg) {
+  showToast(UPDATE_MESSAGE, {
+    ms: 0,
+    action: {
+      label: 'Reload',
+      run() {
+        reloading = true;
+        reg.waiting?.postMessage({ type: 'skip-waiting' });
+      },
+    },
+  });
+}
 
 /** Open IndexedDB, or a store in memory when the browser blocks it. */
 async function openStoreOrMemory() {
@@ -103,7 +122,10 @@ export async function bootFromShell() {
     return;
   }
   try {
-    await registerServiceWorker(window, () => {});
+    navigator.serviceWorker?.addEventListener('controllerchange', () => {
+      if (reloading) location.reload();
+    });
+    await registerServiceWorker(window, offerUpdate);
   } catch (error) {
     console.warn('Byways: the service worker did not register', error);
   }
