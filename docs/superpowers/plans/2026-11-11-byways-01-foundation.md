@@ -603,4 +603,241 @@ git add src/core/settings.js tests/unit/settings.test.js
 git commit -m "Add settings defaults with load, repair and save"
 ```
 
+### Task 7: Web platform
+
+**Files:**
+- Create: `src/platform/web-tts.js`, `src/platform/web-media.js`, `src/platform/web-voice.js`, `src/platform/pwa.js`
+- Create: `tests/unit/helpers/fake-dom.js` (a tiny element and document fake: `setAttribute`, `addEventListener`, `dispatchEvent`, `click`, `remove`, `append`, `createElement`, `body`)
+- Test: `tests/unit/web-tts.test.js`, `tests/unit/web-media.test.js`, `tests/unit/web-voice.test.js`, `tests/unit/pwa.test.js`
+
+**Interfaces:**
+- Consumes: `isHttpUrl` (Task 2); `openStore`, `memoryBackend` (Task 5, tests).
+- Produces: `createWebTts(speechSynthesis, Utterance = globalThis.SpeechSynthesisUtterance) → Tts`; `createWebMedia(navigator) → Platform['media']`; `createWebWakeLock(navigator, document) → Platform['wakeLock']`; `createNoVoice() → VoiceEngine`; `createPwaPlatform({secretsStore, win = globalThis}) → Platform`, where `secretsStore` is a `Store`; `registerServiceWorker(win, onUpdate) → Promise<ServiceWorkerRegistration|null>`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`web-tts.test.js` (a fake synth records `speak(u)` and calls `u.onend` on a microtask; `class FakeUtterance { constructor(t) { this.text = t; } }`):
+
+```js
+test('speak sets voice, rate and volume and resolves at the end', async () => {
+  const tts = createWebTts(synth, FakeUtterance);
+  await tts.speak('Hello', { voiceURI: 'v1', rate: 1.5, volume: 0.5 });
+  const u = synth.spoken[0];
+  assert.deepEqual([u.text, u.voice.voiceURI, u.rate, u.volume], ['Hello', 'v1', 1.5, 0.5]);
+});
+test('interrupted and canceled resolve; other errors reject', async () => { /* onerror({error:'interrupted'}) resolves; {error:'synthesis-failed'} */ await assert.rejects(p, /synthesis-failed/); });
+test('voices maps fields and waits for voiceschanged when empty', async () => {
+  /* getVoices() returns [] until the test fires the voiceschanged listener */
+  assert.deepEqual(await p, [{ uri: 'v1', name: 'One', lang: 'en-US', local: true }]);
+});
+test('with no speechSynthesis it is silent', async () => {
+  const tts = createWebTts(undefined); await tts.speak('x'); tts.cancel(); assert.deepEqual(await tts.voices(), []);
+});
+```
+
+`web-media.test.js`:
+
+```js
+test('setHandlers maps to media session actions and survives unsupported ones', () => {
+  const set = {}; const nav = { mediaSession: { setActionHandler(a, f) { if (a === 'previoustrack') throw new TypeError('unsupported'); set[a] = f; } } };
+  const next = () => {}; const pp = () => {};
+  createWebMedia(nav).setHandlers({ next, previous: () => {}, playPause: pp });
+  assert.equal(set.nexttrack, next); assert.equal(set.play, pp); assert.equal(set.pause, pp);
+});
+test('setActive sets playbackState; no mediaSession is a no-op', () => { /* 'playing' then 'none' */ createWebMedia({}).setActive(true); });
+test('wake lock re-acquires on visible and stops after off', async () => {
+  /* fake navigator.wakeLock.request counts calls and returns a sentinel; fake document has visibilityState and listeners */
+  await wl.on(); assert.equal(requests, 1);
+  doc.visibilityState = 'visible'; doc.fire('visibilitychange'); await flush(); assert.equal(requests, 2);
+  await wl.off(); assert.equal(sentinel.released, true); doc.fire('visibilitychange'); await flush(); assert.equal(requests, 2);
+});
+test('a refused wake lock resolves quietly', async () => { /* request rejects NotAllowedError */ await wl.on(); });
+```
+
+`web-voice.test.js`:
+
+```js
+test('createNoVoice reports none and emits an error on start', async () => {
+  const v = createNoVoice();
+  assert.deepEqual(await v.probe({ allowCloud: false }), { kind: 'none', vendor: null, needsDownload: false, continuous: false, reason: 'not set up yet' });
+  assert.equal(await v.install(), false);
+  const errs = []; const off = v.on('error', e => errs.push(e));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.deepEqual(errs, [{ code: 'service-not-allowed' }]);
+  off(); await v.start({ lang: 'en-US', phrases: [], allowCloud: false }); assert.equal(errs.length, 1); v.stop();
+});
+```
+
+`pwa.test.js` (a fake `win` with `navigator`, `document` from `fake-dom.js`, `location`, `open`, `fetch`, `URL.createObjectURL`):
+
+```js
+test('name, caps and secrets in the keys store', async () => {
+  const p = createPwaPlatform({ secretsStore: await openStore(memoryBackend()), win });
+  assert.equal(p.name, 'pwa');
+  assert.deepEqual(p.caps, { privilegedFetch: false, localNetworkHttp: false, inAppSiteView: false, labHref: 'lab/', framesArchive: true });
+  await p.secrets.set('anthropic', 'k1'); assert.equal(await p.secrets.get('anthropic'), 'k1');
+  assert.deepEqual(await p.secrets.list(), ['anthropic']); await p.secrets.delete('anthropic');
+  assert.equal(await p.secrets.get('anthropic'), null);
+});
+test('transport drops privileged and omits credentials', async () => {
+  await p.transport.fetch('https://a.test/', { privileged: true, headers: { a: 'b' } });
+  assert.equal('privileged' in fetched[0].init, false); assert.equal(fetched[0].init.credentials, 'omit'); assert.deepEqual(fetched[0].init.headers, { a: 'b' });
+});
+test('share uses navigator.share, then the clipboard', async () => {
+  /* share resolves → 'shared'; share rejects AbortError → 'cancelled'; no share → writeText(url) → 'copied'; writeText rejects → 'cancelled' */
+});
+test('openFind opens only http(s) links, in a new tab with noopener', async () => {
+  await p.openFind({ url: 'https://x.org/' }); assert.deepEqual(opened, [['https://x.org/', '_blank', 'noopener']]);
+  await p.openFind({ url: 'https://y.org/' }, 'current'); assert.deepEqual(assigned, ['https://y.org/']);
+  await assert.rejects(p.openFind({ url: 'javascript:alert(1)' }), /not an http\(s\) link/); assert.equal(opened.length, 1);
+});
+test('files.save clicks a download link; files.pick returns chosen files', async () => {
+  await p.files.save('byways.json', new Blob(['{}']));
+  assert.deepEqual([anchor.attrs.download, anchor.attrs.href, anchor.clicked, anchor.removed], ['byways.json', 'blob:x', true, true]);
+  const picking = p.files.pick('.json'); input.files = [file]; input.dispatchEvent({ type: 'change' });
+  assert.deepEqual(await picking, [file]); assert.deepEqual([input.attrs.type, input.attrs.accept, input.multiple], ['file', '.json', false]);
+});
+test('persistStorage', async () => { /* persist() → true gives true; missing storage gives false; throwing gives false */ });
+test('registerServiceWorker skips the Android shell', async () => {
+  win.BywaysNative = {}; assert.equal(await registerServiceWorker(win, () => {}), null); assert.equal(registerCalls, 0);
+});
+test('registerServiceWorker survives a rejected register', async () => {
+  /* navigator.serviceWorker.register rejects */ assert.equal(await registerServiceWorker(win, () => {}), null);
+});
+test('registerServiceWorker reports a waiting worker', async () => {
+  /* register resolves {waiting:{}, addEventListener(){}}; navigator.serviceWorker.controller = {} */
+  assert.deepEqual(registerArgs, ['./sw.js']); assert.equal(updates, 1);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js tests/unit/web-voice.test.js tests/unit/pwa.test.js`
+Expected: FAIL with `Cannot find module`.
+
+- [ ] **Step 3: Implement `web-tts.js`, `web-media.js` and `web-voice.js`**
+
+`createWebTts`: when `speechSynthesis` is falsy, return a Tts whose `speak` resolves at once and whose `voices` gives `[]`. Otherwise `speak` picks the voice whose `voiceURI` matches, sets `rate` and `volume` when given, resolves on `end`, resolves on `error` with `interrupted` or `canceled`, and otherwise rejects with `Error(event.error)`. `voices` waits for `voiceschanged` (once) or 1000 ms when the list is empty. Plan 03 adds sentence splitting. `createWebMedia` maps `next → 'nexttrack'`, `previous → 'previoustrack'`, `playPause → 'play'` and `'pause'`, each in its own try/catch; `setActive(on)` sets `playbackState` to `'playing'` or `'none'`. `createWebWakeLock` keeps a `wanted` flag, re-requests `'screen'` on `visibilitychange` when visible and wanted, and swallows request errors. `createNoVoice` keeps listener sets per event; `start` emits `state {listening:false}` and `error {code:'service-not-allowed'}`.
+
+- [ ] **Step 4: Implement `pwa.js`**
+
+`secrets` maps to the `keys` store (`get` returns `null` for a missing key). `transport.fetch(url, init)` removes `privileged` and calls `win.fetch(url, {...rest, credentials: 'omit'})`. `share` tries `navigator.share` when it exists and `navigator.canShare?.(data) !== false`. An `AbortError` gives `'cancelled'`, and any other error falls back to `navigator.clipboard.writeText(url || text || title)`. `openFind(find, how='tab')` throws `Error('not an http(s) link')` unless `isHttpUrl(find.url)`; `'current'` uses `location.assign`, everything else uses `win.open(url, '_blank', 'noopener')`. `files.save` makes an `<a download>` with an object URL, appends, clicks, removes, and revokes the URL after 1000 ms. `files.pick(accept, multiple=false)` makes an `<input type=file>` and resolves on `change` with `Array.from(input.files)` or on `cancel` with `[]`. `persistStorage` returns `false` when `navigator.storage?.persist` is missing or throws. `voice: createNoVoice()`, `tts: createWebTts(win.speechSynthesis)`, `media: createWebMedia(win.navigator)`, `wakeLock: createWebWakeLock(win.navigator, win.document)`.
+
+`registerServiceWorker(win, onUpdate)` returns `null` when `win.BywaysNative` exists, when `navigator.serviceWorker` is missing, or when `register('./sw.js')` rejects. When the registration already has `waiting` and the page has a `controller`, it calls `onUpdate(reg)`. On `updatefound`, it calls `onUpdate(reg)` when the new worker reaches `installed` and a `controller` exists.
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run: `node --test tests/unit/web-tts.test.js tests/unit/web-media.test.js tests/unit/web-voice.test.js tests/unit/pwa.test.js`
+Expected: PASS, 18 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/platform/web-tts.js src/platform/web-media.js src/platform/web-voice.js src/platform/pwa.js tests/unit/helpers/fake-dom.js tests/unit/web-tts.test.js tests/unit/web-media.test.js tests/unit/web-voice.test.js tests/unit/pwa.test.js
+git commit -m "Add the web platform: speech, media, wake lock and the PWA object"
+```
+
+### Task 8: Check rules and the static server
+
+**Files:**
+- Create: `tools/check.js`, `tools/serve.js`
+- Test: `tests/unit/check.test.js`, `tests/unit/serve.test.js`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces (`tools/check.js`): `APP_CSP` (the overview string), `LAB_CSP` (`APP_CSP` with `script-src 'self' 'wasm-unsafe-eval' blob:` and `worker-src 'self' blob:`), `findForbidden(file, text) → string[]`, `checkHtml(file, html) → string[]`, `checkRefs(file, text, exists) → string[]`, `checkManifest(file, text) → string[]`, `checkData(name, json, {tagIds}) → string[]`, `checkPrecache(swText, outDir) → string[]`, `runChecks({srcDir, outputs, extraHtml}) → Promise<string[]>`. Every problem string starts with the file path, then `: `. (`tools/serve.js`): `createServer({root, base}) → http.Server`, plus a CLI taking `--root`, `--base` and `--port`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`check.test.js`:
+
+```js
+const page = csp => `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><script type="module" src="ui/boot.js"></script>`;
+test('findForbidden flags each banned API once', () => {
+  for (const s of ['el.innerHTML = x', 'el.outerHTML = x', 'el.insertAdjacentHTML("a", b)', 'document.write(1)', 'eval(x)', 'new Function("x")', '<script src="https://cdn.x/y.js"></script>'])
+    assert.equal(findForbidden('a.js', s).length, 1, s);
+  assert.deepEqual(findForbidden('a.js', 'const evaluate = 1; medieval(2); x.innerHTMLish = 3;'), []);
+});
+test('checkHtml wants the exact CSP and no inline code', () => {
+  assert.deepEqual(checkHtml('x.html', page(APP_CSP)), []);
+  assert.deepEqual(checkHtml('x.html', '<p>hi</p>'), ['x.html: missing CSP meta']);
+  assert.deepEqual(checkHtml('x.html', page("default-src *")), ['x.html: CSP differs from APP_CSP']);
+  assert.deepEqual(checkHtml('lab/x.html', page(LAB_CSP)), []);
+  assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<script>1</script>'), ['x.html: inline script']);
+  assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<div style="color:red"></div><style>p{}</style>'), ['x.html: inline style', 'x.html: inline style']);
+});
+test('checkRefs reports imports and links that do not resolve', () => {
+  const have = new Set(['/out/ui/a.js', '/out/index.html', '/out/ui/styles/app.css']); const exists = p => have.has(p);
+  assert.deepEqual(checkRefs('/out/ui/b.js', "import { a } from './a.js'; import x from './gone.js'; export * from '../core/z.js'; const m = import('./lazy.js');", exists),
+    ['/out/ui/b.js: missing ./gone.js', '/out/ui/b.js: missing ../core/z.js', '/out/ui/b.js: missing ./lazy.js']);
+  assert.deepEqual(checkRefs('/out/index.html', '<a href="#/feed">F</a><a href="https://x.org/">X</a><link href="ui/styles/app.css?v=1"><img src="data:image/png;base64,AA"><a href="./">H</a><script src="ui/nope.js"></script>', exists),
+    ['/out/index.html: missing ui/nope.js']);
+});
+test('checkManifest parses and wants relative scope', () => {
+  assert.deepEqual(checkManifest('m.webmanifest', '{'), ['m.webmanifest: not valid JSON']);
+  assert.deepEqual(checkManifest('m.webmanifest', '{"start_url":"/","scope":"./"}'), ['m.webmanifest: start_url must be ./']);
+  assert.deepEqual(checkManifest('manifest.chrome.json', '{"manifest_version":3}'), []);
+});
+test('checkData validates the four data file shapes', () => {
+  assert.deepEqual(checkData('tags.json', { v: 1, groups: [] }, {}), []);
+  assert.match(checkData('tags.json', { v: 1, groups: [{ id: 'g', label: 'G', tags: [{ id: 'Retro Games', label: 'R' }] }] }, {})[0], /bad tag id/);
+  const entry = { id: 'lib-0001', url: 'javascript:x', title: 't', blurb: 'b', tags: ['retro'], kind: 'site', added: '2026-11-11' };
+  assert.match(checkData('library.json', { v: 1, entries: [entry] }, { tagIds: new Set(['retro']) })[0], /bad url/);
+  assert.match(checkData('library.json', { v: 1, entries: [{ ...entry, url: 'https://x.org/', tags: ['nope'] }] }, { tagIds: new Set() })[0], /unknown tag nope/);
+  assert.match(checkData('vault-starter.json', { v: 1, entries: [{ id: 'msdos_x', title: 't', platform: 'DOS', year: 1994, added: '2026-11-11' }] }, {})[0], /bad id/);
+  assert.match(checkData('geocities-seeds.json', { v: 1, urls: ['ftp://x'] }, {})[0], /bad url/);
+  assert.match(checkData('other.json', {}, {})[0], /unknown data file/);
+});
+test('checkPrecache wants a stamped id, existing files and under 2 MB', async () => {
+  /* temp dir with index.html (10 bytes) and big.bin (2 MB + 1) */
+  assert.deepEqual(checkPrecache("const BUILD_ID = '__BUILD_ID__'; const PRECACHE = [\"__PRECACHE__\"];", dir), ['sw.js: build id not stamped', 'sw.js: precache list not written']);
+  assert.deepEqual(checkPrecache(`const BUILD_ID = "dev"; const PRECACHE = ["./index.html","./gone.js"];`, dir), ['sw.js: precache missing ./gone.js']);
+  assert.match(checkPrecache(`const BUILD_ID = "dev"; const PRECACHE = ["./index.html","./big.bin"];`, dir)[0], /app shell is over 2 MB/);
+});
+```
+
+Library tags are checked against `tagIds` only when `tagIds` is given.
+
+`serve.test.js` (temp root with `index.html`, `a.wasm`, `sub/index.html`; `server.listen(0)`; raw requests through `node:http` so `..` is not normalised by the client):
+
+```js
+test('serves the base, MIME types and folder indexes', async () => {
+  assert.deepEqual(await get('/Game-Dev-Resources/byways/'), { status: 200, type: 'text/html; charset=utf-8', body: 'home' });
+  assert.equal((await get('/Game-Dev-Resources/byways/a.wasm')).type, 'application/wasm');
+  assert.equal((await get('/Game-Dev-Resources/byways/sub/')).body, 'sub');
+});
+test('redirects the bare base and refuses everything else', async () => {
+  const r = await get('/Game-Dev-Resources/byways'); assert.equal(r.status, 301); assert.equal(r.location, '/Game-Dev-Resources/byways/');
+  assert.equal((await get('/other/')).status, 404);
+  assert.equal((await get('/Game-Dev-Resources/byways/..%2f..%2fpackage.json')).status, 404);
+  assert.equal((await get('/Game-Dev-Resources/byways/../../etc/passwd')).status, 404);
+  assert.equal((await get('/Game-Dev-Resources/byways/missing.js')).status, 404);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/check.test.js tests/unit/serve.test.js`
+Expected: FAIL with `Cannot find module`.
+
+- [ ] **Step 3: Implement `tools/check.js`**
+
+Forbidden patterns: `/\binnerHTML\b/`, `/\bouterHTML\s*=/`, `/\binsertAdjacentHTML\b/`, `/\bdocument\.write\b/`, `/\beval\(/`, `/\bnew Function\b/`, `/<script[^>]+src=["']https?:/i`, reported as `<file>: forbidden <name>`. `checkHtml` expects `LAB_CSP` for paths with a `lab/` segment and `APP_CSP` otherwise. A `<script>` with no `src` is inline. A `style=` attribute or a `<style>` tag is inline style. Relative refs are values that do not start with a scheme (`/^[a-z][a-z0-9+.-]*:/i`), `//`, `#` or `/`. Strip `?` and `#` parts, and resolve a value ending in `/` to its `index.html`. JS refs are `from '…'` and `import('…')` string literals starting with `./` or `../`. `checkManifest` checks `start_url` and `scope` equal `./` only for `.webmanifest` files. `checkData` checks `v === 1`, tag ids match `/^[a-z0-9]+(-[a-z0-9]+)*$/` and are unique, library ids match `/^lib-\d{4}$/` with http(s) urls, `kind` in `site|game|toy|tool|article` and `added` as `YYYY-MM-DD`, vault ids start with `ia:` with a numeric `year`, and geocities urls are http(s). `checkPrecache` reads the `BUILD_ID` and `PRECACHE` literals, and sums the sizes of the listed files against 2 × 1024 × 1024. `runChecks` walks each output folder, skipping any `vendor` segment. It runs `findForbidden` and `checkRefs` on `.js` and `.html`, `checkHtml` on `.html` (and on each `extraHtml` path), `checkManifest` on `*.webmanifest` and `manifest*.json`, `checkPrecache` on each output's `sw.js`, and `checkData` on every `srcDir/data/*.json` (passing `tagIds` from `tags.json`).
+
+- [ ] **Step 4: Implement `tools/serve.js`**
+
+Serve only paths under `base`, and redirect `base` without its slash. Decode the path, resolve it under `root`, and return 404 unless the result stays inside `root`. A folder serves its `index.html`. Send `Cache-Control: no-store`. MIME map: `.html` `text/html; charset=utf-8`, `.js`/`.mjs` `text/javascript; charset=utf-8`, `.css` `text/css; charset=utf-8`, `.json` `application/json`, `.webmanifest` `application/manifest+json`, `.svg` `image/svg+xml`, `.png` `image/png`, `.jpg` `image/jpeg`, `.gif` `image/gif`, `.webp` `image/webp`, `.ico` `image/x-icon`, `.wasm` `application/wasm`, `.woff2` `font/woff2`, `.txt` `text/plain; charset=utf-8`, `.xml` `application/xml`, `.zip` `application/zip`, and anything else `application/octet-stream`. The CLI listens on `--port` and logs `Serving <root> at http://localhost:<port><base>`. It starts only when the file is run directly (`import.meta.url === pathToFileURL(process.argv[1]).href`).
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run: `node --test tests/unit/check.test.js tests/unit/serve.test.js`
+Expected: PASS, 9 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add tools/check.js tools/serve.js tests/unit/check.test.js tests/unit/serve.test.js
+git commit -m "Add the build check rules and the static test server"
+```
+
 <!-- PLAN CONTINUES -->
