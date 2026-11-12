@@ -1,0 +1,581 @@
+{
+  "lens": "games",
+  "verdicts": [
+    {
+      "id": "customs-01",
+      "seen": 2,
+      "where": "Dark Souls Catacombs skeletons, which stand up again unless felled with a divine weapon; D&D trolls and hydras that only stay dead to fire or acid; laid over an ordinary three-way weakness chart (Pokemon match-ups, Destiny Match Game shields).",
+      "mutation": "Take the due off the killing blow: every fallen body lies unlaid until its missing rite is done to the body itself before the toll - a cast sounded within earshot for the unrung, the player standing on it for the unwritten, another body dropped on top of it for the uncovered - so permanence comes from what the player does around corpses, not from a damage tag."
+    },
+    {
+      "id": "customs-02",
+      "seen": 1,
+      "where": "Fallout: New Vegas Damage Threshold (a flat amount off every hit), hit-count objects such as League of Legends wards and Zelda enemies that die in N hits, and stand-in-the-zone gates; the many-hits, big-hits, time split also mirrors attack-speed, slam and damage-over-time builds in Path of Exile. No game I know makes these the only three protections.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-03",
+      "seen": 1,
+      "where": "Halo Grunts breaking and panicking when their Elite dies, Shadow of Mordor grunts fleeing a dead captain, Total War morale shocks; joined to WoW-style crowd control that breaks on damage. The two timed grades and the pause facing the body are not in those.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-04",
+      "seen": 1,
+      "where": "Retaliation effects that punish the attacker (Path of Exile 'when hit' curses and blinds, Dota 2 Blade Mail), plus ordinary charm and disarm. I know no game where the attacker being in motion or at rest decides which one it gets.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-05",
+      "seen": 1,
+      "where": "Pokemon Mystery Dungeon's Blinker status and NetHack's blinded monsters (lose the target, blunder about and hit their own side), Monster Hunter monsters flailing after a flash; bounty marks such as Dota 2 Bounty Hunter's Track for the coin payout.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-06",
+      "seen": 2,
+      "where": "Dota 2 Winter Wyvern's Winter's Curse (one enemy is cursed and every ally of it nearby must attack it) and BioShock's Security Bullseye and Enrage; the hand-on to the killer is Halo's Juggernaut rule (kill the juggernaut, become the juggernaut).",
+      "mutation": "Hand the cry on by place, not by kill: the felon runs, pursuers must stop at each street or parish line and stand idle there while the dead on the far side take up the chase, so the player uses one cry to strip bodies out of the fight in relays along a route."
+    },
+    {
+      "id": "customs-07",
+      "seen": 1,
+      "where": "WoW Banish and Turn Undead (enemy untouchable or fleeing for no reward), Diablo III treasure goblins escaping through a portal, tower-defence creeps walking to the exit. Knocking a banished thing off its line to cash it in I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-08",
+      "seen": 1,
+      "where": "Path of Exile's Soul Eater (stacks gained from deaths nearby) and Headhunter belt (the player takes a dead rare's powers by killing it), WoW raid debuffs that jump to the nearest target on death, Risk of Rain 2 trade-off items such as Stone Flux Pauldron. The carry-it-or-keep-away choice at 2 m is the idea's own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-09",
+      "seen": 1,
+      "where": "Dota 2 Bounty Hunter's Track and Bloodseeker's Thirst (a revealed target and speed toward it), Hunter's Mark in D&D and WoW, and Dead by Daylight's Object of Obsession, where killer and survivor see each other. One state binding both sides and cancelling range for skills is the new part.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-10",
+      "seen": 2,
+      "where": "Vampire Survivors' Area, Duration and Might, the three stats every weapon scales by, and likewise Path of Exile area, skill duration and damage; plus ordinary encumbrance. Only gear cut to an exact value has no clear precedent.",
+      "mutation": "Drop the percent-per-point scaling: fix a character's Pole, Wick and Stone at creation like a body's build and let all growth come from how closely gear, skills and bindings are cut to those three numbers, so the game is tailoring to a measure instead of stacking area, duration and damage."
+    },
+    {
+      "id": "customs-11",
+      "seen": 2,
+      "where": "Lode Runner, Heiankyo Alien and Space Panic: dig a hole, the pursuers walk into it, it closes over them. Standing still as the price is Brotato's Soldier and stand-still items.",
+      "mutation": "Put the Sexton in the hole: while digging he is below ground and cannot be struck from the sides, the grave holds one body per second dug, and climbing out takes half a second per body of depth, so every grave is a bet on how deep he dares go before the crowd reaches the lip."
+    },
+    {
+      "id": "customs-12",
+      "seen": 1,
+      "where": "Dynasty Warriors horseback riding through crowds, Dead Rising shopping carts and Diablo III's Steed Charge shouldering enemies aside. As a permanent passive walk with a blind rear I have not seen it as a class.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-13",
+      "seen": 1,
+      "where": "Call of Duty Zombies wall traps and Orcs Must Die! environmental traps (fixed map hazards the player sets off, each on a cooldown); minimum-range attacks like the Clash Royale Mortar's blind spot. Turrets that are the houses themselves, set off by walking a round, are the idea's own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-14",
+      "seen": 1,
+      "where": "Crazy Taxi fares (pick up, deliver to a marked stop, get paid), capture-the-flag carriers slowed while they hold it, Spiritfarer and Death Stranding for ferrying the dead. As one class's main source of experience inside a horde it is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-15",
+      "seen": 1,
+      "where": "Lines that hurt what crosses them (Dota 2 Io's Tether, Geometry Wars gates, co-op laser tethers), rotating bars like Mario's fire bars, and Vampire Survivors' Phieraggi sweeping beams like clock hands. The player as the free end of the bar, with the charge doubling per crossing, is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-16",
+      "seen": 1,
+      "where": "Weapons whose direction is fixed in the world rather than aimed (vertical shooters, Vampire Survivors' Whip and Axe) and Zelda's Mirror Shield, where a fixed light and where you stand decide what the light hits. A per-map light setting the offset, with shadowing by buildings, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-17",
+      "seen": 1,
+      "where": "Brotato's Soldier (cannot attack while moving, stronger standing still) and League of Legends Energized items such as Statikk Shiv (charge built by distance walked, spent on the attack). The two joined so that walking is the only fuel I cannot name.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-18",
+      "seen": 1,
+      "where": "Wall skills (Dota 2 Earthshaker's Fissure, Path of Exile Frost Wall, Diablo II Bone Wall) and tower-defence mazing as in Desktop Tower Defense. Walls that exist only as spoil from the class's own traps and vanish when the trap fills are new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-19",
+      "seen": 1,
+      "where": "WoW's Cannibalize (stand on a corpse to consume it), Dota 2 Pudge's Flesh Heap and League of Legends Cho'Gath's Feast (permanent stacks per kill), and extraction-game encumbrance, where what you carry slows you until you get out. Unlimited speed loss cashed only at the gate is the own part.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-20",
+      "seen": 1,
+      "where": "MMO trains and kiting (EverQuest), Snake-style followers that retrace the leader's exact path (Nimble Quest), Pikmin files. A pacified two-file column with a capacity and a break penalty is not in those.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-21",
+      "seen": 1,
+      "where": "StarCraft Arbiter's Stasis Field and WoW Banish (enemies frozen, untouchable and out of the fight for a term). Setting it off from map houses and ending it on the shared bell is the idea's own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-22",
+      "seen": 2,
+      "where": "Left 4 Dead's pipe bomb and Days Gone's attractors: the whole horde leaves the player and crowds round a noisy lure that then kills it; The Last of Us bottles and Clickers for sound-led enemies.",
+      "mutation": "Remove the lure: dead that cannot hear the Mute follow the nearest dead thing that can still see him, so the horde becomes chains led by the few inside 6 m and the Mute steers the whole crowd by choosing which few are allowed to see him."
+    },
+    {
+      "id": "customs-23",
+      "seen": 1,
+      "where": "Sea of Thieves loot hauling, where carrying treasure further before selling raises both the price and the risk, Hunt: Showdown bounty carriers who draw attention, Deep Rock Galactic heavy objects carried to the drop-off. Near-bank and far-bank prices on an ordinary elite's corpse are its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-24",
+      "seen": 2,
+      "where": "Undertale's spare (gold but no experience, and some monsters must be worn down first), Pokemon's False Swipe and Monster Hunter captures, where you hold back the killing blow for a different reward.",
+      "mutation": "Do not let the freed dead leave: a burgess stays in the district, harmless and unharmable, and pays 1 coin into the keeper's purse at every toll it is still standing, but it still takes up room and blocks, so the keeper is choosing how much of the street to fill with paying tenants."
+    },
+    {
+      "id": "customs-25",
+      "seen": 1,
+      "where": "Lightning Returns: Final Fantasy XIII, where a species hunted enough goes extinct, Vampire Survivors' Banish for striking an entry from a pool, and spawn directors that react to play (Left 4 Dead). A per-interval strike of the most-killed kind, paid for in more of the rest, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-26",
+      "seen": 1,
+      "where": "Beam-relay placement in The Talos Principle, Command & Conquer: Red Alert 2 Prism Towers feeding one another, Zelda mirror puzzles. As combat turrets whose throw is set by the map's one light it is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-27",
+      "seen": 1,
+      "where": "Stored-damage release such as League of Legends Zed's Death Mark and Path of Exile Explosive Arrow, and hidden-timer games like musical chairs and Mario Party's bomb passing. A pot filled from a crowd and awarded to whoever was struck last at an uncertain moment is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-28",
+      "seen": 1,
+      "where": "Health-levelling moves: Pokemon's Pain Split, Dota 2 Terrorblade's Sunder, Hearthstone's Equality. Those involve the caster or the whole board; an automatic levelling of the nearest pair, which the player arranges by herding, is not in them.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-29",
+      "seen": 1,
+      "where": "League of Legends Bard's Magical Journey (a one-way corridor that carries friend and foe), Orcs Must Die! push traps and tower-defence conveyor lanes, vacuum pulls like Dota 2 Dark Seer's. A lane drawn by the player's own last two standing points is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-30",
+      "seen": 2,
+      "where": "Diablo II's Corpse Explosion and Path of Exile's Detonate Dead: a blast at the place a body fell, sized by that body's full life; Risk of Rain 2 on-kill explosions. Only the fixed 30 s delay is added.",
+      "mutation": "Replace the blast with a reckoning: when the note sounds it lays outright any dead standing on the spot whose remaining life is less than the remembered body's full life and does nothing to anything bigger, so the lap is about bringing the right-sized dead back over the right-sized graves."
+    },
+    {
+      "id": "customs-31",
+      "seen": 1,
+      "where": "Calling the next wave early for a bonus in Kingdom Rush, and Plants vs. Zombies graves that will throw up zombies in the final wave unless a Grave Buster deals with them first; killing eggs before they hatch. Waking them one by one, early and weak, by walking the mounds is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-32",
+      "seen": 2,
+      "where": "League of Legends Zed's Death Mark and Kalista's Rend: a mark that builds with the harm you do to its bearer and deals it again on a trigger; Katarina's daggers for walking to the spot to cash in.",
+      "mutation": "Split each tally between two of the dead instead of between the dead and the player: the notched sum is paid to both only when the two carriers are brought within 1.5 m of each other, so the player wounds from afar and then herds two particular bodies together."
+    },
+    {
+      "id": "customs-33",
+      "seen": 1,
+      "where": "Excess carrying over to the next body as in Magic: The Gathering's trample, retargeting bursts like D&D Magic Missile and WoW Arcane Missiles, chain lightning. A burst whose length is read off the victim's size, with leftovers doubled, I cannot place.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-34",
+      "seen": 1,
+      "where": "Lost in Shadow and Contrast, where shadows thrown by movable lights are the things you act on, and Naruto's shadow-bind in the fighting games. Real cast shadows as extra hit area for automatic skills I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-35",
+      "seen": 1,
+      "where": "Kill-charged effects such as Path of Exile Vaal skills and Ritual circles, Risk of Rain 2's hold-the-zone teleporter, and corpse-life scaling from Diablo's Corpse Explosion. The all-or-nothing count of eight is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-36",
+      "seen": 1,
+      "where": "Splatoon ink and StarCraft Zerg creep (your ground speeds you and slows them), and Minecraft players paving with slabs so nothing can spawn there. Permanent tiles laid where kills fall, joining into a floor that seals graves, I have not seen as a skill.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-37",
+      "seen": 1,
+      "where": "Guild Wars nature rituals, whose rule binds friend and foe alike, and Archon's light and dark squares. One placed zone with two opposite halves that bind the caster too is its own arrangement.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-38",
+      "seen": 1,
+      "where": "Broadside combat in Sid Meier's Pirates! and Assassin's Creed IV: Black Flag, where harm depends on having the target on your beam and you steer to put it there; the right-hand peek advantage of third-person shooters. A strong right and a dead left on an ordinary skill I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-39",
+      "seen": 0,
+      "where": "Only distant things: wind in Worms and Scorched Earth (a map-wide direction that helps shots one way and hinders them the other), attacking out of the sun in flight sims, Animal Crossing's feng shui by compass side of the room. No game I know scales a blow by the compass direction it travels.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-40",
+      "seen": 2,
+      "where": "Primer and detonator combos in Mass Effect 3 and Dragon Age: Inquisition, Genshin Impact reactions, Guild Wars 2 fields and finishers, Path of Exile's Trinity Support: one skill sets a state and a different skill cashes it for a bonus.",
+      "mutation": "Make it a matter of timing rather than sequence: the modifier is cut in two and socketed into two skills, and the tally pays only when both strike the same body within a quarter-second of each other, so the player tunes two self-casting rhythms until they coincide."
+    },
+    {
+      "id": "customs-41",
+      "seen": 1,
+      "where": "Dragon Age: Origins tactics ('enemy clustered with at least three') and Final Fantasy XII Gambits for conditional casting, and Path of Exile's Unleash Support, which stores power while a spell is held back. A self-casting skill that waits for a knot and is paid per second of waiting is a fair new joining.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-42",
+      "seen": 1,
+      "where": "League of Legends Miss Fortune's Double Up (the body behind takes the heavier hit), Darkest Dungeon attacks that can only reach the back ranks, Path of Exile Far Shot and Pierce. A modifier that lets the first body go wholly untouched I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-43",
+      "seen": 2,
+      "where": "Path of Exile's Intensify Support: each successive cast shrinks the area and raises the area damage up to a cap, then resets; Concentrated Effect and Increased Area are the static versions of the same trade.",
+      "mutation": "Let the crowd, not the cast count, set the border: the skill's area is as wide as the share of the current toll's wave still standing and its harm rises as that share falls, so the player can keep it wide by sparing stragglers or narrow it by clearing them."
+    },
+    {
+      "id": "customs-44",
+      "seen": 2,
+      "where": "Gun convergence in WWII flight sims such as IL-2 Sturmovik and War Thunder (two streams leave apart and cross at one set range, where they bite hardest), Enter the Gungeon's Helix Bullets, Marth's tipper in Super Smash Bros.",
+      "mutation": "Take away the fixed 7 m: each half flies until it strikes a body, and the halves fit only if the two bodies struck stand within 1.5 m of each other, so the sweet spot is a gap between two of the dead that the player lines up, not a distance from the player."
+    },
+    {
+      "id": "customs-45",
+      "seen": 1,
+      "where": "Path of Exile mana reservation for the frame; Darkest Dungeon's torch and Candleman's ten seconds of wax for a light that is also the clock. Reserving part of the clock itself, so that vows shorten the night, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-46",
+      "seen": 1,
+      "where": "D&D 3.5's Vow of Poverty (power for owning nothing), NetHack conducts, and the shortened aggro radius of stealth in WoW. The stepped fading by tolls is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-47",
+      "seen": 1,
+      "where": "Loot-gathering pets in Diablo III and Lost Ark and Vampire Survivors' Attractorb; duties owed on a timer like Gears of War's active reload or feeding a Tamagotchi. A magnet that leaves if a death goes unannounced is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-48",
+      "seen": 1,
+      "where": "Thorns and on-hit retaliation with an internal cooldown (Dota 2 Blade Mail, Path of Exile 'when hit' effects), JRPG Counter abilities, bounty gold sized by the victim. It is the same rule as customs-04 held as a vow; the moving-or-standing test remains the unseen part.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-49",
+      "seen": 1,
+      "where": "Borrow-now-pay-later rules such as Hearthstone's Overload and Magic: The Gathering's Pacts, Vampire Survivors' Orologion freeze, and the smeared-in-guts camouflage of The Walking Dead games. A whole interval's rising postponed and delivered at once on the bell is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-50",
+      "seen": 1,
+      "where": "Vampire Survivors' Skip and banked rerolls, Slay the Spire relics that pay later, and Sunless Sea legacies handed to the next captain when one dies. One object with three different ends I cannot place.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-51",
+      "seen": 1,
+      "where": "Paid vehicle extracts in Escape from Tarkov, and Luck Be a Landlord's rent that rises every cycle until you cannot pay. A subscription to exits paid from the purse the exits exist to save is a new joining.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-52",
+      "seen": 1,
+      "where": "Dead Cells cursed chests (power now, with a condition you must clear or suffer), Binding of Isaac devil deals, ordinary timed power-ups. A doubled pick that is kept only by leaving on time I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-53",
+      "seen": 2,
+      "where": "The Binding of Isaac's Money = Power and Balatro's Bull and Bootstraps: harm scaled by the coin you are holding; carried loot at risk is the extraction-game stake.",
+      "mutation": "Weigh two pans, not one: the beam sets the coin carried against the bodies laid since the last toll, and the bonus is paid only if the two come within a tenth of level, so the minute before the bell is spent trimming a purse to match a count instead of simply hoarding."
+    },
+    {
+      "id": "customs-54",
+      "seen": 1,
+      "where": "Ravio's item rental in The Legend of Zelda: A Link Between Worlds, and periodic hit-blockers like League of Legends Banshee's Veil. Having to walk the thing back, with future picks as the deposit, is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-55",
+      "seen": 1,
+      "where": "Escape from Tarkov insurance, Massive Chalice relics and Infinity Blade bloodlines passing things to the next in line, ZombiU's backpack recovered from your dead survivor. Insuring one built skill, with a refund if it is never needed, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-56",
+      "seen": 2,
+      "where": "The straight-line charger that re-aims after hitting a wall: Zelda's Ropes, The Binding of Isaac's Chargers, Brotato's chargers, and the Goomba's walk-until-you-bump; sound-led blind enemies are The Last of Us Clickers.",
+      "mutation": "Make the coins the mechanism rather than the loot: one blow knocks off one coin, a one-coin body walks a wide circle toward its open eye instead of a line, and a body with no coins sees and hunts like the rest, so the player chooses between blind, half-blind and sighted for each one."
+    },
+    {
+      "id": "customs-57",
+      "seen": 2,
+      "where": "Warframe's Nullifier Crewman and Comba or Scrambus (a bubble in which your powers do not work, answered by walking in and dealing with the carrier by hand), Dota 2 silence auras, debuff totems in Diablo and Path of Exile.",
+      "mutation": "Make its silence shut out the bell as well: inside the 5 m nothing hears the toll, so bodies there do not rise, the toll's added danger does not apply and no gate opens, which makes each Mute a pocket outside the clock that the player may prefer to leave standing and fight beside."
+    },
+    {
+      "id": "customs-58",
+      "seen": 1,
+      "where": "Caravan and escort interceptions (Guild Wars 2 dolyak caravans), tower-defence creeps reaching the exit, kill-the-summoner-before-the-cast-ends timing. The marked resting stones that decide whether the cargo wakes are its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-59",
+      "seen": 1,
+      "where": "Stop-attacking checks such as Diablo II's Iron Maiden and WoW reflect and absorb shields, and Mario's Boo, which acts only when you are not engaging it. A timer that every blow winds back, in a game where skills fire by themselves, is a real fit and new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-60",
+      "seen": 1,
+      "where": "Laser-sight snipers (Half-Life 2, Borderlands 2), Darkest Dungeon's Fungal Artillery marking a hero so the Scratchers hit harder, spotters calling fire in Company of Heroes. Breaking the line with the horde's own bodies I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-61",
+      "seen": 1,
+      "where": "Pac-Man's Pinky, who aims for the space ahead of where the player is heading, and standard-bearer or shaman enemies that carry a buff aura. The two joined as a harmless runner lighting your path is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-62",
+      "seen": 1,
+      "where": "Pickup thieves (Gauntlet's Thief, Golden Axe gnomes) and beggars who take a resource and pay back, as in The Binding of Isaac and Kingdom's vagrants. A crowd that trades experience for stored blocks, and bargains harder if you kill one, is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-63",
+      "seen": 1,
+      "where": "Indestructible bouncing hazards (Zelda blade traps and Bubbles, Vampire Survivors' Runetracer), balls that belong to whoever last touched them in Lethal League, Windjammers and Knockout City, and the kicked Koopa shell. Ownership won by being hit is the unseen part.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-64",
+      "seen": 2,
+      "where": "Gauntlet's Thief, Golden Axe's sack-carrying gnomes and Diablo III's Treasure Goblin: a non-fighting runner grabs loot, heads for the exit and spills it when struck.",
+      "mutation": "Stop them being loot carriers: they take bodies only, each sack they get out of the district strikes that many dead from the next toll's rising, and every body in a sack that is dropped wakes on the spot, so the pair is a service to guard or a hazard to trigger, never a prize to chase."
+    },
+    {
+      "id": "customs-65",
+      "seen": 1,
+      "where": "Total War pike phalanxes (slow to turn, beaten from the flank), Space Invaders' block formation that thins into gaps, Vampire Survivors' sweeping walls of enemies. One rigid slab of sixteen with a turn rate is its own unit in this genre.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-66",
+      "seen": 2,
+      "where": "Stock boss parts: expanding rings with a gap (Hades, Enter the Gungeon, any bullet-hell), aimed ground circles, and the boss finished by his own attack or arena (Agahnim's volley in A Link to the Past, Bowser's bridge); attacks keyed to level are Final Fantasy's Level 5 Death family.",
+      "mutation": "Give him a knell instead of a life bar: he must finish the count (tellers, then one stroke per level) on the character, every stroke that lands counts and the character dies when the count is complete whatever its life, and each stroke the player makes him spend on one of his own open graves is un-rung."
+    },
+    {
+      "id": "customs-67",
+      "seen": 1,
+      "where": "Final Fantasy VI enemies that die when their MP runs out, coin-cost attacks like Gil Toss and Ragnarok Online's Mammonite, The Binding of Isaac's Greed. A boss whose only life is a purse he spends by attacking and the player can rob is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-68",
+      "seen": 2,
+      "where": "Metal Gear Solid 3's The Sorrow (the boss sends back everyone you killed, as you killed them) and Psycho Mantis reading the player's habits; skill seals from any JRPG; the closing walls are Diablo III's Waller and Jailer affixes.",
+      "mutation": "Turn the Bill over: she raises the kinds this character laid least or avoided all vigil, in inverse proportion, and seals the skill that has cast least, so the fight examines the hole in the build rather than replaying its strength."
+    },
+    {
+      "id": "customs-69",
+      "seen": 2,
+      "where": "The stock raid cycle of WoW and Final Fantasy XIV: the safe floor shrinks, a wipe attack leaves one marked safe spot, then the boss kneels for a damage window; lights-out phases as in Luigi's Mansion and Alan Wake.",
+      "mutation": "Hand the last candle to the player: whoever carries it is the only lit thing and draws the keeper and every dead thing, and the crash spares whatever stands where the candle is set down, so the player chooses where the safe spot will be and what else it will save."
+    },
+    {
+      "id": "customs-70",
+      "seen": 3,
+      "where": "The lane: MOBA creep waves in Dota 2 and League of Legends (rise at one end, walk the lane, turn aside only for a hero inside their aggro range) and the enemy path of Orcs Must Die! or any tower defence. A corpse road is a lane under a new name.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-71",
+      "seen": 2,
+      "where": "Killing Floor's welded doors and Call of Duty Zombies' boarded windows (stand at an opening to hold it shut while more pile up behind it), plus Gauntlet's monster generators for doors as spawners.",
+      "mutation": "Make shutting a true quarantine: nailing a door also locks inside whatever stands within 3 m of it, up to the house's count, and all of it comes out together when the term ends, so doors become rooms the player fills with horde instead of timers the player postpones."
+    },
+    {
+      "id": "customs-72",
+      "seen": 1,
+      "where": "Graded defensive terrain such as Fire Emblem forts and thrones, safe rooms, base and fountain zones in MOBAs. A personal ration of seconds per ring, spent across the vigil, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-73",
+      "seen": 2,
+      "where": "Killing Floor's Trader, open only for a countdown tied to the wave clock so every wave ends in a dash to the shop; buying in real time under attack as in Risk of Rain 2 and Call of Duty Zombies wall buys; Spelunky's wreckable shops.",
+      "mutation": "Let the fighting decide what opens: at each toll only stalls with no body laid within 5 m of them since the last toll put up their shutters, so the player spends every interval keeping one corner of the square clean for the bell."
+    },
+    {
+      "id": "customs-74",
+      "seen": 1,
+      "where": "Dots and Boxes and Qix (close a boundary, take what is inside), Grim Dawn constellations completed for their bonus, Path of Exile's Thread of Hope ring. A passive tree where points buy edges and areas are granted is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-75",
+      "seen": 1,
+      "where": "Path of Exile travel nodes and class starts on a shared tree, level-gated talent tiers in WoW and Diablo IV, Last Epoch's limits on other masteries' trees. A crossing fee that differs by class and expires at a printed level I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-76",
+      "seen": 1,
+      "where": "Slay the Spire's orb slots (a new one pushes the oldest out), diminishing returns on stacked stats, the three active trait lines of Guild Wars 2. Halving by age along a road, so that order of purchase matters, I cannot place in any tree.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-77",
+      "seen": 1,
+      "where": "Death Stranding paths worn in by repeated walking, NetHack bones left by dead characters, Dead Cells unlocks paid off across many runs, Rogue Legacy's permanent purchases. A discount laid down by where dead characters spent their points is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-78",
+      "seen": 2,
+      "where": "Vampire Survivors' evolutions (a weapon and one particular passive held together make a new named weapon, unknown until first made and then recorded) and Hades' Duo Boons; set bonuses generally.",
+      "mutation": "Do not author the pairs: give every half-node a notch pattern and let any two halves fit to the degree their notches coincide, the effect being built from the notches they share, so there are hundreds of partial fits to find rather than forty recipes to look up."
+    },
+    {
+      "id": "customs-79",
+      "seen": 1,
+      "where": "Diablo II class-only skill affixes, Path of Exile conditional mods ('while holding a shield'), Diablo III class legendaries; Path of Exile Annulment and Vaal crafting for trading one property against another. Every property having its own named heir, with no tiers, is its own system.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-80",
+      "seen": 2,
+      "where": "Minecraft's anvil (two like items combined, matching enchantments stepping up, with a hard cap on rework), Path of Exile's Recombinators, Last Epoch forging potential, duplicate fusion in gacha games and auto-battlers.",
+      "mutation": "Give each half exactly one true foil: when a half drops, its twin is put in the hands of a named dead thing that rises at a later toll in the same vigil, and only that twin fits, so the craft is deciding whether to stay long enough to meet the carrier."
+    },
+    {
+      "id": "customs-81",
+      "seen": 2,
+      "where": "Vagrant Story, where a weapon's affinities grow toward whatever classes of enemy it is used on, and Path of Exile Bestiary and Essence crafting, where the monster decides the property; Shadow of War gear from captains.",
+      "mutation": "Have the line appraised by a jury: its size is set by how many lesser dead stand within 6 m when the elite falls, up to twelve, so an elite picked off alone in a corner writes a thin line and one laid in the thick of the crowd writes a fat one."
+    },
+    {
+      "id": "customs-82",
+      "seen": 2,
+      "where": "Destiny 1 weapons whose perk columns unlock as the gun is used, Torchlight II items that gain stats after a set number of kills, Path of Exile veiled modifiers, Warframe's Forma resetting a weapon to rank 0.",
+      "mutation": "Advance the term only by abstaining: a toll counts toward an item's mourning only if its wearer picked up no coin during that interval, so bringing gear out of mourning is a discipline kept at a cost, not time served."
+    },
+    {
+      "id": "customs-83",
+      "seen": 1,
+      "where": "Find-the-real-one fights against clone bosses, Phasmophobia's evidence gathering while hunted, the blood tests of The Thing game. Steering hostile elites past a spot one at a time as the test is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-84",
+      "seen": 1,
+      "where": "League of Legends Zhonya's Hourglass (untouchable and unable to act while the enemy gathers round and waits), and rest points that allow rebuilding such as Hollow Knight's benches. A long, once-only stasis that buys a rebuild at the price of a siege is a new joining.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-85",
+      "seen": 1,
+      "where": "King-of-the-hill points, hidden-timer games like musical chairs and Mario Party's bomb passing, and enemies that pick up and use loot in NetHack and Breath of the Wild. Only the last instant counting, and the loser wearing the prize, is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-86",
+      "seen": 1,
+      "where": "Diablo III's Treasure Goblin chase, and fights where enemies turn on a third party (Doom infighting, Halo's Flood against the Covenant). A runner the horde is racing you for I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-87",
+      "seen": 2,
+      "where": "The stock light-them-all-before-the-first-goes-out objective: Zelda's timed torches and switches, and Domination-style hold-every-point modes.",
+      "mutation": "Make the stretches count, not the stones: any two neighbouring stones lit together close the edge between them so nothing enters there, which lets the player choose which side of the district to wall, with the full ring only the limit of the same rule."
+    },
+    {
+      "id": "customs-88",
+      "seen": 1,
+      "where": "Dungeonmans' academy built up by each fallen hero, Realm of the Mad God's graveyard and death fame, Rogue Legacy's lineage, Cult of the Lamb graves; adjacency placement as in Civilization VI districts. Each death as a placed, upgradable node of the permanent tree is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-89",
+      "seen": 1,
+      "where": "Shadow of Mordor's Nemesis system and Total War: Warhammer's Book of Grudges (whoever beat you is remembered), bestiary bonuses earned per monster kind in Tibia. A bonus earned by being killed, once per kind and sized by what was lost, I have not seen.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-90",
+      "seen": 1,
+      "where": "WoW rested experience and comeback bonuses; grief states on survivors in The Sims, Darkest Dungeon and Crusader Kings. A roster-wide term set by the dead one's level, with a pickup rule, is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-91",
+      "seen": 2,
+      "where": "The stock end-of-run conversion of level reached and time survived into meta-currency, found across roguelites and survivors-likes, and Realm of the Mad God's fame, which is reckoned and paid out when the character dies; count-up tallies with sound go back to arcade score screens.",
+      "mutation": "Ring the count over the next vigil instead of on a results screen: each stroke owed sounds a second apart in the heir's first district and lays the dead nearest the new character, so a high character's death is a long protected opening that is played, not a number."
+    },
+    {
+      "id": "customs-92",
+      "seen": 2,
+      "where": "WoW Brewmaster's Stagger (harm held in a pool that falls due later and can be cleared), with Bloodborne's rally and Dead Cells' recovery for winning lost life back by acting quickly; Street Fighter grey life.",
+      "mutation": "Chalk every mark to a creditor: arrears are owed to the particular dead thing that dealt them, laying it wipes its marks, and at the toll only creditors still standing collect, so the player pays by hunting down exactly what hurt them."
+    },
+    {
+      "id": "customs-93",
+      "seen": 1,
+      "where": "Borderlands' Fight For Your Life and other last-stand rules, WoW's ghost corpse run, Realm of the Mad God's escape to the Nexus to save a permadeath character. A walked, shove-able escape paid for with a district closed for good is its own.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-94",
+      "seen": 1,
+      "where": "Push-your-luck banking in Incan Gold and Deep Sea Adventure, Loop Hero's retreat-or-die payout, quiz-show safe havens, Tarkov's secure container. The doubling of the earlier half on a later live exit is its own clause.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-95",
+      "seen": 1,
+      "where": "Wizardry rescue parties and corpse runs in Dark Souls and ZombiU (a new outing made for the sake of a dead character), Rogue Legacy heirs inheriting traits. A short mode that exists to complete the long mode's deaths is new to me.",
+      "mutation": ""
+    },
+    {
+      "id": "customs-96",
+      "seen": 1,
+      "where": "Left 4 Dead's audio stings announcing each special and the horde, tower-defence next-wave previews, Deep Rock Galactic swarm callouts. A counted code that states size, elites and gate in strokes I have not seen.",
+      "mutation": ""
+    }
+  ]
+}
