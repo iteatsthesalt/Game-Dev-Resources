@@ -23,10 +23,15 @@
   --ink-faint: #8a867a;
   --ink-on-accent: #1a1408;
 
-  /* the one accent, bell bronze */
+  /* the accent, bell bronze: the one thing that matters on a screen */
   --accent: #c79a45;
   --accent-bright: #efc977;
   --accent-dim: #7d6230;
+
+  /* the second colour, verdigris: the quieter of two choices, and notes that only inform */
+  --second: #6fb3a6;
+  --second-bright: #a9ddd1;
+  --second-dim: #2f5a53;
 
   /* states */
   --good: #7fc48a;

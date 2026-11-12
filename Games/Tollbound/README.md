@@ -20,7 +20,8 @@ npm run test:sim        # the simulation in Node, without a browser
 npm run test:e2e        # browser scenarios against .build/Tollbound.html
 npm run test:artifact   # the same scenarios against the fragment the Claude app publishes, hosted the way the app hosts it
 npm test                # lint, build:dev, test:sim, test:e2e
-npm run test:full       # npm test, then test:artifact
+npm run test:full       # npm test, then test:artifact, then the bench
+npm run bench           # step time of the simulation with 600 enemies; fails above 1.5 ms a step on average
 
 npm run build           # src/ -> Tollbound.html, the tracked page
 npm run check           # fails if Tollbound.html is not what src/ builds
@@ -28,11 +29,12 @@ npm run check           # fails if Tollbound.html is not what src/ builds
 node tests/run.js smoke phone           # only the scenarios whose names contain one of these words
 node tests/run.js --verbose             # list every check, with its info
 node --test tests/sim/00-core.test.js   # one simulation test file
+node tests/bench.js 300 6000 --strict   # 300 enemies, 6000 steps; also fail if the worst step is above 4 ms
 node tools/build.js --out /tmp/mine     # both builds into a folder of your own, and then
 GAME=/tmp/mine/Tollbound.html node tests/run.js   # test that build instead of .build/
 ```
 
-Node 22 is needed. `npm test` runs on GitHub for every change under `Games/Tollbound/`.
+Node 22 is needed. `npm run test:full` runs on GitHub for every change under `Games/Tollbound/`.
 
 ## Layout
 
@@ -40,8 +42,8 @@ Node 22 is needed. `npm test` runs on GitHub for every change under `Games/Tollb
 - `src/page/`: the page around the game. `head.html` and `tail.html` are the wrapper of the standalone page, `body.html` holds the game area and its six layers, and `css/NN-owner.css` files are joined in name order.
 - `src/js/NN-name.js`: the game, one module per file, joined in the order of the numbers.
 - `tools/`: `modules.js` gives the module order to everything else, `build.js` builds, `lint.js` checks the code rules.
-- `tests/`: `run.js` runs the browser scenarios of `scenarios/*.js`, and `helpers.js` is loaded into the page for them. `sim/*.test.js` are the Node tests, and `sim/loader.js` loads the simulation for them.
-- `docs/`: `engine.md` holds the contracts every module is written against. Read it before writing code.
+- `tests/`: `run.js` runs the browser scenarios of `scenarios/*.js`, and `helpers.js` is loaded into the page for them. `sim/*.test.js` are the Node tests, and `sim/loader.js` loads the simulation for them. `bench.js` measures the step time of the simulation.
+- `docs/`: `engine.md` holds the contracts every module is written against: the run state, the entities, the modules with their signatures, the data shapes and the rules. Read it before writing code. `tests/sim/docs.test.js` holds parts of it against the code, so a change to the fields of an entity or of the run state goes into both.
 - `.build/`: development builds. Not tracked.
 
 ## Two builds from one source
@@ -100,7 +102,7 @@ The simulation works in metres on a flat ground plane, advances in fixed steps o
    });
    ```
 
-   `loadSim()` gives a fresh copy of the simulation each time; `loadSim({ boot: true })` also finalizes the definitions and freezes the namespaces, as the page does. Objects and arrays that come out of the simulation belong to another context: pass them through `plain()` before a strict deep comparison, and check thrown errors by their message.
+   `loadSim()` gives a fresh copy of the simulation each time; `loadSim({ boot: true })` also finalizes the definitions and freezes the namespaces, as the page does; `loadSim({ only: ['00-core.js', '01-defs.js', '10-stats.js'] })` loads just the files named, which keeps the test of one file clear of content and systems that arrive later. Objects and arrays that come out of the simulation belong to another context: pass them through `plain()` before a strict deep comparison, and check thrown errors by their message.
 
    What the player sees gets a scenario in `tests/scenarios/NN-name.js`. Its `run` function is sent to the page and runs there, with `T` from `tests/helpers.js` and the game's namespaces under `TB`:
 
@@ -115,6 +117,6 @@ The simulation works in metres on a flat ground plane, advances in fixed steps o
    }];
    ```
 
-   A scenario passes only if every check passes and the page stays clean: no error, no `console.error`, no browser dialog, no request for another file. The top of `tests/run.js` lists the optional fields (a time limit, a notch, a reload in the middle).
+   A scenario passes only if every check passes and the page stays clean: no error, no `console.error`, no browser dialog, no request for another file. For input as a player gives it, use `await T.tap(element)`, `T.click`, `T.mouse`, `T.key`, `T.keyDown`, `T.keyUp` and, on a phone, `T.touch` for sticks and drags: the runner sends these from outside the page, so they are trusted, which events made inside the page are not (the top of `tests/helpers.js` lists them). The top of `tests/run.js` lists the optional fields (a time limit, a notch, a reload in the middle, a value handed from Node to the page). `tests/scenarios/20-play.js` uses the last of these to make the page replay a run that Node has played, checksum for checksum.
 
 6. Run `npm test` before committing.

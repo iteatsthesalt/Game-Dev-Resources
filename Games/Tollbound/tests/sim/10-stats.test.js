@@ -3,18 +3,11 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('vm');
-const modules = require('../../tools/modules.js');
-const { plain } = require('./loader.js');
+const { loadSim, plain } = require('./loader.js');
 
-// The stat rules need only the core, the registries and the tables. Running just those three files gives
+// The stat rules need only the core, the registries and the tables. Loading just those three files gives
 // registries with nothing in them, so the sigils of these tests never meet the ids of the game's own content.
-function kernel() {
-  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
-  context.console = console;
-  for (const file of ['00-core.js', '01-defs.js', '10-stats.js']) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-  return new vm.Script('({ Core, Defs, Stats })').runInContext(context);
-}
+const kernel = () => loadSim({ only: ['00-core.js', '01-defs.js', '10-stats.js'] });
 
 const { Stats } = kernel();
 const near = (a, b, eps = 1e-9) => assert.ok(Math.abs(a - b) <= eps, `${a} is not within ${eps} of ${b}`);

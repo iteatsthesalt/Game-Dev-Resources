@@ -13,8 +13,12 @@
 // run is sent to the page and runs there: tests/helpers.js gives it T and 99-boot.js gives it TB. It cannot
 // use anything from the file around it. run may also be an array of such functions: the page is reloaded
 // between them and keeps its storage, which is how a scenario sees what survives a reload.
+// T.tap, T.click, T.mouse, T.key and T.touch are carried out by this runner from outside the page (realInput
+// below), so the page gets them as a player's own, trusted input.
 // Optional fields: timeout (ms for the whole scenario, default 120000), dpr (device pixel ratio, default 1),
-// safeArea ({top, right, bottom, left} in px: what env(safe-area-inset-*) reports, as on a phone with a notch).
+// safeArea ({top, right, bottom, left} in px: what env(safe-area-inset-*) reports, as on a phone with a notch),
+// args (any JSON value; run gets a copy of it as its one argument: the way to hand the page what only Node
+// can work out, such as what the simulation gives when the Node loader runs it).
 //
 // Every scenario gets a fresh browser context, so storage starts empty. It passes only if nothing threw,
 // every check passed and the page stayed clean: no uncaught error, no console.error (a "Failed to load
@@ -118,6 +122,25 @@ async function whenReady(page, watch) {
   }
 }
 
+// Input as a player gives it, for T.tap, T.key and their kin in tests/helpers.js. An event that a scenario
+// makes inside the page is not trusted: the browser will not let it capture a pointer, unlock sound or start
+// a gesture. What goes through here comes from outside the page and is the real thing.
+const TOUCH = { start: 'touchStart', move: 'touchMove', end: 'touchEnd', cancel: 'touchCancel' };
+const sessions = new WeakMap();   // page -> its debugging session, opened when a scenario first sends a raw touch
+async function realInput(context, page, mobile, kind, a, b, c) {
+  if (kind === 'tap') return mobile ? page.touchscreen.tap(a, b) : page.mouse.click(a, b);
+  if (kind === 'click') return page.mouse.click(a, b);
+  if (kind === 'mouse' && (a === 'move' || a === 'down' || a === 'up')) return a === 'move' ? page.mouse.move(b, c) : page.mouse[a]();
+  if (kind === 'key' && (a === 'down' || a === 'up' || a === 'press')) return page.keyboard[a](String(b));
+  if (kind === 'touch' && TOUCH[a]) {
+    if (!mobile) throw new Error('T.touch needs a scenario with mobile: true');
+    if (!sessions.has(page)) sessions.set(page, await context.newCDPSession(page));
+    const touchPoints = (b || []).map((p, i) => ({ x: p.x, y: p.y, id: p.id === undefined ? i : p.id }));
+    return sessions.get(page).send('Input.dispatchTouchEvent', { type: TOUCH[a], touchPoints });
+  }
+  throw new Error(`tests/run.js knows no input "${kind}${typeof a === 'string' ? ' ' + a : ''}"`);
+}
+
 // A stack as the page gives it, with the source line added and the test tool's own frames left out.
 const tidy = (env, text, lines) => env.source.mark(text).split('\n').filter((l) => !/\bUtilityScript\b/.test(l)).slice(0, lines).join('\n');
 
@@ -160,6 +183,7 @@ async function play(browser, s, env) {
     });
     page.on('websocket', (ws) => note(`the page opened a socket to ${ws.url().slice(0, 200)}: the game talks to nobody`));
 
+    await page.exposeFunction('__tbInput', (kind, a, b, c) => realInput(context, page, !!s.mobile, kind, a, b, c));
     if (s.safeArea) {   // a notch or rounded corners, as env(safe-area-inset-*) reports them on a phone
       const insets = Object.assign({ top: 0, right: 0, bottom: 0, left: 0 }, s.safeArea);
       await (await context.newCDPSession(page)).send('Emulation.setSafeAreaInsetsOverride', { insets })
@@ -173,7 +197,7 @@ async function play(browser, s, env) {
         await whenReady(page, watch);
         await page.addScriptTag({ path: HELPERS });
         await page.evaluate((target) => { window.T.target = target; }, TARGET);
-        const got = await page.evaluate(parts[i]);
+        const got = await page.evaluate(parts[i], s.args === undefined ? null : s.args);
         if (!Array.isArray(got)) throw new Error('the scenario did not end with "return T.done();"');
         checks.push(...got);
         // one more frame, so that an error the scenario set off but did not wait for still counts

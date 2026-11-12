@@ -2,18 +2,11 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('vm');
-const modules = require('../../tools/modules.js');
-const { plain } = require('./loader.js');
+const { loadSim, plain } = require('./loader.js');
 
 // Only the kernel's own files are loaded, so content and systems added later cannot disturb these tests.
 const KERNEL = ['00-core.js', '01-defs.js', '02-pool-grid.js', '10-stats.js', '20-sim.js', '29-world.js', '30-modes-curves.js'];
-function kernel() {
-  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
-  context.console = console;
-  for (const file of KERNEL) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-  return new vm.Script(`({ ${modules.namespaces('00-core.js').join(', ')} })`).runInContext(context);
-}
+const kernel = () => loadSim({ only: KERNEL });
 
 // A simulation with three props and two zones that scatter them: the yard thinly, the thicket far too thickly.
 // Their ids begin with "test." so that they never meet an id of the game's own content.

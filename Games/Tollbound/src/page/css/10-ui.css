@@ -10,14 +10,7 @@
      .ui-btn        a control: add .primary for the one main action of a screen, .second for a quieter choice
    The look: square corners and thin lines, bone text on blue-black, gold for the one thing that matters,
    verdigris for what is secondary. A control is never lower than 44px, the least a thumb needs.
-   Colours are the tokens of 00-base.css, plus the second colour declared here. */
-
-:root {
-  /* the second colour, verdigris: the quieter of two choices, and notes that only inform */
-  --second: #6fb3a6;
-  --second-bright: #a9ddd1;
-  --second-dim: #2f5a53;
-}
+   Colours are the tokens of 00-base.css. */
 
 /* ---- screens ---- */
 

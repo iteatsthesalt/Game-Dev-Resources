@@ -6,17 +6,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('vm');
-const modules = require('../../tools/modules.js');
 const { loadSim, plain } = require('./loader.js');
 
 const KERNEL = ['00-core.js', '01-defs.js', '02-pool-grid.js', '10-stats.js', '20-sim.js', '29-world.js', '30-modes-curves.js'];
-function kernel() {
-  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
-  context.console = console;
-  for (const file of KERNEL) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-  return new vm.Script(`({ ${modules.namespaces('00-core.js').join(', ')} })`).runInContext(context);
-}
+const kernel = () => loadSim({ only: KERNEL });
 
 const base = kernel();                   // shared by the tests that add nothing to the simulation
 const { Core, Sim, Stats, Defs } = base;

@@ -4,8 +4,6 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('vm');
-const modules = require('../../tools/modules.js');
 const { loadSim, plain } = require('./loader.js');
 
 const KINDS = ['sigil', 'binding', 'vow', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy', 'boss', 'zone',
@@ -14,12 +12,7 @@ const mod = (stat, op, value, more) => Object.assign({ stat, op, value }, more);
 
 // Runs only the files named, in a context of their own: registries with nothing in them, whatever content the
 // game ships. Most tests here use kernel(), so they keep passing as content arrives and never meet its ids.
-function bare(files) {
-  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
-  context.console = console;
-  for (const file of files) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-  return new vm.Script('({ Core, Defs, Stats })').runInContext(context);
-}
+const bare = (files) => loadSim({ only: files });
 const kernel = () => bare(['00-core.js', '01-defs.js', '10-stats.js']);
 
 function sample() {

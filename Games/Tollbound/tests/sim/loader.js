@@ -8,6 +8,11 @@
 //                          copy of the simulation, so tests cannot disturb each other.
 //   loadSim({boot: true})  then does what 99-boot.js does when the page starts: Defs.finalize(), where an
 //                          error in the content throws, and Core.seal(), after which no namespace can change
+//   loadSim({only: [file, ...]})   runs just the modules named ('00-core.js', '01-defs.js', ...), still in
+//                          module order. The test of one file loads what that file stands on and nothing
+//                          else: content and systems that arrive later can then neither disturb the test nor
+//                          be disturbed by it, and its own definitions never meet the ids the game ships.
+//                          The namespaces of the files left out are there, and empty. Goes with boot as well.
 //   plain(value)           a JSON copy of a simulation value, built from this side's own objects and arrays
 //
 // Three things to know:
@@ -51,9 +56,10 @@ function compiled(file) {
 }
 
 function loadSim(options = {}) {
-  const context = freshContext();
+  const context = freshContext(), all = modules.sim(), only = options.only || null;
+  for (const file of only || []) if (!all.includes(file)) throw new Error(`loadSim: "${file}" is not a module below 50 in src/js`);
   new vm.Script(GUARD, { filename: __filename }).runInContext(context);
-  for (const file of modules.sim()) compiled(file).runInContext(context);
+  for (const file of all) if (only === null || only.includes(file)) compiled(file).runInContext(context);
   const names = modules.namespaces(modules.DECLARERS[0]);
   const sim = Object.assign({}, new vm.Script(`({ ${names.join(', ')} })`, { filename: __filename }).runInContext(context));
   if (options.boot) {

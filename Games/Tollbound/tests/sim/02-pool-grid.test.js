@@ -2,18 +2,10 @@
 'use strict';
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const vm = require('vm');
-const modules = require('../../tools/modules.js');
+const { loadSim } = require('./loader.js');
 
-// Pools and grids need the core and nothing else: the two files are run in a context of their own.
-function kernel() {
-  const context = vm.constants && vm.constants.DONT_CONTEXTIFY ? vm.createContext(vm.constants.DONT_CONTEXTIFY) : vm.createContext({});
-  context.console = console;
-  for (const file of ['00-core.js', '02-pool-grid.js']) new vm.Script(modules.read(file), { filename: file }).runInContext(context);
-  return new vm.Script('({ Core })').runInContext(context);
-}
-
-const { Core } = kernel();
+// Pools and grids need the core and nothing else: only those two files are loaded.
+const { Core } = loadSim({ only: ['00-core.js', '02-pool-grid.js'] });
 const make = () => ({ alive: false, x: 0, y: 0, r: 0.4, tag: 0 });
 // The tags of the objects in use. Array.from, because an array that comes out of the simulation belongs to
 // another context and deepEqual would call it different from one made here.

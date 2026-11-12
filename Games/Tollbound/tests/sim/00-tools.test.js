@@ -71,6 +71,18 @@ test('the simulation loads with console as its only link to the outside', () => 
   assert.equal(Math.random() < 1, true, 'the tests keep their own Math.random');
 });
 
+test('the loader can load a few modules alone, under the same guard', () => {
+  const some = loadSim({ only: ['02-pool-grid.js', '00-core.js'] });   // named in any order, run in module order
+  assert.deepEqual(Object.keys(some), modules.namespaces('00-core.js'), 'every namespace is there');
+  assert.equal(typeof some.Core.Pool, 'function');
+  assert.deepEqual(Object.keys(some.Defs), [], 'and those of the files left out are empty');
+  assert.throws(() => some.Core.assert.constructor('return Math.random()')(), /Math\.random is not for the simulation/);
+  assert.throws(() => loadSim({ only: ['00-core.js', '50-platform.js'] }), /"50-platform\.js" is not a module below 50/);
+  assert.throws(() => loadSim({ only: ['00-nothing.js'] }), /is not a module below 50/);
+  const booted = loadSim({ only: ['00-core.js', '01-defs.js'], boot: true });
+  assert.ok(Object.isFrozen(booted.Core) && Object.isFrozen(booted.Sim), 'boot seals what was loaded and what was not');
+});
+
 // ---- the build ----
 
 test('the build gives the same bytes every time', () => {

@@ -6,8 +6,9 @@
 //                                 for one), fits it to the window, opens the title and starts the frame loop
 //   Game.start(cfg) -> S | null   starts a vigil and closes every screen. A cfg {mode, zone, seed, char, account}
 //                                 that names a zone goes to Sim.create. Without a zone (there is none yet) the
-//                                 run is Sim.debugScene(200, seed), the seed being cfg.seed, else ?seed=, else
-//                                 random. null, and a toast, when the build has no simulation.
+//                                 run is Sim.debugScene(200, seed). Either way the seed is cfg.seed, else ?seed=,
+//                                 else random; a cfg without one is copied and given it, and the run's cfg
+//                                 (S.cfg.seed) tells which. null, and a toast, when the build has no simulation.
 //   Game.title()                  drops the run and shows the title
 //   Game.command(cmd) -> boolean  Sim.command(S, cmd) on the run, followed by the notice 'command'. Menus send
 //                                 their commands this way, so that the readers of S.events hear of what a
@@ -15,8 +16,8 @@
 //   Game.sim(seconds, opts) -> n  advances the run by whole steps without drawing, for tests, and returns how
 //                                 many steps ran. opts {bot, policy}: with bot, and 28-bot.js in the build, the
 //                                 input is Bot.input(S, policy) and offers go to Bot.choose(S, offer); otherwise
-//                                 the input is empty and every offer takes its first option. It stops early
-//                                 when the run ends. Open screens and a hidden page do not hold it back.
+//                                 the input is Sim.NO_INPUT and every offer takes its first option. It stops
+//                                 early when the run ends. Open screens and a hidden page do not hold it back.
 //   Game.S                        the run, or null. A value.
 //   Game.state                    'title' | 'run' | 'results'. A value.
 //   Game.debug                    {fps, steps, stepMs, drawMs, worstMs}, renewed twice a second: frames and
@@ -24,21 +25,28 @@
 //                                 longest frame, in ms. ?fps=1 shows them in a corner of the screen.
 //   Game.VERSION
 //
-// A frame: its time is added up and spent in steps of 1/60 s, at most 4 a frame; what is then left is cut to one
-// step, so a slow device slows the game down and never falls behind. The input is sampled once for each
-// step, so a press that one sample reports reaches exactly one step: Input.sample() when 52-input.js is in the
-// build, else the keys W A S D and the arrows as a move vector. No step runs while a screen that pauses is
-// open, while S.phase is 'offer' (whoever shows the offer resolves it with Game.command), while the page is
-// hidden, or once the run has ended. Then the frame is drawn: Scene.draw(S, alpha) when 68-scene.js is in the
-// build and there is a run (alpha, 0 to 1, is how far the frame lies between the last step and the next), else
-// the stand-in: the plain ground with discs for the player, enemies, shots and pickups.
+// A frame: its time is added up and spent in steps of 1/60 s. A step runs as soon as any time is owed, so
+// after a frame the simulation stands where the frame is or up to one step ahead of it, never behind. At most
+// 4 steps run in a frame and what is then still owed is dropped, so a slow device slows the game down and
+// never piles work up. The input is sampled once for each step, so a press that one sample reports reaches
+// exactly one step: Input.sample() when 52-input.js is in the build, else the keys W A S D and the arrows as
+// a move vector. No step runs while a screen that pauses is open, while S.phase is 'offer' (whoever shows the
+// offer resolves it with Game.command), while the page is hidden, or once the run has ended.
+// Then the frame is drawn: Scene.draw(S, alpha) when 68-scene.js is in the build and there is a run, else the
+// stand-in: the plain ground with discs for the player, enemies, shots and pickups. alpha, above 0 and up to
+// 1, says where the frame lies between the last two steps: a thing is drawn at px + (x - px) * alpha (py
+// likewise), from where it stood before the last step (0) to where it stands now (1). On a 60 Hz screen each
+// frame is one step and alpha is 1: the picture is the simulation as it stands. On a faster screen the frames
+// in between show the way there, so movement is even on any screen and nothing is guessed ahead.
 //
 // Notices this file posts with Plat.emit, for files that load before it (Plat.on(name, fn) hears them):
 //   'boot'    (view)              once, in Game.boot, when the view exists and before the title opens: the
 //                                 moment for a module to set itself up, since nothing runs while files load
 //   'state'   (state, before)     the game changed state
-//   'step'    (S, live)           after every simulation step; live is false inside Game.sim.
-//                                 S.events holds what that step did, until the next step or command.
+//   'step'    (S, live)           after every simulation step; live is false inside Game.sim. The ring
+//                                 S.events holds what that step did (S.eventCount events from S.eventStart
+//                                 on, see 20-sim.js) until the next step or command. A frame may hold up to
+//                                 4 steps, so whoever reads events reads them here and not once a frame.
 //   'command' (S, live, cmd)      after a command sent with Game.command (live), or by Game.sim to resolve an
 //                                 offer (not live). S.events holds what the command emitted.
 //   'frame'   (S, alpha, dt)      once a frame, after drawing; S is null while there is no run
@@ -52,18 +60,19 @@
   const DT = Core.DT;
   const MAX_STEPS = 4;          // simulation steps in one frame, at most
   const MAX_GAP = 0.25;         // seconds one frame may add: a stall is not caught up
+  const OWED = 1e-9;            // seconds: less frame time than this is rounding, and no reason for a step
   const DEBUG_ENEMIES = 200;
   const MAX_DISCS = 2048;       // room in the stand-in's buffer: more than the caps of all pools together
   // Screens tick at these rates but report each frame a hair early or late. Taking the nominal time when a
   // frame is within SNAP seconds of it keeps the steps even: one a frame at 60 Hz, one every other at 120 Hz.
   const RATES = [1 / 60, 1 / 120, 1 / 144, 1 / 90, 1 / 30], SNAP = 0.0002;
-  const NO_INPUT = { mx: 0, my: 0, ax: 1, ay: 0, aim: false, dodge: false, draught: false };
   const VIEWS = { '2d': '2D view', gl: '3D view' };
   const STORAGE = { saved: 'saves in this browser', memory: 'nothing is saved here', error: 'a save has failed' };
   const OUTCOMES = { left: 'You left through the gate.', died: 'You fell, and the vigil ended with you.' };
 
   let state = 'title', S = null, view = null, booted = false, visible = true, broken = false;
-  let acc = 0;                               // seconds of frame time not yet spent on steps
+  let acc = 0;                               // seconds of frame time not yet spent on steps; after a frame it is
+                                             // 0 or less: how far the simulation stands ahead of the frame
   let fitW = 0, fitH = 0, fitDpr = 0;        // what the view was last fitted to
   let discs = null, readout = null;
   let span = 0, frames = 0, stepped = 0, stepTime = 0, drawTime = 0, worst = 0;   // the half second being measured
@@ -115,16 +124,17 @@
 
   const cam = { x: 0, y: 0, zoom: 1 };
 
-  // Adds one disc for each live entry of a pool and returns the new count.
-  function addPool(n, pool, radius, r, g, b) {
+  // Adds one disc for each live entry of a pool and returns the new count. A disc lies between where its
+  // entity stood before the last step (px, py) and where it stands now, alpha of the way along.
+  function addPool(n, pool, alpha, radius, r, g, b) {
     if (!pool || !pool.items) return n;
     const items = pool.items, stride = Gfx.DISC_STRIDE;
     for (let i = 0; i < pool.n && n < MAX_DISCS; i++) {
       const e = items[i], o = n * stride;
       if (e.alive === false) continue;   // killed in the last step, and still in its place until the next
       n++;
-      discs[o] = e.x;
-      discs[o + 1] = e.y;
+      discs[o] = e.px + (e.x - e.px) * alpha;
+      discs[o + 1] = e.py + (e.y - e.py) * alpha;
       discs[o + 2] = e.r > 0 ? e.r : radius;
       discs[o + 3] = r;
       discs[o + 4] = g;
@@ -134,19 +144,19 @@
     return n;
   }
 
-  function standIn() {
+  function standIn(alpha) {
     const p = S ? S.player : null;
-    cam.x = p ? p.x : 0;
-    cam.y = p ? p.y : 0;
+    cam.x = p ? p.px + (p.x - p.px) * alpha : 0;
+    cam.y = p ? p.py + (p.y - p.py) * alpha : 0;
     view.begin(cam, null);
     if (S) {
-      let n = addPool(0, S.pickups, 0.15, 0.44, 0.7, 0.65);
-      n = addPool(n, S.enemies, 0.4, 0.66, 0.26, 0.22);
-      n = addPool(n, S.shots, 0.12, 0.94, 0.79, 0.47);
+      let n = addPool(0, S.pickups, alpha, 0.15, 0.44, 0.7, 0.65);
+      n = addPool(n, S.enemies, alpha, 0.4, 0.66, 0.26, 0.22);
+      n = addPool(n, S.shots, alpha, 0.12, 0.94, 0.79, 0.47);
       if (p && n < MAX_DISCS) {
         const o = n++ * Gfx.DISC_STRIDE;
-        discs[o] = p.x;
-        discs[o + 1] = p.y;
+        discs[o] = cam.x;
+        discs[o + 1] = cam.y;
         discs[o + 2] = p.r > 0 ? p.r : 0.4;
         discs[o + 3] = 0.925;
         discs[o + 4] = 0.906;
@@ -209,17 +219,17 @@
         if (Math.abs(dt - RATES[i]) < SNAP) dt = RATES[i];
       }
       acc += dt < MAX_GAP ? dt : MAX_GAP;
-      while (acc >= DT && steps < MAX_STEPS && S.phase === 'play' && !UI.pausing()) {
+      while (acc > OWED && steps < MAX_STEPS && S.phase === 'play' && !UI.pausing()) {
         Sim.step(S, sampleInput());
         acc -= DT;
         steps++;
         Plat.emit('step', S, true);
       }
-      if (acc > DT) acc = DT;
+      if (acc > 0) acc = 0;   // more was owed than one frame may run, or the run stopped: the rest is dropped
     }
     if (state === 'run' && S && S.phase === 'ended') finish();
-    const t1 = Plat.now(), alpha = acc < DT ? acc / DT : 1;
-    if (S && typeof Scene.draw === 'function') Scene.draw(S, alpha); else standIn();
+    const t1 = Plat.now(), alpha = 1 + acc / DT;   // acc is above -DT and at most 0
+    if (S && typeof Scene.draw === 'function') Scene.draw(S, alpha); else standIn(alpha);
     const t2 = Plat.now();
     Plat.emit('frame', S, alpha, dt);
     account(dt, steps, t1 - t0, t2 - t1);
@@ -301,7 +311,9 @@
       UI.toast('This build has no simulation yet.');
       return null;
     }
-    S = real ? Sim.create(cfg) : Sim.debugScene(DEBUG_ENEMIES, seedOf(cfg));
+    const seed = seedOf(cfg);
+    // Sim.create keeps the cfg it is given, so a cfg that brought its seed goes in as it is
+    S = !real ? Sim.debugScene(DEBUG_ENEMIES, seed) : Sim.create(cfg.seed === seed ? cfg : Object.assign({}, cfg, { seed: seed }));
     acc = 0;
     releaseKeys();
     UI.clear();
@@ -343,7 +355,7 @@
     while (done < want && S.phase !== 'ended') {
       if (S.phase === 'offer' && !resolveOffers(bot)) break;
       if (S.phase !== 'play') break;
-      Sim.step(S, bot ? Bot.input(S, policy) : NO_INPUT);
+      Sim.step(S, bot ? Bot.input(S, policy) : Sim.NO_INPUT);
       done++;
       Plat.emit('step', S, false);
     }

@@ -1,5 +1,6 @@
 // tests/scenarios/10-shell.js: the shell around the simulation: the platform helpers and storage (50-platform.js),
-// the plain 2D view (67-gfx-2d.js), the menu framework (70-ui-core.js) and the game loop (90-game.js).
+// the list of views (65-gfx.js), the plain 2D view (67-gfx-2d.js), the menu framework (70-ui-core.js) and the
+// game loop (90-game.js).
 // Three parts:
 //   menus    the title, the screen stack, focus and keys, the confirm dialog, toasts, the view, the platform
 //            helpers and a first look at storage. On a desktop window and on a phone. Needs no simulation.
@@ -332,7 +333,10 @@ const menus = async function () {
     fallback.name === '2d' && fallback.canvas !== spare && fallback.canvas.id === 'spare' && fallback.canvas.isConnected && !spare.isConnected && Gfx.active === fallback, fallback.name);
   const other = Gfx.create(fallback.canvas, 'constructor');
   T.check('a view nobody registered is passed over, whatever its name', other.name === '2d' && other.canvas.isConnected);
-  other.canvas.remove();
+  Gfx.register('test.fine', (c) => ({ name: 'test.fine', canvas: c }));
+  const better = Gfx.create(other.canvas, 'test.nobody');
+  T.check('the plain view is the last resort: another view that starts is taken before it', better.name === 'test.fine' && Gfx.active === better, better.name);
+  better.canvas.remove();
   return T.done();
 };
 
