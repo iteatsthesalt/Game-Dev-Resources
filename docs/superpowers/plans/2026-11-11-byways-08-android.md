@@ -966,18 +966,18 @@ Every recogniser call is posted to `Handler(Looper.getMainLooper())`. API levels
 
 - [ ] **Step 5: Add the consent screen and lifecycle to `MainActivity`**
 
-- On first launch (SharedPreferences `byways`, `consentShown` false), before `loadUrl`, show a non-cancelable `AlertDialog`. Title: `Hands-free voice`. Message: `Byways can listen for commands like “next one” and “save it”, and read finds aloud. It needs the microphone for that. You can change this later in Android settings.` Buttons: **Allow microphone** (runs `registerForActivityResult(ActivityResultContracts.RequestPermission())` for `Manifest.permission.RECORD_AUDIO`, then stores `micConsent` = granted) and **Not now** (stores `micConsent` false). Both set `consentShown` true and then load `APP_URL`.
+- On first launch (SharedPreferences `byways`, `consentShown` false), before `loadUrl`, show a non-cancelable `AlertDialog`. Title: `Hands-free voice`. Message: `Byways can listen for commands like “next one” and “save it”, and read finds aloud. It needs the microphone for that. You can change this later in Android settings.` Buttons: **Allow microphone** calls `micPermission.launch(Manifest.permission.RECORD_AUDIO)`, and **Not now** stores `micConsent` false. `private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> … }` is an activity property, so it is registered before the activity starts; its callback stores `micConsent` = granted. Both paths then set `consentShown` true and load `APP_URL`.
 - Register `"voice" to speechBridge` in the bridge handlers, with `emit = { e, d -> bridge.emit("voice", e, d) }`.
-- `override fun onPause()` calls `speechBridge.stopNow()` after `super.onPause()`.
+- `override fun onPause()`: `super.onPause()`, then `bridge.emit("app", "paused", JSONObject())`, then `speechBridge.stopNow()`, so the page suspends hands-free before the mic's `state {listening:false}` arrives and does not restart it while a dialog, the share chooser or another window is in front. `override fun onResume()`: `super.onResume()`, `bridge.emit("app", "resumed", JSONObject())`, then `speechBridge.resumed()`.
 
 - [ ] **Step 6: Run them to see them pass**
 
-Run: the Step 2 commands. Expected: PASS (Node: 9 tests; Gradle: 3 new tests).
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 12 tests; Gradle: 7 new tests).
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/SpeechErrorsTest.kt tests/unit/android-shell.test.js
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways tests/unit/android-shell.test.js
 git commit -m "Add native voice commands and the microphone consent screen"
 ```
 

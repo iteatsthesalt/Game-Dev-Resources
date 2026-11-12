@@ -767,6 +767,12 @@ test('itemToFind rebuilds a find and drops bad urls', () => {
   assert.equal(itemToFind(['library', 'https://example.com/', 'Tiny Synth']).title, 'Tiny Synth');
   assert.equal(itemToFind(['library', 'javascript:alert(1)', 'x']), null);
 });
+test('payloadFromLink reads only Byways share links', async () => {
+  const { url } = await buildShareUrl(SHARE_BASE, payload);
+  assert.equal(payloadFromLink('  ' + url + '\n'), url.split('#s=')[1]);
+  assert.equal(payloadFromLink(SHARE_BASE + 'index.html#s=abc'), 'abc');
+  for (const bad of ['https://example.com/#s=abc', SHARE_BASE + '#/stumble', SHARE_BASE + '#s=', 'not a link']) assert.equal(payloadFromLink(bad), null);
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -781,7 +787,7 @@ Use `new Blob([json]).stream().pipeThrough(new CompressionStream('deflate-raw'))
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/share.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -801,7 +807,7 @@ git commit -m "Add the share-link codec with the 2,000 character limit"
 - Produces:
   - `exportBackup(store, {includeKeys = false, app, clock, secrets}) → Promise<object>`: `{format: 'byways-backup', v: 1, exportedAt: ISO, app, settings, taste, collections, history, seen}`, plus `keys: {id: value}` only when `includeKeys`. `taste` is the `taste` store key `'taste'` (or `DEFAULT_TASTE`), `history` is the `'trail'` items, and `seen` is `[[hash, t], …]`.
   - `backupFileName(clock, includeKeys) → 'byways-backup-YYYY-MM-DD.json'` or `'byways-backup-YYYY-MM-DD-with-keys.json'`.
-  - `importBackup(store, data, {secrets}) → Promise<{collections, seen, history, keys}>` (counts written). It throws `'This is not a Byways backup file.'` before writing anything unless `format === 'byways-backup'`, `v === 1` and `collections`, `history` and `seen` are arrays. Merge rules: seen hashes are unioned; a collection with a new id is added; one with the same id, name and item ids is skipped; any other clash is added as `<id>-copy` (then `-copy-2`, …) named `<name> (imported)`. Every imported item goes through `makeFind` and is dropped if it returns `null`. History is written only when the local trail is empty (last 50). Taste is written only when there is no local taste or it has `reactions === 0`. Keys are written only when `data.keys` exists.
+  - `importBackup(store, data, {secrets}) → Promise<{collections, seen, history, keys}>` (counts written). It throws `'This is not a Byways backup file.'` before writing anything unless `format === 'byways-backup'`, `v === 1` and `collections`, `history` and `seen` are arrays. Merge rules: seen hashes are unioned; a collection with a new id is added; one with the same id, name and item ids is skipped; any other clash is added as `<id>-copy` (then `-copy-2`, …) named `<name> (imported)`. Every imported item goes through `makeFind` and is dropped if it returns `null`. History is written only when the local trail is empty (last 50). Taste is written only when there is no local taste or it has `reactions === 0`. Settings in the file are never applied, because they belong to the version that wrote them. Keys are written only when `data.keys` exists. The caller re-reads history and taste afterwards (Task 29).
   - `toBookmarksHtml(collection) → string` (Netscape format: `<!DOCTYPE NETSCAPE-Bookmark-file-1>`, a `<DL><p>` with one `<DT><H3>` for the collection name and one `<DT><A HREF="…">` per item, with `& < > "` escaped), `fromBookmarksHtml(html) → Array<{url, title}>` (every `<A … HREF="…">…</A>`, http(s) only, titles through `toPlainText`).
 
 - [ ] **Step 1: Write the failing test**
@@ -876,7 +882,7 @@ git commit -m "Add backup export and merge import, and bookmarks HTML"
 
 **Interfaces:**
 - Consumes: `siteOrigin(u)`.
-- Produces: `checkLive(url, {transport, privileged = false, timeoutMs = 8000}) → Promise<boolean>`. Privileged: `HEAD url` with `privileged: true`; live when the status is below 400 or is 405. Not privileged: `HEAD siteOrigin(url) + '/'` with `mode: 'no-cors'` and `credentials: 'omit'`; live when the fetch resolves (opaque). A throw or the timeout means not live.
+- Produces: `checkLive(url, {transport, privileged = false, timeoutMs = 8000}) → Promise<boolean>`. Privileged: `HEAD url` with `privileged: true`; live when the status is below 400 or is 405. Not privileged: `HEAD siteOrigin(url) + '/'` with `mode: 'no-cors'` and `credentials: 'omit'`; live when the fetch resolves (opaque). An `http:` URL is not fetched in the web check, because the CSP and mixed-content blocking would stop it; it counts as live. A throw or the timeout means not live.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -899,6 +905,10 @@ test('a hung site counts as not live', async () => {
   const hang = tr((u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted')))));
   assert.equal(await checkLive('https://slow.example/', { transport: hang, timeoutMs: 20 }), false);
 });
+test('the web check never fetches an http: site', async () => {
+  const t = tr(async () => ({ status: 0, type: 'opaque' }));
+  assert.equal(await checkLive('http://0x80.example/feed', { transport: t }), true); assert.equal(t.calls.length, 0);
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
@@ -911,7 +921,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/liveness.test.js`
-Expected: PASS, 3 tests.
+Expected: PASS, 4 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -929,8 +939,8 @@ git commit -m "Add the link check for web and privileged fetch"
 
 **Interfaces:**
 - Consumes: `adapterCtx` and the adapter table (Task 5), `IDENT`, `makeFind`, `toPlainText`, `utcDate`.
-- Produces: the `wikipedia` and `commons` adapters.
-  - Wikipedia `random`: `GET https://en.wikipedia.org/api/rest_v1/page/random/summary` with `Api-User-Agent: IDENT`; `[]` when `type === 'disambiguation'`. Find: id `wiki:en:<titles.canonical>`, `description = extract`, `url = content_urls.desktop.page`, `imageUrl = thumbnail.source`, `licence 'CC BY-SA 4.0'`, `attribution 'Wikipedia'`, why `['Wikipedia: random article']`.
+- Produces: the `wikipedia` and `commons` adapters. Every request from both sends `Api-User-Agent: IDENT` (§7.3).
+  - Wikipedia `random`: `GET https://en.wikipedia.org/api/rest_v1/page/random/summary`; `[]` when `type === 'disambiguation'`. Find: id `wiki:en:<titles.canonical>`, `description = extract`, `url = content_urls.desktop.page`, `imageUrl = thumbnail.source`, `licence 'CC BY-SA 4.0'`, `attribution 'Wikipedia'`, why `['Wikipedia: random article']`.
   - Wikipedia `search(q)` and `more(find)`: `GET https://en.wikipedia.org/w/api.php?action=query&generator=search&gsrsearch=<q>&gsrlimit=10&prop=pageimages|extracts|info&inprop=url&piprop=thumbnail&pithumbsize=640&exintro=1&explaintext=1&exlimit=10&format=json&origin=*`; `more` sends `gsrsearch=morelike:<find.title>`. Pages are sorted by `index`; `url = fullurl`. Why `['Wikipedia search']` or `['Wikipedia: more like <title>']`.
   - Commons `random`: today's picture of the day from `GET https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` (UTC date of `ctx.clock.now()`), field `image`: title from `image.title` without `File:` and the extension, `imageUrl = image.thumbnail.source`, `url = image.file_page`, `author = image.artist.text`, `licence = image.license.type`, `description = image.description.text`, safety `curated`, why `['Wikimedia Commons: picture of the day']`.
   - Commons `search(q)`: `GET https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrnamespace=6&gsrsearch=<q>&gsrlimit=10&prop=imageinfo&iiprop=url|mime|size|extmetadata&iiurlwidth=1024&format=json&origin=*`. Keep only `image/jpeg|png|gif|webp` with `width ≥ 400` and a `LicenseShortName`. `title = ObjectName` (else the file name), `description = toPlainText(ImageDescription)`, `author = toPlainText(Artist)`, `attribution = '<author> · <licence> · Wikimedia Commons'`, `imageUrl = thumburl`, `url = descriptionurl`, why `['Wikimedia Commons search']`. `more` returns `[]`.

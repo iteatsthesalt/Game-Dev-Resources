@@ -1351,27 +1351,25 @@ test('showToast offers Undo for 5 seconds, announces politely and keeps a sticky
   await page.clock.runFor(5000); await expect(page.locator('#toasts')).toBeEmpty();
   await page.evaluate(async () => (await import(new URL('ui/toast.js', document.baseURI).href)).showToast('Update available, reload', { ms: 0, action: { label: 'Reload', run: () => {} } }));
   await page.clock.runFor(60000); await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
-});
-test('nav links are at least 56 px and show a 3 px focus ring', async ({ page }) => {
-  for (const link of await page.getByRole('navigation', { name: 'Main' }).getByRole('link').all())
-    expect((await link.boundingBox()).height).toBeGreaterThanOrEqual(56);
-  await page.keyboard.press('Tab'); await page.keyboard.press('Tab');
-  expect(await page.evaluate(() => { const s = getComputedStyle(document.activeElement); return [s.outlineStyle, s.outlineWidth]; })).toEqual(['solid', '3px']);
+  await page.evaluate(async () => (await import(new URL('ui/toast.js', document.baseURI).href)).showToast('Liked'));
+  await expect(page.locator('#toasts')).toContainText('Liked'); await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
+  await page.clock.runFor(5000); await expect(page.locator('#toasts')).not.toContainText('Liked');
+  await expect(page.getByRole('button', { name: 'Reload' })).toBeVisible();
 });
 ```
 
 - [ ] **Step 2: Run them and see them fail**
 
 Run: `node --test tests/unit/theme.test.js`, then `npm run build` and `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/dom.spec.js`
-Expected: FAIL with `Cannot find module` (unit) and failed dynamic imports of `ui/dom.js` (e2e).
+Expected: FAIL with `Cannot find module` (unit), and every e2e test fails on its dynamic import of `ui/dom.js`, `ui/a11y.js` or `ui/toast.js`.
 
 - [ ] **Step 3: Implement `dom.js` and `a11y.js`**
 
-`h`: props `class` → `className`; `text` → `textContent`; `on<Event>` → `addEventListener(lowercased event, fn)`; `style` → throw `Error('h: style is blocked by the CSP; use a class')`; `null`, `undefined` and `false` values are skipped; `true` sets an empty attribute; anything else uses `setAttribute`. For `href`, `src`, `action`, `formaction` and `poster`, it removes ASCII whitespace and control characters, resolves the value against `document.baseURI`, and sets it only when the result has the page's origin, or uses the `http:`, `https:` or `blob:` protocol, or is `data:` on an `img`. Otherwise it skips the attribute and calls `console.warn('h: dropped unsafe URL')`. Children: arrays flatten, strings and numbers become text nodes, and `null`/`false` are skipped. `announce` sets the region's `textContent` to `''`, then sets `text` 50 ms later, so a repeated message is spoken again. `focusMain` calls `document.getElementById('main').focus()`.
+`h`: props `class` → `className`; `text` → `textContent`; `on<Event>` → `addEventListener(lowercased event, fn)`; `style` → throw `Error('h: style is blocked by the CSP; use a class')`. For `aria-*` and `data-*` props, a boolean is written as `String(value)`, so `{'aria-pressed': false}` gives `aria-pressed="false"` (an empty `aria-pressed` reads as not pressed). For other props, `null`, `undefined` and `false` skip the attribute, `true` sets it empty, and anything else uses `setAttribute`. For `href`, `src`, `action`, `formaction` and `poster`, it removes ASCII whitespace and control characters, resolves the value against `document.baseURI`, and sets it only when the result has the page's origin (which covers the page's own `blob:` URLs), uses `http:` or `https:`, or is `data:` on an `img`. Otherwise it skips the attribute and calls `console.warn('h: dropped unsafe URL')`. Children: arrays flatten, strings and numbers become text nodes, and `null`/`false` are skipped. `announce` sets the region's `textContent` to `''`, then sets `text` 50 ms later, so a repeated message is spoken again. `focusMain` calls `document.getElementById('main').focus()`.
 
 - [ ] **Step 4: Implement `theme.js` and `toast.js`**
 
-`applyAccessSettings`: `theme` in `system|light|dark|high-contrast`, `font` in `system|atkinson` and `motion` in `system|reduced|full`, where any other value gives `'system'`. It sets `--text-scale` to `String(clamp(textScale, 1, 2))`. `showToast` replaces any open toast in `#toasts` with a `div.toast` that holds the message, then an **Undo** button when `undo` is given and an `action.label` button when `action` is given. It calls `announce(message)`. Undo awaits `undo()` and closes. Action calls `run()` and closes. It closes after `ms` unless `ms` is `0`. Never pass `Infinity` to `setTimeout`, because it fires at once.
+`applyAccessSettings`: `theme` in `system|light|dark|high-contrast`, `font` in `system|atkinson` and `motion` in `system|reduced|full`, where any other value gives `'system'`. It sets `--text-scale` to `String(clamp(textScale, 1, 2))`. `showToast` adds a `div.toast` to `#toasts` that holds the message, then an **Undo** button when `undo` is given and an `action.label` button when `action` is given, and calls `announce(message)`. Undo awaits `undo()` and closes; the action button calls `run()` and closes. A toast with `ms: 0` is sticky and replaces only an earlier sticky toast. Any other toast replaces the open non-sticky toast, leaves a sticky one in place, and closes after `ms`. Never pass `Infinity` to `setTimeout`, because it fires at once.
 
 - [ ] **Step 5: Run them and see them pass**
 
