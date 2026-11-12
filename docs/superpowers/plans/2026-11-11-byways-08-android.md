@@ -614,14 +614,14 @@ export function createBridgeClient(port, { hello = true } = {})
   //    on(ch, event, fn) → () => void, hello: Promise<{versionName, versionCode, sdk, micConsent}>|null}
 export function createAndroidPlatform({ bridge, base, win = globalThis })
   // → Platform, including requestOrigins(origins) → Promise<boolean> and
-  //    identity: {launchWebAuthFlow({url, interactive}) → Promise<string>}, plus
+  //    identity: {redirectUrl: string, launchWebAuthFlow({url, interactive}) → Promise<string>}, plus
   //    app: {version() → Promise<{versionName, versionCode, sdk, micConsent}>,
   //    checkUpdate() → Promise<{available:boolean, latest:string|null, url:string|null}>, openExternal(url) → Promise<void>}
   //    and attach(app) → Promise<void> (Task 14)
 export function extractSharedLink(text) // → {kind:'share', hash:string} | {kind:'url', url:string} | null
 ```
 
-`requestOrigins` is the only thing that asks for a local network host: Plan 05's settings call it from the button that adds a local-network model, and `transport.fetch` never prompts. `identity.launchWebAuthFlow` resolves with the first URL on `https://appassets.androidplatform.net/` that the login view reaches, so Plan 05's `redirectUri = location.origin + location.pathname` works unchanged; it rejects with code `cancelled` when the person closes the view.
+`requestOrigins` takes plain origins and is the only thing that asks for a local network host: Plan 05's settings call it from the button that adds a local-network model, and `transport.fetch` never prompts. The transport follows the contract's shell rules: it honours `init.redirect === 'error'`, and its constructed `Response` carries the final URL in the header `x-byways-final-url`. `identity.redirectUrl` is `https://appassets.androidplatform.net/assets/www/index.html`; `launchWebAuthFlow` resolves with the first URL on `https://appassets.androidplatform.net/` that the login view reaches, and rejects with code `cancelled` when the person closes the view.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -675,13 +675,14 @@ test('API calls go through nativeFetch', async () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
   const r = p.transport.fetch('https://api.mistral.ai/v1/models', { headers: { Authorization: 'Bearer k' }, privileged: true });
   await tick();
-  assert.deepEqual(port.last().args, { url: 'https://api.mistral.ai/v1/models', method: 'GET', headers: { authorization: 'Bearer k' }, body: null });
+  assert.deepEqual(port.last().args, { url: 'https://api.mistral.ai/v1/models', method: 'GET', headers: { authorization: 'Bearer k' }, body: null, redirect: 'follow' });
   port.reply(port.last().id, { status: 200, statusText: 'OK', headers: { 'content-type': 'application/json' }, body: '{"data":[]}', url: 'https://api.mistral.ai/v1/models' });
   const res = await r; assert.equal(res.status, 200); assert.deepEqual(await res.json(), { data: [] });
-  assert.equal(res.url, 'https://api.mistral.ai/v1/models'); assert.equal(res.redirected, false);
   const g = p.transport.fetch('https://vertexaisearch.cloud.google.com/grounding-api-redirect/abc', { method: 'HEAD', privileged: true });
   await tick(); port.reply(port.last().id, { status: 200, statusText: 'OK', headers: {}, body: '', url: 'https://real.example/page' });
-  const moved = await g; assert.equal(moved.url, 'https://real.example/page'); assert.equal(moved.redirected, true);
+  assert.equal((await g).headers.get('x-byways-final-url'), 'https://real.example/page');
+  p.transport.fetch('https://api.example/k', { headers: { 'x-api-key': 'k' }, redirect: 'error' }); await tick();
+  assert.equal(port.last().args.redirect, 'error');
   p.transport.fetch('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json'); await tick();
   assert.deepEqual([port.last().op, port.last().args.url], ['request', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json']);
 });
@@ -745,6 +746,7 @@ test('share, open, files and screen go over the bridge', async () => {
 test('identity opens the login view and returns the callback URL', async () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
   const cb = 'https://appassets.androidplatform.net/assets/www/index.html?code=c1';
+  assert.equal(p.identity.redirectUrl, 'https://appassets.androidplatform.net/assets/www/index.html');
   const a = p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth?code_challenge=x', interactive: true });
   assert.deepEqual([port.last().op, port.last().args], ['auth', { url: 'https://openrouter.ai/auth?code_challenge=x' }]);
   port.reply(port.last().id, cb); assert.equal(await a, cb);
@@ -777,7 +779,7 @@ Expected: FAIL with `Cannot find module '…/src/platform/android.js'`.
 - [ ] **Step 3: Implement `src/platform/android.js` (bridge client, transport, share, files, links)**
 
 - Client: ids are a counter from `"1"`. `port.onmessage = e => …` parses `e.data`, ignores anything that does not parse or has an unknown id, resolves `{id, ok:true}`, rejects `{id, ok:false}` with `Object.assign(new Error(error.message), { code: error.code })`, and fans `{ch, event, data}` out to listeners.
-- `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`, and `fetch.request` goes out at once, `http:` included. Statuses 204, 205 and 304 build `new Response(null, …)`. Then `Object.defineProperty` gives the `Response` an own `url` (the reply's) and `redirected` (`reply.url !== <request url>`), because the constructor cannot set them. A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. `not-approved` gives `Object.assign(new TypeError(\`Local network host not approved: ${host}\`), { code })`; any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
+- `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`, `redirect` is `'error'` when `init.redirect === 'error'` and `'follow'` otherwise, and `fetch.request` goes out at once, `http:` included. Statuses 204, 205 and 304 build `new Response(null, …)`. Every constructed `Response` gets the header `x-byways-final-url` with the reply's `url` (the contract's rule; the constructor cannot set `Response.url`). A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. `not-approved` gives `Object.assign(new TypeError(\`Local network host not approved: ${host}\`), { code })`; any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
 - `requestOrigins(origins)`: `https:` origins need nothing. Each `http:` origin, one at a time, sends `fetch.approve {host}` with `new URL(origin).hostname` minus IPv6 brackets. It resolves `true` only when every one is approved.
 - `openFind(find, how)`: every `how` (none, `'tab'`, `'current'`, `'inapp'`) sends `app.openSite {url, title}`, because Android shows finds in the site view (§4). A non-http(s) url rejects with `not an http(s) link`, as the PWA's does. The way out to the browser is `app.openExternal` and the site view's **Open in browser**.
 - `share`, `files.save` (one message with the base64 of `blob.arrayBuffer()` and mime `blob.type || 'application/octet-stream'`; a backup over 12 MB rejects with `too-large`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`. `files.pick`, `secrets` and `persistStorage` come from `base`.
