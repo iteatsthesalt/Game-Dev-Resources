@@ -4,21 +4,37 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#000000">
+<meta name="format-detection" content="telephone=no">
 <title>Tactilume controller</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="phone.css">
 <script src="phone.js" defer></script>
 </head>
-<body>
-<p id="status" role="status">Connecting…</p>
-<div id="pad" role="application" aria-label="Touch pad. Touch and drag to move the light."></div>
-<div class="buttons" role="group" aria-label="Controls">
-  <button type="button" data-act="behaviour" data-v="-1" aria-label="Previous behaviour">◀</button>
-  <button type="button" data-act="behaviour" data-v="1" aria-label="Next behaviour">▶</button>
-  <button type="button" data-act="palette" data-v="1">Colours</button>
-  <button type="button" data-act="surprise">Surprise</button>
-  <button type="button" data-act="pulse">Pulse</button>
-</div>
-<p class="note">Your screen may go to sleep while you play: this page cannot keep it awake.</p>
+<body data-state="connecting">
+<header class="bar">
+  <p id="status" role="status"><span class="swatch" aria-hidden="true"></span><span id="status-text">Connecting to the computer…</span></p>
+  <span id="latency" class="latency" aria-hidden="true"></span>
+  <button type="button" id="fullscreen" class="small" hidden>Full screen</button>
+</header>
+<main class="stage">
+  <div id="pad" role="application" aria-label="Touch pad" aria-describedby="pad-help">
+    <p id="pad-help" class="pad-help">Touch and drag to move the light on the big screen. Up to ten fingers.</p>
+  </div>
+  <div id="retry-box" class="retry" hidden><button type="button" id="retry">Try again</button></div>
+</main>
+<nav class="controls" aria-label="Controls">
+  <div class="row behaviour" role="group" aria-label="Behaviour">
+    <button type="button" class="step" data-act="behaviour" data-v="-1" aria-label="Previous behaviour" disabled><span aria-hidden="true">◀</span></button>
+    <p class="value" aria-live="polite"><span class="label">Behaviour</span> <span id="behaviour-name">Auto</span></p>
+    <button type="button" class="step" data-act="behaviour" data-v="1" aria-label="Next behaviour" disabled><span aria-hidden="true">▶</span></button>
+  </div>
+  <div class="row">
+    <button type="button" data-act="palette" data-v="1" disabled><span class="label">Colours</span> <span id="palette-name"></span></button>
+    <button type="button" data-act="surprise" disabled>Surprise</button>
+    <button type="button" data-act="pulse" disabled>Pulse</button>
+  </div>
+</nav>
+<p id="sleep-note" class="note">This page cannot keep your screen awake. If it turns off while you play, set a longer auto-lock time in your phone's settings.</p>
 </body>
 </html>
