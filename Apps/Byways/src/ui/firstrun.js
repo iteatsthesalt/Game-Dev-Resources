@@ -1,7 +1,9 @@
 // First-run steps, shown once before the router starts. Later plans register their own steps.
 // Importing this file touches no DOM: rendering only happens inside runFirstRun.
 import { h, clear } from './dom.js';
+import { announce } from './a11y.js';
 
+export const FIRST_RUN_SAVE_FAILED = 'Byways could not save your choices, so these first steps will show again next time.';
 export const PRIVACY_PROMISE = 'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.';
 
 const steps = [];
@@ -23,22 +25,41 @@ function runStep(step, app) {
     };
     const container = h('div');
     const skip = h('button', { type: 'button', text: 'Skip', onClick: end });
-    clear(document.getElementById('app')).append(h('section', { 'data-firstrun': step.id }, container, skip));
+    const section = h('section', { 'data-firstrun': step.id }, container, skip);
+    clear(document.getElementById('app')).append(section);
     try {
       // Not awaited: a step that is still loading can be skipped.
       Promise.resolve(step.render(container, app, end)).catch(passOver);
     } catch (error) {
       passOver(error);
     }
+    if (!ended) focusStep(section);
   });
 }
 
-/** Run every step once, then remember it. Returns at once when first run is already done. */
+// Clearing #app drops the focused Continue or Skip to <body>, so each step takes focus unless its render already did.
+function focusStep(section) {
+  if (section.contains(document.activeElement)) return;
+  const target = section.querySelector('h1, h2, h3, h4, h5, h6') ?? section;
+  if (!target.hasAttribute('tabindex')) target.setAttribute('tabindex', '-1');
+  target.focus();
+}
+
+/**
+ * Run every step once, then remember it. Resolves true when it showed steps (the page under focus was cleared),
+ * false at once when first run is already done. A failed save is warned and announced; first run shows again next time.
+ */
 export async function runFirstRun(app) {
-  if (app.getSettings().firstRunDone) return;
+  if (app.getSettings().firstRunDone) return false;
   for (const step of [...steps].sort((a, b) => a.order - b.order)) await runStep(step, app);
   clear(document.getElementById('app'));
-  await app.saveSettings({ firstRunDone: true });
+  try {
+    await app.saveSettings({ firstRunDone: true });
+  } catch (error) {
+    console.warn('Byways: could not save that first run is done', error);
+    announce(FIRST_RUN_SAVE_FAILED, { assertive: true });
+  }
+  return true;
 }
 
 registerFirstRunStep({

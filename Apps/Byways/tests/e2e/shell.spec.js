@@ -50,6 +50,17 @@ test('a view that throws leaves the shell working', async ({ page }) => {
   await page.getByRole('link', { name: 'Feed' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Feed' })).toBeVisible();
 });
+test('a view whose leave throws still lets the next view show', async ({ page }) => {
+  await gotoApp(page);
+  await page.evaluate(async () => {
+    const r = await import(new URL('ui/router.js', document.baseURI).href);
+    r.registerView('vault', { title: 'Vault', render: c => c.append('vault'), leave() { throw new Error('stuck'); } }); r.navigate('vault');
+  });
+  await expect(page.getByRole('heading', { level: 1, name: 'Vault' })).toBeVisible();
+  await page.getByRole('link', { name: 'Feed' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Feed' })).toBeVisible();
+  await expect(page.locator('#main')).toBeFocused();
+});
 test('boots on a memory store when IndexedDB is blocked', async ({ page }) => {
   await page.addInitScript(() => Object.defineProperty(window, 'indexedDB', { get() { throw new DOMException('blocked', 'SecurityError'); } }));
   await gotoApp(page);

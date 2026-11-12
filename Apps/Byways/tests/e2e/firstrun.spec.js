@@ -7,8 +7,10 @@ test('the first visit shows Welcome with the privacy promise, once', async ({ pa
   await expect(page.getByText(PRIVACY, { exact: true })).toBeVisible();
   for (const name of ['Continue', 'Skip'])
     expect((await page.getByRole('button', { name }).boundingBox()).height).toBeGreaterThanOrEqual(56);
+  await expect(page.getByRole('heading', { level: 1, name: 'Welcome to Byways' })).toBeFocused();
   await page.getByRole('button', { name: 'Continue' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await expect(page.locator('#main')).toBeFocused();
   await page.reload();
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
   await expect(page.locator('[data-firstrun]')).toHaveCount(0);
@@ -29,9 +31,24 @@ test('steps run in order, Skip moves on, and a broken step is passed over', asyn
   });
   const skip = page.locator('[data-firstrun]').getByRole('button', { name: 'Skip', exact: true });
   await expect(page.locator('[data-firstrun="welcome"]')).toBeVisible(); await skip.click();
-  await expect(page.locator('[data-firstrun="a"]')).toContainText('Step a'); await skip.click();
+  await expect(page.locator('[data-firstrun="a"]')).toContainText('Step a');
+  await expect(page.locator('[data-firstrun="a"]')).toBeFocused(); await skip.click();
   await page.getByRole('button', { name: 'Finish b' }).click();
   let settled = false; done.then(() => { settled = true; }, () => { settled = true; });
   while (!settled) await skip.click({ timeout: 2000 }).catch(() => {});
   expect(await done).toEqual({ firstRunDone: true });
+});
+test('a step heading takes focus, and a failed final save is announced instead of stopping boot', async ({ page }) => {
+  await gotoApp(page);
+  const done = page.evaluate(async () => {
+    const f = await import(new URL('ui/firstrun.js', document.baseURI).href);
+    f.registerFirstRunStep({ id: 'h', order: 12, render: c => c.append(Object.assign(document.createElement('h2'), { textContent: 'Pick some interests' })) });
+    const settings = { firstRunDone: false };
+    return f.runFirstRun({ settings, getSettings: () => settings, saveSettings: async () => { throw new Error('quota'); } });
+  });
+  const skip = page.locator('[data-firstrun]').getByRole('button', { name: 'Skip', exact: true });
+  await expect(page.locator('[data-firstrun="welcome"]')).toBeVisible(); await skip.click();
+  await expect(page.getByRole('heading', { level: 2, name: 'Pick some interests' })).toBeFocused(); await skip.click();
+  expect(await done).toBe(true);
+  await expect(page.locator('#live-assertive')).toHaveText('Byways could not save your choices, so these first steps will show again next time.');
 });

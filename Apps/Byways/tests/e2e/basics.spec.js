@@ -25,7 +25,13 @@ test('axe passes in the light, dark and high-contrast themes', async ({ page }) 
     await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme); await expectNoSeriousA11y(page);
   }
 });
-test('toPlainText gives the same text with DOMParser', async ({ page }) => {
+test('toPlainText takes well under 200 ms on 10,000 characters of unclosed tags', async ({ page }) => {
+  expect(await page.evaluate(async () => {
+    const { toPlainText } = await import(new URL('core/util/text.js', document.baseURI).href);
+    const start = performance.now(); toPlainText('<a'.repeat(5000)); return performance.now() - start;
+  })).toBeLessThan(200);
+});
+test('toPlainText gives the same text with the inert template parse', async ({ page }) => {
   expect(await page.evaluate(async () => {
     const { toPlainText } = await import(new URL('core/util/text.js', document.baseURI).href);
     return ['<p>Fish &amp; <b>chips</b></p>', 'a<br>b<p>c</p>', '<p>One.</p><p>Two.</p>', 'un<b>believ</b>able', '<script>alert(1)</script><style>p{}</style>ok', '<p style="color:red">styled attr</p>', '<p title="<style>">kept?</p> after', '<textarea><b style="q">t</b></textarea>'].map(toPlainText);

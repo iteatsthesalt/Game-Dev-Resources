@@ -5,6 +5,8 @@ button, .btn, nav a {
   min-height: 56px; min-width: 56px; display: inline-flex; align-items: center;
   justify-content: center; padding: 0 16px;
 }
+/* Stacked list links and the back link are targets too: 56 px tall, like buttons. */
+.view-body li > a, .back-link { min-height: 56px; display: inline-flex; align-items: center; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .visually-hidden {
   position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; border: 0;

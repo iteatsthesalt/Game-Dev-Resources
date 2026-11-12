@@ -20,7 +20,7 @@ async function renderSettings(container, app, params = {}) {
     return;
   }
   const body = h('div');
-  container.append(h('h2', null, section.label), h('a', { href: '#/settings' }, 'All settings'), body);
+  container.append(h('h2', null, section.label), h('a', { class: 'back-link', href: '#/settings' }, 'All settings'), body);
   await section.render(body, app);
 }
 

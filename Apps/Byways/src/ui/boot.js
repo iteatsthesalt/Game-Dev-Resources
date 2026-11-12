@@ -31,8 +31,10 @@ function offerUpdate(reg) {
     action: {
       label: 'Reload',
       run() {
+        // No waiting worker means another tab has already activated it, so no controllerchange will come.
+        if (!reg.waiting) return location.reload();
         reloading = true;
-        reg.waiting?.postMessage({ type: 'skip-waiting' });
+        reg.waiting.postMessage({ type: 'skip-waiting' });
       },
     },
   });
@@ -54,13 +56,18 @@ function markCurrentLink(route) {
   }
 }
 
-function makeShow(app) {
+// focusFirst: also move focus into main after the first render (first run has just cleared the page under it).
+function makeShow(app, { focusFirst = false } = {}) {
   let leaveCurrent = null;
   let latest = 0;
-  let rendered = false;
+  let rendered = focusFirst;
   return async function show(route, params) {
     const mine = ++latest;
-    leaveCurrent?.();
+    try {
+      leaveCurrent?.();
+    } catch (error) {
+      console.warn('Byways: a view failed to leave', error);
+    }
     leaveCurrent = null;
     const view = getView(route);
     const body = h('div', { class: 'view-body' });
@@ -104,8 +111,8 @@ export async function boot(platform) {
     event.preventDefault();
     focusMain();
   });
-  await runFirstRun(app);
-  startRouter(makeShow(app));
+  const showedFirstRun = await runFirstRun(app);
+  startRouter(makeShow(app, { focusFirst: showedFirstRun }));
   if (blocked) announce(STORAGE_OFF_MESSAGE, { assertive: true });
   await platform.attach?.(app);
   return app;
