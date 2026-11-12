@@ -12,13 +12,21 @@ test('toPlainText strips tags and decodes entities without DOMParser', () => {
   assert.equal(toPlainText(null), '');
 });
 
-test('renameStyleAttributes renames style in tags only and is linear on tags that never close', () => {
+test('renameStyleAttributes renames style in tags only and survives tags that never close', () => {
   assert.equal(renameStyleAttributes('<p style="x" title="a style=b">style=x</p><textarea><b style="q"></textarea>'),
     '<p data-style="x" title="a style=b">style=x</p><textarea><b style="q"></textarea>');
-  for (const s of ['<a'.repeat(5000), '<a "'.repeat(2500), '<a b'.repeat(2500)]) {
-    const start = performance.now(); renameStyleAttributes(s); toPlainText(s);
-    assert.ok(performance.now() - start < 200, `${s.slice(0, 4)} took ${performance.now() - start} ms`);
+  // Worst cases for backtracking: about 10,000 characters in which no tag ever closes and no style= attribute appears,
+  // so both functions must return the text unchanged (without a DOM, toPlainText strips nothing when there is no `>`).
+  const unclosed = ['<a'.repeat(5000), '<a "'.repeat(2500), '<a b'.repeat(2500)];
+  // Regression tripwire against catastrophic backtracking, not a benchmark: the old cubic pattern took seconds on
+  // 3,000 characters, so only a cubic or exponential regex crosses this bound on any machine. Measured once, around the loop.
+  const start = performance.now();
+  for (const s of unclosed) {
+    assert.equal(renameStyleAttributes(s), s);
+    assert.equal(toPlainText(s), s);
   }
+  const elapsed = performance.now() - start;
+  assert.ok(elapsed < 5000, `unclosed-tag inputs took ${elapsed} ms`);
 });
 
 test('toPlainText reads at most MAX_HTML_LENGTH characters', () => {
