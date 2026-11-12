@@ -527,7 +527,7 @@ Entries are stored in `cache` as `{value, expires: clock.now() + ttlMs}`. An ent
 - [ ] **Step 5: Run them and see them pass**
 
 Run: `node --test tests/unit/db.test.js tests/unit/cache.test.js`
-Expected: PASS, 14 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 6: Commit**
 

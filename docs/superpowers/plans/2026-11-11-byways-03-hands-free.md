@@ -457,4 +457,402 @@ git add src/core/voice/reader.js tests/unit/voice-reader.test.js
 git commit -m "Add read-aloud with sentence-level pause"
 ```
 
+### Task 4: Hands-free state machine and commands
+
+**Files:**
+- Create: `src/core/handsfree.js`
+- Create: `tests/unit/helpers/handsfree-fakes.js`
+- Test: `tests/unit/handsfree.test.js`
+
+**Interfaces:**
+- Consumes: `cardScript(find)` (Task 3); the `createListener` and `createReader` objects (Tasks 2–3); `Engine.next({mode})`, `Engine.back()`, `Engine.current()` (Plan 02); `fakeClock`.
+- Produces:
+  - `createHandsFree({engine, listener, reader, clock, getSettings, ui, getListenMode}) → HandsFree`. `listener` may be `null`. `getListenMode() → 'always'|'push'|'off'`.
+  - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find), hold(reason), release(reason), talk(on), setMuted(on), get muted, get state}`.
+  - `ui` gains two fields beyond the contract: `act(id) → Promise<void>` (press the visible card button for that command) and `recap(shown: Find[])`.
+  - `effectiveListenMode(voiceMode, status: VoiceStatus) → 'always'|'push'|'off'`.
+  - `clampDwell(value) → number`: rounds to an integer in 5–300; anything not a finite number gives 20.
+
+`tests/unit/helpers/handsfree-fakes.js` exports `makeHarness(settingsPatch = {})`. It returns `{hf, clock, engine, listener, reader, ui, settings, finds}` where:
+- `finds` is an endless generator of `{id:'f<n>', kind:'site', url:'https://s<n>.example/', title:'Find <n>', description:'', why:[], tags:[], source:'library', safety:'curated'}`;
+- `engine.next(opts)` records `opts` in `engine.calls` and resolves `{find, branch:'taste', why:[]}`; `engine.emptyNext = reason` makes the next call resolve `{empty:true, reason}`; `engine.failNext = true` makes it reject;
+- `listener` records `starts`, `stops` and `halfDuplex` (an array of booleans), and has `emit(event, payload)`; `listener.failStart = true` makes `start()` reject;
+- `reader.read(s)` records `s` in `reader.reads` and resolves at once unless `reader.hold = true`, when `reader.finish()` resolves it; it counts `stops`, `pauses`, `resumes`;
+- every `ui` method records its arguments in `ui.log` as `[name, ...args]`; `ui.search` resolves `{finds:[]}`;
+- `settings` is `DEFAULT_SETTINGS` deep-merged with `settingsPatch`, and `getListenMode` returns `settings.listenMode ?? 'always'`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+import { effectiveListenMode, clampDwell } from '../../src/core/handsfree.js';
+import { makeHarness } from './helpers/handsfree-fakes.js';
+const said = (ui) => ui.log.filter((l) => l[0] === 'announce').map((l) => l[1]);
+
+test('effectiveListenMode', () => {
+  const s = (kind, continuous, vendor = null) => ({ kind, continuous, vendor, needsDownload: false, reason: null });
+  assert.equal(effectiveListenMode('auto', s('web-local', true)), 'always');
+  assert.equal(effectiveListenMode('auto', s('native', true, 'android')), 'always');
+  assert.equal(effectiveListenMode('auto', s('native', false, 'android')), 'push');
+  assert.equal(effectiveListenMode('auto', s('web-cloud', false, 'google')), 'push');
+  assert.equal(effectiveListenMode('auto', s('web-cloud', true, 'apple')), 'always');
+  assert.equal(effectiveListenMode('always', s('web-cloud', false, 'google')), 'always');
+  assert.equal(effectiveListenMode('push', s('web-local', true)), 'push');
+  assert.equal(effectiveListenMode('off', s('web-local', true)), 'off');
+  assert.equal(effectiveListenMode('always', s('none', false)), 'off');
+});
+
+test('clampDwell', () => {
+  assert.deepEqual([3, 1000, 20.4, 'abc', NaN, 5, 300].map(clampDwell), [5, 300, 20, 20, 20, 5, 300]);
+});
+
+test('start goes active, listens once and shows a find', async () => {
+  const { hf, listener, engine, ui, reader } = makeHarness();
+  await hf.start(); await hf.start();
+  assert.equal(hf.state, 'active');
+  assert.equal(listener.starts, 1);
+  assert.deepEqual(engine.calls, [{ mode: 'tuned' }]);
+  assert.deepEqual(ui.log.find((l) => l[0] === 'setState'), ['setState', 'active']);
+  assert.deepEqual(reader.reads[0], ['Find 1.', 'From s1.example.']);
+});
+
+test('push and off modes do not start the mic', async () => {
+  for (const listenMode of ['push', 'off']) {
+    const { hf, listener } = makeHarness({ listenMode });
+    await hf.start();
+    assert.equal(listener.starts, 0);
+  }
+});
+
+test('pause, the pause toggle and resume', async () => {
+  const { hf, ui, reader } = makeHarness();
+  await hf.start();
+  hf.pause();
+  assert.equal(hf.state, 'paused'); assert.equal(reader.pauses, 1);
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'countdown').at(-1), ['countdown', null]);
+  await hf.command('pause');
+  assert.equal(hf.state, 'active'); assert.equal(reader.resumes, 1);
+  await hf.command('pause'); await hf.command('resume');
+  assert.deepEqual(said(ui).slice(-4), ['Lean-back paused', 'Lean-back on', 'Lean-back paused', 'Lean-back on']);
+});
+
+test('stop goes idle and shows the recap', async () => {
+  const { hf, listener, reader, ui } = makeHarness();
+  await hf.start(); await hf.command('next');
+  hf.stop();
+  assert.equal(hf.state, 'idle'); assert.equal(listener.stops, 1); assert.ok(reader.stops >= 1);
+  assert.deepEqual(ui.log.find((l) => l[0] === 'recap')[1].map((f) => f.id), ['f1', 'f2']);
+});
+
+test('suspend and wake', async () => {
+  const { hf, listener, reader } = makeHarness();
+  await hf.start();
+  hf.suspend();
+  assert.equal(hf.state, 'suspended'); assert.equal(listener.stops, 1); assert.equal(reader.pauses, 1);
+  assert.equal(await hf.wake(), true);
+  assert.equal(hf.state, 'active'); assert.equal(listener.starts, 2); assert.equal(reader.resumes, 1);
+});
+
+test('wake stays suspended when the mic cannot restart', async () => {
+  const { hf, listener } = makeHarness();
+  await hf.start(); hf.suspend();
+  listener.failStart = true;
+  assert.equal(await hf.wake(), false);
+  assert.equal(hf.state, 'suspended');
+});
+
+test('commands route to the engine, the card and the UI', async () => {
+  const { hf, engine, ui, reader, listener } = makeHarness({ mode: 'ai' });
+  await hf.command('next');
+  await hf.command('fate');
+  assert.deepEqual(engine.calls, [{ mode: 'tuned' }, { mode: 'fate' }]);
+  for (const id of ['like', 'dislike', 'save', 'share', 'more']) await hf.command(id);
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'act').map((l) => l[1]), ['like', 'dislike', 'save', 'share', 'more']);
+  await hf.command('read');
+  assert.deepEqual(reader.reads.at(-1), ['Find 2.', 'From s2.example.']);
+  await hf.command('stop');
+  assert.ok(reader.stops >= 1);
+  await hf.command('daily'); await hf.command('help');
+  assert.ok(ui.log.some((l) => l[0] === 'navigate' && l[1] === 'daily'));
+  assert.ok(ui.log.some((l) => l[0] === 'openHelp'));
+  await hf.command('stopListening');
+  assert.equal(listener.stops, 1); assert.equal(said(ui).at(-1), 'Listening off');
+});
+
+test('back shows the previous find', async () => {
+  const { hf, engine, ui } = makeHarness();
+  const prev = { id: 'p', title: 'Prev', url: 'https://p.example/', kind: 'site', why: ['x'] };
+  engine.back = () => prev;
+  await hf.command('back');
+  assert.deepEqual(ui.log.find((l) => l[0] === 'show')[1], { find: prev, branch: null, why: ['x'] });
+});
+
+test('open presses Open and pauses lean-back', async () => {
+  const { hf, ui } = makeHarness();
+  await hf.start(); await hf.command('open');
+  assert.ok(ui.log.some((l) => l[0] === 'act' && l[1] === 'open'));
+  assert.equal(hf.state, 'paused');
+});
+
+test('search announces, searches, then shows the next find', async () => {
+  const { hf, ui, engine } = makeHarness();
+  await hf.command('search', 'pixel art');
+  assert.equal(said(ui)[0], 'Searching for pixel art');
+  assert.deepEqual(ui.log.find((l) => l[0] === 'search'), ['search', 'pixel art']);
+  assert.equal(engine.calls.length, 1);
+});
+
+test('listener events become commands and messages', async () => {
+  const { hf, listener, ui, engine } = makeHarness();
+  await hf.start();
+  listener.emit('command', { id: 'next', text: 'next' }); await flush();
+  assert.equal(engine.calls.length, 2);
+  const msgs = { 'not-allowed': 'Microphone blocked', 'service-not-allowed': 'Microphone blocked',
+    'audio-capture': 'No microphone found', 'language-not-supported': 'Voice does not support this language',
+    network: 'Voice is not available right now' };
+  for (const [code, text] of Object.entries(msgs)) {
+    listener.emit('error', { code, fatal: true });
+    assert.deepEqual(ui.log.filter((l) => l[0] === 'announce').at(-1), ['announce', text, { assertive: true }]);
+  }
+  listener.emit('state', { listening: false, reason: 'idle' });
+  assert.equal(said(ui).at(-1), 'Listening paused after 10 minutes with no command.');
+});
+
+test('mute stops reading and keeps later finds silent', async () => {
+  const { hf, reader } = makeHarness();
+  await hf.start();
+  hf.setMuted(true);
+  assert.equal(hf.muted, true); assert.ok(reader.stops >= 1);
+  await hf.command('next');
+  assert.equal(reader.reads.length, 1);
+});
+
+test('talk starts the mic and stops it 1.5 s after release', async () => {
+  const { hf, listener, clock } = makeHarness({ listenMode: 'push' });
+  await hf.start();
+  hf.talk(true); hf.talk(false);
+  clock.advance(1499); assert.equal(listener.stops, 0);
+  clock.advance(1); assert.equal(listener.stops, 1);
+  assert.equal(listener.starts, 1);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/unit/handsfree.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/handsfree.js`.
+
+- [ ] **Step 3: Implement `src/core/handsfree.js` (state machine and command routing)**
+
+Rules the tests do not spell out:
+- `engine.next` always gets `{mode: settings.mode === 'ai' ? 'tuned' : settings.mode}`, or `{mode:'fate'}` for `fate`. AI runs only through `ui.search`.
+- `command(id)` calls `input()` first for every id except `pause`, `resume`, `stop`, `stopListening` and `help`.
+- `command('pause')` toggles between active and paused; `command('resume')` only resumes.
+- `showing(find)` is a no-op when `find.id` is the find already on screen. Otherwise it records the find for the recap, stops the reader, and in the active state reads `cardScript(find)` (Task 5 adds the dwell).
+- `say(text)`: `ui.announce(text)` when muted, in screen-reader mode or while the reader is speaking; otherwise `reader.read([text])`.
+- `suspend()` remembers the previous state; `wake()` returns to it.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --test tests/unit/handsfree.test.js`
+Expected: PASS, 16 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/handsfree.js tests/unit/helpers/handsfree-fakes.js tests/unit/handsfree.test.js
+git commit -m "Add the hands-free state machine and command routing"
+```
+
+### Task 5: Lean-back loop
+
+**Files:**
+- Modify: `src/core/handsfree.js`
+- Test: `tests/unit/handsfree-leanback.test.js`
+
+**Interfaces:**
+- Consumes: everything from Task 4.
+- Produces: no new names. Adds the dwell, the countdown, holds, the AI refill rule, the session length, the 45-minute cue and the recap on session end.
+
+The tests use `tick(clock, ms)`, which advances one second at a time and flushes after each: `for (let t = 0; t < ms; t += 1000) { clock.advance(1000); await flush(); }`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const count = (ui, text) => ui.log.filter((l) => l[0] === 'announce' && l[1] === text).length;
+
+test('the dwell starts after reading ends and advances at 0', async () => {
+  const { hf, clock, engine, reader, ui } = makeHarness();
+  reader.hold = true;
+  await hf.start();
+  await tick(clock, 30000);
+  assert.equal(engine.calls.length, 1);
+  reader.finish(); await flush();
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'countdown').at(-1), ['countdown', 20]);
+  reader.hold = false;
+  await tick(clock, 19000);
+  assert.equal(engine.calls.length, 1);
+  await tick(clock, 1000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('Next find in 10 seconds is announced once per find', async () => {
+  const { hf, clock, ui } = makeHarness();
+  await hf.start();
+  await tick(clock, 12000);
+  hf.input();
+  await tick(clock, 12000);
+  assert.equal(count(ui, 'Next find in 10 seconds'), 1);
+  await tick(clock, 8000);
+  await tick(clock, 12000);
+  assert.equal(count(ui, 'Next find in 10 seconds'), 2);
+});
+
+test('a 5 s dwell announces Next find in 5 seconds once', async () => {
+  const { hf, clock, ui, engine } = makeHarness({ dwellSec: 5 });
+  await hf.start();
+  await tick(clock, 4000);
+  assert.equal(count(ui, 'Next find in 5 seconds'), 1);
+  assert.equal(count(ui, 'Next find in 10 seconds'), 0);
+  await tick(clock, 1000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('input restarts the dwell from the full time', async () => {
+  const { hf, clock, engine } = makeHarness();
+  await hf.start();
+  await tick(clock, 15000); hf.input();
+  await tick(clock, 19000);
+  assert.equal(engine.calls.length, 1);
+  await tick(clock, 1000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('wait for me never advances', async () => {
+  const { hf, clock, engine, ui } = makeHarness({ dwellWaitForMe: true });
+  await hf.start();
+  await tick(clock, 600000);
+  assert.equal(engine.calls.length, 1);
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'countdown').at(-1), ['countdown', null]);
+});
+
+test('holds stop the countdown; the last release restarts it', async () => {
+  const { hf, clock, engine } = makeHarness();
+  await hf.start();
+  hf.hold('view'); hf.hold('help');
+  await tick(clock, 60000);
+  hf.release('view');
+  await tick(clock, 60000);
+  assert.equal(engine.calls.length, 1);
+  hf.release('help');
+  await tick(clock, 20000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('suspend keeps the seconds left', async () => {
+  const { hf, clock, engine } = makeHarness();
+  await hf.start();
+  await tick(clock, 15000); hf.suspend();
+  await tick(clock, 60000);
+  await hf.wake();
+  await tick(clock, 4000);
+  assert.equal(engine.calls.length, 1);
+  await tick(clock, 1000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('an empty result pauses lean-back and announces the reason', async () => {
+  const { hf, clock, engine, ui } = makeHarness();
+  await hf.start();
+  engine.emptyNext = 'You have seen every find in this pool.';
+  await tick(clock, 20000);
+  assert.equal(hf.state, 'paused');
+  assert.equal(count(ui, 'You have seen every find in this pool.'), 1);
+  await tick(clock, 120000);
+  assert.equal(engine.calls.length, 2);
+});
+
+test('a failed next pauses lean-back with an error', async () => {
+  const { hf, clock, engine, ui } = makeHarness();
+  await hf.start();
+  engine.failNext = true;
+  await tick(clock, 20000);
+  assert.equal(hf.state, 'paused');
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'announce').at(-1),
+    ['announce', 'Could not load the next find.', { assertive: true }]);
+});
+
+test('no AI in lean-back unless Let AI refill lean-back is on', async () => {
+  const { hf, clock, engine, ui } = makeHarness({ mode: 'ai', dwellSec: 5 });
+  await hf.start(); await hf.command('search', 'maps');
+  await tick(clock, 25 * 5000);
+  assert.equal(ui.log.filter((l) => l[0] === 'search').length, 1);
+  assert.ok(engine.calls.every((c) => c.mode !== 'ai'));
+});
+
+test('with refill on, at most one AI search per 10 finds', async () => {
+  const { hf, clock, ui } = makeHarness({ mode: 'ai', dwellSec: 5, leanBackAI: true });
+  await hf.start(); await hf.command('search', 'maps');
+  await tick(clock, 20 * 5000);
+  assert.deepEqual(ui.log.filter((l) => l[0] === 'search').map((l) => l[1]), ['maps', 'maps', 'maps']);
+});
+
+test('the session length ends the session with a recap', async () => {
+  const { hf, clock, ui } = makeHarness({ sessionLengthMin: 30, dwellWaitForMe: true });
+  await hf.start();
+  clock.advance(30 * 60000 - 1); await flush();
+  assert.equal(hf.state, 'active');
+  clock.advance(1); await flush();
+  assert.equal(hf.state, 'idle');
+  assert.ok(ui.log.some((l) => l[0] === 'recap'));
+});
+
+test('the 45-minute cue is said once and only when on', async () => {
+  for (const exploringCue of [true, false]) {
+    const { hf, clock, reader } = makeHarness({ exploringCue, dwellWaitForMe: true });
+    await hf.start();
+    clock.advance(90 * 60000); await flush();
+    const cues = reader.reads.filter((r) => r[0] === "You've been exploring for 45 minutes.").length;
+    assert.equal(cues, exploringCue ? 1 : 0);
+  }
+});
+
+test('screen-reader mode sends the card to the live region instead', async () => {
+  const { hf, reader, ui } = makeHarness({ screenReaderMode: true });
+  await hf.start();
+  assert.equal(reader.reads.length, 0);
+  assert.equal(count(ui, 'Find 1. From s1.example.'), 1);
+});
+
+test('half-duplex is on while reading', async () => {
+  const { hf, listener } = makeHarness();
+  await hf.start();
+  assert.deepEqual(listener.halfDuplex, [true, false]);
+});
+```
+
+- [ ] **Step 2: Run test to verify it fails**
+
+Run: `node --test tests/unit/handsfree-leanback.test.js`
+Expected: FAIL. The first test fails with `2 !== 1` style assertion errors because nothing advances yet.
+
+- [ ] **Step 3: Implement the lean-back loop in `src/core/handsfree.js`**
+
+- After `cardScript` is read (or announced in screen-reader mode, or skipped when muted), and only while active with no holds, start the dwell: `clampDwell(settings.dwellSec)` seconds, or `ui.countdown(null)` when `dwellWaitForMe` is on.
+- Tick with `clock.setTimeout(…, 1000)`. Call `ui.countdown(left)` at the start and on each tick.
+- Announce `Next find in 10 seconds` when `left` reaches 10. When the dwell is 10 s or less, announce `Next find in <dwell> seconds` at the start instead. Keep a per-find flag, so `input()` and holds never repeat it.
+- At 0, advance: count the find; when `leanBackAI` is on, a search text exists and 10 finds have passed since the last search, call `ui.search(text)` first and reset the count. Then `engine.next`. An `{empty}` result pauses and announces `reason`. A rejection pauses and announces `Could not load the next find.` assertively.
+- `start()` sets `clock.setTimeout` for the session length (`Session over.`, then `stop()`) and, when `exploringCue` is on, for 45 minutes (`You've been exploring for 45 minutes.`). Both go through `say`. `stop()` clears them.
+
+- [ ] **Step 4: Run test to verify it passes**
+
+Run: `node --test tests/unit/handsfree-leanback.test.js tests/unit/handsfree.test.js`
+Expected: PASS, 15 and 16 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/handsfree.js tests/unit/handsfree-leanback.test.js
+git commit -m "Add the lean-back loop with dwell, cue and session length"
+```
+
 <!-- PLAN CONTINUES -->
