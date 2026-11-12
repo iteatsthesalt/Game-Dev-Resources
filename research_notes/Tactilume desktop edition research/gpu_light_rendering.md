@@ -3,6 +3,12 @@
 How claims are marked:
 - Untagged findings come from a primary source read during this session: a github.com page, a raw.githubusercontent.com file, or the gpuweb or w3c/wcag source repositories.
 - Findings tagged "(search summary, not verified)" were seen only in a search-engine summary or snippet, and should be checked against the original before publication.
+- Tags from the 2026-11-12 fact-check:
+  - [Verified: source] means re-read at that source.
+  - [Verified correction: source] means the sentence was rewritten to match the source.
+  - [Unverified] means it could not be checked.
+  - "Measured in this container" means headless Chromium 153.0.8010.12 (Playwright 1.63.0) on Linux with a SwiftShader fallback adapter, launched with only `--enable-unsafe-webgpu`. It gives software results, not GPU data.
+  - The summary table is the Verification section at the end.
 
 ## 1. Drawing 10M to 100M additive particles: hardware points/quads vs compute rasterization with atomics into fixed-point HDR buffers (precision, overflow, contention), tile binning, overdraw. Which approach draws the most particles at the highest quality, with measured numbers?
 
@@ -85,6 +91,7 @@ Hardware instanced quads remain the right tool for large, soft or defocused spri
   - Buffer and dispatch limits also apply, not only bandwidth:
     - The spec defaults are 256 MiB per buffer and 128 MiB per storage binding. Dawn exposes 2 GiB on D3D12, and the measured adapter exposes 1 GiB. So 1.6 GB of state must be requested through `requiredLimits` and, for portability, split across at least two buffers or bindings.
     - One dispatch dimension is capped at 65,535 workgroups. 100M particles at 256 threads per workgroup need 390,625 workgroups, so dispatch in 2D or loop inside each thread.
+    - The default is 8 storage buffers per shader stage (the measured adapter allows 10). Three R/G/B buffers, three carry buffers and two particle buffers already use all 8, so interleave the channels in one buffer.
 
     [Verified correction: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; measured in this container]
   - Rough ceilings:
@@ -339,11 +346,11 @@ Take peak and paper white from an in-app calibration in the style of HGIG. Use O
 - **AgX ports and Bevy:**
   - Ports differ between Troy's original and Blender 4's version — [unitycoder/AgX-Tonemapping-Unity](https://github.com/unitycoder/AgX-Tonemapping-Unity) (search summary, not verified)
   - Bevy calls AgX "very neutral, and somewhat desaturated" — [Bevy Tonemapping docs](https://doc.qu1x.dev/bevy_trackball/bevy/core_pipeline/tonemapping/enum.Tonemapping.html) (search summary, not verified)
-- **ACES output transforms repository:** it provides presets for common output display setups and depends on the aces-core library. Its LICENSE.md is the Academy's ACES licence (royalty-free, with conditions), and so is aces-dev's — [GitHub ampas/aces-output](https://github.com/ampas/aces-output); [GitHub ampas/aces-dev](https://github.com/ampas/aces-dev)
-- **ACES 2.0 via OCIO 2.4** (September 2024): preview Output Transforms parameterised by peak nits plus limiting-gamut chromaticities (nine parameters). Presets cover SDR at 100 nits (Rec.709, P3-D65), HDR at 500, 1000, 2000 and 4000 nits (Rec.2020, P3-D65), plus 108 and 300 nits — [OCIO 2.4](https://opencolorio.readthedocs.io/en/main/releases/ocio_2_4.html) (search summary, not verified). Any peak from 100 to 10,000 nits is supported — [ACES docs](https://draftdocs.acescentral.com/background/whats-new); [presets](https://docs.acescentral.com/system-components/output-transforms/parameters/) (search summary, not verified). Custom peaks such as 600 nits are possible — [ACES Central](https://community.acescentral.com/t/aces-2-0-dctl-in-resolve-20-1/5848) (search summary, not verified)
+- **ACES output transforms repository:** it provides presets for common output display setups and depends on the aces-core library. Its LICENSE is Apache-2.0, and so are aces-dev's and aces-core's. The README says ACES is now governed by the Academy Software Foundation (links point to the aces-aswf organisation), and no Academy-terms LICENSE.md exists at those paths — [GitHub ampas/aces-output](https://github.com/ampas/aces-output); [GitHub ampas/aces-dev](https://github.com/ampas/aces-dev) [Verified correction: https://github.com/ampas/aces-output/blob/main/LICENSE; https://github.com/ampas/aces-output/blob/main/README.md; https://github.com/ampas/aces-dev/blob/main/LICENSE; https://github.com/ampas/aces-core/blob/main/LICENSE]
+- **ACES 2.0 via OCIO 2.4** (September 2024): preview Output Transforms parameterised by peak nits plus limiting-gamut chromaticities (nine parameters). Presets cover SDR at 100 nits (Rec.709, P3-D65), HDR at 500, 1000, 2000 and 4000 nits (Rec.2020, P3-D65), plus 108 and 300 nits — [OCIO 2.4](https://opencolorio.readthedocs.io/en/main/releases/ocio_2_4.html). The release notes confirm the September 2024 date, the "Preview Release" label, the nine parameters (peak luminance plus eight limiting-gamut chromaticities, still marked work in progress) and these presets. [Verified: https://github.com/AcademySoftwareFoundation/OpenColorIO/blob/main/docs/releases/ocio_2_4.rst] Any peak from 100 to 10,000 nits is supported — [ACES docs](https://draftdocs.acescentral.com/background/whats-new); [presets](https://docs.acescentral.com/system-components/output-transforms/parameters/) (search summary, not verified) [Unverified]. Custom peaks such as 600 nits are possible — [ACES Central](https://community.acescentral.com/t/aces-2-0-dctl-in-resolve-20-1/5848) (search summary, not verified)
 - **GT7 (Polyphony Digital)** (search summary, not verified):
   - The SIGGRAPH 2025 talk "Driving Toward Reality" presents "physically based tone mapping" — [slides](https://blog.selfshadow.com/publications/s2025-shading-course/pdi/s2025_pbs_pdi_slides.pdf); [GTPlanet](https://www.gtplanet.net/why-gran-turismo-7-graphics-look-20250902/)
-  - Polyphony released an MIT C++ sample — [GTPlanet](https://www.gtplanet.net/beamng-drive-is-using-gran-turismo-7s-hdr-tone-mapping-technology-20260803/); [ACES Central](https://community.acescentral.com/t/ocio-implementation-of-gran-turismo-7-tonemapper/5922)
+  - Polyphony released an MIT C++ sample — [GTPlanet](https://www.gtplanet.net/beamng-drive-is-using-gran-turismo-7s-hdr-tone-mapping-technology-20260803/); [ACES Central](https://community.acescentral.com/t/ocio-implementation-of-gran-turismo-7-tonemapper/5922). The MIT licence text, "Copyright (c) 2025 Polyphony Digital Inc.", is reproduced for "GT7 Tone Mapping" in the URP package's third-party notices. Polyphony's original download, and whether it is C++, were not seen. [Verified: https://github.com/aki-null/CustomToneMappingURP/blob/main/THIRD_PARTY_NOTICES.md]
   - BeamNG 0.39 replaced ACES with it, to avoid clipped highlights and hue shifts — [BeamNG docs](https://docs.beamng.com/modding/lighting/tonemapping/)
   - CEDEC 2026 showed a prototype display sustaining more than 10,000 nits full-field — [GTPlanet](https://www.gtplanet.net/display-tech-is-finally-catching-up-to-gran-turismo-7-20260731/); [Final Boss](https://finalboss.io/gran-turismo-7-hdr-at-cedec-2026-why-10000-nit-specs-mislead)
   - A Unity URP package bakes GT7 into a 3D LUT on the CPU (description from a search summary). Its LICENSE.md is MIT ("Copyright (c) 2025 Akihiro Noguchi") — [GitHub aki-null/CustomToneMappingURP](https://github.com/aki-null/CustomToneMappingURP)
@@ -364,10 +371,10 @@ Take peak and paper white from an in-app calibration in the style of HGIG. Use O
   1. Accumulate in scene-linear, where 1.0 is SDR paper white at exposure 0.
   2. Apply bloom and volumetrics.
   3. Apply exposure.
-  4. Apply the display transform. For SDR, use AgX, ACES 2.0 SDR or GT7 SDR. For HDR, use ACES 2.0 or GT7 with the user-calibrated peak and paper white. On an `"extended"` canvas, the written value equals nits divided by the SDR-white nits.
+  4. Apply the display transform. For SDR, use AgX, ACES 2.0 SDR or GT7 SDR. For HDR, use ACES 2.0 or GT7 with the user-calibrated peak and paper white. On an `"extended"` canvas, the linear value L = nits / SDR-white nits is written directly only if the canvas `colorSpace` is `'srgb-linear'`. That colour space is still experimental in Chromium 156 (Electron 45) and becomes stable in Chromium 157. On the default `'srgb'` canvas, values are gamma-encoded, so write the sign-mirrored sRGB encoding of L. For example, L = 4 (4x SDR white) is written as about 1.82 (1.055 x 4^(1/2.4) - 0.055), not 4.0. [Verified correction: https://github.com/whatwg/html/blob/main/source; https://github.com/w3c/csswg-drafts/blob/main/css-color-4/Overview.bs; https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/platform/runtime_enabled_features.json5; https://github.com/chromium/chromium/blob/157.0.8103.81/third_party/blink/renderer/platform/runtime_enabled_features.json5; https://github.com/electron/electron/blob/45-x-y/DEPS]
   5. Dither and encode.
 - **Operator choice.** Hot overlaps should go to white, which AgX, ACES 2.0 and TonyMcMapface do. PBR Neutral suits keeping brand and UI colours exact. GT7's MIT sample is the most practical HDR-first operator. For ACES 2.0, bake a 3D LUT (33^3 to 65^3 with a log2 or PQ shaper) and rebuild it whenever the calibration changes.
-- **Wide gamut.** The spec's P3 example shows an `'srgb'` `rgba16float` canvas can carry out-of-sRGB colours as negative or above-1 components, so a linear-Rec.709-primaries pipeline with extended values can reach P3 screens without a separate P3 canvas. For gamut-limited tone mapping of saturated laser-like emitters, author and accumulate in a wider space (for example linear Rec.2020), then map with ACES 2.0's limiting gamut. PBR Neutral has no gamut mapping.
+- **Wide gamut.** The spec's P3 example shows an `'srgb'` `rgba16float` canvas can carry out-of-sRGB colours as negative or above-1 components, so a linear-Rec.709-primaries pipeline with extended values can reach P3 screens without a separate P3 canvas. On an `'srgb'` canvas the final pass must apply the sign-mirrored sRGB encoding (see the pipeline step above); only `'srgb-linear'` takes linear values. [Verified: https://github.com/w3c/csswg-drafts/blob/main/css-color-4/Overview.bs] For gamut-limited tone mapping of saturated laser-like emitters, author and accumulate in a wider space (for example linear Rec.2020), then map with ACES 2.0's limiting gamut. PBR Neutral has no gamut mapping.
 - **OKLab and OKLCH** are for palettes with equal perceived lightness, ramps by particle age or speed, and gamut mapping by chroma reduction. Never accumulate in them.
 - **Dithering.** Use about ±1 LSB TPDF at the final bit depth: 1/255 for SDR, and about 1/1023 in the encoded domain for 10-bit HDR. Animated blue noise helps at 240 Hz.
 - **Grain and chromatic aberration.** Apply grain in log or PQ space. Chromatic aberration can be done physically, by offsetting each particle's per-channel splat positions.
@@ -377,7 +384,7 @@ Take peak and paper white from an in-app calibration in the style of HGIG. Use O
 - The GT7 operator's maths and parameters were not retrieved.
 - The sobotka/AgX repository was not found at common raw paths, so Troy Sobotka's original AgX was not read directly.
 - No authoritative AgX HDR variant reference was found.
-- The ACES 2.0 peak range and presets come only from search summaries; the aces-output README does not state them.
+- The ACES 2.0 presets are now verified from the OCIO 2.4 release notes, but the 100 to 10,000 nit peak range still comes only from search summaries; the aces-output README does not state it.
 - Film-grain and chromatic-aberration practice for HDR was not sourced.
 
 ## 6. Photosensitive safety: flash and red-flash thresholds (WCAG 2.3.1, ITU-R BT.1702, the Harding test), and automatic enforcement in a real-time renderer
@@ -392,14 +399,14 @@ WCAG's own text, verified here, is a complete, machine-checkable specification:
 EA's IRIS (BSD-3-Clause) shows that detection is practical. A renderer can enforce the limits with a final-frame guard costing under 0.1 ms: per-tile luminance and red measurement, time-based transition counting, and attenuation of offending regions.
 
 ### Cited Findings
-- **WCAG term "general flash and red flash thresholds" (primary source)** — [w3c/wcag guidelines/terms/20/general-flash-and-red-flash-thresholds.html](https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html); repository licence: W3C Document License:
+- **WCAG term "general flash and red flash thresholds" (primary source)** — [w3c/wcag guidelines/terms/20/general-flash-and-red-flash-thresholds.html](https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html); repository licence: W3C Document License. Every quotation below was re-read word for word. [Verified: https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html]:
   - **Passing condition:** content passes if there are "no more than three general flashes and / or no more than three red flashes within any one-second period", or if "the combined area of flashes occurring concurrently occupies no more than a total of .006 steradians within any 10 degree visual field on the screen (25% of any 10 degree visual field on the screen) at typical viewing distance".
   - **General flash:** "a pair of opposing changes in relative luminance of 10% or more of the maximum relative luminance (1.0) where the relative luminance of the darker image is below 0.80".
   - **Exception:** "Flashing that is a fine, balanced, pattern such as white noise or an alternating checkerboard pattern with 'squares' smaller than 0.1 degree... on a side does not violate the thresholds".
   - **Reference geometry:** a 341x256 px rectangle at 1024x768 estimates a 10-degree field "for standard screen sizes and viewing distances (e.g., 15-17 inch screen at 22-26 inches)".
   - **Transitions:** a transition is the change between adjacent peaks and valleys of luminance over time; "A flash consists of two opposing transitions".
   - **Red flash (WCAG 2.2):** "one transition is either to or from a state with a value R/(R + G + B) that is greater than or equal to 0.8, and the difference between states is more than 0.2 (unitless) in the CIE 1976 UCS chromaticity diagram" [ISO 9241-391].
-- **WCAG Understanding 2.3.1 (primary source)** — [w3c/wcag understanding/20/three-flashes-or-below-threshold.html](https://github.com/w3c/wcag/blob/main/understanding/20/three-flashes-or-below-threshold.html):
+- **WCAG Understanding 2.3.1 (primary source)** — [w3c/wcag understanding/20/three-flashes-or-below-threshold.html](https://github.com/w3c/wcag/blob/main/understanding/20/three-flashes-or-below-threshold.html). The HDR clause, the 0-1 colour range and the tool list were re-read. [Verified: https://github.com/w3c/wcag/blob/main/understanding/20/three-flashes-or-below-threshold.html]:
   - **HDR clause:** "Where video content is provided in color spaces other than sRGB, the version provided with the highest dynamic range should be tested. In such cases the industry standard definition of a general flash is a change in luminance of 20 cd/m2 or more where the darker image is below 160 cd/m2. (ITU-R BT.1702.) This is applicable for standard dynamic range (SDR) and high dynamic range (HDR) content. For HDR content when the darker state is 160 cd/m2 or more, a general flash is one where the Michelson contrast is 1/17 or greater... (LHigh - LLow) / (LHigh + LLow)".
   - **Colour values:** R, G and B "range from 0-1 as specified in 'relative luminance' definition", which is the linearised sRGB definition.
   - **Tools:** it lists the Harding FPA and Trace Center's PEAT.
@@ -412,7 +419,7 @@ EA's IRIS (BSD-3-Clause) shows that detection is practical. A renderer can enfor
   - It flags patterns of alternating light and dark bars with at least 20 cd/m^2 contrast.
   - Two opposing transitions make one flash, and its trace flags activity above 1.0 Hz — [HardingFPA](https://hardingfpa.com/technical-support/how-to-interpret-hardingfpa-results)
   - UK advertising expects a Harding pass or equivalent — [ASA](https://www.asa.org.uk/news/flashing-images-in-advertising.html)
-- **EA IRIS** — [GitHub electronicarts/IRIS](https://github.com/electronicarts/IRIS). LICENSE.txt is BSD-3-Clause ("Copyright (c) 2023 Electronic Arts Inc.").
+- **EA IRIS** — [GitHub electronicarts/IRIS](https://github.com/electronicarts/IRIS). LICENSE.txt is BSD-3-Clause ("Copyright (c) 2023 Electronic Arts Inc."). The failure rules, the 0.1 and 20 triggers, the 2-flash warning level, the `-v` option and the not-a-certification statement below were all re-read. The thresholds file is `config/appsettings.json`. [Verified: https://github.com/electronicarts/IRIS/blob/main/README.md; https://github.com/electronicarts/IRIS/blob/main/LICENSE.txt]
   - **Detects:** luminance flashes, red-saturation flashes and patterns.
   - **Failure rules:**
     - Flash failure: more than 3 flashes in any 1 s.
@@ -477,7 +484,7 @@ TAA fits additive particles badly: they lack valid motion vectors, sub-pixel emi
 ## 8. Budgets: what fits in a frame at 1440p and 4K at 120 and 240 Hz on mid and high-end GPUs?
 
 ### Takeaway
-A 240 Hz frame is 4.17 ms and a 120 Hz frame is 8.33 ms. Full-screen fp16 passes cost 0.03 to 0.2 ms each, so the whole post stack fits in about 0.5 to 1 ms at 4K on mid-range GPUs. Particle count is limited by bandwidth and atomics. Indicative ranges:
+A 240 Hz frame is 4.17 ms and a 120 Hz frame is 8.33 ms. Full-screen fp16 passes cost 0.03 to 0.2 ms each, so the whole post stack fits in about 0.5 to 1 ms at 4K on mid-range GPUs. Particle count is limited by bandwidth and atomics. It is also structurally bounded by buffer limits, which a device must request: the spec default is 256 MiB per buffer and 128 MiB per storage binding, Dawn gives 2 GiB on D3D12, and the measured adapter gives 1 GiB. A dispatch dimension is capped at 65,535 workgroups (see section 1). [Verified correction: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; measured in this container] Indicative ranges:
 - about 10M to 30M particles at 240 Hz on RTX 5070 or RX 9070 XT class GPUs;
 - about 50M at 240 Hz, or 100M at 120 Hz, on RTX 4090 or 5090 class GPUs, the latter with compressed state.
 
@@ -489,12 +496,14 @@ These are estimates, not measurements.
   - RTX 5090: 1,792 GB/s — [gpu-monkey](https://www.gpu-monkey.com/en/compare_gpu-gigabyte_geforce_rtx_5090_windforce_oc-vs-amd_radeon_rx_9070_xt) (search summary, not verified)
   - RTX 5070: 672 GB/s — [gpu-monkey](https://www.gpu-monkey.com/en/compare_gpu-gigabyte_geforce_rtx_5070_gaming-vs-amd_radeon_rx_9070) (search summary, not verified)
   - RX 9070 XT: about 640 to 644.6 GB/s — [technical.city](https://technical.city/en/video/GeForce-RTX-5090-vs-Radeon-RX-9070-XT) (search summary, not verified)
+  - The RTX 4090 and M1 Max figures are as PWhiddy's README states them [Verified: https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/README.md]. The other three are not vendor-verified; spec aggregators agree with them [Unverified].
 - **Throughput anchors:**
   - About 1B points in about 8 ms on an RTX 3090 (native) — [compute_rasterizer](https://github.com/m-schuetz/compute_rasterizer)
   - Contended atomics at 62B ops/s on an RTX 4090 and 20B on an M1 Max — [PWhiddy](https://github.com/PWhiddy/webgpu-atomics-benchmark)
   - 144.7B points per second — [Schütz 2022](https://arxiv.org/pdf/2204.01287) (search summary, not verified)
-  - About 5x over WebGPU's built-in point rasterization on 30+ GPUs — [Aras](https://aras-p.info/blog/2025/08/24/This-many-points-is-surely-out-of-scope/) (search summary, not verified)
-- **Particle example scale:** three.js's `webgpu_compute_particles` example uses `particleCount = 200000` — [three.js example](https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_compute_particles.html)
+  - About 5x over WebGPU's built-in point rasterization on 30+ GPUs, reportedly for 4M points in a 5x5 px area — [Aras](https://aras-p.info/blog/2025/08/24/This-many-points-is-surely-out-of-scope/) (search summary, not verified) [Unverified]
+  - The 1B points in about 8 ms and the 62B and 20B ops/s anchors were re-read [Verified: https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md; https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/README.md]
+- **Particle example scale:** three.js's `webgpu_compute_particles` example uses `particleCount = 200000` — [three.js example](https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_compute_particles.html) [Verified: https://github.com/mrdoob/three.js/blob/dev/examples/webgpu_compute_particles.html]
 - **Effect anchors** (search summary, not verified):
 
 | Effect | Cost | Source |
@@ -538,10 +547,15 @@ These are estimates, not measurements.
 - **Scaling and tiers.**
   - At 1440p, about 25M to 30M particles fit.
   - Froxel volumetrics (0.5 to 1.5 ms) and radiance-cascade GI (1 to 3 ms) fit at 120 Hz, or at 240 Hz only when amortized or on high-end GPUs.
-  - On an RTX 5090: about 50M particles at 240 Hz with full effects, or 100M at 120 Hz with quantized state of 8 to 12 B per particle.
+  - On an RTX 5090: about 50M particles at 240 Hz with full effects, or 100M at 120 Hz with quantized state of 8 to 12 B per particle. 100M at 8 to 12 B is 0.8 to 1.2 GB. That fits one D3D12 buffer (2 GiB) but not the measured adapter's 1 GiB or the 256 MiB default, so request limits and keep a split-buffer path. [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; measured in this container]
   - Suggested tiers: "Fidelity 120" and "Motion 240".
   - Use dynamic resolution for effect buffers only, never for the particle splat.
 - **Measurement.** Use WebGPU timestamp queries and cross-check them, since Aras noted some browsers misreport GPU timings.
+  - Shipping Chromium, and so Electron 45 (Chromium 156), quantizes timestamps by default: Dawn masks them with 0xFFFF0000 ns, a step of 65.5 µs. That is coarser than many 0.03 to 0.3 ms passes in this budget.
+  - Per-pass budgeting needs `--enable-webgpu-developer-features` (or the unsafe switch) in development builds. Otherwise, time whole frames or many repetitions.
+  - The spec states that timestamp values are aligned to a lower precision.
+
+  [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc; https://github.com/gpuweb/gpuweb/blob/main/spec/sections/privacy-and-security.bs]
 
 ### Gaps
 - No measured end-to-end WebGPU frame budgets for a comparable renderer on named desktop GPUs were found.
@@ -558,13 +572,13 @@ Most of the key references have permissive licences, verified from their LICENSE
 |---|---|
 | MIT | three.js; compute_rasterizer; Sannikov's radiance-cascades paper repository; luma.gl; TypeGPU; GPUPrefixSums; Shehata's tutorial; the PWhiddy benchmark; AMD GPUParticles11 |
 | MIT and Apache-2.0 (dual) | Bevy |
-| Apache-2.0 | Khronos ToneMapping |
+| Apache-2.0 | Khronos ToneMapping; ACES (aces-output, aces-core, aces-dev) |
 | BSD 3-clause | webgpu-samples; EA IRIS; NVIDIA FLIP |
 
-Two references carry document or Academy terms rather than software licences: the ACES repositories (Academy terms) and the WCAG and WebGPU spec repositories (W3C document licences). The licences for three-rc, the AgX repositories, FidelityFX, and Aras's test page remain unverified.
+The WCAG and WebGPU spec repositories carry W3C document licences rather than software licences. The ACES repositories, formerly listed here under Academy terms, are Apache-2.0. [Verified correction: https://github.com/ampas/aces-output/blob/main/LICENSE; https://github.com/ampas/aces-core/blob/main/LICENSE; https://github.com/ampas/aces-dev/blob/main/LICENSE] The licences for three-rc, the AgX repositories, FidelityFX, and Aras's test page remain unverified: raw paths returned 404 and github.com pages returned 403 on 2026-11-12. [Unverified]
 
 ### Cited Findings
-- **Licences read from LICENSE files on raw.githubusercontent.com this session:**
+- **Licences read from LICENSE files on raw.githubusercontent.com this session.** On 2026-11-12 these were re-read: webgpu-samples, three.js, compute_rasterizer, Khronos ToneMapping, luma.gl, TypeGPU, IRIS, PWhiddy, FLIP and CustomToneMappingURP. [Verified: each repository's LICENSE file at the paths linked in the Verification section]
 
 | Project | What it offers Tactilume | Licence (as read) |
 |---|---|---|
@@ -573,7 +587,7 @@ Two references carry document or Academy terms rather than software licences: th
 | [m-schuetz/compute_rasterizer](https://github.com/m-schuetz/compute_rasterizer) | Compute point rasterizer (native, Windows/NVIDIA) | MIT, "Copyright 2022 Markus Schütz"; some files adapted from three.js under MIT |
 | [Raikiri/RadianceCascadesPaper](https://github.com/Raikiri/RadianceCascadesPaper) | Radiance cascades paper repository | MIT, "Copyright 2024 Alexander Sannikov"; a CC-BY-ND image suggests the paper's own terms may differ (not verified) |
 | [KhronosGroup/ToneMapping](https://github.com/KhronosGroup/ToneMapping) | PBR Neutral reference | Apache-2.0 |
-| [ampas/aces-output](https://github.com/ampas/aces-output), [ampas/aces-dev](https://github.com/ampas/aces-dev) | ACES output-transform presets and core CTL | Academy (A.M.P.A.S.) ACES licence terms, royalty-free with conditions |
+| [ampas/aces-output](https://github.com/ampas/aces-output), [ampas/aces-dev](https://github.com/ampas/aces-dev) | ACES output-transform presets and core CTL | Apache-2.0; ACES is now an Academy Software Foundation project [Verified correction: https://github.com/ampas/aces-output/blob/main/LICENSE; https://github.com/ampas/aces-dev/blob/main/LICENSE] |
 | [w3c/wcag](https://github.com/w3c/wcag) | Normative flash-threshold text | W3C Document License |
 | [gpuweb/gpuweb](https://github.com/gpuweb/gpuweb) | WebGPU and WGSL spec sources | W3C Software and Document licence for documents; code contributions under "GPU for the Web 3-Clause BSD License" |
 | [GPUOpen-LibrariesAndSDKs/GPUParticles11](https://github.com/GPUOpen-LibrariesAndSDKs/GPUParticles11) | DX11 GPU particle sample with collisions and sorting | MIT, "Copyright (c) 2016 Advanced Micro Devices" |
@@ -584,7 +598,7 @@ Two references carry document or Academy terms rather than software licences: th
 | [OmarShehata/webgpu-compute-rasterizer](https://github.com/OmarShehata/webgpu-compute-rasterizer) | WebGPU compute rasterizer tutorial | MIT |
 | [electronicarts/IRIS](https://github.com/electronicarts/IRIS) | Photosensitivity analysis | BSD-3-Clause, "Copyright (c) 2023 Electronic Arts Inc." |
 | [PWhiddy/webgpu-atomics-benchmark](https://github.com/PWhiddy/webgpu-atomics-benchmark) | WebGPU atomics measurements | MIT |
-| [NVlabs/flip](https://github.com/NVlabs/flip) | Image-difference evaluator for render tests (README not read; from background knowledge it has an HDR mode) | BSD 3-Clause |
+| [NVlabs/flip](https://github.com/NVlabs/flip) | Image-difference evaluator for render tests, implementing both LDR-FLIP and HDR-FLIP | BSD 3-Clause, "Copyright (c) 2020-2025, NVIDIA CORPORATION & AFFILIATES" [Verified: https://github.com/NVlabs/flip/blob/main/README.md; https://github.com/NVlabs/flip/blob/main/LICENSE] |
 | [b0nes164/GPUPrefixSums](https://github.com/b0nes164/GPUPrefixSums) | Portable prefix sums including wgpu | MIT |
 | [BabylonJS/Babylon.js](https://github.com/BabylonJS/Babylon.js) | WebGPU engine | Apache-2.0 |
 | [playcanvas/engine](https://github.com/playcanvas/engine) | WebGPU engine | MIT text |
@@ -592,7 +606,7 @@ Two references carry document or Academy terms rather than software licences: th
 | [linebender/vello](https://github.com/linebender/vello) | GPU compute 2D renderer; prefix-sum development | MIT file present (Apache file not checked) |
 | [aki-null/CustomToneMappingURP](https://github.com/aki-null/CustomToneMappingURP) | GT7 tone mapping baked into a LUT (Unity) | MIT, "Copyright (c) 2025 Akihiro Noguchi" |
 
-- **Licences not verified.** No LICENSE file was found at the usual raw paths, and the github.com HTML and API were refused for these:
+- **Licences not verified.** No LICENSE file was found at the usual raw paths, and the github.com HTML and API were refused for these. A retry on 2026-11-12 for EaryChow/AgX, sobotka/AgX, three-rc, FidelityFX-SDK and jorgemagic gave the same result. [Unverified]
   - sobotka/AgX and sobotka/SB2383-Configuration-Generation
   - [EaryChow/AgX](https://github.com/EaryChow/AgX)
   - [CodyJasonBennett/three-rc](https://github.com/CodyJasonBennett/three-rc)
@@ -620,14 +634,14 @@ Two references carry document or Academy terms rather than software licences: th
   1. Start the fixed-point splat from Aras's test page (licence unknown, so learn from it rather than copy) and Shehata's MIT tutorial.
   2. Add tile binning following AMD's approach, with GPUPrefixSums or Gridwise for scans that are safe on WebGPU.
   3. Adapt Bevy's MIT/Apache bloom and exposure WGSL.
-  4. Evaluate tone mappers using three.js TSL (MIT), Khronos PBR Neutral (Apache-2.0), the GT7 MIT sample, and ACES 2.0 LUTs baked offline under the Academy terms.
+  4. Evaluate tone mappers using three.js TSL (MIT), Khronos PBR Neutral (Apache-2.0), the GT7 MIT sample, and ACES 2.0 LUTs baked offline from aces-core under Apache-2.0. [Verified correction: https://github.com/ampas/aces-core/blob/main/LICENSE]
   5. Build 2D floor GI with TypeGPU (MIT).
   6. Gate releases on IRIS (BSD-3-Clause) and FLIP (BSD-3-Clause) in CI (section 10).
-- **Licence diligence.** Apache-2.0 code (Khronos, Babylon.js) requires keeping NOTICE and licence text. The Academy ACES terms carry their own conditions, so read the full LICENSE.md before shipping LUTs derived from the CTL.
+- **Licence diligence.** Apache-2.0 code (Khronos, Babylon.js, and now ACES) requires keeping NOTICE and licence text and stating changes. That includes LUTs or shader ports derived from the ACES CTL. [Verified correction: https://github.com/ampas/aces-output/blob/main/LICENSE; https://github.com/ampas/aces-core/blob/main/LICENSE]
 
 ### Gaps
 - The licences listed above as not verified remain open.
-- The GT7 sample's MIT text was not read; it is reported by press only.
+- The GT7 sample's MIT text ("Copyright (c) 2025 Polyphony Digital Inc.") is now read, in the third-party notices of aki-null/CustomToneMappingURP. Polyphony's original distribution was not located. [Verified: https://github.com/aki-null/CustomToneMappingURP/blob/main/THIRD_PARTY_NOTICES.md]
 - No single open-source WebGPU project combining 10M+ additive particles, HDR output, radiance-cascade GI and a flash guard was found.
 
 ## 10. Building the renderer so frames can be captured offscreen for tests and video recording
@@ -635,25 +649,29 @@ Two references carry document or Academy terms rather than software licences: th
 ### Takeaway
 Treat the canvas as one optional sink. Every frame should be rendered into renderer-owned textures: a scene-linear `rgba16float` target and a display-encoded output target. The frame is then either copied or blitted to the canvas, or copied with `copyTextureToBuffer` into mappable staging buffers. Rows must be padded to multiples of 256 bytes, and frames should be pipelined through a ring of buffers.
 
-Drive time from an injected deterministic clock rather than `requestAnimationFrame`. With fixed-point integer accumulation, captured frames become reproducible for golden-image tests (FLIP), flash regression (IRIS on rendered video), and offline video at any frame rate. In this environment, canvas presentation fails while offscreen `rgba16float` rendering with readback works, so offscreen capture is the only viable test path here.
+Drive time from an injected deterministic clock rather than `requestAnimationFrame`. With fixed-point integer accumulation, captured frames become reproducible for golden-image tests (FLIP), flash regression (IRIS on rendered video), and offline video at any frame rate. In this environment, canvas presentation fails while offscreen `rgba16float` rendering with readback works, so offscreen capture is the only viable test path here. [Verified: measured in this container, headless and Xvfb-headed Chromium 153.0.8010.12 with a SwiftShader fallback adapter]
 
 ### Cited Findings
-- **Coordinator measurement in this research environment** (no URL; a first-party observation): presenting a WebGPU canvas fails both headless and headed under Xvfb, with "A valid external Instance reference no longer exists". Offscreen rendering to `rgba16float` with `copyTextureToBuffer` readback works.
+- **Coordinator measurement in this research environment** (no URL; a first-party observation): presenting a WebGPU canvas fails both headless and headed under Xvfb, with "A valid external Instance reference no longer exists". Offscreen rendering to `rgba16float` with `copyTextureToBuffer` readback works. [Verified: measured in this container. Every flag set tried fails the same way, and compute also works. The adapter is SwiftShader (`isFallbackAdapter` true), so its timings are software-only: about 22 ms for 20k and 131 ms for 300k particles at 32 B per particle with 1-px additive points.]
 - **three.js readback (primary source).** `WebGPUTextureUtils.copyTextureToBuffer()` does three things — [three.js WebGPUTextureUtils.js](https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/utils/WebGPUTextureUtils.js):
   - It computes `bytesPerRow = Math.ceil(unpaddedBytesPerRow / 256) * 256`, commented "copyTextureToBuffer() requires a multiple of 256".
   - It sizes the buffer as `height * bytesPerRow`, "so it also meets the 4-byte size alignment required by mapAsync()".
   - It awaits `readBuffer.mapAsync(GPUMapMode.READ)`, then de-pads each row using `row * bytesPerRow` offsets.
+  - All three were re-read, and the spec itself requires that `bytesPerRow` "must be a multiple of 256" for buffer copies of a texture. [Verified: https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/utils/WebGPUTextureUtils.js; https://github.com/gpuweb/gpuweb/blob/main/spec/sections/copies.bs]
 - **three.js HDR output selection (primary source):** `outputType` is the "Texture type for output to canvas", and `HalfFloatType` selects canvas `toneMapping` `'extended'` — [three.js WebGPUBackend.js](https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/WebGPUBackend.js)
 - **WebGPU spec (primary source).** The canvas tone-mapping modes `"standard"` and `"extended"` define how presented values are projected to the screen's range — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs). The offscreen copy therefore holds the values the app wrote, before this compositor projection.
 - **WGSL (primary source):** atomics are u32 or i32 only, in the storage or workgroup address spaces — [WGSL spec source](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs). Integer addition is associative, which is the basis for reproducible accumulation.
-- **IRIS** analyses a video file via its example app's `-v` option — [GitHub electronicarts/IRIS](https://github.com/electronicarts/IRIS). **NVIDIA FLIP** is BSD 3-Clause — [GitHub NVlabs/flip](https://github.com/NVlabs/flip). Its HDR-capable image-difference purpose is background knowledge; the README was not read.
+- **IRIS** analyses a video file via its example app's `-v` option — [GitHub electronicarts/IRIS](https://github.com/electronicarts/IRIS). **NVIDIA FLIP** is BSD 3-Clause — [GitHub NVlabs/flip](https://github.com/NVlabs/flip). Its README now confirms it implements both LDR-FLIP and HDR-FLIP image-error metrics. [Verified correction: https://github.com/NVlabs/flip/blob/main/README.md; https://github.com/NVlabs/flip/blob/main/LICENSE]
 - **The webgpu-samples particles sample** shows HDR output configuration with `rgba16float` and `toneMapping` (BSD 3-clause) — [webgpu-samples particles main.ts](https://github.com/webgpu/webgpu-samples/blob/main/sample/particles/main.ts)
 
 ### Inferences
 - **Architecture.**
   1. **`FrameTarget` abstraction.** The renderer core never calls `getCurrentTexture()` itself. It receives a `FrameTarget` holding the output texture, size, colour encoding (SDR sRGB, extended linear, or PQ for capture) and a sink type (canvas or capture).
   2. **Final pass into an owned texture.** The output transform (tone map, grain, dither and flash-guard gain) always writes into an owned output texture. Give it `RENDER_ATTACHMENT` or `STORAGE_BINDING` usage, plus `COPY_SRC`.
-  3. **Canvas sink.** A trivial blit, or `copyTextureToTexture` when formats match and the canvas is configured with copy usage (not verified this session), puts the frame on the canvas. The captured bits are then the presented bits, before compositor projection.
+  3. **Canvas sink.** A trivial blit, or `copyTextureToTexture` when formats match and the canvas is configured with copy usage, puts the frame on the canvas. The captured bits are then the presented bits, before compositor projection.
+     - `configure()` rejects only `TRANSIENT_ATTACHMENT` among usages, so `COPY_DST` is allowed. Copies need copy-compatible formats (equal, or differing only in `-srgb`), so an `rgba16float` output can be copied straight to an `rgba16float` canvas. three.js already configures `COPY_SRC` on its canvas.
+
+     [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/gpuweb/gpuweb/blob/main/spec/sections/copies.bs; https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/WebGPUBackend.js]
   4. **Capture sink.** Copy to a ring of 3 to 4 `MAP_READ` staging buffers, with bytes per row padded to 256 as three.js does. Submit, call `mapAsync` without awaiting on the frame path, and consume buffers in order as they resolve.
   5. **Backpressure.** In real-time capture, drop a frame and count it when all buffers are busy. In offline capture, block.
 - **Deterministic time and state.**
@@ -682,10 +700,44 @@ Drive time from an injected deterministic clock rather than `requestAnimationFra
   - Run the same renderer core with the capture sink in headless environments where presentation fails, as here.
   - Golden-image tests per feature, using fixed scenes with seeded particles.
   - Flash regression: render scripted stress sequences offline to video, run IRIS, and fail CI on any flash or extended failure.
-  - Performance smoke tests with timestamp queries, treated as indicative, since browsers can misreport.
+  - Performance smoke tests with timestamp queries, treated as indicative, since browsers can misreport. They also need two further conditions:
+    - **Unquantized timestamps.** Shipping Chromium rounds timestamps to 65.5 µs unless `--enable-webgpu-developer-features` is set.
+    - **A real-GPU runner.** The SwiftShader CI adapter took about 131 ms for 300k particles, so its timings cannot gate GPU budgets; use it for correctness and golden images only.
+
+    [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc; measured in this container]
 - **Avoid canvas-based capture** (`toDataURL`, `drawImage` of a WebGPU canvas, or screen recording) as the primary path. It depends on presentation, which fails here, and on compositor colour handling.
 
 ### Gaps
-- No source was retrieved on WebGPU readback throughput, `mapAsync` latency on desktop GPUs, or canvas texture `COPY_DST` usage.
+- No source was retrieved on WebGPU readback throughput or `mapAsync` latency on desktop GPUs. Canvas texture `COPY_DST` usage is now settled: the spec allows it (see Inferences, item 3).
 - HDR video encoding support (WebCodecs or ffmpeg PQ metadata) and the BT.2408 reference white were not researched; they are partly out of scope.
-- FLIP's README was not read, so its suitability is from background knowledge.
+- FLIP's README is now read: it provides LDR-FLIP and HDR-FLIP under BSD 3-Clause. Its fitness for additive-particle golden images is still untested. [Verified: https://github.com/NVlabs/flip/blob/main/README.md]
+
+## Verification
+
+Fact-check of 2026-11-12. These are the 15 claims that would change a design or requirement decision if wrong. Sources were read on raw.githubusercontent.com or developer.apple.com (GitHub `blob` URLs are given for readability), or measured in this container: headless Chromium 153.0.8010.12, Playwright 1.63.0, Linux, SwiftShader fallback adapter, `--enable-unsafe-webgpu` only. Two web searches were used, only for the two claims with no GitHub source.
+
+| # | Claim | Verdict | Source |
+|---|---|---|---|
+| 1 | WGSL atomics are u32/i32 only, only in storage or workgroup memory, and banned in vertex shaders; there are no float or texture atomics. WebGPU points are exactly 1 px. | Confirmed. Added: the optional `atomic-vec2u-min-max` gives 64-bit min/max only (no add), and Chromium 156 (Electron 45) exposes it only at the experimental or unsafe safety level. | https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs; https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc |
+| 2 | fp16 blending swamps faint additive light (10,000 x 0.001 settles at 4.0). At 240 Hz, trails stall beyond tau of about 8 s (fp16), 0.5 s (R11/G11) and 0.27 s (B10). | Confirmed (recomputed: the sum stops at exactly 4.0; stalls become possible above 8.5 s, 0.53 s and 0.27 s). | numpy float16 recomputation in this session |
+| 3 | The 16 KiB `maxComputeWorkgroupStorageSize` bounds tile accumulators and FFT rows: 4 channels hit the limit, a 2048-point fp32 row has no headroom, and larger rows need fp16. | Corrected. 16 KiB is only the default. D3D12, Apple4 to Apple11 Metal and the measured adapter expose 32 KiB on request. fp16 needs the optional `shader-f16` (Chrome 120+, absent on SwiftShader). | https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://github.com/google/dawn/blob/main/src/dawn/native/metal/PhysicalDeviceMTL.mm; https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf; https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; measured |
+| 4 | Particle count is limited by bandwidth and atomics (100M particles at 16 B is 1.6 GB per frame). | Corrected. Buffer and dispatch limits also apply: the spec defaults are 256 MiB per buffer, 128 MiB per binding and 8 storage buffers per stage. Dawn gives 2 GiB on D3D12, and the measured adapter gives 1 GiB and 10 buffers. A dispatch dimension is capped at 65,535 workgroups (100M particles need 390,625 at 256 threads). | https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/google/dawn/blob/main/src/dawn/native/Limits.cpp; https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; measured |
+| 5 | Canvas `toneMapping: "extended"` keeps values above 1 up to the screen's range; the spec's 'srgb'-on-P3 example; introduced in Chrome 129. | Confirmed. Added: Linux from Chrome 144, no Firefox or Safari support, detect through `getConfiguration()`, and the measured Chromium 153 accepts and reports `rgba16float` + extended. | https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/mdn/browser-compat-data/blob/main/api/GPUCanvasContext.json; measured |
+| 6 | On an `"extended"` canvas, the value written equals nits / SDR-white nits. | Corrected. That holds only for `colorSpace: 'srgb-linear'`, which is experimental in Chromium 156 (Electron 45) and stable from 157. The default `'srgb'` canvas needs the sign-mirrored sRGB encoding (linear 4.0 is written as 1.82). | https://github.com/whatwg/html/blob/main/source; https://github.com/w3c/csswg-drafts/blob/main/css-color-4/Overview.bs; https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/platform/runtime_enabled_features.json5; https://github.com/chromium/chromium/blob/157.0.8103.81/third_party/blink/renderer/platform/runtime_enabled_features.json5; https://github.com/electron/electron/blob/45-x-y/DEPS |
+| 7 | The offscreen capture path: `bytesPerRow` padded to 256 and 4-byte `mapAsync` sizes; `copyTextureToTexture` into a `COPY_DST` canvas (previously unverified); presentation fails here while offscreen rendering and readback work. | Confirmed. | https://github.com/gpuweb/gpuweb/blob/main/spec/sections/copies.bs; https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/utils/WebGPUTextureUtils.js; measured |
+| 8 | Budget passes with WebGPU timestamp queries. | Corrected. Shipping Chromium and Electron quantize timestamps to 65.5 µs (mask 0xFFFF0000 ns) unless `--enable-webgpu-developer-features` is set. SwiftShader CI timings (131 ms for 300k particles) cannot gate GPU budgets. | https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc; https://github.com/gpuweb/gpuweb/blob/main/spec/sections/privacy-and-security.bs; measured |
+| 9 | WCAG 2.3.1: at most 3 flashes in any 1 s, or no more than 0.006 sr; a general flash is 10% with the darker state below 0.80; the WCAG 2.2 red definition; HDR is 20 cd/m^2 below 160 cd/m^2 and Michelson 1/17 or more above. | Confirmed (quotations re-read word for word). | https://github.com/w3c/wcag/blob/main/guidelines/terms/20/general-flash-and-red-flash-thresholds.html; https://github.com/w3c/wcag/blob/main/understanding/20/three-flashes-or-below-threshold.html |
+| 10 | IRIS failure rules (more than 3 flashes per second; 2 to 3 per second over 5 s; patterns of 0.5 s or more), triggers of 0.1 and 20, and BSD-3-Clause. FLIP has an HDR mode and is BSD-3-Clause. | Confirmed (the FLIP HDR mode was background knowledge before). | https://github.com/electronicarts/IRIS/blob/main/README.md; https://github.com/electronicarts/IRIS/blob/main/LICENSE.txt; https://github.com/NVlabs/flip/blob/main/README.md; https://github.com/NVlabs/flip/blob/main/LICENSE |
+| 11 | PBR Neutral is Apache-2.0, sRGB-only and has no gamut mapping (F90 0.04, Ks 0.76, Kd 0.15). The GT7 sample is MIT (press only). OCIO 2.4 (September 2024) has the ACES 2.0 preview with 9 parameters and 100 to 4000 nit presets. | Confirmed. The GT7 MIT text ("Copyright (c) 2025 Polyphony Digital Inc.") is now read. The 100 to 10,000 nit range is still unverified. | https://github.com/KhronosGroup/ToneMapping/blob/main/PBR_Neutral/README.md; https://github.com/KhronosGroup/ToneMapping/blob/main/LICENSE.md; https://github.com/aki-null/CustomToneMappingURP/blob/main/THIRD_PARTY_NOTICES.md; https://github.com/AcademySoftwareFoundation/OpenColorIO/blob/main/docs/releases/ocio_2_4.rst |
+| 12 | The ACES repositories carry the Academy's ACES licence (royalty-free, with conditions). | Corrected. aces-output, aces-core and aces-dev are Apache-2.0, and ACES is now an Academy Software Foundation project. | https://github.com/ampas/aces-output/blob/main/LICENSE; https://github.com/ampas/aces-output/blob/main/README.md; https://github.com/ampas/aces-core/blob/main/LICENSE; https://github.com/ampas/aces-dev/blob/main/LICENSE |
+| 13 | The compute rasterizer is 10 to 100x faster than GL_POINTS, about 1B points in 8 ms on an RTX 3090, Windows and NVIDIA only, MIT. Contended WebGPU atomics reach 62B ops/s (RTX 4090) and 20B ops/s (M1 Max), MIT. | Confirmed. | https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md; https://github.com/m-schuetz/compute_rasterizer/blob/master/LICENSE.md; https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/README.md; https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/LICENSE |
+| 14 | Aras (August 2025): compute splatting is about 5x faster than built-in point rasterization "across the board" on 30+ GPUs. | Unverifiable. aras-p.info is unreachable. A search summary narrows the 5x to the dense case of 4M points in 5x5 px. | https://aras-p.info/blog/2025/08/24/This-many-points-is-surely-out-of-scope/ (search summary only) |
+| 15 | Memory bandwidth: RTX 5090 1,792 GB/s, RTX 5070 672 GB/s, RX 9070 XT 640 to 644.6 GB/s. | Unverifiable. Vendor pages are unreachable; spec aggregators in a search agree, and 512-bit x 28 Gbps = 1,792 GB/s. | https://technical.city/en/video/GeForce-RTX-5090-vs-Radeon-RX-9070-XT (search summary only) |
+
+Totals: 15 claims checked; 8 confirmed, 5 corrected, 2 unverifiable.
+
+**Contradictions with the container measurements, resolved.**
+- The 16 KiB workgroup budget is superseded: the measured adapter, D3D12 and Apple-silicon Metal all give 32 KiB on request.
+- "Subgroups out of scope" is updated: `subgroups` is present (subgroup size 4).
+- The extended-canvas statement now matches the measured `getConfiguration()` behaviour.
+- Nothing in the notes conflicts with the measured presentation failure, which section 10 already reported.
