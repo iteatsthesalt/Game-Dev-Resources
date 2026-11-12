@@ -970,7 +970,7 @@ test('Play mounts the Archive frame only after Play', async ({ page }) => {
 });
 test('the watchdog offers Open on archive.org after 15 s', async ({ page }) => {
   await page.clock.install(); await hang();
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await whizz().getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('iframe')).toHaveCount(1);
   await page.clock.runFor(14000);
@@ -979,17 +979,17 @@ test('the watchdog offers Open on archive.org after 15 s', async ({ page }) => {
   await expect(page.getByRole('link', { name: 'Open on archive.org' })).toHaveAttribute('href', 'https://archive.org/details/msdos_Whizz_1994');
 });
 test('Not working marks the game embed-broken on this device', async ({ page }) => {
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await whizz().getByRole('button', { name: 'Play' }).click();
   await whizz().getByRole('button', { name: 'Not working' }).click();
   await expect(whizz().getByRole('link', { name: 'Open on archive.org' })).toBeVisible();
   await expect(page.locator('iframe')).toHaveCount(0);
-  await page.reload(); await openView(page, '#/vault');
+  await page.reload(); await gotoApp(page, '#/vault');
   await expect(whizz()).toContainText('Not working here');
 });
 test('Play twice mounts one frame, and leaving clears the watchdog', async ({ page }) => {   // Review Focus 5
   await page.clock.install(); await hang();
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await whizz().getByRole('button', { name: 'Play' }).click();
   await whizz().getByRole('button', { name: 'Play' }).click();
   await expect(page.locator('iframe')).toHaveCount(1);

@@ -1447,7 +1447,7 @@ test('boots on the Android origin with native fetch and no service worker', asyn
   await openAndroid(page);
   expect(await page.evaluate(() => navigator.serviceWorker.getRegistrations().then(r => r.length))).toBe(0);
   await expect.poll(async () => (await sent('app', 'ready')).length).toBe(1);
-  expect((await sent('fetch', 'request')).length).toBeGreaterThan(0);
+  await expect.poll(async () => (await sent('fetch', 'request')).length).toBeGreaterThan(0);
 });
 test('Open shows the find in the site view', async ({ page }) => {
   await openAndroid(page); await button(page, 'Open').click();
@@ -1566,7 +1566,7 @@ git commit -m "Wire share-in, Back, the site view and hands-free into the Androi
 - Test: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `button`, `sent` and the fake (Task 14).
+- Consumes: the `about` section (Plan 01); the `access` section and its `Lean-back` fieldset with `Seconds on each find` (Plan 03 Task 11); the `voice` section's `#voice-engine` line and probe (Plan 03 Task 10); `startHandsFree`, `effectiveListenMode` and the controller's `talk(on)` (Plan 03); `announce` and the e2e helper `gotoApp` (Plan 01); `platform.app`, `platform.caps.inAppSiteView` and `platform.voice.on` (Tasks 6–7); `openAndroid`, `button`, `sent` and the fake (Task 14).
 - Produces: the UI for `goStraightToSite` (already in `DEFAULT_SETTINGS`), which Task 14's `attach` reads.
 
 - [ ] **Step 1: Write the failing e2e tests** (add to `tests/e2e/android.spec.js`)

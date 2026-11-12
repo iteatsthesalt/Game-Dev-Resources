@@ -2244,15 +2244,16 @@ git commit -m "Add Saved with collections, sharing and bookmarks, and the share-
 
 **Files:**
 - Create: `src/ui/views/settings/taste.js`
-- Modify: `src/ui/views/index.js` (import `./settings/taste.js`)
+- Modify: `src/ui/views/index.js` (import `./settings/taste.js`), `tests/e2e/smoke.spec.js` and `tests/e2e/firstrun.spec.js` (Plan 01's specs, which meet the new step)
 - Test: `tests/e2e/settings-taste.spec.js`
 
 **Interfaces:**
-- Consumes: `registerSettingsSection`, `registerFirstRunStep` (Plan 01), `app.data.tags`, `engine.taste`, `engine.setTaste` (Task 20), `applyReaction` (Task 3).
+- Consumes: `registerSettingsSection`, `registerFirstRunStep` (Plan 01), `app.data.tags`, `engine.taste`, `engine.setTaste` (Task 20), `applyReaction` (Task 3), `SOURCES` (Task 5).
 - Produces:
-  - `registerSettingsSection({id: 'taste', label: 'Your taste', order: 10, render})`: a range **Familiar ↔ Strange** (0–1, step 0.05) bound to `strangeness`; one `fieldset` per `tags.json` group (legend = group label) with a range per tag (−3 to 3, step 0.5, label = tag label) bound to `tags[id]`; **Hidden topics** listing each hidden tag's label with **Show again** (removes it from `hiddenTags` and sets its weight to −2), or `'No hidden topics.'`; **Blocked sites** listing each domain with **Unblock**, or `'No blocked sites.'`. Every change calls `engine.setTaste`.
+  - `registerSettingsSection({id: 'taste', label: 'Your taste', order: 10, render})`, which lets every part of the §8.1 profile be edited: a range **Familiar ↔ Strange** (0–1, step 0.05) bound to `strangeness`; one `fieldset` per `tags.json` group (legend = group label) with a range per tag (−3 to 3, step 0.5, label = tag label) bound to `tags[id]`; a `fieldset` **Sources** with a range per `SOURCES` adapter (−3 to 3, step 0.5, label = adapter name) bound to `sources[id]`; a `fieldset` **Interests** with a checkbox per `INTEREST_TAGS` tag (label = tag label), checked when the tag is in `interests` (checking applies `applyReaction(taste, null, 'interest', {tag})`; unchecking only removes it from `interests`); **Hidden topics** listing each hidden tag's label with **Show again** (removes it from `hiddenTags` and sets its weight to −2), or `'No hidden topics.'`; **Blocked sites** listing each domain with **Unblock**, or `'No blocked sites.'`. Every change calls `engine.setTaste`.
   - `INTEREST_TAGS = ['science','programming','diy','hardware','web','space','nature','art','design','photography','music','books','film','comics','history','oldweb','food','travel','education','health','retro','indie','puzzle','toy','adventure']` (25).
-  - `registerFirstRunStep({id: 'interests', order: 20, render(container, app, done)})`: heading `'What are you into?'`, text `'Pick a few topics. You can change them later in Settings → Your taste.'`, a checkbox per interest grouped by its `tags.json` group, and **Done**, which applies `applyReaction(taste, null, 'interest', {tag})` for each pick, calls `engine.setTaste` and then `done()`.
+  - `registerFirstRunStep({id: 'interests', order: 20, render(container, app, done)})`: an `h1` `'What are you into?'` (first-run steps have no router heading), the text `'Pick a few topics. You can change them later in Settings → Your taste.'`, a checkbox per interest grouped by its `tags.json` group, and **Done**, which applies `applyReaction(taste, null, 'interest', {tag})` for each pick, calls `engine.setTaste` and then `done()`.
+  - Plan 01's specs: in `smoke.spec.js`, and in the first test of `firstrun.spec.js`, call `skipFirstRun(page)` (from `./helpers/app.js`) right after the **Continue** click, because Welcome is now followed by this step. In the second test of `firstrun.spec.js`, give the test step `b` order 25 so that it no longer ties with `interests`; that test's bare `app` has no `data`, so the interests step throws there and is passed over.
 
 - [ ] **Step 1: Write the failing test**
 
