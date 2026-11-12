@@ -15,7 +15,7 @@ How claims are marked:
 ### Takeaway
 For particles whose screen footprint is about 2 px or less, compute rasterization wins clearly:
 - Each thread splats one particle with 32-bit integer `atomicAdd` into fixed-point R/G/B storage buffers, and a resolve pass converts the result.
-- Reported speedups are about 5x over WebGPU's built-in point rasterization (across 30+ GPUs; a search summary ties the 5x to the dense case of 4M points in a 5x5 px area) [Unverified]. In native code they are 10x to 100x over GL_POINTS per the authors' README (5.3x to 10x in their 2019 paper), for example about 1 billion opaque points in about 8 ms on an RTX 3090 [Verified: https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md].
+- Reported speedups are about 5x over WebGPU's built-in point rasterization (across 30+ GPUs; a search summary ties the 5x to the dense case of 4M points in a 5x5 px area) [Unverified]. In native code they are 10x to 100x over GL_POINTS per the authors' README (5.3x to 10x in their 2019 paper, search summary only), for example about 1 billion opaque points in about 8 ms on an RTX 3090 [Verified: https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md].
 - It is also more accurate for additive light, because integer sums are exact where fp16 blending silently drops faint contributions. [Verified: recomputed in this session with numpy float16; 10,000 additions of 0.001 stall at exactly 4.0]
 
 Hardware instanced quads remain the right tool for large, soft or defocused sprites, since WebGPU has no point size. The best design is a hybrid chosen per particle by footprint. At 100M particles, especially at 240 Hz, the limit is memory bandwidth rather than rasterization.
