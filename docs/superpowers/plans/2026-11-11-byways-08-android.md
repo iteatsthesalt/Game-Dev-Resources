@@ -992,7 +992,7 @@ git commit -m "Add native voice commands and the microphone consent screen"
 
 **Interfaces:**
 - Consumes: `ChannelHandler`, `Reply`, `Bridge.emit` (Task 5).
-- Produces: `object TtsChoice { data class VoiceInfo(val name: String, val lang: String, val local: Boolean); fun pick(voices: List<VoiceInfo>, voiceURI: String?, defaultName: String?): String? }` (pure); `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()` and `companion object { const val PLAY_SILENCE = false }`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
+- Produces: `object TtsChoice { data class VoiceInfo(val name: String, val lang: String, val local: Boolean); fun pick(voices: List<VoiceInfo>, voiceURI: String?, defaultName: String?, lang: String?): String? }` (pure); `class TtsBridge(ctx: Context) : ChannelHandler` with `fun shutdown()`; `class MediaBridge(ctx: Context, emit: (String, Any?) -> Unit) : ChannelHandler` with `fun release()` and `companion object { const val PLAY_SILENCE = false }`; `class ShareBridge(activity: ComponentActivity) : ChannelHandler`; `class FilesBridge(activity: ComponentActivity) : ChannelHandler` (constructed in `onCreate`, before the activity starts, because it registers an activity-result launcher). `LabBridge` (Task 13) reuses `FilesBridge`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1000,11 +1000,12 @@ git commit -m "Add native voice commands and the microphone consent screen"
 class TtsChoiceTest {
   private val v = listOf(TtsChoice.VoiceInfo("en-us-x-net", "en-US", false), TtsChoice.VoiceInfo("de-de-x-loc", "de-DE", true),
     TtsChoice.VoiceInfo("en-gb-x-loc", "en-GB", true))
-  @Test fun keepsTheChosenVoice() = assertEquals("en-us-x-net", TtsChoice.pick(v, "en-us-x-net", "en-gb-x-loc"))
-  @Test fun keepsALocalDefault() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-gb-x-loc"))
-  @Test fun swapsANetworkDefaultForALocalVoiceInItsLanguage() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-us-x-net"))
-  @Test fun aMissingChoiceFallsBackTheSameWay() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, "gone", "en-us-x-net"))
-  @Test fun noLocalVoiceKeepsTheDefault() = assertEquals("en-us-x-net", TtsChoice.pick(v.take(1), null, "en-us-x-net"))
+  @Test fun keepsTheChosenVoice() = assertEquals("en-us-x-net", TtsChoice.pick(v, "en-us-x-net", "en-gb-x-loc", null))
+  @Test fun keepsALocalDefault() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-gb-x-loc", "en-US"))
+  @Test fun swapsANetworkDefaultForALocalVoiceInItsLanguage() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, null, "en-us-x-net", null))
+  @Test fun aMissingChoiceFallsBackTheSameWay() = assertEquals("en-gb-x-loc", TtsChoice.pick(v, "gone", "en-us-x-net", null))
+  @Test fun theRequestedLanguageWins() = assertEquals("de-de-x-loc", TtsChoice.pick(v, null, "en-gb-x-loc", "de-DE"))
+  @Test fun noLocalVoiceKeepsTheDefault() = assertEquals("en-us-x-net", TtsChoice.pick(v.take(1), null, "en-us-x-net", null))
 }
 ```
 
@@ -1032,9 +1033,9 @@ Expected: Node fails with `ENOENT` on `TtsBridge.kt`; Gradle fails with `Unresol
 
 - [ ] **Step 3: Implement `TtsChoice` and `TtsBridge`**
 
-- `TtsChoice.pick` (§6.4, local voices first), first match wins: `voiceURI` names a listed voice → it; the default voice is listed and local → it; the first local voice whose language subtag (before `-`) matches the default voice's, or any local voice when the default is not listed → it; otherwise `defaultName`.
+- `TtsChoice.pick` (§6.4, local voices first), first match wins: `voiceURI` names a listed voice → it; the default voice is listed, local and in the wanted language → it; the first local voice in the wanted language → it; otherwise `defaultName`. The wanted language is the subtag before `-` of `lang`, else of the default voice's, and any language when neither is known.
 - Create `TextToSpeech(ctx) { status -> … }` once. Requests that arrive before init finishes wait for it. Init failure replies `service-not-allowed`.
-- `speak {text, voiceURI, rate, volume}`: `setVoice` to the voice `TtsChoice.pick(<voices as VoiceInfo>, voiceURI, defaultVoice?.name)` names, when it is not the current one. `setSpeechRate(rate)`, a params `Bundle` with `KEY_PARAM_VOLUME = volume`, then `speak(text, QUEUE_ADD, params, <request id>)`. The `UtteranceProgressListener` `onDone`, `onError` and `onStop` for that id reply `true` on the main thread.
+- `speak {text, voiceURI, rate, volume, lang}`: `setVoice` to the voice `TtsChoice.pick(<voices as VoiceInfo>, voiceURI, defaultVoice?.name, lang)` names, when it is not the current one. `setSpeechRate(rate)`, a params `Bundle` with `KEY_PARAM_VOLUME = volume`, then `speak(text, QUEUE_ADD, params, <request id>)`. The `UtteranceProgressListener` `onDone`, `onError` and `onStop` for that id reply `true` on the main thread.
 - `cancel {}`: `stop()`, reply `true` to every pending `speak`, then reply `true`.
 - `voices {}`: `voices` sorted by name, as `{uri: name, name, lang: locale.toLanguageTag(), local: !isNetworkConnectionRequired}`.
 
@@ -1050,7 +1051,7 @@ Add `"tts" to tts`, `"media" to media`, `"share" to share` and `"files" to files
 
 - [ ] **Step 6: Run them to see them pass**
 
-Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 14 tests; Gradle: 5 new tests). `assembleDebug` compiles the new files.
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 14 tests; Gradle: 6 new tests). `assembleDebug` compiles the new files.
 
 - [ ] **Step 7: Commit**
 

@@ -486,7 +486,7 @@ test('the pwa build ships {"v":1} placeholders for the generated data files', as
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `node --test tests/unit/data-files.test.js`
-Expected: FAIL with "The requested module '../../src/ui/boot.js' does not provide an export named 'dataUrlFor'".
+Expected: FAIL with "SyntaxError: The requested module '../../src/ui/boot.js' does not provide an export named 'dataUrlFor'" (the test imports `boot.js` first).
 
 - [ ] **Step 3: Implement the four changes**
 
