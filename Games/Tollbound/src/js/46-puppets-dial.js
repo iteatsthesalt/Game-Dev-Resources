@@ -167,8 +167,9 @@
       { key: 'legR', shape: 'box', size: [0.14, 0.6, 0.16], at: [0, -0.62, 0], joint: 'legR', color: 'iron' },
       { key: 'lip', shape: 'cyl', size: [1.04, 0.12, 1.04], at: [0, -0.58, 0], joint: 'torso', color: 'lip' },
       { key: 'bell', shape: 'cone', size: [0.98, 1.6, 0.98], at: [0, -0.46, 0], joint: 'torso', color: 'bronze' },
-      { key: 'bow', shape: 'cyl', size: [0.8, 0.06, 0.8], at: [0, -0.3, 0], joint: 'torso', color: 'verdigris', detail: true },
-      { key: 'waist', shape: 'cyl', size: [0.5, 0.06, 0.5], at: [0, 0.22, 0], joint: 'torso', color: 'verdigris', detail: true },
+      // two bands of verdigris, each a little wider than the bell where it sits, so that it shows
+      { key: 'bow', shape: 'cyl', size: [0.93, 0.09, 0.93], at: [0, -0.3, 0], joint: 'torso', color: 'verdigris', detail: true },
+      { key: 'waist', shape: 'cyl', size: [0.61, 0.09, 0.61], at: [0, 0.22, 0], joint: 'torso', color: 'verdigris', detail: true },
       { key: 'shoulder', shape: 'cyl', size: [0.5, 0.2, 0.5], at: [0, 0.5, 0], joint: 'torso', color: 'bronze' },
       { key: 'crown', shape: 'sphere', size: [0.44, 0.42, 0.44], at: [0, -0.08, 0], joint: 'head', color: 'bronze' },
       { key: 'canons', shape: 'box', size: [0.09, 0.16, 0.24], at: [0, 0.3, 0], joint: 'head', color: 'iron', detail: true },
@@ -179,7 +180,8 @@
       { key: 'muffle', shape: 'box', size: [0.15, 0.3, 0.3], at: [0.12, 0.96, 0], joint: 'handR', color: 'leather' },
     ],
     palette: {
-      bronze: [0.6, 0.41, 0.22], lip: [0.47, 0.31, 0.17], verdigris: [0.36, 0.5, 0.38], iron: [0.17, 0.16, 0.17],
+      // old bronze, browned under the water, with pale verdigris bands (a brighter bronze read as orange in the sun)
+      bronze: [0.5, 0.37, 0.24], lip: [0.4, 0.29, 0.19], verdigris: [0.42, 0.6, 0.5], iron: [0.17, 0.16, 0.17],
       robe: [0.24, 0.22, 0.27], leather: [0.38, 0.23, 0.13],
     },
     anim: {

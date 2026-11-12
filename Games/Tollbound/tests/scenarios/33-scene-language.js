@@ -5,7 +5,8 @@
 //   - the wake as a faint line from the player, and a thread from a body In Procession to the wake's nearest point
 //   - wounds as deep red discs 1 m across, darker for deeper, greyer for older, with a ring closing as one mends
 //   - a Swell filling in pale bone with a dark rim, the lee of a heavy and of the stones cut out of it: by pixels,
-//     ground in lee stays as it was while ground beside it is filled; a falling Swell darkens from its rim
+//     ground in lee stays as it was while ground beside it is filled; a falling Swell darkens from its rim; a
+//     voice's Swell falls or spreads by its area (a0), not by where it lies, and its lee reaches Skills.LEE
 //   - a Blow's wind-up: the striking parts its attack names white at the top
 //   - conditions: mourning black, riders, Sounded, Coiled, swing ticks, a wax seal, coins at the eyes, and
 //     Tolled-for: a grey world in which the far lychgate's lamps keep their colour, and a lit way toward it
@@ -217,6 +218,30 @@ const swell = async function (P) {
   T.check('a falling Swell darkens from its rim inward, and takes no lee', !!f && Math.abs(f[7] + 0.5) < 0.02, f && f.slice(0, 9));
   const rimAt = read(fall.x + 1.8, fall.y), middle = read(fall.x, fall.y + 0.2);
   T.check('by pixels: its outer half dark, its middle not yet', lum(rimAt) < lum(middle) - 10, { rim: rimAt, middle });
+  // ---- a voice's Swell falls or spreads by its area, never by where it lies: Plumb falls on the mark under the player ----
+  const { Skills } = TB;
+  area.alive = false; fall.alive = false;
+  const slot = S.skills.findIndex((k) => !!k && !!k.inst && k.inst.id === 'plumb');
+  if (!T.check('the Change-ringer speaks Plumb, a Swell', slot >= 0, S.skills.map((k) => k && k.inst && k.inst.id))) return T.done();
+  const plumb = Skills.area(S, slot, Skills.FILL, p.x, p.y, 2.5, 1);
+  plumb.t = 0.5; plumb.ttl = 0.5; plumb.a0 = 0; plumb.len = 0; plumb.a3 = 0; plumb.angle = 0;
+  const own = () => decals().filter((r) => at(r, p.x, p.y) && (same(r, L.fall) || same(r, L.bone)));
+  Scene.draw(S, 1);
+  let v = own();
+  T.check('a voice\'s Swell whose area falls (a0 0) is drawn falling, though it lies under the player: from its rim inward, uncut',
+    v.length === 1 && same(v[0], L.fall) && v[0][8] === Scene.RING && Math.abs(v[0][7] + 0.5) < 0.02, v.map((r) => r.slice(0, 9)));
+  plumb.a0 = 1;
+  const reachWas = S.sheet.stats['lee-reach'];
+  S.sheet.stats['lee-reach'] = reachWas + 1.5;        // the player's own lee-reach, which is not the dead's
+  Scene.draw(S, 1);
+  v = own();
+  const voiceLees = decals().filter((r) => r[8] === Scene.LEE);
+  S.sheet.stats['lee-reach'] = reachWas;
+  T.check('one whose area spreads (a0 1) fills from its source in pale bone, cut by lee',
+    v.length === 1 && same(v[0], L.bone) && v[0][8] === Scene.RING + Scene.CUT && Math.abs(v[0][7] - 0.5) < 0.02, v.map((r) => r.slice(0, 9)));
+  T.check('the lee against a voice\'s Swell reaches the dead\'s lee-reach (Skills.LEE), not the player\'s',
+    voiceLees.length > 0 && voiceLees.every((r) => Math.abs(r[10] - Skills.LEE) < 1e-3), voiceLees.map((r) => [r[0], r[1], r[10]]));
+  plumb.alive = false;
   return T.done();
 };
 

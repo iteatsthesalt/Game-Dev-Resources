@@ -33,7 +33,7 @@
   // ---- attacks ----
 
   Defs.add('attack', {
-    id: 'dial.clutch', kind: 'strike', type: 'blow', mult: 1, cooldown: 2.6, range: 0.55, windup: 0.6, shape: 'arc',
+    id: 'dial.clutch', kind: 'strike', type: 'blow', mult: 1, cooldown: 3.2, range: 0.55, windup: 0.6, shape: 'arc',
     radius: 0, angle: 1.75, count: 1, spread: 0, speed: 0, evadable: false, ailment: null, summon: null,
     fx: { part: 'arms', color: '#E4DFD1' },
   });
@@ -86,9 +86,9 @@
   });
 
   Defs.add('boss', {
-    id: KEEPER, name: 'the Half-muffled Keeper', puppet: PUPPET.keeper, radius: 1.3, life: 1100, damage: 9, speed: 1.9,
+    id: KEEPER, name: 'the Half-muffled Keeper', puppet: PUPPET.keeper, radius: 1.3, life: 1100, damage: 6, speed: 1.9,
     xp: 120, cost: 0, loot: null, ai: 'keeper',
-    aiParams: { keep: 2.5, echo: 0.3, after: 2, before: 1.2, lay: 0.7, reverse: [1.2, 2, 2.8], order: ['after', 'before', 'reverse'], first: 2.5 },
+    aiParams: { keep: 2.5, echo: 0.3, after: 2, before: 1.2, lay: 0.7, reverse: [1.2, 2, 2.8], order: ['after', 'before', 'reverse'], first: 4 },
     attacks: ['dial.keeper.stroke', 'dial.keeper.sweep', 'dial.keeper.round'], guard: {}, size: 'large', press: 1,
     tags: ['keeper'], arena: { radius: 30 },
     phases: [
@@ -141,8 +141,8 @@
       { toll: 3, rate: 2.8, cap: 140, pool: [{ enemy: WALKER, w: 6 }, { enemy: HANGER, w: 3 }, { enemy: HEAVY, w: 1.2 }] },
       { toll: 4, rate: 3, cap: 160, pool: [{ enemy: WALKER, w: 5 }, { enemy: HANGER, w: 2 }, { enemy: HEAVY, w: 3 }] },
       { toll: 5, rate: 2.9, cap: 180, pool: [{ enemy: WALKER, w: 8 }, { enemy: HANGER, w: 3 }, { enemy: HEAVY, w: 1.2 }] },
-      { toll: 6, rate: 3.2, cap: 200, pool: [{ enemy: WALKER, w: 4 }, { enemy: HANGER, w: 1 }, { enemy: HEAVY, w: 5 }] },
-      { toll: 7, rate: 3.1, cap: 220, pool: [{ enemy: WALKER, w: 6 }, { enemy: HANGER, w: 3 }, { enemy: HEAVY, w: 2 }] },
+      { toll: 6, rate: 2.8, cap: 200, pool: [{ enemy: WALKER, w: 4.5 }, { enemy: HANGER, w: 1 }, { enemy: HEAVY, w: 4.5 }] },
+      { toll: 7, rate: 2.7, cap: 220, pool: [{ enemy: WALKER, w: 6 }, { enemy: HANGER, w: 3 }, { enemy: HEAVY, w: 2 }] },
       { toll: 8, rate: 2.4, cap: 160, pool: [{ enemy: WALKER, w: 7 }, { enemy: HANGER, w: 2 }, { enemy: HEAVY, w: 1 }] },
       { toll: 9, rate: 5, cap: 300, pool: [{ enemy: WALKER, w: 6 }, { enemy: HANGER, w: 3 }, { enemy: HEAVY, w: 2 }] },
     ],
@@ -154,12 +154,11 @@
       { toll: 3, kind: 'elite', enemy: WALKER },
       { toll: 3, kind: 'swarm', enemy: HANGER, shape: 'arc', count: 6 },
       { toll: 4, kind: 'elite', enemy: WALKER, count: 2 },
-      { toll: 5, kind: 'elite', enemy: HEAVY },
+      { toll: 5, kind: 'elite', enemy: WALKER },
       { toll: 5, kind: 'swarm', enemy: WALKER, shape: 'column', count: 12 },
-      { toll: 6, kind: 'elite', enemy: WALKER },
-      { toll: 6, kind: 'elite', enemy: HEAVY },
+      { toll: 6, kind: 'elite', enemy: WALKER, count: 2 },
       { toll: 6, kind: 'swarm', enemy: WALKER, shape: 'ring', count: 10 },
-      { toll: 7, kind: 'elite', enemy: WALKER, count: 2 },
+      { toll: 7, kind: 'elite', enemy: WALKER },
       { toll: 7, kind: 'swarm', enemy: HANGER, shape: 'arc', count: 6 },
       { toll: 8, kind: 'swarm', enemy: WALKER, shape: 'ring', count: 12 },
     ],

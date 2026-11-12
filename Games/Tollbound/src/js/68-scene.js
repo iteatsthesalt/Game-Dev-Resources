@@ -57,11 +57,14 @@
 //              body In Procession (condN of in-procession is 1) to the nearest point of it
 //   wounds     S.wounds as deep red discs 1 m across, darker for deeper, greying toward wound-term; a pale ring
 //              closes on one as it gives its life back (back against life), bright while the player is Braced on it
-//   Swells     areas of team 1 whose def is a Swell, and the voices' areas whose voice deals Swells: the shape
-//              (a ring from its source, a wedge of def.angle, a lane of len, a falling circle) filling in pale bone
-//              with a dark rim, fill = t / (t + ttl); a falling one darkens from its rim inward. A spreading one is
-//              cut by lee: each prop with a collider and each large body near it is a lee record, reaching the
-//              player's lee-reach. The keeper's echoes (harm well under its full stroke) are drawn fainter.
+//   Swells     areas of team 1 whose def is a Swell, and the voices' areas while they fill or land (Skills.FILL,
+//              Skills.LANDED): the shape as Dmg.inside reads it (a circle, a wedge, a lane) filling in pale bone with
+//              a dark rim, fill = t / (t + ttl). Whether it falls or spreads is the area's own, never where it lies:
+//              one of the dead's falls when its attack's kind is 'fall', a voice's when its a0 is 0 (1: it spreads
+//              from x, y). A falling one darkens from its rim inward. A spreading one is cut by lee: each prop with
+//              a collider and each large body near it is a lee record, reaching the player's lee-reach for the
+//              dead's Swells and Skills.LEE for the voices'. The keeper's echoes (harm well under its full stroke)
+//              are drawn fainter. A voice's Drag zone or Blow mark is its shape in the voice's colour.
 //   conditions mourning (condV 2 black, 1 grey), riders (condN of clung: small boxes stuck on), Sounded (two
 //              thin hoops round the body), Coiled (a hoop of rope at its feet for each coil), swing (from 3 a
 //              tick for each swing, round the direction of the last Blow, closing toward going over), sealed (a
@@ -238,7 +241,8 @@
   const histogram = new Int32Array(64);
   const big = new Int32Array(BIG);                 // the draw entries of large bodies, which may shelter from Swells
   let bigN = 0;
-  const leeX = new Float64Array(CASTERS), leeY = new Float64Array(CASTERS);   // this frame's lee records, to add each once
+  // this frame's lee records, to add each once for each lee-reach
+  const leeX = new Float64Array(CASTERS), leeY = new Float64Array(CASTERS), leeReachOf = new Float64Array(CASTERS);
   let leeN = 0;
   const wx = new Float64Array(WAKE), wy = new Float64Array(WAKE);   // this frame's wake points, newest first
   let wN = 0;
@@ -350,23 +354,6 @@
     if (v) c = colorInto(v, [1, 1, 1]);
     shotColor.set(def, c);
     return c;
-  }
-
-  // The kind of harm a voice deals: the one key of its damage ('blow', 'drag' or 'swell'), by voice id.
-  const voiceKind = new Map();
-  function kindOfVoice(S, slot) {
-    const skill = slot >= 0 && S.skills ? S.skills[slot] : null, id = skill && skill.inst ? skill.inst.id : null;
-    if (typeof id !== 'string') return null;
-    let k = voiceKind.get(id);
-    if (k === undefined) {
-      k = null;
-      if (Defs.has('voice', id)) {
-        const dmg = Defs.get('voice', id).damage;
-        for (const key in dmg) { k = key; break; }
-      }
-      voiceKind.set(id, k);
-    }
-    return k;
   }
 
   // A favour's shape in the world: the puppet 'favour.' + its icon, the motif the row paints (46-puppets-dial.js);
@@ -909,11 +896,13 @@
   }
 
   // ---- Swells: filling in pale bone with a dark rim, their lee cut out ----
-  // A lee record for a body or a prop at (x, y), once a frame each.
+  // A lee record for a body or a prop at (x, y), once a frame for each reach. (A view cuts every cut decal by every
+  // lee record, so where the dead's Swells and the voices' lie near the same shelter in one frame, the longer reach
+  // shows on both.)
   function lee(x, y, r, reach) {
     if (leeN >= CASTERS) return;
-    for (let i = 0; i < leeN; i++) if (leeX[i] === x && leeY[i] === y) return;
-    leeX[leeN] = x; leeY[leeN] = y; leeN++;
+    for (let i = 0; i < leeN; i++) if (leeX[i] === x && leeY[i] === y && leeReachOf[i] === reach) return;
+    leeX[leeN] = x; leeY[leeN] = y; leeReachOf[leeN] = reach; leeN++;
     mark(x, y, r, LOOK.rim, 0, 0, LEE, 0, reach);
   }
 
@@ -929,45 +918,71 @@
     }
   }
 
-  function swells(S, now, px, py) {
+  // The shape of area a as Dmg.inside reads it, into shForm, shOpen, shLength and shWidth: a voice's area (team 0)
+  // by its own fields (len above 0: a lane len long and 2 r wide along angle; else a3 above 0: a wedge of that
+  // opening round angle), one of the dead's by its def's shape ('wedge' and 'arc' with def.angle, 'line' with len);
+  // else a circle of radius r.
+  let shForm = RING, shOpen = 0, shLength = 0, shWidth = 0;
+  function areaShape(a, def, team1) {
+    let lane = false, open = 0;
+    if (!team1) {
+      if (a.len > 0) lane = true;
+      else if (a.a3 > 0) open = a.a3;
+    } else if (def) {
+      if ((def.shape === 'wedge' || def.shape === 'arc') && def.angle > 0) open = def.angle;
+      else if (def.shape === 'line' && a.len > 0) lane = true;
+    }
+    shForm = lane ? BAR : open > 0 ? SECTOR : RING;
+    shOpen = open;
+    shLength = lane ? a.len : a.r;
+    shWidth = lane ? 2 * a.r : 0;
+  }
+
+  function swells(S) {
     leeN = 0;
     let n = 0;
     const areas = S.areas, leeReach = stat(S, 'lee-reach', 3), boss = S.boss;
+    // a voice's area is a Swell while it fills and as it lands (the states of 23-skills.js; else it is a Drag zone or
+    // the mark of a Blow), and the dead keep their own lee-reach against it
+    const FILLING = typeof Skills.FILL === 'number' ? Skills.FILL : 0, LANDED = typeof Skills.LANDED === 'number' ? Skills.LANDED : 3;
+    const deadLee = typeof Skills.LEE === 'number' ? Skills.LEE : 3;
     for (let i = 0; areas && i < areas.n; i++) {
       const a = areas.items[i];
       if (!a.alive || !(a.r > 0)) continue;
       const def = a.def, team1 = a.team === 1;
-      let kind = null, form = RING, open = 0, fall = false, length = a.r, width = 0;
+      let kind = null;
       if (team1) {
         kind = def && typeof def.type === 'string' ? def.type : null;
         if (def && def.kind === 'zone') kind = 'zone';
-      } else kind = kindOfVoice(S, a.skill);
+      } else kind = a.state === FILLING || a.state === LANDED ? 'swell' : 'voice';
       const reach = a.r + (a.len > 0 ? a.len : 0);
       if (!inView(a.x, a.y, reach)) continue;
       const k = a.t + a.ttl > 0 ? Math.min(1, Math.max(0, a.t / (a.t + a.ttl))) : 1;
+      areaShape(a, def, team1);
+      const form = shForm, length = shLength, arc = form === SECTOR ? shOpen : shWidth, angle = a.angle || 0;
       if (kind === 'swell') {
-        if (team1 ? def && def.kind === 'fall' : a.len <= 0 && (a.x - px) * (a.x - px) + (a.y - py) * (a.y - py) > 0.36) fall = true;
-        else if (def && def.shape === 'wedge') { form = SECTOR; open = def.angle > 0 ? def.angle : PI / 2; }
-        else if ((def && def.shape === 'line') || a.len > 0) { form = BAR; length = a.len > 0 ? a.len : a.r; width = a.len > 0 ? 2 * a.r : 1.5; }
+        // it falls or spreads by what it is, wherever it lies: one of the dead's falls when its attack is of kind
+        // 'fall'; a voice's spreads from x, y when its a0 is 1 and falls on x, y when it is 0
+        const fall = team1 ? !!def && def.kind === 'fall' : a.a0 !== 1;
         // the keeper's echoes, worth well under its full stroke, are fainter
         let echo = false;
         if (team1 && boss && a.owner === boss.uid && def && def.mult > 0 && boss.damage > 0) echo = a.damage < 0.6 * boss.damage * def.mult;
-        const cut = fall ? 0 : CUT, arc = form === SECTOR ? open : width;
-        if (!fall) shelters(S, a.x, a.y, reach, leeReach);
-        const c = fall ? LOOK.fall : LOOK.bone;
-        mark(a.x, a.y, length, c, fall ? 0.5 : echo ? 0.36 : 0.7, fall ? -k : k, form + cut, a.angle || 0, arc);
-        mark(a.x, a.y, length, LOOK.rim, echo ? 0.5 : 0.92, 0, form + cut, a.angle || 0, arc);
+        const cut = fall ? 0 : CUT;
+        if (!fall) shelters(S, a.x, a.y, reach, team1 ? leeReach : deadLee);
+        mark(a.x, a.y, length, fall ? LOOK.fall : LOOK.bone, fall ? 0.5 : echo ? 0.36 : 0.7, fall ? -k : k, form + cut, angle, arc);
+        mark(a.x, a.y, length, LOOK.rim, echo ? 0.5 : 0.92, 0, form + cut, angle, arc);
         n++;
       } else if (kind === 'zone') {
         // bad ground: a dark patch with a darker rim
-        mark(a.x, a.y, a.r, LOOK.fall, 0.3, 1, DISC, 0, 0);
-        mark(a.x, a.y, a.r, LOOK.rim, 0.6, 0, RING, 0, 0);
+        mark(a.x, a.y, length, LOOK.fall, 0.3, 1, form === RING ? DISC : form, angle, arc);
+        mark(a.x, a.y, length, LOOK.rim, 0.6, 0, form, angle, arc);
       } else if (!team1) {
-        // a voice's Blow or Drag lying on the ground: a ring in its colour, gone as it ends
-        const c = a.skill >= 0 && S.skills[a.skill] && S.skills[a.skill].inst && Defs.has('voice', S.skills[a.skill].inst.id) ? fxColor(Defs.get('voice', S.skills[a.skill].inst.id)) : null;
-        mark(a.x, a.y, a.r, c || LOOK.posture, 0.7 * (1 - k * k), 0, RING, 0, 0);
+        // a voice's Drag zone or the mark of its Blow, in its shape and the voice's colour, gone as it ends
+        const sk = a.skill >= 0 && S.skills ? S.skills[a.skill] : null, id = sk && sk.inst ? sk.inst.id : null;
+        const c = typeof id === 'string' && Defs.has('voice', id) ? fxColor(Defs.get('voice', id)) : null;
+        mark(a.x, a.y, length, c || LOOK.posture, 0.7 * (1 - k * k), 0, form, angle, arc);
       } else {
-        mark(a.x, a.y, a.r, LOOK.rim, 0.7, 0, RING, 0, 0);
+        mark(a.x, a.y, length, LOOK.rim, 0.7, 0, form, angle, arc);
       }
     }
     stats.swells = n;
@@ -1349,7 +1364,7 @@
     placeMarks(S);
     if (typeof Vfx.decals === 'function') decalN = Vfx.decals(decalBuf, decalN, DECALS);
     wakeLine(S, px, py);
-    swells(S, now, px, py);
+    swells(S);
     const P = typeof Dmg.POSE === 'object' && Dmg.POSE ? Dmg.POSE : POSE;
     wounds(S, now, px, py, p.pose === P.braced);
     const detail = budget(), darkDiscs = puppets && (!caps.shadows || level === 'low');
