@@ -167,55 +167,62 @@ test('hostCovered follows match-pattern rules', () => {
 });
 ```
 
-Review Focus 1, in the same file. The recording `http` collects every URL an adapter asks for and fails the call, so no real request happens:
+Review Focus 1, in the same file. `adapterCtx` answers from `tests/fixtures/routes.js`, so adapters that make several requests get past the first one, and no real request happens. Wrapping its `http` records every URL asked for. The `ctx` is the extension's: `platformName`, `caps` and `dataUrl` as the extension sets them, each secret in its contract shape, and Plan 04's `data` keys.
 
 ```js
 test('every host the adapters and providers call is covered', async () => {
-  const m = await extensionManifest('chrome', { version: '1.0.0' });
+  const m = await extensionManifest('chrome');
+  const data = (f) => JSON.parse(readFileSync(`src/data/${f}`, 'utf8'));
+  const { ctx } = await adapterCtx({
+    secrets: { 'src:europeana': 'k', 'src:openverse': JSON.stringify({ clientId: 'id', clientSecret: 's' }),
+      'src:datagov': 'k', 'src:marginalia': 'k', 'src:github': 'k' },
+    data: { library: data('library.json'), vaultStarter: data('vault-starter.json'), geocities: data('geocities-seeds.json'),
+      loadSnapshot: async () => null, embedBroken: new Set() } });
+  Object.assign(ctx, { platformName: 'extension', dataUrl: (f) => PAGES + 'data/' + f,
+    caps: { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false, labHref: PAGES + 'lab/', framesArchive: true } });
   const urls = [];
-  const fail = async (url) => { urls.push(url); throw new Error('offline'); };
-  const http = { register() {}, request: fail, getJson: fail, getText: fail };
-  const ctx = { http, rand: mulberry32(1), clock: fakeClock(0), cache: { get: () => undefined, set() {}, purgeExpired() {} },
-    settings: DEFAULT_SETTINGS, secrets: { get: async () => 'test-key', set: async () => {}, delete: async () => {}, list: async () => [] },
-    data: readData(), platformName: 'extension' };           // readData(): the four src/data files via fs
+  for (const k of ['request', 'getJson', 'getText']) { const f = ctx.http[k].bind(ctx.http); ctx.http[k] = (u, o) => (urls.push(u), f(u, o)); }
+  const stub = { id: 'url:stub', kind: 'site', title: 'Stub', description: '', url: 'https://www.example.com/x', tags: ['retro'], why: [], safety: 'curated', meta: {} };
+  const bugs = [];
   for (const a of Object.values(SOURCES)) {
-    if (a.tier === 'navigate' || a.tier === 'snapshot') continue;
-    await a.random(ctx).catch(() => {});
-    await a.search('retro', ctx).catch(() => {});
+    if (a.tier === 'navigate') continue;
+    if (a.probeUrl) urls.push(a.probeUrl);
+    for (const call of [() => a.random(ctx), () => a.search('retro', ctx), () => a.more({ ...stub, source: a.id }, ctx)])
+      await call().catch((e) => { if (e instanceof TypeError && !/^unmatched /.test(e.message)) bugs.push(`${a.id}: ${e.message}`); });
   }
   for (const p of Object.values(PROVIDERS)) if (p.baseURL?.startsWith('https://')) urls.push(p.baseURL);
-  const missing = [...new Set(urls.filter((u) => u.startsWith('https://') && !hostCovered(m.host_permissions, u))
+  urls.push('https://vertexaisearch.cloud.google.com/grounding-api-redirect/x', ctx.dataUrl('daily.json'));
+  assert.deepEqual(bugs, []);                      // an adapter that crashes on the extension ctx hides its hosts
+  const missing = [...new Set(urls.filter((u) => /^https?:\/\//.test(u) && !hostCovered(m.host_permissions, u))
     .map((u) => new URL(u).host))];
   assert.deepEqual(missing, []);
 });
 ```
+
+Local providers (`ollama`, `lmstudio`) and custom endpoints are left out on purpose: they are `http://` or user-entered, and `requestOrigins` asks for them (Task 3). Link checks reach arbitrary sites, which Task 3's `no-cors` rule covers.
 
 - [ ] **Step 2: Run the tests and see them fail**
 
 Run: `node --test tests/unit/ext-manifest.test.js`
 Expected: FAIL with `SyntaxError: The requested module '../../tools/build.js' does not provide an export named 'mergeManifest'`.
 
-- [ ] **Step 3: Make `tools/build.js` safe to import**
+- [ ] **Step 3: Write the three manifest files**
 
-If the CLI runs at module load, wrap it in `if (import.meta.url === pathToFileURL(process.argv[1]).href) { … }` (`pathToFileURL` from `node:url`). `npm run build` must behave as before.
-
-- [ ] **Step 4: Write the three manifest files**
-
-- `manifest.base.json`: `manifest_version: 3`, `name: "Byways"`, `version: "0.0.0"` (the build replaces it), `description: "Press one button and go somewhere you would not have found on your own."`, `icons: {"192": "assets/icons/icon-192.png", "512": "assets/icons/icon-512.png"}`, `action: {"default_title": "Stumble", "default_icon": {"192": "assets/icons/icon-192.png"}}`, the `background` object above, `permissions: ["storage","unlimitedStorage","contextMenus","activeTab"]`, `optional_permissions: ["identity"]`, `host_permissions`, the four `optional_host_permissions` above in that order, `content_security_policy.extension_pages` = the CSP above, and `commands` for `_execute_action` (Alt+Shift+S, "Stumble"), `toggle-listening` (Alt+Shift+V, "Turn listening on or off") and `more-like-page` (Alt+Shift+M, "More like this page"), each as `{"suggested_key": {"default": "…"}, "description": "…"}`.
-- `host_permissions` start with `https://archive.org/*`, `https://*.archive.org/*`, `https://raw.githubusercontent.com/*`, `https://itch.io/*`, `https://iteatsthesalt.github.io/*`, the provider hosts `https://api.anthropic.com/*`, `https://api.openai.com/*`, `https://generativelanguage.googleapis.com/*`, `https://openrouter.ai/*`, `https://api.groq.com/*`, `https://api.x.ai/*`, `https://api.mistral.ai/*`, `https://api.deepseek.com/*`, `https://ollama.com/*`. Then add one `https://<host>/*` (or `https://*.<domain>/*` for Wikimedia sites) for each host the coverage test reports as missing.
+- `manifest.base.json`: `manifest_version: 3`, `name: "Byways"`, `version` = the `package.json` version (`"0.1.0"` today; a release bumps both, and the overlays never set one), `description: "Press one button and go somewhere you would not have found on your own."`, `icons: {"192": "assets/icons/icon-192.png", "512": "assets/icons/icon-512.png"}`, `action: {"default_title": "Stumble", "default_icon": {"192": "assets/icons/icon-192.png"}}`, the `background` object above, `permissions: ["storage","unlimitedStorage","contextMenus","activeTab"]`, `optional_permissions: ["identity"]`, `host_permissions`, the four `optional_host_permissions` above in that order, `content_security_policy.extension_pages` = the CSP above, and `commands` for `_execute_action` (Alt+Shift+S, "Stumble"), `toggle-listening` (Alt+Shift+V, "Turn listening on or off") and `more-like-page` (Alt+Shift+M, "More like this page"), each as `{"suggested_key": {"default": "…"}, "description": "…"}`.
+- `host_permissions`, in this order: `https://archive.org/*`, `https://*.archive.org/*`, `https://raw.githubusercontent.com/*`, `https://itch.io/*`, `https://iteatsthesalt.github.io/*`; the providers `https://api.anthropic.com/*`, `https://api.openai.com/*`, `https://generativelanguage.googleapis.com/*`, `https://vertexaisearch.cloud.google.com/*` (Gemini's grounding redirects), `https://openrouter.ai/*`, `https://api.groq.com/*`, `https://api.x.ai/*`, `https://api.mistral.ai/*`, `https://api.deepseek.com/*`, `https://ollama.com/*`; the open sources `https://*.wikipedia.org/*`, `https://*.wikimedia.org/*`, `https://api.inaturalist.org/*`, `https://openlibrary.org/*`, `https://api2.marginalia-search.com/*`, `https://api.github.com/*`, `https://api.nasa.gov/*`, `https://api.artic.edu/*`, `https://kagi.com/*`, `https://api.europeana.eu/*`, `https://api.openverse.org/*`; and the probe sources `https://collectionapi.metmuseum.org/*`, `https://openaccess-api.clevelandart.org/*`, `https://images-api.nasa.gov/*`, `https://www.loc.gov/*`, `https://wiby.me/*`, `https://api.si.edu/*`, `https://hn.algolia.com/*`. If the coverage test still reports a host, add `https://<host>/*` for it.
 - `manifest.chrome.json`: `permissions: ["sidePanel"]`, `optional_permissions: ["tts"]`, `side_panel: {"default_path": "panel.html"}`, and command `open-panel` (Alt+Shift+B, "Open the Byways panel").
 - `manifest.firefox.json`: `sidebar_action: {"default_panel": "panel.html", "default_title": "Byways", "default_icon": "assets/icons/icon-192.png"}`, command `_execute_sidebar_action` (Alt+Shift+B, "Open the Byways sidebar"), and `browser_specific_settings.gecko` exactly as the Firefox test expects.
 
-- [ ] **Step 5: Implement the three exports in `tools/build.js`**
+- [ ] **Step 4: Implement the three exports in `tools/build.js`**
 
-`mergeManifest`: returns a new object. Plain objects merge key by key, arrays become `[...new Set([...base, ...overlay])]`, anything else takes the overlay value. `extensionManifest(browser, {version})` reads `shells/extension/manifest.base.json` and `manifest.<browser>.json`, merges them and sets `version`. `hostCovered(patterns, url)` parses each pattern as `<scheme>://<host>/<path>`. It needs an equal scheme, and a host that is equal or, for `*.d`, equal to `d` or ending in `.d`. Paths are ignored.
+`mergeManifest`: returns a new object. Plain objects merge key by key, arrays become `[...new Set([...base, ...overlay])]`, anything else takes the overlay value. `extensionManifest(browser)` reads `shells/extension/manifest.base.json` and `manifest.<browser>.json` and merges them; the version is the base's. `hostCovered(patterns, url)` parses each pattern as `<scheme>://<host>/<path>`. It needs an equal scheme, and a host that is equal or, for `*.d`, equal to `d` or ending in `.d`. Paths are ignored. Earlier plans already guard the CLI so that tests can import `tools/build.js`.
 
-- [ ] **Step 6: Run the tests and see them pass**
+- [ ] **Step 5: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-manifest.test.js`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
-- [ ] **Step 7: Commit**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add shells/extension/manifest.base.json shells/extension/manifest.chrome.json shells/extension/manifest.firefox.json tools/build.js tests/unit/ext-manifest.test.js

@@ -1693,7 +1693,7 @@ git add src/ui/firstrun.js src/ui/boot.js tests/e2e/firstrun.spec.js
 git commit -m "Add the first-run registry with the Welcome step"
 ```
 
-### Task 14: Service worker and the update toast
+### Task 15: Service worker and the update toast
 
 **Files:**
 - Modify: `shells/pwa/sw.js` (add the handlers below the Task 9 constants)
@@ -1701,7 +1701,7 @@ git commit -m "Add the first-run registry with the Welcome step"
 - Test: `tests/e2e/sw.spec.js`
 
 **Interfaces:**
-- Consumes: `registerServiceWorker` (Task 7), `showToast` (Task 11), the stamped `BUILD_ID` and `PRECACHE` (Task 9).
+- Consumes: `registerServiceWorker` (Task 7), `showToast` (Task 11), the stamped `BUILD_ID` and `PRECACHE` (Task 9), `gotoApp` (Task 13).
 - Produces: the cache name `byways-<id>`; the message `{type: 'skip-waiting'}`; `UPDATE_MESSAGE = 'Update available, reload'` in `boot.js`.
 
 - [ ] **Step 1: Write the failing spec** `tests/e2e/sw.spec.js`

@@ -1271,10 +1271,12 @@ class UpdateCheckTest {
     assertTrue(UpdateCheck.isNewer("0.1.1", "0.1.0")); assertFalse(UpdateCheck.isNewer("1.2.0", "1.2.0"))
     assertFalse(UpdateCheck.isNewer("1.2", "1.2.0")); assertFalse(UpdateCheck.isNewer("2.0.0-beta", "1.0.0"))
   }
-  @Test fun picksTheApkAsset() {
+  @Test fun picksTheFirstApkAsset() {
     val j = """{"tag_name":"byways-v1.3.0","html_url":"https://github.com/r/1.3.0","assets":[
-      {"name":"byways-chrome.zip","browser_download_url":"https://x/c.zip"},{"name":"byways-1.3.0.apk","browser_download_url":"$apk"}]}"""
+      {"name":"byways-chrome-1.3.0.zip","browser_download_url":"https://x/c.zip"},{"name":"byways-1.3.0.apk","browser_download_url":"$apk"}]}"""
     assertEquals(UpdateCheck.Release("1.3.0", apk), UpdateCheck.fromLatest(j))
+    val d = """{"tag_name":"byways-v1.3.0","html_url":"h","assets":[{"name":"byways-1.3.0-debug.apk","browser_download_url":"https://x/d.apk"}]}"""
+    assertEquals(UpdateCheck.Release("1.3.0", "https://x/d.apk"), UpdateCheck.fromLatest(d))
   }
   @Test fun fallsBackToTheReleasePage() =
     assertEquals(UpdateCheck.Release("1.3.0", "https://github.com/r/1.3.0"),
@@ -1293,12 +1295,12 @@ class UpdateCheckTest {
 
 - [ ] **Step 2: Run it to see it fail**
 
-Run: `gradle -p shells/android testDebugUnitTest --tests '*UpdateCheckTest'` (or the CI job).
+Run: `gradle -p shells/android testDebugUnitTest --tests '*UpdateCheckTest'` where `ANDROID_HOME` is set; otherwise the red half of **CI checks**.
 Expected: FAIL to compile with `Unresolved reference 'UpdateCheck'`.
 
 - [ ] **Step 3: Implement `UpdateCheck`**
 
-`isNewer` splits both on `.`, pads missing parts with 0 and compares them as integers. It returns false when any part of either version is not a plain number. The release URL is the first asset whose `name` ends in `.apk`, else `html_url`.
+`isNewer` splits both on `.`, pads missing parts with 0 and compares them as integers. It returns false when any part of either version is not a plain number. The release URL is the first asset whose `name` ends in `.apk` (`byways-<version>.apk` or `byways-<version>-debug.apk`, per the contract), else `html_url`.
 
 - [ ] **Step 4: Add `checkUpdate` to the `app` handler**
 
@@ -1306,7 +1308,7 @@ On the fetch executor, GET `LATEST_URL` with `Accept: application/vnd.github+jso
 
 - [ ] **Step 5: Run it to see it pass**
 
-Run: the Step 2 command. Expected: PASS (6 tests).
+Run: the Step 2 command, or the green half of **CI checks** after Step 6. Expected: PASS (6 tests).
 
 - [ ] **Step 6: Commit**
 
