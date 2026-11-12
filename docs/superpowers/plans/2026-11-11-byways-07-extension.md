@@ -889,20 +889,29 @@ In `tests/e2e/helpers/net.js`, the three functions accept a `Page` or a `Browser
   5. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`; `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
 - `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
 
-- [ ] **Step 3: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
+- [ ] **Step 3: Write the harness and the first three tests** in `tests/e2e/extension.spec.js`
 
 ```js
 const DIST = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
+const EXT_ROUTES = [            // what extension pages ask for that tests/fixtures/routes.js does not answer
+  { match: /^https:\/\/itch\.io\/byways-sw-probe$/, file: 'html/find-page.html', headers: { 'content-type': 'text/html' } },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/daily\.json$/, file: 'daily/daily-2026-11-11.json' },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/vault-index\.json$/, file: 'ia/vault-index.json' },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/itch\.json$/, file: 'itch/itch.json' },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/(webrings|neocities)\.json$/, status: 404, body: '' },
+  { match: /^https:\/\/itch\.io\/games\//, file: 'itch/platform-web.xml' },          // the extension reads itch.io live
+  { match: /^https:\/\/img\.itch\.zone\//, file: 'ia/thumb.svg', headers: { 'content-type': 'image/svg+xml' } },
+];
 const test = base.extend({
   extArgs: [['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], { option: true }],
-  context: async ({ extArgs }, use) => {
+  context: async ({ extArgs, ignoreProblems }, use) => {
     const context = await chromium.launchPersistentContext('', { channel: 'chromium',
       headless: process.env.BYWAYS_EXT_HEADED !== '1',
       args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, ...extArgs] });
-    await mockNet(context, { overrides: [...libraryRoutes(),
-      { match: /^https:\/\/itch\.io\/byways-sw-probe$/, file: 'html/find-page.html', headers: { 'content-type': 'text/html' } }] });
+    await mockNet(context, { overrides: [...libraryRoutes(), ...EXT_ROUTES] });
     await use(context);
     expect(unmocked(context)).toEqual([]);
+    expect(pageProblems(context, { ignore: ignoreProblems })).toEqual([]);
     await context.close();
   },
   sw: async ({ context }, use) => use(context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker')),
@@ -914,25 +923,38 @@ test('loads the extension service worker', async ({ sw }) => {
 });
 
 test('service worker requests go through the mocks', async ({ sw }) => {
-  expect(await sw.evaluate(() => fetch('https://itch.io/byways-sw-probe').then((r) => r.status, () => 0))).toBe(200);
+  expect(await sw.evaluate(() => fetch('https://itch.io/byways-sw-probe').then((r) => r.text(), () => ''))).toContain('Mock find');
+});
+
+test.describe('harness', () => {
+  test.use({ ignoreProblems: [/Content Security Policy/] });
+  test('pageProblems sees a CSP violation on an extension page', async ({ context, extId }) => {
+    const page = await extPage(context, extId, 'app.html');
+    await useSources(page);
+    await page.evaluate(() => document.body.setAttribute('style', 'color: red'));
+    await expect.poll(() => pageProblems(context).join('\n')).toMatch(/Content Security Policy/);
+  });
 });
 ```
 
-`test` here extends `@playwright/test` directly, not the `test` from `helpers/net.js`: the context is launched by hand, so the config's `use` block (including `serviceWorkers: 'block'`) does not apply to it.
+`test` here extends the `test` from `helpers/net.js`, for its `ignoreProblems` option, and replaces its `context` fixture with a persistent one that loads the extension. The extension tests never use the `page` fixture. The context is launched by hand, so the config's `use` block (including `serviceWorkers: 'block'`) does not apply to it.
 
 Helpers in the same file:
+- `escapeRe(s)`: `s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
 - `libraryRoutes()` reads `src/data/library.json` and maps each entry to `{match: new RegExp('^' + escapeRe(url without its trailing slash) + '/?$'), file: 'html/find-page.html', headers: {'content-type': 'text/html'}}`.
-- `extPage(context, extId, path)`: a new page at `chrome-extension://${extId}/${path}`.
+- `extPage(context, extId, path)`: `context.newPage()`, then `installFakeSpeech(page)`, then `goto` `chrome-extension://${extId}/${path}`. Every extension page so gets the fake speech, the fake wake lock and the `window.__announcements` log.
 - `tabInfo(page)`: `page.evaluate(() => chrome.tabs.getCurrent().then((t) => ({ id: t.id, windowId: t.windowId })))`. Only call it while the page is an extension page.
-- `onlyLibrary(page)`: in an extension page, `import(chrome.runtime.getURL('core/…'))` for `SOURCES`, `openStore`, `idbBackend` and `saveSettings`. Save `{sources: <every SOURCES id → {enabled: id === 'library', fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page.
+- `useSources(page, ids = ['library'])`: in an extension page, import `core/sources/index.js` (`SOURCES`), `core/store/db.js` (`openStore`, `idbBackend`) and `core/settings.js` (`saveSettings`) through `chrome.runtime.getURL`. Save `{sources: <every SOURCES id → {enabled: ids.includes(id), fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page. Plan 01's `boot()` waits for first run, so every test that opens a boot page calls this first.
 - `stumbleTab(page, tabId)`: `page.evaluate((id) => chrome.runtime.sendMessage({ type: 'stumble', tabId: id }), tabId)`. This runs the same `stumble(tab)` handler as the toolbar click.
+- `grantMic(context, extId)`: opens `permission.html` (Task 7) with `extPage` and waits for its `close` event. `--use-fake-ui-for-media-stream` accepts the prompt.
+- `said(page)`: `page.evaluate(() => window.__announcements.map(([, text]) => text))`. Tests read live-region text from this log, because the Stumble view's `Now showing: <title>` can replace the text of `#live-polite` at any moment.
 
 - [ ] **Step 4: Run the spike and record the result**
 
 Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
-Expected: PASS, 2 tests.
+Expected: PASS, 3 tests.
 - If `loads the extension service worker` times out in `waitForEvent('serviceworker')`, headless does not load extensions. Run it again as `BYWAYS_EXT_HEADED=1 xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js` (check `command -v xvfb-run` first; when it is missing here, CI proves it in Task 8).
-- If `service worker requests go through the mocks` gets `0`, add `process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';` as the first line of the spec and run it again. If it still gets `0`, mark that test `test.fixme` with the comment `// Service worker fetches bypass context.route here. The other tests use only the library source.`
+- If `service worker requests go through the mocks` does not get the fixture text, service-worker requests bypass the mocks, whatever came back instead (`''`, a real 404 from itch.io, or a proxy's 403 page). Add `process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';` as the first line of the spec and run it again. If it still fails, mark that test `test.fixme` with the comment `// Service worker fetches bypass context.route here. The background uses only the library source in these tests, which makes no request.`
 - Put the outcome on the spec's first comment line, either `// Headless extensions in Playwright 1.63: work.` or `// Headless extensions in Playwright 1.63: fail. CI runs this spec under xvfb-run.` Task 8 reads it.
 
 - [ ] **Step 5: Add the failing tests**

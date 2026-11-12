@@ -2004,7 +2004,7 @@ git add src/ui/components/card.js src/ui/views/stumble.js tests/e2e/card-actions
 git commit -m "Add the card actions, the ⋯ menu and Undo"
 ```
 
-### Task 24: Modes, search, Rabbit Hole trail and Wiby leap
+### Task 24: Modes, Familiar ↔ Strange, search, Rabbit Hole trail and Wiby leap
 
 **Files:**
 - Modify: `src/ui/views/stumble.js`

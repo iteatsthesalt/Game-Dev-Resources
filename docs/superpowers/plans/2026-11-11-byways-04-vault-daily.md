@@ -715,32 +715,29 @@ test('parseItchRss reads items and drops links outside itch.io', () => {
   assert.equal(items[1].imageUrl, 'https://img.itch.zone/cm9j/315x250%23c/rocket.png');
   assert.equal(items[1].author, 'pixelpal');
 });
-test('itch random reads the snapshot on the web app', async () => {
-  const finds = await itch.random({ ...ctx, platformName: 'pwa' });
-  assert.equal(net.calls.length, 0);
+test('itch random reads the snapshot without privileged fetch', async () => {
+  const finds = await itch.random(ctx);
+  assert.deepEqual(net.calls.map((c) => c.url), [DATA + 'itch.json']);
   assert.deepEqual(finds.map((f) => f.title).sort(), ['Moss & Mirrors', 'Tiny Rocket']);
   assert.deepEqual([finds[0].source, finds[0].kind, finds[0].why[0]], ['itch', 'game', 'itch.io: Free web games']);
 });
-test('itch random reads a feed live through privileged fetch elsewhere', async () => {
+test('itch random reads a feed live through privileged fetch when the platform can', async () => {
   // /itch\.io\/games/ → platform-web.xml as text
-  await itch.random({ ...ctx, platformName: 'extension' });
+  await itch.random({ ...ctx, caps: { privilegedFetch: true } });
   assert.equal(net.calls[0].url, ITCH_FEEDS[0].url);
   assert.equal(net.calls[0].init.privileged, true);
 });
-test('sources/index.js registers oldweb and itch', () => {
-  assert.equal(getSource('oldweb'), oldweb); assert.equal(getSource('itch'), itch);
-  assert.deepEqual([oldweb.tier, itch.tier, itch.fate], ['open', 'privileged', false]);
-});
 ```
+
+Add the `TABLE` row `itch: ['open','none','mostly',10,false]` to `tests/unit/sources-index.test.js` and remove `'itch'`, the last id, so the `undefined` loop goes.
 
 - [ ] **Step 2: Run the tests to see them fail**
 
-Run: `node --test tests/unit/sources-oldweb-itch.test.js`
-Expected: FAIL with "Cannot find module '…/src/core/sources/oldweb.js'".
+Run: `node --test tests/unit/sources-itch.test.js tests/unit/sources-index.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/sources/itch.js'".
 
-- [ ] **Step 3: Implement both adapters and the registration**
+- [ ] **Step 3: Implement `parseItchRss`, the adapter and the registration**
 
-- `oldweb`: `name: 'Old web (GeoCities)'`, `kinds: ['site']`, `tier: 'open'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: false`, `probeUrl: 'https://archive.org/wayback/available?url=geocities.com&timestamp=2009'`. `random`: one seed picked with `ctx.rand()`, one `wayback(seed, '2009')` call; `null` → `[]`. The title is the seed's host without `www.` plus its path without the trailing slash. Set `tags: ['retro']`, `attribution: 'Internet Archive Wayback Machine'`, `meta: {original, timestamp}`. `more(find)`: the seeds that share the first path segment with `find.meta.original` (not itself), picked with `ctx.rand()`; with none, plain `random`. `search(query)`: up to 3 seeds whose URL contains the lowercased query, resolved one by one, with misses dropped.
 - `parseItchRss`: split on `<item>`, read `plainTitle` (else `title`), `link`, `pubDate`, `imageurl` and `description`, unwrap CDATA, and turn HTML into text with `toPlainText`. `imageUrl` is `imageurl`, else the first `<img src>` in the description, else `null`. Keep only `https://<name>.itch.io/…` links; `author` is `<name>`. `published` is `new Date(pubDate).toISOString()`, or `null` when the date is invalid.
 - `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'privileged'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.platformName !== 'pwa'` (the shells whose `caps.privilegedFetch` is true): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `ctx.data.loadSnapshot('itch')`, and a `null` snapshot gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`. `search(query)` filters every item by title or description. `more` is `random`.
 - `sources/index.js`: import both and add them to `SOURCES` under `oldweb` and `itch`.
