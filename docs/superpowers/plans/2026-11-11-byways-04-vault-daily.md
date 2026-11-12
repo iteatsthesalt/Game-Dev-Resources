@@ -1525,24 +1525,26 @@ Expected: FAIL with "Cannot find module '…/tools/probe-live.js'".
 - [ ] **Step 3: Implement `tools/probe-live.js`**
 
 - **`buildTargets`.**
-  - CORS rows: each source with a `probeUrl` (`itch` uses `ITCH_FEEDS[0].url`, and `snapshot`/`navigate` tiers are skipped). Add `archive-metadata` (`https://archive.org/metadata/softwarelibrary_c64_games/metadata`) and `archive-img` (`https://archive.org/services/img/softwarelibrary_c64_games`).
-  - Provider rows: each provider with an https `baseURL`, at `baseURL` (trailing slash dropped) + `/` + `modelsPath` (leading slash dropped), with `requestHeaders` = `auth.header` lowercased + `,content-type`.
+  - CORS rows: every source except the `snapshot` and `navigate` tiers and `library` (it makes no requests), at its `probeUrl`, else at `OPEN_SAMPLES[id]`, else with `url: null`, so a new source shows up in the report. `OPEN_SAMPLES` holds one GET for each open-tier adapter in Plan 02's adapter table except `library`: its `random` request, or its `search` request for the query `moth` when `random` makes none or needs a date, with the custom headers it sends (`api-user-agent` for wikipedia and commons, `aic-user-agent` for aic, `api-key` for marginalia). It also holds `itch` at `ITCH_FEEDS[0].url`. Add `archive-metadata` at `https://archive.org/metadata/softwarelibrary_c64_games/metadata`.
+  - Provider rows: each provider with an https `baseURL`, at `baseURL` (trailing slash dropped) + `modelsPath`, or at `baseURL` alone when `modelsPath` is null. `requestHeaders` joins with `,` the lowercased `auth.header`, `content-type`, then `anthropic-version` and `anthropic-dangerous-direct-browser-access` for `anthropic` (the contract's Claude headers), then the lowercased `extraHeaders` keys.
   - Framing rows: `msdos_Scorched_Earth_1991` and the first Vault starter id.
   - Collection rows: the verified, likely and `IA_COLLECTIONS` ids at `/metadata/<id>/metadata`. Item rows: every Vault starter id.
-  - Endpoint rows: `https://kagi.com/smallweb/api/random`, every `ITCH_FEEDS` URL, and `daily.json`, `itch.json`, `vault-index.json` and `library.json` under `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/`.
+  - Sub-collection rows: for `softwarelibrary` and then every verified and likely Vault id, `https://archive.org/advancedsearch.php` with `q=collection:(<parent>) AND mediatype:collection`, `fl[]=identifier`, `rows=100` and `output=json`.
+  - Endpoint rows: `https://kagi.com/smallweb/api/random`, every `ITCH_FEEDS` URL, `daily.json`, `itch.json`, `vault-index.json` and `library.json` under `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/`, and `archive-img` at `https://archive.org/services/img/softwarelibrary_c64_games`.
 - **`runLiveProbe`.** Every request sends `Origin: PAGES_ORIGIN` and `User-Agent: USER_AGENT`, and waits 1000 ms (`clock.setTimeout`) after any archive.org request.
-  - CORS: an `OPTIONS` preflight with `Access-Control-Request-Method: GET` (and `Access-Control-Request-Headers` when given), then a GET. It passes when the GET's `access-control-allow-origin` is `*` or `PAGES_ORIGIN`, whatever the status.
-  - Framing: it fails on an `X-Frame-Options` of DENY or SAMEORIGIN, or on a `frame-ancestors` that has neither `*` nor `PAGES_ORIGIN`.
+  - CORS: an `OPTIONS` preflight with `Access-Control-Request-Method: GET` (and `Access-Control-Request-Headers` when given), then a GET. A row without `requestHeaders` passes when the GET's `access-control-allow-origin` is `*` or `PAGES_ORIGIN`, whatever the status. A row with `requestHeaders` passes only when the preflight is 2xx, its ACAO is `*` or `PAGES_ORIGIN`, its `access-control-allow-headers` lists every requested header (`*` covers every header except `authorization`), and the GET's ACAO is `*` or `PAGES_ORIGIN`. A `url: null` row fails as `no sample URL` without a request.
+  - Framing: it fails on an `X-Frame-Options` of DENY or SAMEORIGIN, or on a `frame-ancestors` that has neither a `*` source on its own (not a wildcard inside a host) nor `PAGES_ORIGIN`.
   - Collection: passes on `result.mediatype === 'collection'`. Item: passes on `result.identifier`.
-  - Endpoints: Kagi passes on a JSON `url` string; itch passes on at least one parsed item; Pages files pass on ACAO `*`.
+  - Sub-collections: pass when the reply has a `response.docs` array. The detail is `new: <ids not in VAULT_COLLECTIONS, joined by ', '>`, or `no new sub-collections`.
+  - Endpoints: Kagi passes on a JSON `url` string; itch passes on at least one parsed item; Pages files pass on ACAO `*`; `archive-img` passes on a 200 with an `image/*` content type, because it loads through `<img>` and needs no CORS.
   - A thrown error gives `network error: <message>`.
 - **`toMarkdown`.** Escape `|` in details as `\|`.
-- **CLI.** Load `PROVIDERS` with `import('../src/core/ai/providers.js')`. If that fails, add one failing row `cors | providers | not built yet`. Write the report to `--out` and append it to `GITHUB_STEP_SUMMARY` when that is set. Always exit 0.
+- **CLI.** Load `PROVIDERS` with `import('../src/core/ai/providers.js')`. If that fails, add one failing row `cors | providers | not built yet`. Write the report to `--out` and append it to `GITHUB_STEP_SUMMARY` when that is set. Always exit 0. After a run, a maintainer applies the CORS rows to each adapter's `tier` field in `src/core/sources/<id>.js` by hand (§17.4); Plan 09's README describes that routine.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/probe-live.test.js`
-Expected: PASS, 8 tests.
+Expected: PASS, 9 tests.
 
 - [ ] **Step 5: Commit**
 
