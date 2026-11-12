@@ -635,4 +635,227 @@ git add shells/extension/bg.js tests/unit/ext-bg.test.js
 git commit -m "Add the extension background: toolbar Stumble, commands, menu and access checks"
 ```
 
+### Task 5: Byways tab, page boot and the extension e2e harness
+
+**Files:**
+- Create: `shells/extension/app.html`, `shells/extension/panel.html`, `shells/extension/panel.js`, `tests/e2e/extension.spec.js`, `tests/fixtures/http/html/find-page.html`
+- Modify: `tests/e2e/helpers/net.js`
+
+**Interfaces:**
+- Consumes: `boot(platform) → Promise<App>` (`ui/boot.js`); `createExtensionPlatform` (Task 3); bg message `stumble` (Task 4); `mockNet`, `unmocked` (`tests/e2e/helpers/net.js`); `SOURCES`, `openStore`, `idbBackend`, `saveSettings`.
+- Produces: `mockNet(target: Page|BrowserContext, {overrides?})` and `unmocked(target) → string[]`, now accepting a `BrowserContext`. Spec helpers `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `onlyLibrary(page) → Promise<void>` and `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, local to `extension.spec.js` and reused by Tasks 6 and 7.
+
+- [ ] **Step 1: Let `mockNet` and `unmocked` take a `BrowserContext`**
+
+Both `Page` and `BrowserContext` have `route()` and `on('request')`, so only the parameter name and JSDoc change. Requests whose URL starts with `chrome-extension://` are never routed or recorded. Run: `npm run e2e`. Expected: the existing web specs still pass.
+
+- [ ] **Step 2: Write the pages**
+
+- `app.html` and `panel.html` copy the `<body>` skeleton of `shells/pwa/index.html` (live regions, navigation, `#main`, the hands-free controls) and its stylesheet links. They load one script, `<script type="module" src="panel.js"></script>`. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`. `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
+- Both carry this CSP `<meta>`, exactly: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`.
+- `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
+
+- [ ] **Step 3: Write `panel.js` (boot only)**
+
+`const ext = globalThis.browser ?? globalThis.chrome`. Read `document.body.dataset.surface`, then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}` (ending in `.catch(() => {})`). Task 6 adds the panel extras and Task 7 the mic messages.
+
+- [ ] **Step 4: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
+
+```js
+const DIST = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
+const test = base.extend({
+  extArgs: [['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], { option: true }],
+  context: async ({ extArgs }, use) => {
+    const context = await chromium.launchPersistentContext('', { channel: 'chromium',
+      headless: process.env.BYWAYS_EXT_HEADED !== '1',
+      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, ...extArgs] });
+    await mockNet(context, { overrides: [...libraryRoutes(),
+      { match: /^https:\/\/itch\.io\/byways-sw-probe$/, file: 'html/find-page.html', headers: { 'content-type': 'text/html' } }] });
+    await use(context);
+    expect(unmocked(context)).toEqual([]);
+    await context.close();
+  },
+  sw: async ({ context }, use) => use(context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker')),
+  extId: async ({ sw }, use) => use(new URL(sw.url()).host),
+});
+
+test('loads the extension service worker', async ({ sw }) => {
+  expect(sw.url()).toMatch(/^chrome-extension:\/\/[a-p]{32}\/bg\.js$/);
+});
+
+test('service worker requests go through the mocks', async ({ sw }) => {
+  expect(await sw.evaluate(() => fetch('https://itch.io/byways-sw-probe').then((r) => r.status, () => 0))).toBe(200);
+});
+```
+
+Helpers in the same file:
+- `libraryRoutes()` reads `src/data/library.json` and maps each entry to `{match: new RegExp('^' + escapeRe(url without its trailing slash) + '/?$'), file: 'html/find-page.html', headers: {'content-type': 'text/html'}}`.
+- `extPage(context, extId, path)`: a new page at `chrome-extension://${extId}/${path}`.
+- `tabInfo(page)`: `page.evaluate(() => chrome.tabs.getCurrent().then((t) => ({ id: t.id, windowId: t.windowId })))`. Only call it while the page is an extension page.
+- `onlyLibrary(page)`: in an extension page, `import(chrome.runtime.getURL('core/…'))` for `SOURCES`, `openStore`, `idbBackend` and `saveSettings`. Save `{sources: <every SOURCES id → {enabled: id === 'library', fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page.
+- `stumbleTab(page, tabId)`: `page.evaluate((id) => chrome.runtime.sendMessage({ type: 'stumble', tabId: id }), tabId)`. This runs the same `stumble(tab)` handler as the toolbar click.
+
+- [ ] **Step 5: Run the spike and record the result**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
+Expected: PASS, 2 tests.
+- If `loads the extension service worker` times out in `waitForEvent('serviceworker')`, headless does not load extensions. Run it again as `BYWAYS_EXT_HEADED=1 xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js` (check `command -v xvfb-run` first; when it is missing here, CI proves it in Task 8).
+- If `service worker requests go through the mocks` gets `0`, add `process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';` as the first line of the spec and run it again. If it still gets `0`, mark that test `test.fixme` with the comment `// Service worker fetches bypass context.route here. The other tests use only the library source.`
+- Put the outcome on the spec's first comment line, either `// Headless extensions in Playwright 1.63: work.` or `// Headless extensions in Playwright 1.63: fail. CI runs this spec under xvfb-run.` Task 8 reads it.
+
+- [ ] **Step 6: Add the failing tests**
+
+```js
+test('toolbar Stumble loads a find in the tab', async ({ context, extId }) => {
+  const app = await extPage(context, extId, 'app.html#/saved');
+  await onlyLibrary(app);
+  const site = await extPage(context, extId, 'app.html#/saved');
+  const { id } = await tabInfo(site);
+  const r = await stumbleTab(app, id);
+  expect(r.ok).toBe(true);
+  expect(r.find.source).toBe('library');
+  await expect(site).toHaveTitle('Mock find');
+  expect(new URL(site.url()).host).toBe(new URL(r.find.url).host);
+  const stored = await app.evaluate((k) => chrome.storage.session.get(k), `find:${id}`);
+  expect(stored[`find:${id}`].find.url).toBe(r.find.url);
+});
+
+test('the Byways tab routes between views', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await onlyLibrary(page);
+  for (const [hash, heading] of [['#/feed', 'Feed'], ['#/daily', 'Daily Fate'], ['#/vault', 'Vault'], ['#/saved', 'Saved'], ['#/settings', 'Settings']]) {
+    await page.goto(`chrome-extension://${extId}/app.html${hash}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+  }
+});
+
+test('the Lab button opens the hosted web Lab', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await expect(page.getByRole('link', { name: 'Lab' }))
+    .toHaveAttribute('href', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/');
+});
+
+test('Open in the Byways tab uses a new tab', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await onlyLibrary(page);
+  await page.goto(`chrome-extension://${extId}/app.html#/stumble`);
+  const [opened] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Open' }).click()]);
+  await expect(opened).toHaveTitle('Mock find');
+  expect(page.url()).toContain('app.html#/stumble');
+});
+```
+
+- [ ] **Step 7: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
+Expected: the four new tests FAIL. Before Step 3 is in the build they show a blank page, so `getByRole('heading', { level: 1 })` times out. If the pages already work, check that each test fails when `panel.js` is emptied, then restore it.
+
+- [ ] **Step 8: Fix until they pass**
+
+Run the Step 7 command again.
+Expected: PASS, 6 tests (or 5 and 1 fixme).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add shells/extension/app.html shells/extension/panel.html shells/extension/panel.js tests/e2e/extension.spec.js tests/e2e/helpers/net.js tests/fixtures/http/html/find-page.html
+git commit -m "Add the Byways tab and an e2e harness that loads the Chrome build"
+```
+
+### Task 6: Side panel and sidebar extras
+
+**Files:**
+- Modify: `shells/extension/panel.html`, `shells/extension/panel.js`
+- Test: `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: `showResult(result)`, `getCurrentFind()` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})`; `app.engine.feed(n)`, `app.engine.rabbit.start(find)` and `.next()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers.
+- Produces: nothing new for other tasks.
+
+All extras are only on `data-surface="panel"`, except the access banner, which both pages show.
+
+- [ ] **Step 1: Write the failing tests** in `tests/e2e/extension.spec.js`
+
+```js
+test('the side panel shows the card for the stumbled tab', async ({ context, sw, extId }) => {
+  const panel = await extPage(context, extId, 'panel.html');
+  await onlyLibrary(panel);
+  const site = await extPage(context, extId, 'app.html#/saved');
+  const s = await tabInfo(site); const p = await tabInfo(panel);
+  await sw.evaluate(([t, w]) => chrome.tabs.move(t, { windowId: w, index: -1 }), [s.id, p.windowId]);
+  const r = await stumbleTab(panel, s.id);
+  await expect(panel.locator('#main')).toContainText(r.find.title);
+  await expect(panel.getByRole('button', { name: 'Start' })).toBeVisible();
+});
+
+test('Open Byways tab opens app.html', async ({ context, extId }) => {
+  const panel = await extPage(context, extId, 'panel.html');
+  const [tab] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: 'Open Byways tab' }).click()]);
+  expect(tab.url()).toBe(`chrome-extension://${extId}/app.html`);
+});
+
+test('the mini feed shows compact cards', async ({ context, extId }) => {
+  const panel = await extPage(context, extId, 'panel.html');
+  await onlyLibrary(panel);
+  const feed = panel.getByRole('region', { name: 'More finds' });
+  await expect(feed.locator('#mini-feed-list > *')).toHaveCount(6);
+});
+
+test('the panel explains a not-web page', async ({ context, sw, extId }) => {            // Review Focus 4
+  const panel = await extPage(context, extId, 'panel.html');
+  await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { error: 'not-web' } }).then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
+  await expect(panel.locator('#live-polite')).toHaveText('More like this page works only on web pages.');
+});
+
+test('a page seed starts a Rabbit Hole from Marginalia similar sites', async ({ context, sw, extId }) => {
+  const asked = [];
+  context.on('request', (r) => asked.push(r.url()));
+  const panel = await extPage(context, extId, 'panel.html');
+  await sw.evaluate(() => chrome.storage.session.set({ pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
+    title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } })
+    .then(() => chrome.runtime.sendMessage({ type: 'rabbit' })));
+  await expect.poll(() => asked.some((u) => u.startsWith('https://api2.marginalia-search.com/api/v2/site/small.example/similar'))).toBe(true);
+});
+
+test('the access banner grants and disappears', async ({ context, sw, extId }) => {      // Review Focus 5
+  const panel = await extPage(context, extId, 'panel.html');
+  await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true }).then(() => chrome.runtime.sendMessage({ type: 'accessChanged', needsAccess: true })));
+  const banner = panel.locator('#access-banner');
+  await expect(banner).toContainText('Byways lost access to some sites. Grant access to turn them back on.');
+  await banner.getByRole('button', { name: 'Grant access' }).click();
+  await expect(banner).toBeHidden();
+});
+```
+
+Add to the `mockNet` overrides in the fixture: `{match: /^https:\/\/api2\.marginalia-search\.com\/api\/v2\/site\/small\.example\/similar/, file: 'html/find-page.html', status: 503}`. Marginalia's 503 means "busy", so the panel must cope with it.
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "panel|Open Byways|mini feed|banner|seed"`
+Expected: FAIL. The first fails on `toContainText(r.find.title)` and the others on missing elements.
+
+- [ ] **Step 3: Add the markup to `panel.html`**
+
+Above `#main`: `<div id="access-banner" hidden>` holding `<p>Byways lost access to some sites. Grant access to turn them back on.</p>` and `<button type="button">Grant access</button>`, then `<button type="button" id="open-tab">Open Byways tab</button>`. Below `#main`: `<section id="mini-feed" aria-labelledby="mini-feed-h"><h2 id="mini-feed-h">More finds</h2><div id="mini-feed-list"></div></section>`. `app.html` gets the same banner markup only.
+
+- [ ] **Step 4: Implement the extras in `panel.js`**
+
+- **This tab's find.** On load, read the active tab of this window (`tabs.query({active: true, currentWindow: true})`) and its `storage.session['find:<id>']`. If one is found, `navigate('stumble')` and `showResult(stored)`. On `tabFind` whose `windowId` equals `(await ext.windows.getCurrent()).id`, do the same with the message.
+- **Open Byways tab.** `#open-tab` calls `ext.tabs.create({url: ext.runtime.getURL('app.html')})`.
+- **Mini feed.** After boot, `app.engine.feed(6)` and append `renderCard(find, {onAction, compact: true})` for each to `#mini-feed-list`. `onAction('open', find)` calls `app.platform.openFind(find, 'current')`. Other actions call `app.engine.react(find, action)` for reactions, or `showResult({find, branch: null, why: find.why})` for `'more'` and `'read'`.
+- **Rabbit Hole seed.** On load and on `rabbit`, take `pendingRabbit` from `storage.session` and remove it. `{error: 'not-web'}` → `announce('More like this page works only on web pages.')`. A find → `app.engine.rabbit.start(seed)`, then `const next = await app.engine.rabbit.next()`. If it returns a find, `navigate('stumble')` and `showResult({find: next, branch: 'momentum', why: ['More like ' + domainOf(seed.url)]})`. Otherwise `announce('No similar sites found for ' + domainOf(seed.url) + '.')`.
+- **Access banner** (both surfaces). On load, show it when `storage.local.needsAccess` is `true`. On `accessChanged`, show or hide it. The **Grant access** click calls `ext.permissions.request({origins: ext.runtime.getManifest().host_permissions})` as its first statement (a user gesture is needed), then sends `{type: 'checkAccess'}` and hides the banner when the reply has `needsAccess: false`.
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run the Step 2 command.
+Expected: PASS, 6 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/extension/panel.html shells/extension/app.html shells/extension/panel.js tests/e2e/extension.spec.js
+git commit -m "Show the tab's find, a mini feed and Grant access in the side panel"
+```
+
 <!-- PLAN CONTINUES -->
