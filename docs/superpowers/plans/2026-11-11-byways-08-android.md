@@ -530,6 +530,7 @@ class BridgeCodecTest {
   @Test fun encodesReplies() {
     assertEquals(JSONObject("""{"id":"7","ok":true,"result":{"a":1}}""").toString(), JSONObject(BridgeCodec.ok("7", JSONObject("""{"a":1}"""))).toString())
     assertTrue(JSONObject(BridgeCodec.ok("8", null)).isNull("result"))
+    assertTrue(JSONObject(BridgeCodec.ok("10", mapOf("vendor" to null))).getJSONObject("result").has("vendor"))
     val e = JSONObject(BridgeCodec.error("9", "not-approved", "Host not approved"))
     assertFalse(e.getBoolean("ok")); assertEquals("not-approved", e.getJSONObject("error").getString("code"))
     val ev = JSONObject(BridgeCodec.event("voice", "result", JSONObject("""{"text":"next","final":true}""")))
@@ -572,7 +573,7 @@ Expected: the Node test fails with `ENOENT` on `Bridge.kt`; Gradle fails with `U
 
 - [ ] **Step 3: Implement `BridgeCodec` and `BridgeGate`**
 
-`decode` checks the length first, then parses with `JSONObject`. `id` must be a non-empty string of at most 64 characters, and `op` a non-empty string. `ok` and `event` write `JSONObject.NULL` for `null`. `accepts` is true only when `sourceOrigin == allowedOrigin` exactly and either `isMainFrame` or `allowSubframes`.
+`decode` checks the length first, then parses with `JSONObject`. `id` must be a non-empty string of at most 64 characters, and `op` a non-empty string. `ok` and `event` write `JSONObject.NULL` for `null`, and turn a `Map` result into a `JSONObject` that keeps its `null` values as `JSONObject.NULL` (org.json's `JSONObject(Map)` drops them, and `VoiceStatus` needs `vendor: null`). `accepts` is true only when `sourceOrigin == allowedOrigin` exactly and either `isMainFrame` or `allowSubframes`.
 
 - [ ] **Step 4: Implement `Bridge`, `Reply` and the core channels**
 
