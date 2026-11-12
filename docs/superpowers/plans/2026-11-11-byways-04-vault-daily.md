@@ -1555,25 +1555,27 @@ git commit -m "Add the live probe for CORS, framing, collections and endpoints"
 
 ---
 
-### Task 13: The probe workflow and the daily Pages schedule
+### Task 16: The probe workflow and the daily Pages schedule
 
 **Files:**
 - Create: `.github/workflows/byways-probe.yml`
-- Modify: `.github/workflows/pages.yml` (from Plan 01)
+- Modify: `.github/workflows/pages.yml` and `tests/unit/workflows.test.js` (both from Plan 01), `README.md`
 - Test: `tests/unit/workflows.test.js`
 
 **Interfaces:**
-- Consumes: the `tools/data-job.js`, `tools/build.js --linkcheck` and `tools/probe-live.js` CLIs (Tasks 10–12).
+- Consumes: the `tools/data-job.js`, `tools/build.js --linkcheck` and `tools/probe-live.js` CLIs (Tasks 12, 13 and 15); Plan 01's `wf(name)` helper in `workflows.test.js`.
 - Produces: a weekly and manual live probe with a job summary and an artifact, and a daily 00:07 UTC Pages build that runs the data job.
 
-- [ ] **Step 1: Write the failing test**
+- [ ] **Step 1: Write the failing tests**
+
+Append these two tests to Plan 01's `tests/unit/workflows.test.js`, which already defines `wf`. Delete its line `assert.equal(y.includes('schedule:'), false);`, because this task adds the schedule.
 
 ```js
-const wf = (n) => readFileSync(new URL('../../../../.github/workflows/' + n, import.meta.url), 'utf8');
 test('pages.yml runs the data job daily at 00:07 UTC after a link-checked build', () => {
   const y = wf('pages.yml');
   for (const s of ["- cron: '7 0 * * *'", 'workflow_dispatch', '--max-time 20', '--linkcheck linkcheck-prev.json',
-    'node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/']) assert.ok(y.includes(s), s);
+    'node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/',
+    'NASA_API_KEY: ${{ secrets.NASA_API_KEY }}']) assert.ok(y.includes(s), s);
   assert.ok(y.indexOf('tools/data-job.js') > y.indexOf('--linkcheck linkcheck-prev.json'));
 });
 test('byways-probe.yml runs the probe weekly and on demand and keeps the report', () => {
@@ -1588,55 +1590,27 @@ test('byways-probe.yml runs the probe weekly and on demand and keeps the report'
 Run: `node --test tests/unit/workflows.test.js`
 Expected: FAIL with "ENOENT" for `byways-probe.yml`, and the missing cron string for `pages.yml`.
 
-- [ ] **Step 3: Write `byways-probe.yml` and change `pages.yml`**
+- [ ] **Step 3: Write `byways-probe.yml`, change `pages.yml` and note the secret**
 
-`byways-probe.yml` (exact):
-
-```yaml
-name: Byways live probe
-on:
-  workflow_dispatch:
-  schedule:
-    - cron: '41 5 * * 1'
-permissions:
-  contents: read
-jobs:
-  probe:
-    runs-on: ubuntu-24.04
-    defaults:
-      run:
-        working-directory: Apps/Byways
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-      - run: node tools/probe-live.js --out probe-report.md
-      - uses: actions/upload-artifact@v7
-        with:
-          name: byways-probe-report
-          path: Apps/Byways/probe-report.md
-```
+`byways-probe.yml`: `name: Byways live probe`; `on:` `workflow_dispatch:` and `schedule:` with `- cron: '41 5 * * 1'`; top-level `permissions: contents: read`; one job `probe` on `ubuntu-24.04` with `defaults.run.working-directory: Apps/Byways` and these steps: `uses: actions/checkout@v7`; `uses: actions/setup-node@v4` with `node-version: 22`; `run: node tools/probe-live.js --out probe-report.md`; and `uses: actions/upload-artifact@v7` with `name: byways-probe-report` and `path: Apps/Byways/probe-report.md` (artifact paths are relative to the workspace).
 
 In `pages.yml`:
 
 1. Add `schedule:` with `- cron: '7 0 * * *'` under `on:`, next to the existing push and `workflow_dispatch` triggers.
 2. In the build job, before the web build, add a step "Fetch the last link check" that runs `curl -fsS --max-time 20 -o linkcheck-prev.json https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/linkcheck.json || rm -f linkcheck-prev.json`.
 3. Add `--linkcheck linkcheck-prev.json` to the web build command.
-4. After the build, add a step "Daily data" that runs `node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`, before `_site/` is assembled.
+4. After the build, add a step "Daily data" that runs `node tools/data-job.js --out dist/pwa/data --live https://iteatsthesalt.github.io/Game-Dev-Resources/byways/`, with `env: NASA_API_KEY: ${{ secrets.NASA_API_KEY }}`, before `_site/` is assembled. A shared runner's IP spends `DEMO_KEY`'s 50 calls a day quickly; without the secret the job falls back to `DEMO_KEY`.
 
-Keep the steps in `Apps/Byways/` like the rest of the job.
+Keep the steps in `Apps/Byways/` like the rest of the job. In `README.md`, add to the one-time setup list: "Optional: add a `NASA_API_KEY` repository secret (a free api.data.gov key), so the daily job does not share `DEMO_KEY`."
 
 - [ ] **Step 4: Run the tests to see them pass**
 
 Run: `node --test tests/unit/workflows.test.js`
-Expected: PASS, 2 tests. Then run `npm test` and `npm run e2e`; expected: all pass.
+Expected: PASS, 4 tests (Plan 01's two and these two). Then run `npm test` and `npm run e2e`; expected: all pass.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add ../../.github/workflows/byways-probe.yml ../../.github/workflows/pages.yml tests/unit/workflows.test.js
+git add ../../.github/workflows/byways-probe.yml ../../.github/workflows/pages.yml tests/unit/workflows.test.js README.md
 git commit -m "Add the weekly live probe and the daily data step"
 ```
-
-After the first probe run, set each adapter's `tier` to match the report (§17.4). That is a follow-up change, not part of this plan.

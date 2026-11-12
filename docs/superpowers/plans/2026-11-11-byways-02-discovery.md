@@ -1862,7 +1862,10 @@ test('shows a library find with a generated image and a why line', async ({ page
 });
 test('Next, Back and the end of the pool', async ({ page }) => {
   await open(page, small); const seenTitles = [await title(page).textContent()];
-  for (let i = 0; i < 2; i++) { await page.getByRole('button', { name: 'Next' }).click(); seenTitles.push(await title(page).textContent()); }
+  for (let i = 0; i < 2; i++) {
+    await page.getByRole('button', { name: 'Next' }).click(); await expect(title(page)).not.toHaveText(seenTitles.at(-1));
+    seenTitles.push(await title(page).textContent());
+  }
   expect(new Set(seenTitles).size).toBe(3);
   await page.getByRole('button', { name: 'Back' }).click(); await expect(title(page)).toHaveText(seenTitles[1]);
   await page.getByRole('button', { name: 'Next' }).click(); await expect(title(page)).toHaveText(seenTitles[2]);
