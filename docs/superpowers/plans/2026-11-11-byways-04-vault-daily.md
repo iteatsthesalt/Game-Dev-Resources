@@ -665,4 +665,209 @@ git commit -m "Add the Vault starter list and GeoCities seeds"
 
 ---
 
+### Task 7: Boot wiring and the Vault shelves
+
+**Files:**
+- Create: `src/ui/views/vault.js`, `tests/fixtures/http/ia/thumb.svg`
+- Modify: `src/ui/boot.js`, `src/ui/views/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/e2e/vault.spec.js`
+
+**Interfaces:**
+- Consumes: `registerView`, `h`, `clear`, `announce`, `showToast`, `renderCard(find, {onAction, compact})`, `createCache`, `getSource`, `app` fields (`store`, `http`, `clock`, `rand`, `platform`, `data`, `engine`, `getSettings`); Tasks 1–5.
+- Produces: `app.ia: IaClient`; `app.data.loadSnapshot(name: 'itch'|'vault-index') → Promise<object|null>`; `app.data.embedBroken: Set<string>` of find ids, persisted in the `health` store under `embed-broken:<find id>`; from `views/vault.js` the plan-internal `handleCardAction(app, find, action, extra, slot)` (Tasks 8–9 use it).
+
+`thumb.svg` is `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`. Add these entries to `tests/fixtures/routes.js` ahead of any broader archive.org entry, in this order:
+
+| match | file | headers |
+|---|---|---|
+| `/^https:\/\/archive\.org\/advancedsearch\.php\?.*[?&]rows=0(&\|$)/` | `ia/count-250.json` | |
+| `/^https:\/\/archive\.org\/advancedsearch\.php\?/` | `ia/search-gems.json` | |
+| `/^https:\/\/archive\.org\/metadata\/msdos_[^/]+\/metadata$/` | `ia/meta-game.json` | |
+| `/^https:\/\/archive\.org\/metadata\/[^/]+\/metadata$/` | `ia/meta-collection.json` | |
+| `/^https:\/\/archive\.org\/embed\//` | `ia/embed.html` (Task 8) | `content-type: text/html` |
+| `/^https:\/\/(archive\.org\/services\/img\|upload\.wikimedia\.org\|apod\.nasa\.gov\/apod\/image)\//` | `ia/thumb.svg` | `content-type: image/svg+xml` |
+
+- [ ] **Step 1: Write the failing e2e tests**
+
+Each spec file starts with `mockNet(page)` in `beforeEach`, routes the same-origin snapshots (`page.route('**/data/vault-index.json', r => r.fulfill({path: 'tests/fixtures/http/ia/vault-index.json'}))` and the same for `data/itch.json` with `itch/itch.json`), and asserts `expect(unmocked(page)).toEqual([])` in `afterEach`. `openView(page, hash)` goes to the hash, clicks **Skip** while a Skip button is visible, then goes to the hash again. `shelf = (name) => page.getByRole('region', {name})`.
+
+```js
+const LABELS = ['DOS', 'Windows 3.x', 'C64', 'Apple II', 'ZX Spectrum', 'Amiga', 'Mac', 'Consoles', 'Arcade', 'Flash', 'Palm', 'Malware Museum'];
+test('shows a shelf per platform plus Indie web', async ({ page }) => {
+  await openView(page, '#/vault');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Vault');
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText([...LABELS, 'Indie web']);
+});
+test('gem cards show why chips and a details link, and no frame', async ({ page }) => {
+  await openView(page, '#/vault');
+  const item = shelf('DOS').getByRole('listitem').filter({ hasText: 'Whizz' });
+  for (const chip of ['312 downloads', 'MS-DOS Shareware', '1994', '★4.5 (3)']) await expect(item).toContainText(chip);
+  await expect(item.getByRole('link', { name: 'Details on archive.org' })).toHaveAttribute('href', 'https://archive.org/details/msdos_Whizz_1994');
+  await expect(page.locator('iframe')).toHaveCount(0);
+});
+test('More gems loads a shelf live when there is no snapshot', async ({ page }) => {
+  await page.route('**/data/vault-index.json', (r) => r.fulfill({ status: 404, body: '' }));
+  await openView(page, '#/vault');
+  await expect(shelf('C64')).toContainText('No gems loaded yet.');
+  await shelf('C64').getByRole('button', { name: 'More gems' }).click();
+  await expect(shelf('C64')).toContainText('Whizz', { timeout: 10000 });
+});
+test('shows Archive unavailable when a live shelf load fails', async ({ page }) => {   // Review Focus 1
+  await page.route('**/data/vault-index.json', (r) => r.fulfill({ status: 404, body: '' }));
+  await page.route(/archive\.org\/(advancedsearch|metadata)/, (r) => r.fulfill({ status: 503, body: '' }));
+  await openView(page, '#/vault');
+  await shelf('DOS').getByRole('button', { name: 'More gems' }).click();
+  await expect(page.getByRole('heading', { name: 'Archive unavailable' })).toBeVisible({ timeout: 10000 });
+  await expect(page.getByText('The Internet Archive is not answering right now.')).toBeVisible();
+  await expect(page.locator('#live-polite')).toContainText('Archive unavailable');
+});
+test('Indie web shows itch.io games from the snapshot', async ({ page }) => {
+  await openView(page, '#/vault');
+  await expect(shelf('Indie web')).toContainText('Moss & Mirrors');
+});
+test('desktop shows no Keyboard needed badge', async ({ page }) => {
+  await openView(page, '#/vault');
+  await expect(page.getByText('Keyboard needed')).toHaveCount(0);
+});
+test.describe('on a touch device', () => {
+  test.use({ ...devices['Pixel 7'] });
+  test('keyboard shelves get a Keyboard needed badge', async ({ page }) => {
+    await openView(page, '#/vault');
+    await expect(shelf('DOS').getByText('Keyboard needed')).toHaveCount(3);
+  });
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault.spec.js`
+Expected: FAIL (no Vault heading).
+
+- [ ] **Step 3: Wire `boot.js` and `views/index.js`**
+
+In `boot.js`: set `app.ia = sharedIaClient({http: app.http, cache: createCache(app.store, app.clock), clock: app.clock})`; call `app.http.register('pages', {perMinute: 30, concurrent: 2})`; set `app.data.loadSnapshot` to fetch `new URL('data/' + name + '.json', document.baseURI).href` with `app.http.getJson(url, {source: 'pages'})`, give `null` on any error, and remember the result per name for the session; set `app.data.embedBroken` from the `health` keys that start with `embed-broken:`. In `views/index.js`, add `import './vault.js';`.
+
+- [ ] **Step 4: Implement the shelves in `src/ui/views/vault.js`**
+
+`registerView('vault', {title: 'Vault', render, leave})`. The view renders:
+
+- `h1` "Vault" and the line "Hidden games from the Internet Archive. They play in the Archive's own player."
+- One `<section aria-labelledby>` per `VAULT_COLLECTIONS.shelves` entry, with an `h2` label and a `<ul>` of `<li>` items. Each item holds `renderCard(find, {compact: true, onAction})`, a link "Details on archive.org" to `find.url`, and an empty player slot `div`. Snapshot gems come from `loadSnapshot('vault-index')` for the shelf's collections. They are mapped with `iaDocToFind(gem, {kind: 'game'})`, sorted by `gemScore` (`currentYear` is the UTC year from `app.clock.now()`) and capped at 12. An empty shelf shows "No gems loaded yet."
+- A **More gems** button per shelf. It calls `validateCollections(app.ia, cache, shelf.collections)`, then `shelfGems(app.ia, shelf, {rand: app.rand, currentYear, skip: app.data.embedBroken, valid})`, and adds up to 12 finds that are not shown yet. It loads nothing until it is pressed.
+- When a live load throws, it stops and shows (once, above the shelves) an `h2` "Archive unavailable" and the line "The Internet Archive is not answering right now. Gems from the last snapshot are still here, and the other modes keep working." Then it calls `announce('Archive unavailable')`.
+- On shelves with `keyboard: true`, when `matchMedia('(pointer: coarse)').matches`, each item gets a badge "Keyboard needed".
+- An "Indie web" section: up to 6 starter-library entries with `kind: 'game'` (through `libraryEntryToFind`), plus up to 6 finds from `getSource('itch').random(ctx)`. Its **More gems** button adds `getSource('github').random(ctx)`, and `getSource('hn').random(ctx)` when that adapter exists. Errors are ignored. `ctx` is `{http, rand, clock, cache, settings: app.getSettings(), secrets: app.platform.secrets, data: app.data, platformName: app.platform.name}`.
+- The footer line "Games and media courtesy of the Internet Archive."
+
+`handleCardAction(app, find, action, extra, slot)`: `open` → `app.platform.openFind(find, 'tab')`; `share` → `app.platform.share({title: find.title, url: find.url})`; `like`, `dislike`, `save`, `lessTopic`, `neverSite`, `broken` → `const r = await app.engine.react(find, action, extra); showToast(r.message, {undo: r.undo})`; `more` → `app.engine.rabbit.start(find)`, then `navigate('stumble')`; `read` → `app.platform.tts.speak(find.title + '. ' + find.description)`; `why` → `showToast(find.why.join(' · '))`; `play` is added in Task 8.
+
+- [ ] **Step 5: Run the tests to see them pass**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault.spec.js`
+Expected: PASS, 7 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/ui/views/vault.js src/ui/boot.js src/ui/views/index.js tests/fixtures/routes.js tests/fixtures/http/ia/thumb.svg tests/e2e/vault.spec.js
+git commit -m "Add the Vault shelves and wire the Archive client into boot"
+```
+
+---
+
+### Task 8: Play, the watchdog and embed-broken marks
+
+**Files:**
+- Create: `tests/fixtures/http/ia/embed.html`
+- Modify: `src/ui/views/vault.js`
+- Test: `tests/e2e/vault-play.spec.js`
+
+**Interfaces:**
+- Consumes: `app.ia.metadata`, `app.data.embedBroken`, `app.store`, `app.handsFree` (Plan 03, may be absent), `announce`, `h`; Task 7's view.
+- Produces: `mountPlayer(slot, find, app) → Promise<{unmount()}|null>` from `views/vault.js` (plan-internal; Task 9 uses it), and `handleCardAction` now handles `play`.
+
+`embed.html` is `<!doctype html><title>Archive player stub</title><p>Player stub</p>`.
+
+- [ ] **Step 1: Write the failing e2e tests**
+
+Same `beforeEach`, `afterEach` and `openView` as Task 7. `whizz = () => page.getByRole('region', {name: 'DOS'}).getByRole('listitem').filter({hasText: 'Whizz'})`. `hang = () => page.route(/archive\.org\/embed\//, () => {})` (the frame never loads).
+
+```js
+test('Play mounts the Archive frame only after Play', async ({ page }) => {
+  await openView(page, '#/vault');
+  await expect(page.locator('iframe')).toHaveCount(0);
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  const frame = page.locator('iframe');
+  await expect(frame).toHaveAttribute('src', 'https://archive.org/embed/msdos_Whizz_1994');
+  await expect(frame).toHaveAttribute('allow', 'fullscreen; autoplay; gamepad');
+  await expect(frame).toHaveAttribute('allowfullscreen', '');
+  await expect(whizz()).toContainText('MS-DOS · Click the game, then use the keyboard.');
+});
+test('the watchdog offers Open on archive.org after 15 s', async ({ page }) => {
+  await page.clock.install(); await hang();
+  await openView(page, '#/vault');
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('iframe')).toHaveCount(1);
+  await page.clock.runFor(14000);
+  await expect(page.getByRole('link', { name: 'Open on archive.org' })).toHaveCount(0);
+  await page.clock.runFor(1000);
+  await expect(page.getByRole('link', { name: 'Open on archive.org' })).toHaveAttribute('href', 'https://archive.org/details/msdos_Whizz_1994');
+});
+test('Not working marks the game embed-broken on this device', async ({ page }) => {
+  await openView(page, '#/vault');
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await whizz().getByRole('button', { name: 'Not working' }).click();
+  await expect(whizz().getByRole('link', { name: 'Open on archive.org' })).toBeVisible();
+  await expect(page.locator('iframe')).toHaveCount(0);
+  await page.reload(); await openView(page, '#/vault');
+  await expect(whizz()).toContainText('Not working here');
+});
+test('Play twice mounts one frame, and leaving clears the watchdog', async ({ page }) => {   // Review Focus 5
+  await page.clock.install(); await hang();
+  await openView(page, '#/vault');
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await expect(page.locator('iframe')).toHaveCount(1);
+  await page.goto('#/stumble'); await page.clock.runFor(16000);
+  await page.goto('#/vault');
+  await expect(whizz()).not.toContainText('Not working here');
+});
+test('a game with no emulator offers Open on archive.org and no frame', async ({ page }) => {
+  await page.route(/metadata\/msdos_Whizz_1994\/metadata/, (r) => r.fulfill({ json: { result: { mediatype: 'software' } } }));
+  await openView(page, '#/vault');
+  await whizz().getByRole('button', { name: 'Play' }).click();
+  await expect(whizz()).toContainText('This game has no player on the Archive.');
+  await expect(whizz().getByRole('link', { name: 'Open on archive.org' })).toBeVisible();
+  await expect(page.locator('iframe')).toHaveCount(0);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault-play.spec.js`
+Expected: FAIL (no iframe after Play).
+
+- [ ] **Step 3: Implement `mountPlayer` and the `play` action**
+
+- If the slot already holds a player, return its handle. If `find.embedUrl` does not start with `https://archive.org/embed/`, return `null`.
+- For `kind: 'game'`, call `app.ia.metadata(find.meta.identifier)` (an error counts as `null`). With no `emulator`, show "This game has no player on the Archive." and an **Open on archive.org** link, and stop. Otherwise show `<platform> · <hint>`: `dosbox` → "MS-DOS" / "Click the game, then use the keyboard."; `ruffle*` → "Flash" / "Use the mouse."; `mame*` → "Arcade" / "Press 5 to add a coin and 1 to start."; anything else → the emulator value / "Click the game, then use the keyboard."
+- Mount `h('iframe', {src: find.embedUrl, allow: 'fullscreen; autoplay; gamepad', allowfullscreen: '', title: find.title + ', Internet Archive player'})` and a **Not working** button, then call `app.handsFree?.pause()`.
+- Start a 15000 ms `setTimeout`, cleared by the frame's `load` event. When the watchdog fires or **Not working** is pressed, show (once) "This one is not loading here." and an **Open on archive.org** link to `https://archive.org/details/<id>` (`target="_blank"`, `rel="noopener"`). Then `app.store.put('health', 'embed-broken:' + find.id, {at: Date.now()})`, add `find.id` to `app.data.embedBroken`, and `announce('Marked as not working on this device')`. **Not working** also removes the frame.
+- `unmount()` clears the timer and removes the frame. The view's `leave()` unmounts every player. Items whose id is in `app.data.embedBroken` show a badge "Not working here".
+- **Open on archive.org** uses the same `https://archive.org/details/<id>` URL everywhere.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault-play.spec.js tests/e2e/vault.spec.js`
+Expected: PASS, 12 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/vault.js tests/fixtures/http/ia/embed.html tests/e2e/vault-play.spec.js
+git commit -m "Add Vault Play with the watchdog and embed-broken marks"
+```
+
+---
+
 <!-- PLAN CONTINUES -->

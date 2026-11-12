@@ -1045,4 +1045,150 @@ git add src/core/sources/inat.js src/core/sources/openlibrary.js src/core/source
 git commit -m "Add the iNaturalist, Open Library and APOD adapters"
 ```
 
+### Task 14: Marginalia, GitHub and Show HN
+
+**Files:**
+- Create: `src/core/sources/marginalia.js`, `src/core/sources/github.js`, `src/core/sources/hn.js`, fixtures under `tests/fixtures/http/{marginalia,github,hn}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-indie.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `makeFind`, `domainOf`, `toPlainText`.
+- Produces: the `marginalia`, `github` and `hn` adapters.
+  - Marginalia: header `API-Key: <secret src:marginalia or 'public'>`. `search(q)`: `GET https://api2.marginalia-search.com/api/v2/search?query=<q>&count=20`, items from `results` (`url`, `title`, `description`), why `['Marginalia search']`. `more(find)`: `GET https://api2.marginalia-search.com/api/v2/site/<domainOf(find.url)>/similar`; the reply shape is unverified, so items come from `results ?? similar ?? []`, with `url = item.url ?? 'https://' + item.domain + '/'` and `title = item.title ?? item.domain`; why `['Marginalia: similar to <domain>']`. `random` returns `[]`. A 503 propagates as `NetError` with `status 503` (the engine treats it as busy).
+  - GitHub: headers `Accept: application/vnd.github+json` and, with secret `src:github`, `Authorization: Bearer <token>`. `random`: `GET https://api.github.com/search/repositories?q=topic:<topic> stars:>20&sort=updated&per_page=100&page=<1–10>` with `topic` from `['game-jam','js13k','pico-8','html5-game','ludum-dare','godot-game']`. `search(q)`: `q=<q> in:name,description,topics stars:>5&per_page=30`. `more(find)`: `q=topic:<find.meta.topics[0]> stars:>5`. Results are cached for 1 hour by URL. Find: `url = homepage` when it is http(s), else `html_url`; `kind 'game'` when the homepage is used, else `'project'`; `title = name`; `author = owner.login`; tags add `jam` when a topic is `game-jam`, `ludum-dare` or `js13k`; why `['GitHub: topic <topic>', '★ <stars>']` (search uses `'GitHub search'`); `meta: {topics, published: updated_at}`. No avatar image.
+  - HN: `search(q)`: `GET https://hn.algolia.com/api/v1/search?tags=show_hn&query=<q>&hitsPerPage=20`. `random`: `GET https://hn.algolia.com/api/v1/search_by_date?tags=show_hn&numericFilters=points>20,created_at_i>A,created_at_i<B&hitsPerPage=20`, a 30-day window whose end `B` is a random time in the last 3 years before `ctx.clock.now()`. `probeUrl 'https://hn.algolia.com/api/v1/search?tags=show_hn&hitsPerPage=1'`. Find: `title` without a leading `Show HN:`, `url = hit.url || 'https://news.ycombinator.com/item?id=<objectID>'`, `description = toPlainText(story_text)` or `'<points> points · <num_comments> comments on Hacker News'`, `kind 'game'` when the title matches `/\bgame\b/i`, else `'project'`, why `['Show HN', '<points> points']`, `meta.published` from `created_at_i`. `more` returns `[]`.
+
+Fixtures: `marginalia/search.json` (`results: [{url 'https://synth.example.net/', title 'A synth page', description 'Handmade synths.'}]`), `marginalia/similar.json` (`{domain 'example.com', similar: [{domain 'neighbour.example.org'}]}`). `github/search.json`: `ann/tiny-jam` (`name 'tiny-jam'`, `homepage 'https://ann.github.io/tiny-jam/'`, `stargazers_count 42`, `topics ['game-jam','html5-game']`, `owner.login 'ann'`) and `bob/engine` (`homepage ''`, `html_url 'https://github.com/bob/engine'`, `topics ['godot-game']`). `hn/search.json`: hit `111` ('Show HN: I made a tiny game', url `https://tiny.example.dev/`, 120 points, 30 comments) and hit `222` ('Show HN: Notes app', `url ''`, `story_text '<p>Hi <script>alert(1)</script>HN</p>'`). Routes: Marginalia `/similar` before `/search`; GitHub search; HN `search_by_date` and `search` both → `hn/search.json`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('marginalia sends the public key, or yours', async () => {
+  const a = await adapterCtx(); const [f] = await marginalia.search('synth', a.ctx);
+  assert.equal(a.calls[0].headers['api-key'], 'public'); assert.equal(new URL(a.calls[0].url).searchParams.get('query'), 'synth');
+  assert.equal(f.title, 'A synth page'); assert.deepEqual(f.why, ['Marginalia search']); assert.deepEqual(f.tags, ['web']);
+  const b = await adapterCtx({ secrets: { 'src:marginalia': 'MYKEY' } }); await marginalia.search('synth', b.ctx);
+  assert.equal(b.calls[0].headers['api-key'], 'MYKEY');
+});
+test('marginalia more finds similar sites by domain', async () => {
+  const { ctx, calls } = await adapterCtx();
+  const [f] = await marginalia.more({ url: 'https://www.example.com/x', kind: 'site' }, ctx);
+  assert.equal(new URL(calls[0].url).pathname, '/api/v2/site/example.com/similar');
+  assert.equal(f.url, 'https://neighbour.example.org/'); assert.deepEqual(f.why, ['Marginalia: similar to example.com']);
+});
+test('marginalia busy is a 503 NetError', async () => {
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /marginalia/, file: 'marginalia/search.json', status: 503 }] });
+  await assert.rejects(marginalia.search('x', ctx), { status: 503 });
+});
+test('github random searches a jam topic and prefers the homepage', async () => {
+  const { ctx, calls } = await adapterCtx(); const [a, b] = await github.random(ctx);
+  const u = new URL(calls[0].url);
+  assert.match(u.searchParams.get('q'), /^topic:(game-jam|js13k|pico-8|html5-game|ludum-dare|godot-game) stars:>20$/);
+  assert.equal(u.searchParams.get('per_page'), '100'); assert.ok(+u.searchParams.get('page') <= 10);
+  assert.equal(calls[0].headers.accept, 'application/vnd.github+json'); assert.equal(calls[0].headers.authorization, undefined);
+  assert.equal(a.url, 'https://ann.github.io/tiny-jam/'); assert.equal(a.kind, 'game'); assert.ok(a.tags.includes('jam'));
+  assert.ok(a.why.includes('★ 42')); assert.equal(b.url, 'https://github.com/bob/engine'); assert.equal(b.kind, 'project');
+});
+test('github sends your token and caches for an hour', async () => {
+  const { ctx, calls } = await adapterCtx({ secrets: { 'src:github': 'TOKEN' } });
+  await github.search('synth', ctx); await github.search('synth', ctx);
+  assert.equal(calls.length, 1); assert.equal(calls[0].headers.authorization, 'Bearer TOKEN');
+});
+test('hn reads Show HN and keeps text plain', async () => {
+  const { ctx, calls } = await adapterCtx(); const [a, b] = await hn.search('game', ctx);
+  assert.equal(new URL(calls[0].url).searchParams.get('tags'), 'show_hn');
+  assert.equal(a.title, 'I made a tiny game'); assert.equal(a.kind, 'game');
+  assert.equal(a.description, '120 points · 30 comments on Hacker News'); assert.deepEqual(a.why, ['Show HN', '120 points']);
+  assert.equal(b.url, 'https://news.ycombinator.com/item?id=222'); assert.equal(b.description.includes('<'), false);
+});
+test('hn random asks for a 30-day window', async () => {
+  const { ctx, calls } = await adapterCtx(); await hn.random(ctx);
+  const m = new URL(calls[0].url).searchParams.get('numericFilters').match(/^points>20,created_at_i>(\d+),created_at_i<(\d+)$/);
+  assert.equal(+m[2] - +m[1], 30 * 86400); assert.ok(+m[2] <= ctx.clock.now() / 1000);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-indie.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement the three adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-indie.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/marginalia.js src/core/sources/github.js src/core/sources/hn.js src/core/sources/index.js tests/fixtures/http/marginalia tests/fixtures/http/github tests/fixtures/http/hn tests/fixtures/routes.js tests/unit/src-indie.test.js
+git commit -m "Add the Marginalia, GitHub and Show HN adapters"
+```
+
+### Task 15: Art Institute, the Met and Cleveland
+
+**Files:**
+- Create: `src/core/sources/aic.js`, `src/core/sources/met.js`, `src/core/sources/cleveland.js`, fixtures under `tests/fixtures/http/{aic,met,cleveland}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-museums.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `IDENT`, `makeFind`.
+- Produces: the `aic`, `met` and `cleveland` adapters. Every find has `licence` set (`'Public domain'` or `'CC0'`).
+  - AIC: header `AIC-User-Agent: IDENT`. `random`: `GET https://api.artic.edu/api/v1/artworks/search?query[term][is_public_domain]=true&fields=id,title,image_id,artist_display,date_display,thumbnail&limit=20&page=<1–500>`; `search(q)` adds `q=<q>` with `page=1`. Items without `image_id` are dropped. Find: id `aic:<id>`, `imageUrl = config.iiif_url + '/<image_id>/full/843,/0/default.jpg'`, `url = 'https://www.artic.edu/artworks/<id>'`, `author = artist_display`, `description = thumbnail.alt_text || '<artist_display>, <date_display>'`, `meta.lqip = thumbnail.lqip` (the card's image fallback), why `['Art Institute of Chicago']`. `more` returns `[]`.
+  - Met (v1.1 search only; v1 search was retired on 2026-10-01): `random` reads the total once (`GET https://collectionapi.metmuseum.org/public/collection/v1.1/search?hasImages=true&isPublicDomain=true&limit=1&offset=0`, cached 24 h as `met:total`), then the same URL with `offset=<floor(rand × min(total, 10000))>`, then `GET https://collectionapi.metmuseum.org/public/collection/v1/objects/<id>`. `search(q)`: `v1.1/search?q=<q>&hasImages=true&isPublicDomain=true&limit=5`, then each object. Objects with `isPublicDomain !== true` or no `primaryImageSmall` are dropped. Find: id `met:<objectID>`, `url = objectURL`, `imageUrl = primaryImageSmall`, `author = artistDisplayName`, `description = '<artistDisplayName>, <objectDate>'`, why `['The Met']`. `probeUrl 'https://collectionapi.metmuseum.org/public/collection/v1/objects/436535'`.
+  - Cleveland: `random` reads `info.total` once (`GET https://openaccess-api.clevelandart.org/api/artworks/?cc=1&has_image=1&limit=1`, cached 7 days as `cleveland:total`), then `?cc=1&has_image=1&limit=10&skip=<floor(rand × total)>`; `search(q)`: `?q=<q>&cc=1&has_image=1&limit=20`. Only `share_license_status === 'CC0'` is kept (trust the returned value). Find: id `cma:<id>`, `url`, `imageUrl = images.web.url`, `author = creators[0].description`, `description = '<creator>, <creation_date>'`, why `['Cleveland Museum of Art']`. `probeUrl 'https://openaccess-api.clevelandart.org/api/artworks/?limit=1'`.
+
+Fixtures: `aic/search.json` (`config.iiif_url 'https://www.artic.edu/iiif/2'`; artwork 27992 'A Sunday on La Grande Jatte', `image_id '2d484387'`, `artist_display 'Georges Seurat\nFrench, 1859–1891'`, `thumbnail {lqip 'data:image/gif;base64,R0lGOD', alt_text 'A park scene.'}`; artwork 1 with `image_id null`). `met/search.json` (`{total: 5000, objectIDs: [436535]}`), `met/object.json` (436535 'Wheat Field with Cypresses', `primaryImageSmall`, `objectURL`, 'Vincent van Gogh', '1889', `isPublicDomain true`), `met/object-not-pd.json` (the same with `isPublicDomain false`). `cleveland/artworks.json` (`info.total 30000`; artwork 1 'Twilight in the Wilderness', CC0, `images.web.url`, creator 'Frederic Edwin Church (American, 1826–1900)', '1860'; artwork 2 'Copyrighted' with `share_license_status 'Copyrighted'`).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('aic builds IIIF images, keeps the lqip and sends AIC-User-Agent', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await aic.random(ctx);
+  assert.equal(calls[0].headers['aic-user-agent'], IDENT);
+  const u = new URL(calls[0].url); assert.equal(u.searchParams.get('query[term][is_public_domain]'), 'true'); assert.ok(+u.searchParams.get('page') <= 500);
+  assert.equal(out.length, 1);
+  assert.equal(out[0].imageUrl, 'https://www.artic.edu/iiif/2/2d484387/full/843,/0/default.jpg');
+  assert.equal(out[0].url, 'https://www.artic.edu/artworks/27992'); assert.equal(out[0].author, 'Georges Seurat French, 1859–1891');
+  assert.ok(out[0].meta.lqip.startsWith('data:image/gif')); assert.equal(out[0].licence, 'Public domain');
+});
+test('met uses v1.1 search and keeps public-domain objects', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await met.random(ctx);
+  assert.equal(calls.some(c => c.url.includes('/v1/search')), false);
+  assert.ok(+new URL(calls[1].url).searchParams.get('offset') < 5000);
+  assert.equal(f.title, 'Wheat Field with Cypresses'); assert.equal(f.author, 'Vincent van Gogh');
+  const pd = await adapterCtx({ extraRoutes: [{ match: /\/v1\/objects\//, file: 'met/object-not-pd.json' }] });
+  assert.deepEqual(await met.random(pd.ctx), []);
+});
+test('cleveland keeps CC0 only and pages by skip', async () => {
+  const { ctx, calls } = await adapterCtx(); const out = await cleveland.random(ctx);
+  assert.ok(+new URL(calls[1].url).searchParams.get('skip') < 30000);
+  assert.deepEqual(out.map(f => f.title), ['Twilight in the Wilderness']); assert.equal(out[0].licence, 'CC0');
+  await cleveland.random(ctx); assert.equal(calls.filter(c => c.url.includes('limit=1')).length, 1);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-museums.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement the three adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-museums.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/aic.js src/core/sources/met.js src/core/sources/cleveland.js src/core/sources/index.js tests/fixtures/http/aic tests/fixtures/http/met tests/fixtures/http/cleveland tests/fixtures/routes.js tests/unit/src-museums.test.js
+git commit -m "Add the Art Institute, Met and Cleveland adapters"
+```
+
 <!-- PLAN CONTINUES -->

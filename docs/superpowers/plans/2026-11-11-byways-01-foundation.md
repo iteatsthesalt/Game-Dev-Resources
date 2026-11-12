@@ -1301,7 +1301,7 @@ The spec imports `test`, `expect` from `./helpers/net.js` and `gotoApp` from `./
 - [ ] **Step 3: Run them and see them fail**
 
 Run: `node --test tests/unit/router.test.js tests/unit/boot-data.test.js`
-Expected: FAIL with `Cannot find module` for `src/ui/router.js`, and `loadData` missing from `boot.js`.
+Expected: FAIL with `Cannot find module` for `src/ui/router.js` in both files.
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/shell.spec.js`
 Expected: FAIL with `Cannot find module` for `./helpers/app.js`.
 
