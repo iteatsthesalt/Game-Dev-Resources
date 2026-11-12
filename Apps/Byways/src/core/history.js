@@ -42,7 +42,7 @@ export function createHistory(store, { max = 50, clock = realClock } = {}) {
       const stored = await store.get(STORE, KEY);
       const storedItems = Array.isArray(stored?.items) ? stored.items.filter(isItem) : [];
       await store.put(STORE, KEY, { items: mergeItems(storedItems, own, max) });
-    }).catch(() => {}); // a failed write must not break the chain or surface as an unhandled rejection
+    }).catch(err => console.warn('Byways: history write failed', err)); // keeps the chain alive and reports the failure
   }
 
   const findAt = i => (items[i] ? items[i].find : null);
@@ -50,6 +50,7 @@ export function createHistory(store, { max = 50, clock = realClock } = {}) {
   return {
     ready: load(),
     push(find) {
+      if (find === null || typeof find !== 'object' || typeof find.id !== 'string') return;
       items = [...items.slice(0, cursor + 1), { find, t: clock.now() }].slice(-max);
       cursor = items.length - 1;
       persist(items.slice());
@@ -68,7 +69,7 @@ export function createHistory(store, { max = 50, clock = realClock } = {}) {
     list: () => items.map(item => item.find),
     recentDomains(n) {
       const domains = [];
-      for (let i = cursor; i >= 0 && domains.length < n; i -= 1) {
+      for (let i = cursor; i >= 0 && i > cursor - n; i -= 1) {
         const domain = domainOf(items[i].find.url);
         if (domain !== '' && !domains.includes(domain)) domains.push(domain);
       }

@@ -30,3 +30,24 @@ test('two histories on one store merge instead of overwriting', async () => {
   h2.push(f('b', 'https://b.example.com/')); await tick();
   const h3 = createHistory(store, { clock }); await h3.ready; assert.deepEqual(h3.list().map((x) => x.title), ['a', 'b']);
 });
+test('recentDomains reads the last n entries, not the last n distinct domains', async () => {
+  const h = createHistory(await openStore(memoryBackend())); await h.ready;
+  for (const t of ['a', 'a', 'b']) h.push(f(t, `https://${t}.example.com/`));
+  assert.deepEqual(h.recentDomains(2), ['b.example.com', 'a.example.com']);
+  assert.deepEqual(h.recentDomains(1), ['b.example.com']);
+});
+test('push ignores a find without a string id', async () => {
+  const store = await openStore(memoryBackend()); const h = createHistory(store); await h.ready;
+  h.push(f('a', 'https://a.example.com/')); h.push(null); h.push({}); h.push(f('bad', 'ftp://x'));
+  assert.deepEqual(h.list().map(x => x.title), ['a']);
+  assert.deepEqual(h.recentDomains(5), ['a.example.com']);
+});
+test('a failed history write is reported with console.warn and the chain survives', async (t) => {
+  const store = await openStore(memoryBackend()); const h = createHistory(store); await h.ready;
+  const warn = t.mock.method(console, 'warn', () => {});
+  const realGet = store.get; store.get = async () => { store.get = realGet; throw new Error('boom'); };
+  h.push(f('a', 'https://a.example.com/')); await h.reload();
+  assert.equal(warn.mock.callCount(), 1);
+  h.push(f('b', 'https://b.example.com/')); await h.reload();
+  assert.deepEqual(h.list().map(x => x.title), ['b']);
+});
