@@ -1071,19 +1071,21 @@ Expected: Node fails with `ENOENT` on `TtsBridge.kt`; Gradle fails with `Unresol
 - `cancel {}`: `stop()`, reply `true` to every pending `speak`, then reply `true`.
 - `voices {}`: `voices` sorted by name, as `{uri: name, name, lang: locale.toLanguageTag(), local: !isNetworkConnectionRequired}`.
 
-- [ ] **Step 4: Implement `MediaBridge`, `ShareBridge` and `FilesBridge`**
+- [ ] **Step 4: Implement `HoldToTalk`, `MediaBridge`, `ShareBridge` and `FilesBridge`**
 
+- `HoldToTalk`: keeps the down time of the current press and whether `HOLD_START` was reported. `down` while a press is open changes nothing. `up` with no open press is `NONE`; otherwise it closes the press and answers `HOLD_END` when a hold was reported, `SHORT` when `timeMs - downTime < holdMs`, else `NONE` (a long press no tick reported is never a stray play/pause).
 - `MediaBridge`: one `android.media.session.MediaSession(ctx, "Byways")`. Below API 26 it also calls `setFlags(FLAG_HANDLES_MEDIA_BUTTONS or FLAG_HANDLES_TRANSPORT_CONTROLS)`, without which Android 7 sends it no headset buttons. The callback's `onSkipToNext`, `onSkipToPrevious`, and both `onPlay` and `onPause`, emit `next`, `previous` and `playPause`. `setActive {on}` sets `isActive` and a `PlaybackState` with `ACTION_SKIP_TO_NEXT or ACTION_SKIP_TO_PREVIOUS or ACTION_PLAY_PAUSE or ACTION_PLAY or ACTION_PAUSE`, in `STATE_PLAYING` when on and `STATE_PAUSED` when off. When `PLAY_SILENCE` is true, `setActive(true)` also plays a looping silent `AudioTrack` (`USAGE_MEDIA`) until `setActive(false)` or `release()`: from Android 8, media buttons go to the app that last played audio, and TTS audio plays in the engine's process. The real-device checklist decides whether to turn it on.
+- Headset hold-to-talk (§6.3, "or the headset button"), in `MediaBridge`: `holdToTalk {on}` stores `holdOn` (default false) and replies `true`. `onKey(event)` returns false unless `holdOn` is true and `event.keyCode` is `KEYCODE_HEADSETHOOK` or `KEYCODE_MEDIA_PLAY_PAUSE`; then it consumes the event: `ACTION_DOWN` with `repeatCount == 0` → `hold.down(event.eventTime)` and `handler.postDelayed(tick, HoldToTalk.HOLD_MS)`; `ACTION_UP` → `handler.removeCallbacks(tick)`, then `hold.up(event.eventTime)`: `SHORT` emits `playPause` and `HOLD_END` emits `talk {on:false}`. `tick` runs `hold.elapsed(SystemClock.uptimeMillis())` (the clock `eventTime` uses) and emits `talk {on:true}` on `HOLD_START`. `hold` is one `HoldToTalk()`, and `handler` is `Handler(Looper.getMainLooper())`. The hold is read in the activity, not in the session's callback, because Android's media session service keeps a long press of these two keys for the system assistant and replays only a short press to a session: a hold can be seen only by the foreground activity, from a wired headset, while the screen is on. With `holdOn` false the keys take their usual path, and a short press reaches `onPlay` or `onPause`.
 - `ShareBridge.send {title, text, url}`: an `Intent.ACTION_SEND` of type `"text/plain"` whose `EXTRA_TEXT` is the non-null parts of `text` and `url` joined by a space, with `EXTRA_SUBJECT = title`. Start `Intent.createChooser(intent, "Share")` and reply `'shared'`.
 - `FilesBridge`: `save {name, mime, base64}` and `save {name, mime, saveId}` open a `CreateDocument("*/*")` subclass whose `createIntent` sets the intent type to `mime`. A `null` result replies `'cancelled'`; otherwise the bytes are written on a background thread and it replies `'saved'`. `append {saveId, base64}` decodes and appends on one background thread, in arrival order, to a part file from `File.createTempFile("save-", ".part", cacheDir)`, kept in a map by `saveId` (never used as a path); `save {…, saveId}` writes that part and deletes it, and so does a cancelled picker. A part over 1 GiB replies `too-large` and is deleted. A second save while the picker is open replies `busy`. Parts exist because one message holds at most 16 MiB and a Lab PC state is bigger.
 
 - [ ] **Step 5: Wire them in `MainActivity`**
 
-Add `"tts" to tts`, `"media" to media`, `"share" to share` and `"files" to files` to the handler map. `onDestroy` calls `tts.shutdown()` and `media.release()`.
+Add `"tts" to tts`, `"media" to media`, `"share" to share` and `"files" to files` to the handler map. `override fun dispatchKeyEvent(event: KeyEvent): Boolean` returns true when `media.onKey(event)` does, else `super.dispatchKeyEvent(event)`, so a headset press reaches the tracker before the WebView sees it. `onDestroy` calls `tts.shutdown()` and `media.release()`.
 
 - [ ] **Step 6: Run them to see them pass**
 
-Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 14 tests; Gradle: 6 new tests). `assembleDebug` compiles the new files.
+Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 7). Expected: PASS (Node: 14 tests; Gradle: 11 new tests). `assembleDebug` compiles the new files.
 
 - [ ] **Step 7: Commit**
 
@@ -1359,7 +1361,7 @@ git commit -m "Add the GitHub release update check"
 - Test: `tests/unit/android-shell.test.js`, `tests/unit/platform-android.test.js`
 
 **Interfaces:**
-- Consumes: `AssetRules` (Task 10); `BridgeGate` (with `allowSubframes`) and `BridgeCodec` (Task 5); `FilesBridge` and its `save` and `append` ops (Task 9); Plan 06's Android layout `assets/lab/{lab/**, vendor/**, versions.json}`, whose pages reach `vendor/` and `versions.json` through `../`, and whose runner pages are frames of `lab/index.html`; the panel's exports and `pc.js`'s **Download state** (Plan 06 Tasks 10–11).
+- Consumes: `AssetRules` (Task 10); `BridgeGate` (with `allowSubframes`) and `BridgeCodec` (Task 5); `FilesBridge` and its `save` and `append` ops (Task 9); Plan 06's Android layout `assets/lab/{lab/**, vendor/**, versions.json}`, whose pages reach `vendor/` and `versions.json` through `../`, and whose runner pages are frames of `lab/index.html`; `pc.js`'s **Download state** and the panel's exports (Plan 06 Tasks 9–10).
 - Produces: `class LabBridge(webView: WebView, files: FilesBridge) { fun install(): Boolean }`, listening as `BywaysLabNative` for `https://lab.appassets.androidplatform.net`, in the Lab page and its runner frames, with only `files.save` and `files.append`. In `src/lab/storage-panel.js`: `export const SAVE_CHUNK_BYTES = 6 * 1024 * 1024` and `export function labSaveFile(name, blob, win = globalThis) → Promise<'saved'|'cancelled'>|null`. It lives in the Lab rather than in `platform/android.js`, so the Lab origin loads nothing from the app.
 
 - [ ] **Step 1: Write the failing tests**
@@ -1428,15 +1430,15 @@ git commit -m "Serve the Lab on its own origin with a save-only bridge"
 ### Task 14: Wire the Android platform into the app
 
 **Files:**
-- Modify: `src/platform/android.js`, `src/ui/boot.js`, `src/ui/components/card.js`, `src/ui/handsfree-ui.js`
+- Modify: `src/platform/android.js`, `src/ui/components/card.js`
 - Modify: `tests/e2e/helpers/fakes.js`
 - Create: `tests/e2e/android.spec.js`
 
 **Interfaces:**
-- Consumes: `boot(platform)`, the `App` fields, `engine.next({mode})` and `engine.on('find', fn)`, which fires for every find the engine hands to the UI (overview); `navigate(route)`, `showResult(result)`, `makeFind(partial)`, `domainOf(u)`, `showToast(message)`; the router's own `byways:back` handling, which calls `history.back()` when nothing prevented the event away from home (overview); the one `app.handsFree` controller, whose `start()` runs the full Start routine (overview), with `state`, `suspend()`, `wake()`, `pause()` and `command(id)`, plus the help card, recap and search dialogs (`ui/handsfree-ui.js`, Plan 03 Task 9); `makeActionHandler` and the **⋯** menu (`ui/components/card.js`, Plan 02 Task 23); the e2e helpers `test`, `expect`, `gotoApp` and `skipFirstRun` (Plan 01); `connectOpenRouter` and its fixtures (Plan 05); `createBridgeClient`, `extractSharedLink`, `platform.app` (Task 6).
+- Consumes: `boot(platform)`, which already awaits `platform.attach?.(app)` once the app object is complete (Plan 01 Task 13), the `App` fields, `engine.next({mode})` and `engine.on('find', fn)`, which fires for every find the engine hands to the UI with the payload `{find, branch, why}` (overview); `navigate(route)`, `showResult(result)`, `makeFind(partial)`, `domainOf(u)`, `showToast(message)`; the router's own `byways:back` handling, which closes the topmost `dialog[open]` and calls `preventDefault()` synchronously, and otherwise calls `history.back()` away from home (overview); the one `app.handsFree` controller, whose `start()` runs the full Start routine (overview), with `state`, `suspend()`, `wake()`, `pause()`, `talk(on)` and `command(id)`, `effectiveListenMode(voiceMode, status)` from `core/handsfree.js` (Plan 03 Task 4), plus the help card, recap and search dialogs, which are `<dialog>` elements (`ui/handsfree-ui.js`, Plan 03 Task 10); `makeActionHandler` and the **⋯** menu, which is not a dialog and already closes itself on `byways:back` with `preventDefault()` (`ui/components/card.js`, Plan 02 Task 23); the e2e helpers `test`, `expect`, `gotoApp` and `skipFirstRun` (Plan 01); `connectOpenRouter` and its fixtures (Plan 05); `createBridgeClient`, `extractSharedLink`, `platform.app` (Task 6); `lastVoiceStatus` (Task 7).
 - Produces:
-  - `platform.attach(app) → Promise<void>`. `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
-  - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back. The card's **⋯** menu and the hands-free dialogs close themselves on it and call `event.preventDefault()`.
+  - `platform.attach(app) → Promise<void>`. Plan 01's `boot()` calls `await platform.attach?.(app)` once the app is built. Only the Android platform defines it.
+  - The window event `byways:back`: a cancelable `CustomEvent` that `attach` dispatches on Back, reading `event.defaultPrevented` right after `dispatchEvent`. Plan 01's router closes the topmost open `<dialog>` (the help card, the recap and the search dialog among them) and Plan 02's **⋯** menu closes itself, each calling `preventDefault()` synchronously. This plan adds no `byways:back` listener of its own.
   - `installFakeAndroidBridge(page, {hello?, update?, probe?, auth?, pending?}) → Promise<{native: () => Promise<object[]>, emit(ch, event, data)}>` in `tests/e2e/helpers/fakes.js`.
   - In `tests/e2e/android.spec.js`, the helpers `openAndroid(page, opts)`, `button(page, name)`, `sent(ch, op)` and `backResult(token)`, which Task 15 reuses.
 
