@@ -445,15 +445,20 @@ export function createEngine(canvas, opts = {}) {
     if (keep > 0) {
       gl.useProgram(R.fade.prog);
       gl.uniform1f(R.fade.u.uKeep, keep);
+      gl.uniform1f(R.fade.u.uChance, 1);
       gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
       gl.bindVertexArray(R.empty);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       if (!hdr) {
-        // In 8 bits a dim pixel times `keep` rounds back to itself and would glow forever;
-        // taking one step off as well lets every trail fade all the way to black.
+        // In 8 bits a dim pixel times `keep` rounds back to itself and would glow forever.
+        // Taking one step off a random half of the pixels each frame lets every trail fade
+        // all the way to black. Taking it off every pixel every frame would also erase
+        // light that arrives at less than a step a frame, which is most of the haze.
         gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
         gl.blendFunc(gl.ONE, gl.ONE);
         gl.uniform1f(R.fade.u.uKeep, 1 / 255);
+        gl.uniform1f(R.fade.u.uChance, 0.5);
+        gl.uniform1ui(R.fade.u.uSeed, frameNo);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.blendEquation(gl.FUNC_ADD);
       }
@@ -478,11 +483,16 @@ export function createEngine(canvas, opts = {}) {
     // Choosing energy = k * pixels / (count * size^2) keeps the frame's mean near k
     // whatever the count and resolution; more particles still add a little richness,
     // bigger specks a little light, and long trails are evened out.
+    // 8-bit targets get the same light as half floats: the points round it to whole
+    // steps at random (uDither), so light fainter than a step still adds up on average,
+    // and a pixel simply tops out at 1.
     const trailNorm = Math.pow(1 - keep, 0.8);
     const energy = 0.055 * (W * H) / (N * basePx * basePx) * Math.pow(N / REF_COUNT, 0.3) / Math.max(scene.size, 0.25)
-      * trailNorm * (hdr ? 1 : 0.35) * (1 + audio.level * 0.6);
+      * trailNorm * (1 + audio.level * 0.6);
     gl.uniform1f(p.u.uEnergy, energy);
-    gl.uniform1f(p.u.uEnergyCap, hdr ? 24000 / N : 4 / Math.sqrt(N));
+    gl.uniform1f(p.u.uEnergyCap, hdr ? 24000 / N : 1);
+    gl.uniform1f(p.u.uDither, hdr ? 0 : 1);
+    gl.uniform1ui(p.u.uSeed, frameNo);
     gl.uniform1f(p.u.uSparkle, scene.sparkle);
     gl.uniform1f(p.u.uHigh, audio.high);
     gl.uniform1f(p.u.uTime, simTime);

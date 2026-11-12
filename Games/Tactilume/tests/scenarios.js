@@ -659,12 +659,21 @@ export default [
 
   {
     // Devices whose WebGL2 cannot render half floats draw 8-bit light. The flash guard
-    // used to round its own state away there and hold the screen almost black.
+    // used to round its own state away there and hold the screen almost black. Later the
+    // light itself came out at a fifth to a seventh of the half-float picture: a cap meant
+    // for half floats, and a fade that wiped out anything fainter than one step a frame.
     name: '8-bit light',
     needsEngine: true,
     open: false,
     async run(page, context, h) {
       const c = [];
+      // the same scene in half floats, at the same moment, for comparison
+      const other = await (await h.newContext()).newPage();
+      await h.open(other);
+      await h.waitFrames(other, 40, 30000);
+      const halfFloat = h.light(await h.shot(other));
+      await other.close();
+
       await page.addInitScript(() => {
         const P = WebGL2RenderingContext.prototype;
         const hidden = /^EXT_color_buffer_(half_)?float$/;
@@ -672,6 +681,12 @@ export default [
         P.getExtension = function (name) { return hidden.test(name) ? null : get.call(this, name); };
         const list = P.getSupportedExtensions;
         P.getSupportedExtensions = function () { return (list.call(this) || []).filter((n) => !hidden.test(n)); };
+        // lets the test stop drawing the light (not the simulation), to watch trails fade
+        const draw = P.drawArrays;
+        P.drawArrays = function (mode, first, count) {
+          if (window.__noLight && mode === this.POINTS && !this.isEnabled(this.RASTERIZER_DISCARD)) return undefined;
+          return draw.call(this, mode, first, count);
+        };
       });
       await h.open(page);
       const info = await page.evaluate(() => ({ hdr: window.TACTILUME.engine.caps.halfFloat, guard: window.TACTILUME.store.settings.flashGuard }));
@@ -682,8 +697,19 @@ export default [
       const [adapted, shown, exposure] = ins.adapt;
       c.push(h.check('the guard state is real numbers, not rounded to zero', Number.isFinite(adapted) && Number.isFinite(shown) && shown > 0 && exposure > 0.5, ins.adapt));
       const L = h.light(await h.shot(page));
-      c.push(h.check('the 8-bit light is clearly visible', L.mean > 4 && L.lit > 0.05, L));
-      c.push(h.check('no GL errors', ins.error === 0, ins.error));
+      c.push(h.check('the 8-bit light is clearly visible', L.mean > 8 && L.lit > 0.15, L));
+      c.push(h.check('and close to the half-float picture', L.mean > 0.4 * halfFloat.mean && L.lit > 0.5 * halfFloat.lit, { eightBit: L, halfFloat }));
+
+      // the longest trails, then no new light: every trail must still fade all the way to
+      // black (in 8 bits a dim pixel times the fade rounds back to itself)
+      await page.evaluate(() => window.TACTILUME.store.setScene({ trails: 1 }, { source: 'test' }));
+      await h.waitFrames(page, 40, 30000);
+      await page.evaluate(() => { window.__noLight = true; });
+      await h.waitFrames(page, 150, 60000);
+      const dark = h.light(await h.shot(page));
+      c.push(h.check('with no new light, the trails fade to black', dark.max <= 8 && dark.mean < 1, dark));
+      const after = await page.evaluate(() => window.TACTILUME.engine.inspect(1));
+      c.push(h.check('no GL errors', ins.error === 0 && after.error === 0, [ins.error, after.error]));
       return c;
     },
   },

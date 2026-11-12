@@ -24,10 +24,23 @@ void main() { o = vec4(0.0); }`;
 
 // Multiplies what is already on screen by uKeep (with blending ZERO, SRC_COLOR): trails.
 export const FADE_FS = `#version 300 es
-precision mediump float;
+precision highp float;
+precision highp int;
 uniform float uKeep;
+uniform float uChance;   // the share of pixels that get uKeep this frame (1: all); the rest get 0
+uniform uint uSeed;      // changes every frame, so the share falls on different pixels
 out vec4 o;
-void main() { o = vec4(uKeep, uKeep, uKeep, 1.0); }`;
+uint pcg(uint v) {
+  uint s = v * 747796405u + 2891336453u;
+  uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+void main() {
+  uvec2 q = uvec2(gl_FragCoord.xy);
+  float r = float(pcg(q.x ^ pcg(q.y ^ pcg(uSeed ^ 0x51ed27u))) >> 8u) * (1.0 / 16777216.0);
+  float k = r < uChance ? uKeep : 0.0;
+  o = vec4(k, k, k, 1.0);
+}`;
 
 // 13-tap downsample (Jimenez, "Next generation post processing in Call of Duty: AW").
 // The first pass also removes NaN/infinity and tames single bright pixels

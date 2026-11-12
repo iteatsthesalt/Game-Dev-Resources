@@ -1895,10 +1895,23 @@ precision mediump float;
 out vec4 o;
 void main() { o = vec4(0.0); }`;
   var FADE_FS = `#version 300 es
-precision mediump float;
+precision highp float;
+precision highp int;
 uniform float uKeep;
+uniform float uChance;   // the share of pixels that get uKeep this frame (1: all); the rest get 0
+uniform uint uSeed;      // changes every frame, so the share falls on different pixels
 out vec4 o;
-void main() { o = vec4(uKeep, uKeep, uKeep, 1.0); }`;
+uint pcg(uint v) {
+  uint s = v * 747796405u + 2891336453u;
+  uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;
+  return (w >> 22u) ^ w;
+}
+void main() {
+  uvec2 q = uvec2(gl_FragCoord.xy);
+  float r = float(pcg(q.x ^ pcg(q.y ^ pcg(uSeed ^ 0x51ed27u))) >> 8u) * (1.0 / 16777216.0);
+  float k = r < uChance ? uKeep : 0.0;
+  o = vec4(k, k, k, 1.0);
+}`;
   var DOWN_FS = `#version 300 es
 precision highp float;
 in vec2 vUv;
@@ -2076,7 +2089,7 @@ void main() {
   var points_vert_default = "#version 300 es\n// Draws each particle as a point of light: colour from the palette, size from\n// perspective and soft focus, brightness spread so a blurred speck keeps its energy.\nprecision highp float;\nprecision highp int;\n\nlayout(location = 0) in vec4 aPos;   // xyz, w heat\nlayout(location = 1) in vec4 aVel;   // xyz velocity, w life\n\n#include common\n\nuniform mat4 uViewProj;\nuniform float uCamDist;       // distance from the camera to the touch plane (in focus)\nuniform float uPointPx;       // base speck size in pixels, in focus\nuniform float uDofPx;         // extra blur in pixels per unit of distance from focus\nuniform float uMaxPx;\nuniform float uEnergy;        // light per particle (normalised by count and trails)\nuniform float uEnergyCap;     // keeps any single pixel well inside half-float range\nuniform float uSparkle;\nuniform float uHigh;          // treble from the music, makes sparkles busier\nuniform float uTime;\nuniform int uColorBy;         // core/scene.js COLOR_BY: speed, heat, seed, direction, depth\nuniform float uPalA;          // palette rows (texel centres, 0..1)\nuniform float uPalB;\nuniform float uPalMix;\nuniform float uHue;           // radians\nuniform float uDepthRange;\nuniform sampler2D uLUT;\n\nout vec3 vColor;\nout float vSoft;\n\nvec3 hueRotate(vec3 c, float a) {\n  const vec3 k = vec3(0.57735027);\n  float ca = cos(a);\n  return c * ca + cross(k, c) * sin(a) + k * dot(k, c) * (1.0 - ca);\n}\n\nvoid main() {\n  uint id = uint(gl_VertexID);\n  vec4 s = seeds(id);\n  vec3 p = aPos.xyz;\n  vec3 v = aVel.xyz;\n  float heat = aPos.w;\n\n  vec4 clip = uViewProj * vec4(p, 1.0);\n  gl_Position = clip;\n\n  float dist = max(clip.w, 0.05);\n  float persp = uCamDist / dist;\n  float base = uPointPx * persp * (0.75 + 0.5 * s.z);\n  float blur = uDofPx * abs(dist - uCamDist);\n  float size = min(sqrt(base * base + blur * blur), uMaxPx);\n  float px = max(size, 1.0);\n  gl_PointSize = px;\n\n  // where on the palette this speck sits\n  float speed = length(v);\n  float t;\n  if (uColorBy == 0) t = 1.0 - exp(-speed * 1.1);\n  else if (uColorBy == 1) t = 1.0 - exp(-heat * 0.7);\n  else if (uColorBy == 2) t = s.x;\n  else if (uColorBy == 3) t = 0.5 + 0.5 * sin(atan(v.y, v.x + 1e-6));\n  else t = clamp(0.5 + p.z / max(uDepthRange, 0.05) * 0.5, 0.0, 1.0);\n  // a touch of per-particle spread keeps flat regions from looking banded\n  t = clamp(t * 0.92 + (s.y - 0.5) * 0.08 + 0.04, 0.0, 1.0);\n  // The palette texture holds sRGB bytes in a plain RGBA8 texture, decoded here: some phone\n  // drivers sample sRGB-format textures wrongly in a vertex shader. textureLod, because a\n  // vertex shader has no derivatives to pick a level from.\n  vec3 enc = mix(textureLod(uLUT, vec2(t, uPalA), 0.0).rgb, textureLod(uLUT, vec2(t, uPalB), 0.0).rgb, uPalMix);\n  vec3 col = mix(enc / 12.92, pow((enc + 0.055) / 1.055, vec3(2.4)), step(0.04045, enc));\n  if (uHue != 0.0) col = max(hueRotate(col, uHue), 0.0);\n  // partly even out how bright the colours are (a deep red is far darker than a pale\n  // yellow), so the palette sets the hue and heat sets the brightness\n  float lum = dot(col, vec3(0.2126, 0.7152, 0.0722));\n  col *= min(pow(0.3 / max(lum, 0.004), 0.55), 5.0);\n\n  // hot light burns brighter; resting light glows softly\n  float bright = 0.45 + 0.55 * min(heat, 3.0) + 0.25 * min(speed, 2.0);\n  // now and then a speck catches the light\n  float tw = sin(uTime * (1.3 + s.w * 3.7 + uHigh * 6.0) + s.x * 97.0);\n  bright *= 1.0 + uSparkle * pow(max(tw, 0.0), 24.0) * 6.0;\n\n  // the same light spread over a larger disc when out of focus or sub-pixel\n  float energy = uEnergy * persp * bright * (base * base) / (px * px);\n  vColor = col * min(energy, uEnergyCap);\n  vSoft = smoothstep(1.6, 3.6, px);\n  // a broken particle draws nothing, off screen, rather than a NaN that would spread\n  if (bad3(p) || bad3(vColor) || badf(heat)) {\n    vColor = vec3(0.0);\n    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);\n    gl_PointSize = 1.0;\n  }\n}\n";
 
   // src/js/gfx/shaders/points.frag.glsl
-  var points_frag_default = "#version 300 es\nprecision highp float;\n\nin vec3 vColor;\nin float vSoft;\nout vec4 outColor;\n\nvoid main() {\n  // small specks are flat squares; larger ones are soft discs with the same total light\n  // (5.14 is 1 / the mean of exp(-4 r^2) over the point's square)\n  vec2 c = gl_PointCoord * 2.0 - 1.0;\n  float shape = mix(1.0, exp(-4.0 * dot(c, c)) * 5.14, vSoft);\n  outColor = vec4(vColor * shape, 1.0);\n}\n";
+  var points_frag_default = "#version 300 es\nprecision highp float;\nprecision highp int;\n\nin vec3 vColor;\nin float vSoft;\nuniform float uDither;   // 1 on 8-bit targets\nuniform uint uSeed;      // changes every frame\nout vec4 outColor;\n\nuint pcg(uint v) {\n  uint s = v * 747796405u + 2891336453u;\n  uint w = ((s >> ((s >> 28u) + 4u)) ^ s) * 277803737u;\n  return (w >> 22u) ^ w;\n}\n\nvoid main() {\n  // small specks are flat squares; larger ones are soft discs with the same total light\n  // (5.14 is 1 / the mean of exp(-4 r^2) over the point's square)\n  vec2 c = gl_PointCoord * 2.0 - 1.0;\n  float shape = mix(1.0, exp(-4.0 * dot(c, c)) * 5.14, vSoft);\n  vec3 col = vColor * shape;\n  if (uDither > 0.5) {\n    // An 8-bit target keeps whole steps of 1/255, so light fainter than half a step would\n    // vanish. Rounding up or down at random, with the right odds, keeps it on average:\n    // many faint specks still add up to a glow.\n    uvec2 q = uvec2(gl_FragCoord.xy);\n    float r = float(pcg(q.x ^ pcg(q.y ^ pcg(uSeed))) >> 8u) * (1.0 / 16777216.0);\n    col = floor(col * 255.0 + r) / 255.0;\n  }\n  outColor = vec4(col, 1.0);\n}\n";
 
   // src/js/gfx/engine.js
   var STRIDE = 32;
@@ -2483,6 +2496,7 @@ void main() {
       if (keep > 0) {
         gl.useProgram(R.fade.prog);
         gl.uniform1f(R.fade.u.uKeep, keep);
+        gl.uniform1f(R.fade.u.uChance, 1);
         gl.blendFunc(gl.ZERO, gl.SRC_COLOR);
         gl.bindVertexArray(R.empty);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -2490,6 +2504,8 @@ void main() {
           gl.blendEquation(gl.FUNC_REVERSE_SUBTRACT);
           gl.blendFunc(gl.ONE, gl.ONE);
           gl.uniform1f(R.fade.u.uKeep, 1 / 255);
+          gl.uniform1f(R.fade.u.uChance, 0.5);
+          gl.uniform1ui(R.fade.u.uSeed, frameNo);
           gl.drawArrays(gl.TRIANGLES, 0, 3);
           gl.blendEquation(gl.FUNC_ADD);
         }
@@ -2510,9 +2526,11 @@ void main() {
       gl.uniform1f(p.u.uDofPx, scene.focus * 15 * pxScale);
       gl.uniform1f(p.u.uMaxPx, clamp(32 * pxScale, 6, 48));
       const trailNorm = Math.pow(1 - keep, 0.8);
-      const energy = 0.055 * (W * H) / (N * basePx * basePx) * Math.pow(N / REF_COUNT, 0.3) / Math.max(scene.size, 0.25) * trailNorm * (hdr ? 1 : 0.35) * (1 + audio.level * 0.6);
+      const energy = 0.055 * (W * H) / (N * basePx * basePx) * Math.pow(N / REF_COUNT, 0.3) / Math.max(scene.size, 0.25) * trailNorm * (1 + audio.level * 0.6);
       gl.uniform1f(p.u.uEnergy, energy);
-      gl.uniform1f(p.u.uEnergyCap, hdr ? 24e3 / N : 4 / Math.sqrt(N));
+      gl.uniform1f(p.u.uEnergyCap, hdr ? 24e3 / N : 1);
+      gl.uniform1f(p.u.uDither, hdr ? 0 : 1);
+      gl.uniform1ui(p.u.uSeed, frameNo);
       gl.uniform1f(p.u.uSparkle, scene.sparkle);
       gl.uniform1f(p.u.uHigh, audio.high);
       gl.uniform1f(p.u.uTime, simTime);
