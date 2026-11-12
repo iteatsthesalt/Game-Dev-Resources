@@ -160,8 +160,9 @@ git commit -m "Add the Find model with url ids and length limits"
 - Test: `tests/unit/seen.test.js`, `tests/unit/history.test.js`
 
 **Interfaces:**
-- Consumes: `openStore(backend)`, `memoryBackend()` (store/db.js), `hash64`, `normalizeUrl`, `domainOf`, `makeFind` (Task 1).
-- Produces: `createSeen(store) → {has(url) → Promise<boolean>, add(url) → Promise<void>, count() → Promise<number>, reset() → Promise<void>}`; values are `{t: <ms>}` under key `hash64(normalizeUrl(url))` in the `seen` store. `createHistory(store, {max=50}) → {ready: Promise<void>, push(find), back() → Find|null, forward() → Find|null, current() → Find|null, list() → Find[], recentDomains(n) → string[], reload() → Promise<void>}`; it persists `{items, cursor}` under key `'trail'` in the `history` store, and `reload()` reads that key again (Task 29 calls it after a backup import).
+- Consumes: `openStore(backend)`, `memoryBackend()` (store/db.js), `realClock`, `fakeClock`, `hash64`, `normalizeUrl`, `domainOf`, `makeFind` (Task 1).
+- Produces: `createSeen(store) → {has(url) → Promise<boolean>, add(url) → Promise<void>, count() → Promise<number>, reset() → Promise<void>}`; values are `{t: <ms>}` under key `hash64(normalizeUrl(url))` in the `seen` store. `createHistory(store, {max = 50, clock = realClock}) → {ready: Promise<void>, push(find), back() → Find|null, forward() → Find|null, current() → Find|null, list() → Find[], recentDomains(n) → string[], reload() → Promise<void>}`. It persists `{items: Array<{find, t}>}` under key `'trail'` in the `history` store; the cursor lives in memory and starts at the newest item. `reload()` reads that key again (Task 29 calls it after a backup import).
+- Several engines on one store (overview; the extension runs three): `push` never overwrites another writer. Its chained write re-reads the stored items, merges them with this history's own by find id (the later `t` wins), sorts by `t`, keeps the last `max` and writes them back. The in-memory trail stays this history's own.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -199,8 +200,15 @@ test('history survives a restart', async () => {
   const store = await openStore(memoryBackend()); const h = createHistory(store); await h.ready;
   h.push(f('a', 'https://a.example.com/')); await new Promise(r => setTimeout(r, 0));
   const h2 = createHistory(store); await h2.ready; assert.equal(h2.current().title, 'a');
-  await store.put('history', 'trail', { items: [f('z', 'https://z.example.com/')], cursor: 0 });
+  await store.put('history', 'trail', { items: [{ find: f('z', 'https://z.example.com/'), t: 1 }] });
   await h2.reload(); assert.equal(h2.current().title, 'z');
+});
+test('two histories on one store merge instead of overwriting', async () => {
+  const store = await openStore(memoryBackend()); const clock = fakeClock(1000); const tick = () => new Promise((r) => setTimeout(r, 0));
+  const h1 = createHistory(store, { clock }); const h2 = createHistory(store, { clock }); await h1.ready; await h2.ready;
+  h1.push(f('a', 'https://a.example.com/')); await tick(); clock.advance(1);
+  h2.push(f('b', 'https://b.example.com/')); await tick();
+  const h3 = createHistory(store, { clock }); await h3.ready; assert.deepEqual(h3.list().map((x) => x.title), ['a', 'b']);
 });
 ```
 
@@ -211,12 +219,12 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 
 - [ ] **Step 3: Implement `createSeen` and `createHistory`**
 
-`push` drops entries after the cursor, appends, trims the oldest beyond `max`, moves the cursor to the end and writes to the store without awaiting (writes are chained so they land in order). `recentDomains(n)` reads the last `n` entries up to the cursor, newest first, unique.
+`push` drops entries after the cursor, appends `{find, t: clock.now()}`, trims the oldest beyond `max`, moves the cursor to the end and starts the merging write without awaiting it (writes are chained so they land in order). `recentDomains(n)` reads the last `n` entries up to the cursor, newest first, unique.
 
 - [ ] **Step 4: Run them and see them pass**
 
 Run: `node --test tests/unit/seen.test.js tests/unit/history.test.js`
-Expected: PASS, 4 tests.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 5: Commit**
 
