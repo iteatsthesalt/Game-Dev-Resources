@@ -1191,4 +1191,487 @@ git add src/core/sources/aic.js src/core/sources/met.js src/core/sources/clevela
 git commit -m "Add the Art Institute, Met and Cleveland adapters"
 ```
 
+### Task 16: NASA Images, Library of Congress and Smithsonian
+
+**Files:**
+- Create: `src/core/sources/nasaimages.js`, `src/core/sources/loc.js`, `src/core/sources/smithsonian.js`, fixtures under `tests/fixtures/http/{nasaimages,loc,smithsonian}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-archives.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `makeFind`.
+- Produces: the `nasaimages`, `loc` and `smithsonian` adapters. Each `random` searches one seed word picked with `ctx.rand` from its list. `more` returns `[]`.
+  - NASA Images: `search(q)`: `GET https://images-api.nasa.gov/search?q=<q>&media_type=image&page_size=20` (`random` adds `page=<1–5>`; words `['nebula','aurora','rover','launch','galaxy','eclipse','saturn','apollo','comet','earth']`). Items from `collection.items[]`: `data[0].{title, description, nasa_id, center, date_created}`, `links[0].href`. Find: id `nasa:<nasa_id>`, `url = 'https://images.nasa.gov/details/<nasa_id>'`, `imageUrl = links[0].href`, `attribution = 'NASA <center>'`, `licence 'Public domain (NASA)'`, why `['NASA Images']`. `probeUrl 'https://images-api.nasa.gov/search?q=moon&media_type=image&page_size=1'`.
+  - Library of Congress: `search(q)`: `GET https://www.loc.gov/photos/?q=<q>&fo=json&c=25&sp=1` (`random` uses `sp=<1–5>`; words `['map','poster','bicycle','lighthouse','circus','garden','bridge','train','kite','harbor']`). An HTML reply (the CAPTCHA page) rejects, because `getJson` fails to parse it. Find: `url`, `title`, `description = description[0]`, **no `imageUrl`** (results carry no open-rights flag), why `['Library of Congress']`. `probeUrl 'https://www.loc.gov/photos/?q=map&fo=json&c=1'`.
+  - Smithsonian: needs secret `src:apidatagov`; without it every method returns `[]` with no request. `search(q)`: `GET https://api.si.edu/openaccess/api/v1.0/search?q=<q>&rows=20&api_key=<key>` (`random` adds `start=<0–199>`; words `['quilt','fossil','meteorite','toy','clock','mask','telescope','shell','banjo','kite']`). Rows from `response.rows[]`; `content.descriptiveNonRepeating` gives `record_link` (the url), `data_source` (the attribution) and `metadata_usage.access`; `imageUrl = online_media.media[0].thumbnail` only when access is `'CC0'`, and then `licence 'CC0'`. Why `['Smithsonian Open Access']`. `probeUrl 'https://api.si.edu/openaccess/api/v1.0/search?q=quilt&rows=1&api_key=DEMO_KEY'`.
+
+Fixtures: `nasaimages/search.json` (one item: 'Carina Nebula', 'Stars being born.', `nasa_id 'PIA123'`, `center 'GSFC'`, href `https://images-assets.nasa.gov/image/PIA123/PIA123~thumb.jpg`). `loc/photos.json` (one result: 'Map of Boston', `url 'https://www.loc.gov/item/123/'`, `description ['An old map.']`, two `image_url` entries) and `loc/captcha.html`. `smithsonian/search.json` (row 'Quilt' with CC0 access, `data_source 'National Museum of American History'`, a thumbnail; row 'Not open' with `access 'usage conditions apply'` and a thumbnail).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('nasaimages builds detail links', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await nasaimages.search('nebula', ctx);
+  const u = new URL(calls[0].url); assert.equal(u.searchParams.get('media_type'), 'image'); assert.equal(u.searchParams.get('page_size'), '20');
+  assert.equal(f.url, 'https://images.nasa.gov/details/PIA123'); assert.equal(f.attribution, 'NASA GSFC');
+  assert.equal(f.licence, 'Public domain (NASA)');
+});
+test('loc reads JSON, shows no image and treats HTML as a failure', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await loc.search('map', ctx);
+  const u = new URL(calls[0].url); assert.equal(u.pathname, '/photos/'); assert.equal(u.searchParams.get('fo'), 'json'); assert.equal(u.searchParams.get('c'), '25');
+  assert.equal(f.title, 'Map of Boston'); assert.equal(f.description, 'An old map.'); assert.equal(f.imageUrl, undefined);
+  const html = await adapterCtx({ extraRoutes: [{ match: /loc\.gov/, file: 'loc/captcha.html', headers: { 'content-type': 'text/html' } }] });
+  await assert.rejects(loc.search('map', html.ctx));
+});
+test('smithsonian needs the api.data.gov key and shows CC0 images only', async () => {
+  const none = await adapterCtx(); assert.deepEqual(await smithsonian.search('quilt', none.ctx), []); assert.equal(none.calls.length, 0);
+  const { ctx, calls } = await adapterCtx({ secrets: { 'src:apidatagov': 'MYKEY' } });
+  const [a, b] = await smithsonian.search('quilt', ctx);
+  assert.equal(new URL(calls[0].url).searchParams.get('api_key'), 'MYKEY');
+  assert.equal(a.licence, 'CC0'); assert.ok(a.imageUrl); assert.equal(a.attribution, 'National Museum of American History');
+  assert.equal(b.imageUrl, undefined);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-archives.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement the three adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-archives.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/nasaimages.js src/core/sources/loc.js src/core/sources/smithsonian.js src/core/sources/index.js tests/fixtures/http/nasaimages tests/fixtures/http/loc tests/fixtures/http/smithsonian tests/fixtures/routes.js tests/unit/src-archives.test.js
+git commit -m "Add the NASA Images, Library of Congress and Smithsonian adapters"
+```
+
+### Task 17: Europeana and Openverse
+
+**Files:**
+- Create: `src/core/sources/europeana.js`, `src/core/sources/openverse.js`, fixtures under `tests/fixtures/http/{europeana,openverse}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-keyed.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `makeFind`.
+- Produces: the `europeana` and `openverse` adapters. With no credentials, every method returns `[]` and makes no request.
+  - Europeana: header `X-Api-Key: <secret src:europeana>` (never the `wskey` parameter). `search(q)`: `GET https://api.europeana.eu/record/v2/search.json?query=<q>&reusability=open&media=true&rows=20`; `random` searches a word from `['map','clock','poster','bird','ship','mask','garden','tile','toy','letter']` with `start=<1–100>`. Find: id `eu:<id>`, `title = title[0]`, `url = edmIsShownAt[0] || guid`, `imageUrl = edmPreview[0]`, `description = dcDescription[0]`, `licence = rights[0]`, `attribution = '<dataProvider[0]> via Europeana'`, why `['Europeana']`. `more` returns `[]`.
+  - Openverse: secret `src:openverse` holds the JSON `{"client_id": …, "client_secret": …}`. A token comes from `POST https://api.openverse.org/v1/auth_tokens/token/` with `Content-Type: application/x-www-form-urlencoded` and body `grant_type=client_credentials&client_id=<id>&client_secret=<secret>`, and is cached in `ctx.cache` as `openverse:token` for `expires_in − 60` seconds. Requests send `Authorization: Bearer <token>`. `search(q)`: `GET https://api.openverse.org/v1/images/?q=<q>&mature=false&page_size=20`; `random` searches a word from `['moss','lighthouse','fox','mushroom','tram','kite','owl','fern','lantern','harbour']` with `page=<1–5>`; `more(find)`: `GET https://api.openverse.org/v1/images/<find.meta.ovId>/related/`. Results with `mature === true` are dropped. Find: id `ov:<id>`, `url = foreign_landing_url`, `imageUrl = thumbnail || url`, `author = creator`, `attribution` as given, `licence`: `cc0` → `'CC0 1.0'`, `pdm` → `'Public Domain Mark 1.0'`, otherwise `'CC <LICENSE> <license_version>'`; why `['Openverse']`.
+
+Fixtures: `europeana/search.json` (item `id '/123/abc'`, `title ['A blue vase']`, `edmPreview`, `edmIsShownAt ['https://museum.example/vase']`, `dcDescription ['A vase from 1700.']`, `rights ['http://creativecommons.org/publicdomain/mark/1.0/']`, `dataProvider ['Example Museum']`). `openverse/token.json` (`{access_token 'TOK', token_type 'Bearer', expires_in 43200}`), `openverse/images.json` (`ov1` 'Red fox', `foreign_landing_url 'https://www.flickr.com/photos/x/1'`, `thumbnail`, `creator 'Ann'`, `license 'by'`, `license_version '2.0'`, `attribution '"Red fox" by Ann is licensed under CC BY 2.0.'`, `mature false`; `ov2` with `mature true`), `openverse/related.json` (one result `ov3`). Routes: token; `/related/` before `/v1/images/?`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const ov = { 'src:openverse': JSON.stringify({ client_id: 'ID', client_secret: 'SECRET' }) };
+test('europeana needs a key and sends it as a header', async () => {
+  const none = await adapterCtx(); assert.deepEqual(await europeana.search('vase', none.ctx), []); assert.equal(none.calls.length, 0);
+  const { ctx, calls } = await adapterCtx({ secrets: { 'src:europeana': 'EUKEY' } }); const [f] = await europeana.search('vase', ctx);
+  const u = new URL(calls[0].url);
+  assert.equal(calls[0].headers['x-api-key'], 'EUKEY'); assert.equal(u.searchParams.get('wskey'), null);
+  assert.equal(u.searchParams.get('reusability'), 'open'); assert.equal(u.searchParams.get('media'), 'true');
+  assert.equal(f.url, 'https://museum.example/vase'); assert.equal(f.attribution, 'Example Museum via Europeana');
+});
+test('openverse gets a token once and filters mature results', async () => {
+  const none = await adapterCtx(); assert.deepEqual(await openverse.search('fox', none.ctx), []);
+  const { ctx, calls } = await adapterCtx({ secrets: ov });
+  const out = await openverse.search('fox', ctx); await openverse.search('fox', ctx);
+  assert.equal(calls[0].method, 'POST'); assert.equal(calls[0].headers['content-type'], 'application/x-www-form-urlencoded');
+  assert.equal(calls[0].body, 'grant_type=client_credentials&client_id=ID&client_secret=SECRET');
+  assert.equal(calls.filter(c => c.url.includes('auth_tokens')).length, 1);
+  assert.equal(calls[1].headers.authorization, 'Bearer TOK'); assert.equal(new URL(calls[1].url).searchParams.get('mature'), 'false');
+  assert.deepEqual(out.map(f => f.id), ['ov:ov1']); assert.equal(out[0].licence, 'CC BY 2.0'); assert.equal(out[0].url, 'https://www.flickr.com/photos/x/1');
+});
+test('openverse more asks for related images', async () => {
+  const { ctx, calls } = await adapterCtx({ secrets: ov }); const [f] = await openverse.search('fox', ctx);
+  await openverse.more(f, ctx); assert.equal(new URL(calls.at(-1).url).pathname, '/v1/images/ov1/related/');
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-keyed.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement both adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-keyed.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/europeana.js src/core/sources/openverse.js src/core/sources/index.js tests/fixtures/http/europeana tests/fixtures/http/openverse tests/fixtures/routes.js tests/unit/src-keyed.test.js
+git commit -m "Add the Europeana and Openverse adapters"
+```
+
+### Task 18: Kagi Small Web, Kagi random and Wiby
+
+**Files:**
+- Create: `src/core/sources/kagi.js`, `src/core/sources/kagirandom.js`, `src/core/sources/wiby.js`, fixtures under `tests/fixtures/http/{kagi,kagirandom,wiby}/`
+- Modify: `src/core/sources/index.js`, `tests/fixtures/routes.js`
+- Test: `tests/unit/src-smallweb.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, the adapter table, `makeFind`, `isHttpUrl`, `siteOrigin`, `domainOf`.
+- Produces: the `kagi`, `kagirandom` and `wiby` adapters, and these `kagi.js` named exports:
+  - `KAGI_LISTS = {smallweb: 'https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt', smallyt: '…/smallyt.txt', smallcomic: '…/smallcomic.txt'}` (same folder).
+  - `parseKagiList(text, name) → Array<{url, title}>`: trims each line, drops empty lines and lines starting with `[` or `#`, and takes the first whitespace-separated token, which must pass `isHttpUrl`. For `smallyt` (lines look like `<feed url> # <name> <channel url>`) the find is the trailing channel URL with the name as title. For the others the find is `siteOrigin(token) + '/'` with `domainOf(token)` as title. Results are unique by URL.
+  - `loadKagiList(ctx, name) → Promise<Array<{url, title}>>`: cached in `ctx.cache` as `kagi:list:<name>` for 7 days.
+- Kagi `random`: picks a list with `ctx.rand` (`smallweb` below 0.8, `smallyt` below 0.9, else `smallcomic`), then up to 5 random entries. Domain-only card: no `imageUrl`; `title` from the parser; `kind 'video'` for `smallyt`, else `'site'`; tags `['web','essays']`, `['film']` for `smallyt` and `['comics']` for `smallcomic`; `description` = `'A small personal site from the Kagi Small Web list.'`, `'A small YouTube channel from the Kagi Small Web list.'` or `'An independent web comic from the Kagi Small Web list.'`; `attribution 'Kagi Small Web list (MIT)'`; why `['Kagi Small Web']`. `search` and `more` return `[]`.
+- Kagi random: `GET https://kagi.com/smallweb/api/random` (also its `probeUrl`) → `{url, title, author, domain, categories}`. Tags are the categories that are tag ids in `ctx.data.tags`, else `['web','essays']`; why `['Kagi Small Web: random']`.
+- Wiby: `search(q)`: `GET https://wiby.me/json/?q=<q>` → `[{URL, Title, Snippet}]`, why `['Wiby search']`; `random` returns `[]`; `probeUrl 'https://wiby.me/json/?q=games'`. Named export `WIBY_LEAP_URL = 'https://wiby.me/surprise/'` for the navigate-only **Wiby leap** button (Task 24).
+
+Fixtures: `kagi/smallweb.txt`:
+
+```
+[DEBUG] Cross-domain redirect: https://apply.example.com -> https://www.example.com/careers, following
+http://0x80.example/feed.xml
+https://blog.example.net/index.xml
+
+not a url
+https://www.blog.example.org/atom.xml
+```
+
+`kagi/smallyt.txt`: `https://www.youtube.com/feeds/videos.xml?channel_id=UCabc # Tom S https://www.youtube.com/channel/UCabc`. `kagi/smallcomic.txt`: `http://comic.example.com/feeds/atom`. `kagirandom/random.json`: `{url 'https://small.example.blog/post/1', title 'A small post', author 'Sam', domain 'small.example.blog', categories ['programming','retro','unknowncat']}`. `wiby/search.json`: `[{URL 'https://oldsite.example/', Title 'My old site', Snippet 'Hand coded since 1999.'}]`.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+test('parseKagiList drops junk lines and opens the site origin', () => {
+  assert.deepEqual(parseKagiList(read('kagi/smallweb.txt'), 'smallweb'), [
+    { url: 'http://0x80.example/', title: '0x80.example' },
+    { url: 'https://blog.example.net/', title: 'blog.example.net' },
+    { url: 'https://www.blog.example.org/', title: 'blog.example.org' }]);
+  assert.deepEqual(parseKagiList(read('kagi/smallyt.txt'), 'smallyt'), [{ url: 'https://www.youtube.com/channel/UCabc', title: 'Tom S' }]);
+});
+test('the Kagi lists are cached for a week', async () => {
+  const { ctx, calls } = await adapterCtx();
+  await loadKagiList(ctx, 'smallweb'); await loadKagiList(ctx, 'smallweb'); assert.equal(calls.length, 1);
+  assert.equal(calls[0].url, KAGI_LISTS.smallweb);
+  ctx.clock.advance(7 * 864e5 + 1); await loadKagiList(ctx, 'smallweb'); assert.equal(calls.length, 2);
+});
+test('kagi random gives domain-only cards', async () => {
+  const { ctx } = await adapterCtx(); const out = await kagi.random(ctx);
+  assert.ok(out.length >= 1 && out.length <= 5);
+  for (const f of out) { assert.equal(f.imageUrl, undefined); assert.equal(f.attribution, 'Kagi Small Web list (MIT)'); assert.deepEqual(f.why, ['Kagi Small Web']); }
+});
+test('kagirandom keeps known categories as tags', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await kagirandom.random(ctx);
+  assert.equal(calls[0].url, 'https://kagi.com/smallweb/api/random');
+  assert.equal(f.title, 'A small post'); assert.equal(f.author, 'Sam'); assert.deepEqual(f.tags, ['programming', 'retro']);
+});
+test('wiby searches JSON and leaps by navigation only', async () => {
+  const { ctx, calls } = await adapterCtx(); const [f] = await wiby.search('games', ctx);
+  assert.equal(calls[0].url, 'https://wiby.me/json/?q=games');
+  assert.equal(f.title, 'My old site'); assert.equal(f.description, 'Hand coded since 1999.'); assert.deepEqual(f.tags, ['oldweb', 'web']);
+  assert.deepEqual(await wiby.random(ctx), []); assert.equal(WIBY_LEAP_URL, 'https://wiby.me/surprise/');
+});
+```
+
+(`read(name)` reads `tests/fixtures/http/<name>` with `fs.readFileSync(…, 'utf8')`.)
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/src-smallweb.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
+
+- [ ] **Step 3: Write the fixtures and routes, then implement the three adapters**
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/src-smallweb.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/kagi.js src/core/sources/kagirandom.js src/core/sources/wiby.js src/core/sources/index.js tests/fixtures/http/kagi tests/fixtures/http/kagirandom tests/fixtures/http/wiby tests/fixtures/routes.js tests/unit/src-smallweb.test.js
+git commit -m "Add the Kagi Small Web, Kagi random and Wiby adapters"
+```
+
+### Task 19: Starter library adapter and the registry check
+
+**Files:**
+- Create: `src/core/sources/library.js`
+- Modify: `src/core/sources/index.js`, `tests/unit/sources-index.test.js`
+- Test: `tests/unit/src-library.test.js`
+
+**Interfaces:**
+- Consumes: `adapterCtx`, `similarLocal` (Task 7), `makeFind`, `tokenize`, `utcDate`.
+- Produces: the `library` adapter, which makes no network requests and reads `ctx.data.library.entries`. Only entries with `added ≤ utcDate(ctx.clock.now())` count. Entry to find: id `lib:<entry.id>`, `url`, `title`, `description = blurb`, `tags = entry.tags`, `kind`: `game` → `'game'`, `article` → `'article'`, otherwise `'site'`; `meta: {libraryKind: entry.kind, published: entry.added}`; why `['Starter library']`. `random` samples 10 entries with `ctx.rand` (partial Fisher–Yates). `search(q)` returns up to 20 entries whose title, blurb and tags contain every `tokenize(q)` word. `more(find)` is `similarLocal(find, <all entries as finds>, 10)`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/src-library.test.js
+const entries = [
+  { id: 'lib-0001', url: 'https://synth.example.com/', title: 'Tiny Synth', blurb: 'Make sounds with a tiny synth.', tags: ['music', 'toy'], kind: 'toy', added: '2026-11-01' },
+  { id: 'lib-0002', url: 'https://garden.example.com/', title: 'Pixel Garden', blurb: 'Grow a pixel garden.', tags: ['art', 'toy'], kind: 'game', added: '2026-11-01' },
+  { id: 'lib-0003', url: 'https://moth.example.com/', title: 'Moth Atlas', blurb: 'Pictures of moths.', tags: ['nature'], kind: 'site', added: '2026-11-01' },
+  { id: 'lib-0004', url: 'https://future.example.com/', title: 'Not Yet', blurb: 'Added later.', tags: ['toy'], kind: 'site', added: '2027-01-01' }];
+const data = { library: { v: 1, entries } };
+test('library random leaves out future entries and makes no requests', async () => {
+  const { ctx, calls } = await adapterCtx({ data }); const out = await library.random(ctx);
+  assert.deepEqual(out.map(f => f.id).sort(), ['lib:lib-0001', 'lib:lib-0002', 'lib:lib-0003']);
+  assert.equal(calls.length, 0);
+  const synth = out.find(f => f.id === 'lib:lib-0001');
+  assert.equal(synth.kind, 'site'); assert.equal(synth.meta.libraryKind, 'toy'); assert.deepEqual(synth.why, ['Starter library']);
+});
+test('library search and more', async () => {
+  const { ctx } = await adapterCtx({ data });
+  assert.deepEqual((await library.search('tiny synth', ctx)).map(f => f.title), ['Tiny Synth']);
+  const [synth] = await library.search('synth', ctx);
+  assert.deepEqual((await library.more(synth, ctx)).map(f => f.title), ['Pixel Garden']);
+});
+```
+
+```js
+// add to tests/unit/sources-index.test.js
+const TABLE = { wikipedia: ['open','none','mostly',10,true], commons: ['open','none','mostly',10,false], inat: ['open','none','mostly',60,true],
+  openlibrary: ['open','none','mostly',60,false], apod: ['open','demo','curated',2,true], marginalia: ['open','optional','mostly',20,false],
+  github: ['open','optional','mostly',10,false], hn: ['probe','none','mostly',60,false], aic: ['open','none','curated',60,true],
+  met: ['probe','none','curated',60,true], cleveland: ['probe','none','curated',60,true], nasaimages: ['probe','none','curated',30,false],
+  loc: ['probe','none','curated',10,false], smithsonian: ['probe','required','curated',30,true], europeana: ['open','required','mostly',30,false],
+  openverse: ['open','required','mostly',20,false], kagi: ['open','none','curated',6,true], kagirandom: ['probe','none','curated',20,true],
+  wiby: ['probe','none','curated',10,false], library: ['open','none','curated',600,true] };
+test('the registry matches the adapter table', () => {
+  for (const [id, [tier, key, safety, perMinute, fate]] of Object.entries(TABLE)) {
+    const a = getSource(id);
+    assert.deepEqual([a.tier, a.key, a.safety, a.rate.perMinute, a.fate], [tier, key, safety, perMinute, fate], id);
+    if (tier === 'probe') assert.match(a.probeUrl, /^https:\/\//, id);
+  }
+  for (const id of ['ia', 'vault', 'oldweb', 'itch']) assert.equal(getSource(id), undefined);
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node --test tests/unit/src-library.test.js tests/unit/sources-index.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `library.js`, and the registry test failing on `library`.
+
+- [ ] **Step 3: Implement the `library` adapter and add it to `ADAPTERS`**
+
+- [ ] **Step 4: Run them and see them pass**
+
+Run: `node --test tests/unit/src-library.test.js tests/unit/sources-index.test.js`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/library.js src/core/sources/index.js tests/unit/src-library.test.js tests/unit/sources-index.test.js
+git commit -m "Add the starter library adapter and check the registry"
+```
+
+### Task 20: Engine core
+
+**Files:**
+- Create: `src/core/engine.js`
+- Modify: `tests/unit/helpers/fixture-http.js` (add `engineFor`)
+- Test: `tests/unit/engine.test.js`
+
+**Interfaces:**
+- Consumes: `createSeen`, `createHistory` (Task 2), `DEFAULT_TASTE` (Task 3), `pickNext`, `eligible` (Task 4), `enabledSources`, `SOURCES` (Task 5), `runProbes` (Task 5), `fatePull` (Task 6), `createCollections` (Task 8), `createCache`, `normalizeUrl`, `hash64`, `domainOf`.
+- Produces: `createEngine({store, http, clock, rand, data, platform, settings, seen?, history?, collections?}) → Promise<Engine>`. `settings` may be an object or a function returning the live settings; it is read on every call. `seen`, `history` and `collections` are created from `store` when not passed. `Engine`:
+  - `next({mode}) → Promise<{find, branch, why}|{empty: true, reason}>`. Calls are serialised, so two at once never return the same find. Order: the history forward entry if Back was used (`branch 'history'`, why `'seen before'`); then the injected queue (`branch` = its origin, why `'search result'` or `'AI find'`); then by mode: `tuned` uses `pickNext`, `fate` uses `fatePull` over enabled `fate: true` sources (minus `safety 'mixed'` ones when `familyFilter` is on) with `settings.sources[id]?.fateWeight ?? 1` (`branch 'fate'`, why `'pure random'`), and `ai` serves the injected queue only. Each shown find is added to `seen` and `history` and emitted as `find`.
+  - `back() → Find|null` and `current() → Find|null` (from history).
+  - `feed(n = 30) → Promise<Find[]>`: up to `n` eligible pool finds in random order, each added to `seen` (not to history).
+  - `search(query) → Promise<Find[]>`: `search(query, ctx)` on every enabled source with `Promise.allSettled`, merged and de-duplicated by normalised URL, at most 30, then `inject(finds, 'search')`.
+  - `inject(finds, origin)`: `origin` is `'search'` or `'ai'`. It keeps the given order, drops finds that are seen, on a blocked domain, hidden-tagged, failing the Family filter or duplicated (in the batch or the queue), and removes tags that are not ids in `data.tags`.
+  - `taste() → Taste`, `setTaste(t)` (saves to the `taste` store under `'taste'` and emits `taste`), `on(event, fn) → unsubscribe` for `find`, `empty`, `error` (`{source, error}`, never shown) and `taste`; `pool() → Find[]`.
+  - Pool: unseen candidates from `random(ctx)` of enabled sources, kept between 20 and 50. A refill makes at most 3 source calls at once and stops after a round that adds nothing. `ctx = {http, rand, clock, cache: createCache(store, clock), settings, secrets: platform.secrets, data, platformName: platform.name}`. Probe-tier sources that are enabled are probed with `runProbes(…, platform.name)` in the background; until a result says `'ok'`, the web app leaves them out.
+  - Empty reasons (exact, exported as `EMPTY_REASONS`): `exhausted: 'You have seen everything we have right now. Turn on more sources in Settings, or try Fate.'`, `unreachable: "Can't reach any source right now. Check your connection and try again."` (when the last refill had every source call fail and the pool is empty), `aiEmpty: 'No search results waiting. Type a search to start.'`, and Fate's own reasons from Task 6.
+- Test helper `engineFor({entries, settings, transport, extraRoutes, only = ['library']}) → Promise<{engine, calls, store, ctx, platform}>`: builds `adapterCtx` with `data.library = {v: 1, entries}`, turns off every `SOURCES` id not in `only`, and uses a fake `platform` (`name 'pwa'`, the given `transport` or one that resolves `{status: 0}`, `secrets: ctx.secrets`, `caps.privilegedFetch false`, `persistStorage` that counts calls in `platform.persisted`).
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const lib = (n, extra = {}) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://s${i}.example.com/`, title: `Site ${i}`, blurb: `Blurb ${i}.`, tags: ['toy'], kind: 'site', added: '2026-11-01', ...extra }));
+const F = (t, tags = ['toy']) => makeFind({ source: 'library', kind: 'site', title: t, tags, safety: 'curated', url: `https://${t}.example.org/` });
+test('next never repeats and says when the pool is used up', async () => {
+  const { engine, calls } = await engineFor({ entries: lib(5) });
+  const titles = []; for (let i = 0; i < 5; i++) titles.push((await engine.next({ mode: 'tuned' })).find.title);
+  assert.equal(new Set(titles).size, 5);
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.exhausted });
+  assert.equal(calls.length, 0);
+});
+test('back returns the previous find and next walks forward again', async () => {
+  const { engine } = await engineFor({ entries: lib(5) });
+  const a = (await engine.next({ mode: 'tuned' })).find; const b = (await engine.next({ mode: 'tuned' })).find;
+  assert.equal(engine.back().id, a.id); assert.equal(engine.current().id, a.id);
+  const r = await engine.next({ mode: 'tuned' }); assert.equal(r.find.id, b.id); assert.equal(r.branch, 'history');
+});
+test('two concurrent next calls return different finds', async () => {
+  const { engine, store } = await engineFor({ entries: lib(5) });
+  const [x, y] = await Promise.all([engine.next({ mode: 'tuned' }), engine.next({ mode: 'tuned' })]);
+  assert.notEqual(x.find.id, y.find.id); assert.equal(await createSeen(store).count(), 2);
+});
+test('every source failing gives the unreachable message', async () => {
+  const { engine } = await engineFor({ entries: [], only: ['wikipedia'], extraRoutes: [{ match: /wikipedia/, file: 'probe/ok.json', status: 500 }] });
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.unreachable });
+});
+test('a failing source does not stop the others', async () => {
+  const { engine } = await engineFor({ entries: lib(2), only: ['library', 'wikipedia'], extraRoutes: [{ match: /wikipedia/, file: 'probe/ok.json', status: 500 }] });
+  assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
+});
+test('fate pulls at random and respects a zero weight', async () => {
+  const a = await engineFor({ entries: lib(3) });
+  const r = await a.engine.next({ mode: 'fate' }); assert.equal(r.branch, 'fate'); assert.equal(r.why, 'pure random');
+  const b = await engineFor({ entries: lib(3), settings: { sources: { library: { enabled: true, fateWeight: 0 } } } });
+  assert.deepEqual(await b.engine.next({ mode: 'fate' }), { empty: true, reason: 'No Fate sources are on. Turn some on in Settings → Sources.' });
+});
+test('inject drops seen, blocked, duplicate and unknown-tag finds', async () => {
+  const { engine } = await engineFor({ entries: lib(2) });
+  const shown = (await engine.next({ mode: 'tuned' })).find;
+  engine.setTaste({ ...engine.taste(), blockedDomains: ['b.example.org'] });
+  engine.inject([shown, F('b'), F('c'), F('c'), F('d', ['toy', 'nonsense'])], 'search');
+  const c = await engine.next({ mode: 'tuned' }); assert.equal(c.find.title, 'c'); assert.equal(c.branch, 'search'); assert.equal(c.why, 'search result');
+  const d = await engine.next({ mode: 'tuned' }); assert.equal(d.find.title, 'd'); assert.deepEqual(d.find.tags, ['toy']);
+  assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
+});
+test('AI mode serves only the injected queue', async () => {
+  const { engine } = await engineFor({ entries: lib(2) });
+  assert.deepEqual(await engine.next({ mode: 'ai' }), { empty: true, reason: EMPTY_REASONS.aiEmpty });
+  engine.inject([F('x')], 'ai'); const r = await engine.next({ mode: 'ai' });
+  assert.equal(r.find.title, 'x'); assert.equal(r.branch, 'ai'); assert.equal(r.why, 'AI find');
+});
+test('search asks every enabled source and queues the results', async () => {
+  const { engine } = await engineFor({ entries: [...lib(2), { ...lib(1)[0], id: 'lib-0099', url: 'https://synth.example.com/', title: 'Tiny Synth' }] });
+  assert.deepEqual((await engine.search('synth')).map(f => f.title), ['Tiny Synth']);
+  assert.equal((await engine.next({ mode: 'tuned' })).find.title, 'Tiny Synth');
+});
+test('feed gives batches of 30 unseen finds', async () => {
+  const { engine } = await engineFor({ entries: lib(35) });
+  const a = await engine.feed(); const b = await engine.feed();
+  assert.equal(a.length, 30); assert.equal(b.length, 5); assert.equal(new Set([...a, ...b].map(f => f.id)).size, 35);
+  assert.deepEqual(await engine.feed(), []);
+});
+test('find and empty events fire', async () => {
+  const { engine } = await engineFor({ entries: lib(1) }); const seenEvents = [];
+  engine.on('find', (r) => seenEvents.push(r.find.title)); engine.on('empty', (r) => seenEvents.push(r.reason));
+  await engine.next({ mode: 'tuned' }); await engine.next({ mode: 'tuned' });
+  assert.deepEqual(seenEvents, ['Site 0', EMPTY_REASONS.exhausted]);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/engine.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `src/core/engine.js`.
+
+- [ ] **Step 3: Add `engineFor` and implement the engine core**
+
+`pickNext` gets a sync `seenHas` that checks the hashes shown this session and the session's dead set; the pool itself is filtered through `await seen.has(url)` when candidates arrive. `recentDomains` is `history.recentDomains(10)`. `react` and `rabbit` come in Task 21; leave them out here.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/engine.test.js`
+Expected: PASS, 11 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/engine.js tests/unit/helpers/fixture-http.js tests/unit/engine.test.js
+git commit -m "Add the engine with the pool, modes, queue, search and feed"
+```
+
+### Task 21: Engine reactions, Rabbit Hole and link checks
+
+**Files:**
+- Modify: `src/core/engine.js`
+- Test: `tests/unit/engine-react.test.js`
+
+**Interfaces:**
+- Consumes: `applyReaction`, `describeChange` (Task 3), `createRabbitHole` (Task 7), `checkLive` (Task 11), `engineFor` (Task 20).
+- Produces, on `Engine`:
+  - `react(find, reaction, extra?) → Promise<{message, undo() → Promise<void>}>`. It applies `applyReaction`, saves the taste and emits `taste`. `undo()` restores the taste from before and reverses the side effect. Side effects and messages (exact):
+    - `like`, `dislike`, `lessTopic`, `neverSite`: `describeChange(change)`. `neverSite` also drops that domain from the pool and the queue.
+    - `save`: adds to `extra.collectionId ?? await collections.getCurrent()`; message `'Saved to <collection name>.'`; the first save of the session calls `platform.persistStorage()`.
+    - `broken`: writes `health['broken:<hash64(normalizeUrl(url))>'] = {t, url}` and hides the find for good (the engine loads these keys into its dead set at start); message `'Thanks. This find is hidden now.'`, or `'Thanks. ' + describeChange(change)` when `extra.blockDomain`.
+  - `rabbit`: `createRabbitHole({sources: () => <enabled adapters>, ctx, seenHas, pool: () => engine.pool()})`. While `rabbit.trail()` is not empty, `next()` serves `rabbit.next()` as `{find, branch: 'rabbit', why: 'rabbit hole'}`, or `{empty: true, reason: EMPTY_REASONS.rabbitDry}` with `rabbitDry: 'This Rabbit Hole has run dry. Climb out to stumble on.'`.
+  - Link checks: when `settings.checkLinks` is on, a find from `kagi` or `kagirandom`, or injected with origin `'ai'`, is passed to `checkLive(url, {transport: platform.transport, privileged: platform.caps.privilegedFetch})` before it is returned. A dead find goes into the session dead set and the next candidate is tried. With `checkLinks` off, `platform.transport` is never called.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+const lib = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://s${i}.example.com/`, title: `Site ${i}`, blurb: 'A toy.', tags: ['toy'], kind: 'site', added: '2026-11-01' }));
+const F = (t) => makeFind({ source: 'kagi', kind: 'site', title: t, tags: ['web'], safety: 'curated', url: `https://${t}.example.org/` });
+test('like explains itself and undo puts the taste back', async () => {
+  const { engine } = await engineFor({ entries: lib(3) }); const { find } = await engine.next({ mode: 'tuned' });
+  const r = await engine.react(find, 'like');
+  assert.equal(r.message, 'More toy from now on.'); assert.equal(engine.taste().tags.toy, 1); assert.equal(engine.taste().reactions, 1);
+  await r.undo(); assert.equal(engine.taste().tags.toy ?? 0, 0); assert.equal(engine.taste().reactions, 0);
+});
+test('save goes to the current collection and asks for persistent storage once', async () => {
+  const { engine, store, platform } = await engineFor({ entries: lib(3) }); const cols = createCollections(store, fakeClock(0));
+  const a = (await engine.next({ mode: 'tuned' })).find; const b = (await engine.next({ mode: 'tuned' })).find;
+  const r = await engine.react(a, 'save'); await engine.react(b, 'save');
+  assert.equal(r.message, 'Saved to Saved.'); assert.equal(platform.persisted, 1);
+  assert.deepEqual(await cols.has(a.id), ['saved']);
+  await r.undo(); assert.deepEqual(await cols.has(a.id), []);
+});
+test('never this site keeps that domain out', async () => {
+  const { engine } = await engineFor({ entries: [...lib(2), { ...lib(1)[0], id: 'lib-0050', url: 'https://s0.example.com/other' }] });
+  const { find } = await engine.next({ mode: 'tuned' });
+  assert.equal((await engine.react(find, 'neverSite')).message, `You won't see ${new URL(find.url).hostname} again.`);
+  for (let r = await engine.next({ mode: 'tuned' }); !r.empty; r = await engine.next({ mode: 'tuned' }))
+    assert.notEqual(new URL(r.find.url).hostname, new URL(find.url).hostname);
+});
+test('broken hides the find and records it in health', async () => {
+  const { engine, store } = await engineFor({ entries: lib(1) }); const { find } = await engine.next({ mode: 'tuned' });
+  assert.equal((await engine.react(find, 'broken')).message, 'Thanks. This find is hidden now.');
+  assert.ok(await store.get('health', 'broken:' + hash64(normalizeUrl(find.url))));
+});
+test('a Rabbit Hole serves similar finds until it runs dry', async () => {
+  const { engine } = await engineFor({ entries: lib(3) }); const { find } = await engine.next({ mode: 'tuned' });
+  engine.rabbit.start(find);
+  const r = await engine.next({ mode: 'tuned' }); assert.equal(r.branch, 'rabbit'); assert.equal(r.why, 'rabbit hole');
+  await engine.next({ mode: 'tuned' });
+  assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.rabbitDry });
+  engine.rabbit.climbOut(); assert.equal((await engine.next({ mode: 'tuned' })).empty, true);
+});
+test('AI and Kagi finds are link-checked before they are shown', async () => {
+  const asked = [];
+  const transport = { fetch: async (u) => { asked.push(u); if (u.includes('dead')) throw new TypeError('Failed to fetch'); return { status: 0 }; } };
+  const { engine } = await engineFor({ entries: lib(1), transport });
+  engine.inject([F('dead'), F('alive')], 'ai');
+  assert.equal((await engine.next({ mode: 'ai' })).find.title, 'alive');
+  assert.deepEqual(asked, ['https://dead.example.org/', 'https://alive.example.org/']);
+});
+test('with Check links off, nothing is contacted', async () => {
+  const asked = []; const transport = { fetch: async (u) => { asked.push(u); return { status: 0 }; } };
+  const { engine } = await engineFor({ entries: lib(1), transport, settings: { checkLinks: false } });
+  engine.inject([F('x')], 'ai'); await engine.next({ mode: 'ai' }); assert.deepEqual(asked, []);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/engine-react.test.js`
+Expected: FAIL with `TypeError: engine.react is not a function`.
+
+- [ ] **Step 3: Add `react`, `rabbit` and the link checks to `engine.js`**
+
+- [ ] **Step 4: Run both engine tests and see them pass**
+
+Run: `node --test tests/unit/engine.test.js tests/unit/engine-react.test.js`
+Expected: PASS, 18 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/engine.js tests/unit/engine-react.test.js
+git commit -m "Add reactions with undo, Rabbit Hole and link checks to the engine"
+```
+
 <!-- PLAN CONTINUES -->

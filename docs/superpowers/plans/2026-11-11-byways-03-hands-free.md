@@ -1406,4 +1406,392 @@ git add src/ui/handsfree-ui.js src/ui/boot.js src/platform/pwa.js src/ui/views/s
 git commit -m "Add the hands-free bar, help card and wiring"
 ```
 
-<!-- PLAN CONTINUES -->
+### Task 10: Voice settings, cloud opt-in and the first-run step
+
+**Files:**
+- Create: `src/ui/views/settings/voice.js`
+- Modify: `src/ui/handsfree-ui.js`, `src/ui/views/index.js`, `tests/e2e/helpers/fakes.js`
+- Test: `tests/e2e/settings-voice.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection` (`ui/views/settings/index.js`), `registerFirstRunStep` (`ui/firstrun.js`), `startHandsFree(app)` (Task 9), `platform.voice.probe/install`, `platform.tts.voices/speak`, `app.saveSettings(patch)`.
+- Produces (all in `handsfree-ui.js`, so `voice.js` imports them without a cycle):
+  - `VENDOR_NAMES = {google:'Google', apple:'Apple', microsoft:'Microsoft', mozilla:'Mozilla', android:'Android'}`;
+  - `describeEngine(status) → string`, with the copy below;
+  - `renderCloudOptIn(container, app, vendor, done(accepted:boolean))`.
+  - In `fakes.js`: `window.__utterances`, one `{text, voiceURI, rate, volume}` per `speak`, and `window.__recognizers` (instances constructed) and `window.__recStarts` (calls to `start`).
+
+`describeEngine` copy:
+
+| Status | Text |
+|---|---|
+| `web-local` | `Voice runs on this device.` |
+| `none`, `needsDownload` | `Voice can run on this device after a one-time download.` |
+| `web-cloud` | `Voice goes to <Vendor> to be recognised.` |
+| `native` | `Voice uses this phone's speech recognition.` |
+| `none`, vendor set | `Voice on this browser goes to <Vendor>. It stays off unless you turn on cloud voice.` |
+| `none`, no vendor | `No voice on this browser. Keys, touch and headset buttons still work.` |
+
+The opt-in screen: heading `Use <Vendor> cloud voice?`; text `On this browser, voice commands are sent to <Vendor> to be turned into text. Byways never stores your audio. You can turn this off at any time in Settings, Voice.`; buttons `Turn on cloud voice` (saves `voice.cloudOptIn: true`, then `done(true)`) and `Not now` (`done(false)`).
+
+The Voice section (`id:'voice'`, `label:'Voice'`, `order:30`), top to bottom:
+- `#voice-engine`: `describeEngine(await platform.voice.probe({allowCloud}))`.
+- `Download offline voice`, only when `needsDownload`. Its click calls `platform.voice.install()`, then probes again. When `install()` resolves `false`, it announces `The offline voice could not be downloaded.` assertively.
+- `Use <Vendor> cloud voice`, only for `kind:'none'` with a vendor and no opt-in. It shows the opt-in screen in place.
+- `Cloud voice (<Vendor>)`, a checkbox, only after opting in. Unchecking saves `cloudOptIn:false`.
+- A `Listening` fieldset of radios: `Automatic` (`auto`), `Always on while Byways is open` (`always`), `Push to talk (hold V)` (`push`), `Off` (`off`).
+- `Reading voice`, a select: `Automatic (on this device)` (value `''` saves `null`), then each voice name, with ` (online)` appended when it is not local.
+- `Speed` (range 0.5–2, step 0.1) and `Volume` (range 0–1, step 0.1).
+- `Test voice`, which speaks `This is how Byways sounds.` with the saved voice settings.
+- The line `Byways never stores your audio. A microphone grant applies to every page on iteatsthesalt.github.io.`
+
+The first-run step (`id:'handsfree'`, `order:30`): heading `Hands-free`; the text `Byways can read each find aloud, move on by itself and listen for commands such as "next" and "save it". Press Start once each time you open Byways.`; the engine line; `renderCloudOptIn` when the opt-in applies; `Download offline voice` when needed; and a `Start` button that calls `done()` and then `startHandsFree(app)` in the same click.
+
+- [ ] **Step 1: Write the failing e2e tests**
+
+```js
+const ANDROID = 'Mozilla/5.0 (Linux; Android 15; Pixel 9) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Mobile Safari/537.36';
+async function openVoice(page, opts) {
+  await mockNet(page); await installFakeSpeech(page, opts);
+  await page.goto('./#/stumble'); await skipFirstRun(page);
+  await page.goto('./#/settings/voice');
+}
+
+test('an on-device browser says so', async ({ page }) => {
+  await openVoice(page, { available: 'available' });
+  await expect(page.locator('#voice-engine')).toHaveText('Voice runs on this device.');
+});
+
+test('Download offline voice calls install from a click', async ({ page }) => {
+  await openVoice(page, { available: 'downloadable' });
+  await expect(page.locator('#voice-engine')).toHaveText('Voice can run on this device after a one-time download.');
+  await page.getByRole('button', { name: 'Download offline voice' }).click();
+  await expect(page.locator('#voice-engine')).toHaveText('Voice runs on this device.');
+});
+
+test.describe('on a cloud-only browser', () => {
+  test.use({ userAgent: ANDROID });
+
+  test('voice stays off until the opt-in that names the vendor', async ({ page }) => {
+    await openVoice(page, { available: null });
+    await expect(page.locator('#voice-engine')).toHaveText('Voice on this browser goes to Google. It stays off unless you turn on cloud voice.');
+    await page.getByRole('button', { name: 'Start' }).click();
+    expect(await page.evaluate(() => window.__recognizers)).toBe(0);
+    await page.getByRole('button', { name: 'Turn off hands-free' }).click();
+    await page.goto('./#/settings/voice');
+    await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
+    await expect(page.getByRole('heading', { name: 'Use Google cloud voice?' })).toBeVisible();
+    await expect(page.getByText('voice commands are sent to Google')).toBeVisible();
+    await page.getByRole('button', { name: 'Not now' }).click();
+    await expect(page.locator('#voice-engine')).toHaveText('Voice on this browser goes to Google. It stays off unless you turn on cloud voice.');
+    await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
+    await page.getByRole('button', { name: 'Turn on cloud voice' }).click();
+    await expect(page.locator('#voice-engine')).toHaveText('Voice goes to Google to be recognised.');
+    await page.reload();
+    await expect(page.getByRole('checkbox', { name: 'Cloud voice (Google)' })).toBeChecked();
+  });
+
+  test('Automatic means push to talk here', async ({ page }) => {
+    await openVoice(page, { available: null });
+    await page.getByRole('button', { name: 'Use Google cloud voice' }).click();
+    await page.getByRole('button', { name: 'Turn on cloud voice' }).click();
+    await page.getByRole('button', { name: 'Start' }).click();
+    await expect(page.locator('#hf-listening')).toHaveText('Hold V to talk');
+    expect(await page.evaluate(() => window.__recStarts)).toBe(0);
+    await page.keyboard.down('v');
+    await expect.poll(() => page.evaluate(() => window.__recStarts)).toBe(1);
+    await page.keyboard.up('v');
+  });
+});
+
+test('reading voice, speed and volume are saved and used', async ({ page }) => {
+  await openVoice(page);
+  await page.getByLabel('Reading voice').selectOption({ label: 'Online English (online)' });
+  await page.getByLabel('Speed').fill('1.5');
+  await page.getByLabel('Volume').fill('0.5');
+  await page.reload();
+  await page.getByRole('button', { name: 'Test voice' }).click();
+  await expect.poll(() => page.evaluate(() => window.__utterances.at(-1))).toEqual(
+    { text: 'This is how Byways sounds.', voiceURI: 'net-en', rate: 1.5, volume: 0.5 });
+});
+
+test('the first-run step explains hands-free and its Start starts it', async ({ page }) => {
+  await mockNet(page); await installFakeSpeech(page);
+  await page.goto('./#/stumble');
+  const heading = page.getByRole('heading', { name: 'Hands-free' });
+  while (!(await heading.isVisible())) await page.getByRole('button', { name: 'Skip' }).click();
+  await expect(page.getByText('Voice runs on this device.')).toBeVisible();
+  await page.getByRole('button', { name: 'Start' }).click();
+  await expect(page.locator('#hf-listening')).toHaveText('Listening');
+});
+```
+
+`skipFirstRun` is the same helper as in Task 9; copy it into this spec.
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-voice.spec.js`
+Expected: FAIL. The first test times out on `#voice-engine`.
+
+- [ ] **Step 3: Implement `voice.js`, the `handsfree-ui.js` additions, the fake counters and the import line in `views/index.js`**
+
+Every control has a visible `<label>`. Each change saves at once with `app.saveSettings({voice: {...}})`.
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-voice.spec.js tests/e2e/handsfree.spec.js`
+Expected: PASS, 6 and 11 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/settings/voice.js src/ui/handsfree-ui.js src/ui/views/index.js tests/e2e/helpers/fakes.js tests/e2e/settings-voice.spec.js
+git commit -m "Add voice settings, the cloud opt-in and the hands-free first-run step"
+```
+
+### Task 11: Accessibility settings and the vendored font
+
+**Files:**
+- Create: `src/ui/views/settings/access.js`
+- Create: `src/assets/fonts/atkinson-hyperlegible-latin-400-normal.woff2`, `src/assets/fonts/atkinson-hyperlegible-latin-700-normal.woff2`, `src/assets/fonts/OFL.txt`
+- Modify: `package.json`, `package-lock.json`, `src/ui/styles/app.css`, `src/ui/styles/themes.css`, `src/ui/views/index.js`
+- Test: `tests/unit/fonts.test.js`, `tests/e2e/settings-access.spec.js`
+
+**Interfaces:**
+- Consumes: `registerSettingsSection`, `applyAccessSettings(settings)` (`ui/theme.js`), `clampDwell` (Task 4), `app.saveSettings(patch)`.
+- Produces: the settings values `theme: 'contrast'` and `font: 'atkinson'` (besides `'system'`, and Plan 01's `'light'`/`'dark'`), and `motion: 'reduce'|'full'` (besides `'system'`).
+
+The Accessibility section (`id:'access'`, `label:'Accessibility'`, `order:40`). Each change saves and then calls `applyAccessSettings(app.getSettings())`.
+
+| Control | Setting |
+|---|---|
+| `Text size`, range 100–200 step 10, with an `<output>` showing `<n>%` | `textScale = n / 100` |
+| `Theme` select: `Match my device`, `Light`, `Dark`, `High contrast` | `theme`: `system`, `light`, `dark`, `contrast` |
+| `Easy-read font (Atkinson Hyperlegible)` checkbox | `font`: `atkinson` or `system` |
+| `Motion` select: `Match my device`, `Reduce motion`, `Full motion` | `motion`: `system`, `reduce`, `full` |
+| `Screen-reader mode` checkbox, hint `Byways stops reading aloud and sends text to your screen reader instead.` | `screenReaderMode` |
+| `Single-key shortcuts` checkbox | `singleKeyShortcuts` |
+| Fieldset `Lean-back`: `Seconds on each find` (number, 5–300, saved through `clampDwell` on `change`, the field then shows the clamped value) and `Wait for me` checkbox | `dwellSec`, `dwellWaitForMe` |
+| `Session length` select: `Off`, `15 minutes`, `30 minutes`, `45 minutes`, `60 minutes`, `90 minutes` | `sessionLengthMin`: `null`, 15, 30, 45, 60, 90 |
+| `Remind me after 45 minutes` checkbox | `exploringCue` |
+| `Let AI refill lean-back` checkbox | `leanBackAI` |
+
+CSS: `app.css` gets `@font-face { font-family: 'Atkinson Hyperlegible'; src: url('../../assets/fonts/atkinson-hyperlegible-latin-400-normal.woff2') format('woff2'); font-weight: 400; font-display: swap; }`, the same for 700, and `html[data-font="atkinson"] body { font-family: 'Atkinson Hyperlegible', system-ui, sans-serif; }`. `themes.css` gets an `html[data-theme="contrast"]` block that sets Plan 01's colour custom properties to background `#000000`, text `#ffffff`, links and focus ring `#ffff00`, and borders `#ffffff`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+// tests/unit/fonts.test.js
+import { readFile } from 'node:fs/promises';
+import { sha256Hex } from '../../src/core/util/hash.js';
+const FONTS = 'src/assets/fonts/', PKG = 'node_modules/@fontsource/atkinson-hyperlegible/';
+
+test('the font files are the pinned package files', async () => {
+  const pkg = JSON.parse(await readFile('package.json', 'utf8'));
+  assert.equal(pkg.devDependencies['@fontsource/atkinson-hyperlegible'], '5.3.0');
+  for (const w of ['400', '700']) {
+    const name = `atkinson-hyperlegible-latin-${w}-normal.woff2`;
+    assert.equal(await sha256Hex(await readFile(FONTS + name)), await sha256Hex(await readFile(PKG + 'files/' + name)));
+  }
+  assert.equal(await readFile(FONTS + 'OFL.txt', 'utf8'), await readFile(PKG + 'LICENSE', 'utf8'));
+  assert.match(await readFile(FONTS + 'OFL.txt', 'utf8'), /SIL Open Font License, Version 1\.1/);
+});
+
+test('app.css declares the font with swap', async () => {
+  const css = await readFile('src/ui/styles/app.css', 'utf8');
+  assert.match(css, /url\('\.\.\/\.\.\/assets\/fonts\/atkinson-hyperlegible-latin-400-normal\.woff2'\) format\('woff2'\)/);
+  assert.match(css, /font-display: swap/);
+  assert.match(css, /html\[data-font="atkinson"\]/);
+});
+
+// tests/e2e/settings-access.spec.js
+async function openAccess(page) {
+  await mockNet(page); await installFakeSpeech(page);
+  await page.goto('./#/stumble'); await skipFirstRun(page);
+  await page.goto('./#/settings/access');
+}
+const html = (page) => page.locator('html');
+
+test('text size, theme, font and motion apply and persist', async ({ page }) => {
+  await openAccess(page);
+  await page.getByLabel('Text size').fill('150');
+  await page.getByLabel('Theme').selectOption({ label: 'High contrast' });
+  await page.getByLabel('Easy-read font (Atkinson Hyperlegible)').check();
+  await page.getByLabel('Motion').selectOption({ label: 'Reduce motion' });
+  await page.reload();
+  expect(await page.evaluate(() => document.documentElement.style.getPropertyValue('--text-scale').trim())).toBe('1.5');
+  await expect(html(page)).toHaveAttribute('data-theme', 'contrast');
+  await expect(html(page)).toHaveAttribute('data-font', 'atkinson');
+  await expect(html(page)).toHaveAttribute('data-motion', 'reduce');
+  expect(await page.evaluate(() => getComputedStyle(document.body).backgroundColor)).toBe('rgb(0, 0, 0)');
+  expect(await page.evaluate(async () => (await document.fonts.load('16px "Atkinson Hyperlegible"')).length)).toBeGreaterThan(0);
+});
+
+test('the dwell is kept between 5 and 300 seconds', async ({ page }) => {
+  await openAccess(page);
+  const dwell = page.getByLabel('Seconds on each find');
+  await expect(dwell).toHaveValue('20');
+  await dwell.fill('3'); await dwell.blur();
+  await expect(dwell).toHaveValue('5');
+  await dwell.fill('1000'); await dwell.blur();
+  await expect(dwell).toHaveValue('300');
+  await page.reload();
+  await expect(page.getByLabel('Seconds on each find')).toHaveValue('300');
+  await expect(page.getByLabel('Let AI refill lean-back')).not.toBeChecked();
+});
+
+test('screen-reader mode silences read-aloud and uses the live region', async ({ page }) => {
+  await openAccess(page);
+  await page.getByLabel('Screen-reader mode').check();
+  await page.goto('./#/stumble');
+  await page.getByRole('button', { name: 'Start' }).click();
+  const t = await page.getByRole('main').getByRole('heading', { level: 2 }).first().textContent();
+  await expect.poll(() => page.evaluate((t) =>
+    window.__announcements.some(([id, x]) => id === 'live-polite' && x.startsWith(t)), t)).toBe(true);
+  expect(await page.evaluate(() => window.__spoken.length)).toBe(0);
+});
+
+test('single-key shortcuts can be turned off', async ({ page }) => {
+  await openAccess(page);
+  await page.getByLabel('Single-key shortcuts').uncheck();
+  await page.goto('./#/stumble');
+  const title = page.getByRole('main').getByRole('heading', { level: 2 }).first();
+  const t1 = await title.textContent();
+  await page.keyboard.press('Space');
+  await page.waitForTimeout(500);
+  await expect(title).toHaveText(t1);
+});
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `node --test tests/unit/fonts.test.js`
+Expected: FAIL with `undefined !== '5.3.0'` in the first test.
+
+- [ ] **Step 3: Add the package and copy the files**
+
+Run: `npm install --save-dev --save-exact @fontsource/atkinson-hyperlegible@5.3.0`
+Then copy the three files:
+`cp node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-400-normal.woff2 src/assets/fonts/`
+`cp node_modules/@fontsource/atkinson-hyperlegible/files/atkinson-hyperlegible-latin-700-normal.woff2 src/assets/fonts/`
+`cp node_modules/@fontsource/atkinson-hyperlegible/LICENSE src/assets/fonts/OFL.txt`
+
+- [ ] **Step 4: Implement `access.js`, the CSS and the import line in `views/index.js`**
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+Run: `node --test tests/unit/fonts.test.js`
+Expected: PASS, 2 tests.
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/settings-access.spec.js`
+Expected: PASS, 4 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add package.json package-lock.json src/assets/fonts src/ui/views/settings/access.js src/ui/styles/app.css src/ui/styles/themes.css src/ui/views/index.js tests/unit/fonts.test.js tests/e2e/settings-access.spec.js
+git commit -m "Add accessibility settings and the Atkinson Hyperlegible font"
+```
+
+### Task 12: axe checks on every view
+
+**Files:**
+- Modify: `package.json`, `package-lock.json`
+- Create: `tests/e2e/axe.spec.js`
+- Modify, only if axe flags them: the view or style file that renders each flagged node (from Plans 01–03)
+
+**Interfaces:**
+- Consumes: `mockNet`, `installFakeSpeech`; the routes and settings sections registered so far; `AxeBuilder` from `@axe-core/playwright`.
+- Produces: `tests/e2e/axe.spec.js`, with a `VIEWS` array at the top. Plans 04–06 append their routes (`#/daily`, `#/vault`, the Lab page) to it.
+
+- [ ] **Step 1: Write the failing test**
+
+```js
+import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
+import { mockNet } from './helpers/net.js';
+import { installFakeSpeech } from './helpers/fakes.js';
+
+const VIEWS = ['#/stumble', '#/feed', '#/saved', '#/settings'];
+
+async function serious(page) {
+  const { violations } = await new AxeBuilder({ page }).analyze();
+  return violations.filter((v) => v.impact === 'serious' || v.impact === 'critical')
+    .map((v) => `${v.id}: ${v.nodes.map((n) => n.target.join(' ')).join(', ')}`);
+}
+async function ready(page) {
+  await mockNet(page); await installFakeSpeech(page);
+  await page.goto('./#/stumble');
+}
+
+test('every first-run step', async ({ page }) => {
+  await ready(page);
+  const skip = page.getByRole('button', { name: 'Skip' });
+  while (await skip.isVisible()) { expect(await serious(page)).toEqual([]); await skip.click(); }
+});
+
+test('every view and settings section', async ({ page }) => {
+  await ready(page);
+  const skip = page.getByRole('button', { name: 'Skip' });
+  while (await skip.isVisible()) await skip.click();
+  await page.goto('./#/settings');
+  const sections = await page.locator('a[href^="#/settings/"]').evaluateAll((as) => as.map((a) => a.getAttribute('href')));
+  expect(sections).toEqual(expect.arrayContaining(['#/settings/voice', '#/settings/access']));
+  for (const hash of [...VIEWS, ...sections]) {
+    await page.goto('./' + hash);
+    await page.waitForLoadState('networkidle');
+    expect(await serious(page), hash).toEqual([]);
+  }
+});
+
+test('hands-free running, the help card and the high-contrast theme', async ({ page }) => {
+  await ready(page);
+  const skip = page.getByRole('button', { name: 'Skip' });
+  while (await skip.isVisible()) await skip.click();
+  await page.getByRole('button', { name: 'Start' }).click();
+  expect(await serious(page)).toEqual([]);
+  await page.keyboard.press('?');
+  expect(await serious(page)).toEqual([]);
+  await page.getByRole('button', { name: 'Close' }).click();
+  await page.goto('./#/settings/access');
+  await page.getByLabel('Theme').selectOption({ label: 'High contrast' });
+  await page.goto('./#/stumble');
+  expect(await serious(page)).toEqual([]);
+});
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/axe.spec.js`
+Expected: FAIL with `Cannot find package '@axe-core/playwright'`.
+
+- [ ] **Step 3: Add the package**
+
+Run: `npm install --save-dev --save-exact @axe-core/playwright@4.14.0`
+
+- [ ] **Step 4: Run it and fix what it finds**
+
+Run: `node tools/build.js --target pwa && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/axe.spec.js`
+Expected: PASS, 3 tests. If a test lists violations, fix each one in the file that renders the named node (a missing label, low contrast, a duplicate id, a button under 44 px) and run again. Never disable an axe rule.
+
+- [ ] **Step 5: Run the whole suite**
+
+Run: `npm test` and then `npm run e2e`
+Expected: PASS for both, with no unmocked requests reported.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add package.json package-lock.json tests/e2e/axe.spec.js
+git commit -m "Check every view with axe"
+```
+
+Before committing, also `git add` each file you changed in Step 4, by its exact path.
+
+---
+
+## Notes for later plans
+
+- Plan 04: the Vault's **Play** (an embed) and the play watchdog call `app.handsFree.pause()` when its state is `'active'`, so lean-back resumes only on an explicit resume (§6.5).
+- `voice/grammar.js`, `voice/listener.js`, `voice/reader.js` and `handsfree.js` take the engine, TTS and clock as parameters. The extension and Android plans supply their own `VoiceEngine` and `Tts`, map native error codes onto `VoiceErrorCode`, and reuse `installHandsFreeUi` unchanged.
+- `effectiveListenMode` already treats `{kind:'native', continuous:true}` as always-on, and `describeEngine` already has the `native` line.
+- `platform-shells.md`: Android WebView has no `speechSynthesis` and no Media Session, so Plan 08 must bridge native TTS and a native media session; the WebView mic grant is limited to `RESOURCE_AUDIO_CAPTURE` on the app's own origin.

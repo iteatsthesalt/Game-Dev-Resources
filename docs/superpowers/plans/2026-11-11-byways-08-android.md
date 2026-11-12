@@ -37,7 +37,7 @@
 1. **Hosts that only look local.** `http://192.168.1.5.nip.io`, `http://10.0.0.1@evil.com`, `http://2130706433`, `http://0x7f000001`, `http://[::ffff:8.8.8.8]` and a redirect from an approved LAN host to an unapproved one must all be refused, with no DNS lookup. Pinned by `deniesLookalikeHosts` (Task 3) and `blocksRedirectToUnapprovedHost` (Task 4).
 2. **Frames and origins at the bridge.** An Archive embed iframe, a page on another origin, the Lab origin, or a sub-frame of the app must never reach `BywaysNative`. Pinned by `gateRejectsOtherOriginsAndSubframes` (Task 5).
 3. **HTTP replies that are not plain 200s.** A 429 with `Retry-After`, a 204, a native network failure and an aborted request must reach `net/http.js` as a real `Response` or the same errors browser `fetch` gives, so the contract's retry logic still works. Pinned by `transport passes 429 and 204 through, maps failures and aborts` (Task 6).
-4. **Messy shared text.** Text shared from chat apps carries extra words, trailing punctuation, several links, or no link. Byways share links must import, other links must become a find, and text with no link must show a message instead of crashing. Pinned by `extractSharedLink handles real share text` (Task 6) and `share-in with no link says so` (Task 13).
+4. **Messy shared text.** Text shared from chat apps carries extra words, trailing punctuation, several links, or no link. Byways share links must import, other links must become a find, and text with no link must show a message instead of crashing. Pinned by `extractSharedLink handles real share text` (Task 6) and `share-in with no link says so` (Task 14).
 5. **Rotation and resizing.** Turning the phone or folding it must not reload the WebView and lose the current card or speech mid-sentence. Pinned by `activity keeps the WebView on rotation` (Task 2).
 
 ---
@@ -86,7 +86,7 @@ Web → native request: `{"id":"<string>","ch":"<channel>","op":"<op>","args":{�
 
 | Channel | Ops (args → result) | Events (data) |
 |---|---|---|
-| `app` | `hello` {} → `{versionName, versionCode, sdk, micConsent}`; `checkUpdate` {} → `{available, latest, url}`; `openExternal` {url} → `true`; `openSite` {url, title} → `true`; `closeSite` {} → `true` | `shared` {text}; `siteNext` {} |
+| `app` | `hello` {} → `{versionName, versionCode, sdk, micConsent}`; `checkUpdate` {} → `{available, latest, url}`; `openExternal` {url} → `true`; `openSite` {url, title} → `true`; `closeSite` {} → `true` | `shared` {text}; `siteNext` {}; `siteClosed` {} |
 | `fetch` | `request` {url, method, headers, body} → `{status, statusText, headers, body, url}`; `abort` {fetchId} → `true`; `approve` {host} → `boolean` | — |
 | `voice` | `probe` {allowCloud} → `VoiceStatus`; `install` {} → `boolean`; `start` {lang, phrases, allowCloud} → `true`; `stop` {} → `true` | `result` {text, final}; `state` {listening}; `error` {code} |
 | `tts` | `speak` {text, voiceURI, rate, volume} → `true` at the end of the utterance; `cancel` {} → `true`; `voices` {} → `[{uri, name, lang, local}]` | — |
@@ -368,7 +368,7 @@ Expected: FAIL to compile with `Unresolved reference 'FetchPolicy'`.
 
 - Parse with `java.net.URI`. A parse error or a missing host gives `bad-url`. Check the scheme first (lower-cased): `https` → `Allow`; anything but `http` → `scheme`.
 - For `http`: not `isLocalHost(host)` → `not-local`; host not in `approved` → `not-approved`; else `Allow`. Approval is per host, for any port.
-- `isLocalHost` never resolves DNS. It is true only for: `localhost`; an IPv4 literal of exactly four decimal parts, each 0–255, in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; the IPv6 literal `::1`, or one whose first group is `fc00`–`fdff`; a name ending in `.local` with at least one label of `[a-z0-9-]` before it and not ending in a digit-only label.
+- `isLocalHost` never resolves DNS. It is true only for: `localhost`; an IPv4 literal of exactly four decimal parts, each 0–255, in `127.0.0.0/8`, `10.0.0.0/8`, `172.16.0.0/12` or `192.168.0.0/16`; the IPv6 literal `::1`, or one whose first group is `fc00`–`fdff`; a name ending in `.local` with at least one label of `[a-z0-9-]` before it.
 
 - [ ] **Step 4: Run it to see it pass**
 
@@ -759,7 +759,7 @@ test('speak resolves only when native finishes', async () => {
   assert.deepEqual(port.last().args, { text: 'Hello.', voiceURI: null, rate: 1.2, volume: 1 });
   await tick(); assert.equal(done, false);
   port.reply(port.last().id, true); await s; assert.equal(done, true);
-  p.tts.cancel(); assert.deepEqual(port.last(), { id: String(Number(port.last().id)), ch: 'tts', op: 'cancel', args: {} });
+  p.tts.cancel(); assert.deepEqual([port.last().ch, port.last().op, port.last().args], ['tts', 'cancel', {}]);
 });
 test('media buttons call the handlers', () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win }); const calls = [];
@@ -813,8 +813,7 @@ class SpeechBridge(private val activity: ComponentActivity, private val emit: (e
 
 ```kotlin
 class SpeechErrorsTest {
-  @Test fun mapsEveryNativeCode() {
-    val r = SpeechRecognizer::class.java   // constants are inlined, so no Android runtime is needed
+  @Test fun mapsEveryNativeCode() {   // the constants are inlined at compile time, so no Android runtime is needed
     val table = mapOf(
       SpeechRecognizer.ERROR_NO_MATCH to "no-speech", SpeechRecognizer.ERROR_SPEECH_TIMEOUT to "no-speech",
       SpeechRecognizer.ERROR_RECOGNIZER_BUSY to "busy", SpeechRecognizer.ERROR_TOO_MANY_REQUESTS to "too-many-requests",
@@ -835,7 +834,7 @@ class SpeechErrorsTest {
 }
 ```
 
-Drop the unused `val r` line when writing it. Add to `tests/unit/android-shell.test.js`:
+Add to `tests/unit/android-shell.test.js`:
 
 ```js
 test('speech uses the spec extras and stops in onPause', () => {
@@ -1331,7 +1330,7 @@ Also add one test that loads the PWA build at `localhost:4321` without the fake 
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: FAIL. `boots…` fails on `fetch.request` only if Task 6 is wrong; the others fail with timeouts waiting for `Shared to Byways`, `Import`, the `back` result, the checkbox and **Check for updates**.
+Expected: FAIL. The share-in, Back, Settings, About and site-view `Next` tests time out waiting for `Shared to Byways`, `Import`, `That share had no link in it.`, the `back` result, the checkbox, **Check for updates** and the second `openSite`.
 
 - [ ] **Step 4: Implement `attach(app)` in `src/platform/android.js`**
 

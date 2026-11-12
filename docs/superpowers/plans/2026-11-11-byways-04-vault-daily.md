@@ -870,4 +870,393 @@ git commit -m "Add Vault Play with the watchdog and embed-broken marks"
 
 ---
 
+### Task 9: The Daily Fate view
+
+**Files:**
+- Create: `src/ui/views/daily.js`, `tests/fixtures/http/daily/daily-2026-11-11.json`
+- Modify: `src/ui/views/index.js` (add `import './daily.js';`), `tests/fixtures/routes.js`
+- Test: `tests/e2e/daily.spec.js`
+
+**Interfaces:**
+- Consumes: `loadDaily`, `backupDaily`, mappers (Task 3); `utcDate`, `nextUtcMidnight`; `mountPlayer`, `handleCardAction` (Tasks 7–8); `registerView`, `renderCard`, `announce`, `h`; `app.http`, `app.data.library`, `app.data.vaultStarter`, `app.platform.share`, `app.platform.secrets`, `app.store`, `app.clock`.
+- Produces: the `daily` route (`#/daily` and `#/daily/YYYY-MM-DD`).
+
+`daily-2026-11-11.json` is `{v: 1, date: '2026-11-11', picks: […]}` with `game` = `starterToFind` of the Whizz starter entry, `web` = `libraryEntryToFind` of `lib-0002`, and `wonder` = `wikiFeaturedToFind` of the fixture `tfa`. Add to `routes.js`: `/^https:\/\/en\.wikipedia\.org\/api\/rest_v1\/feed\/featured\/\d{4}\/\d{2}\/\d{2}$/` → `daily/wiki-featured.json`, and `/^https:\/\/api\.nasa\.gov\/planetary\/apod\?.*date=/` → `daily/apod.json`.
+
+- [ ] **Step 1: Write the failing e2e tests**
+
+`test.use({locale: 'en-US', timezoneId: 'America/New_York'})`. `beforeEach`: `mockNet(page)`; route `**/data/library.json` and `**/data/vault-starter.json` to the Task 3 fixtures; route `**/data/daily.json` to `daily-2026-11-11.json` unless a test overrides it; and add an init script that defines `navigator.share` as `async (d) => { window.__shared = d; }`. `afterEach` asserts no unmocked requests. `openView` is the Task 7 helper.
+
+```js
+const at = (page, iso) => page.clock.install({ time: new Date(iso) });
+test("shows today's three picks from daily.json", async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate');
+  await expect(page.getByRole('heading', { level: 2 })).toHaveText(['Game', 'Web', 'Wonder']);
+  for (const t of ['Picks for 2026-11-11 (UTC)', 'Whizz', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
+});
+test('shows the next rollover in local time', async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await expect(page.getByText('Next Daily Fate: 07:00 PM your time')).toBeVisible();
+});
+test('falls back to the backup pick with its label', async ({ page }) => {
+  await page.route('**/data/daily.json', (r) => r.fulfill({ status: 404, body: '' }));
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
+  for (const t of ['Comet Hopper', 'A Tiny Handmade Site', 'Ada Lovelace']) await expect(page.getByText(t).first()).toBeVisible();
+});
+test('rolls over at UTC midnight while open', async ({ page }) => {   // Review Focus 3
+  await at(page, '2026-11-11T23:59:50Z'); await openView(page, '#/daily');
+  await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
+  await page.clock.runFor(15000);
+  await expect(page.getByText('Picks for 2026-11-12 (UTC)')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
+  await expect(page.getByText('Moth Radio').first()).toBeVisible();
+});
+test("Share today's Fate shares spoiler-free text and the day link", async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await page.getByRole('button', { name: "Share today's Fate" }).click();
+  const shared = await page.evaluate(() => window.__shared);
+  assert.deepEqual(shared, { title: 'Byways Daily Fate', text: 'My Byways Daily Fate for 2026-11-11. No spoilers: open it to see the three picks.', url: 'http://localhost:4321/Game-Dev-Resources/byways/#/daily/2026-11-11' });
+});
+test("a past day's link shows that day's backup pick", async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily/2026-11-10');
+  await expect(page.getByText('Picks for 2026-11-10 (UTC)')).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate (backup pick)');
+  await expect(page.getByText(/Next Daily Fate/)).toHaveCount(0);
+});
+test('malformed and future day links show today', async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z');
+  for (const hash of ['#/daily/2026-13-45', '#/daily/2099-01-01', '#/daily/x']) {
+    await openView(page, hash);
+    await expect(page.getByText('Picks for 2026-11-11 (UTC)')).toBeVisible();
+  }
+});
+test('the streak counts days in a row and stays quiet on day one', async ({ page }) => {
+  await at(page, '2026-11-11T15:00:00Z'); await openView(page, '#/daily');
+  await expect(page.getByText(/in a row/)).toHaveCount(0);
+  await page.clock.setSystemTime(new Date('2026-11-12T15:00:00Z')); await page.reload(); await openView(page, '#/daily');
+  await expect(page.getByText('2 days in a row.')).toBeVisible();
+});
+```
+
+(`assert` is `node:assert/strict`.)
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/daily.spec.js`
+Expected: FAIL (no Daily Fate heading).
+
+- [ ] **Step 3: Implement `src/ui/views/daily.js`**
+
+- **Date.** Read it from `location.hash` (`#/daily/<date>`). Accept it only when it matches `/^\d{4}-\d{2}-\d{2}$/`, round-trips through `utcDate(Date.parse(date + 'T00:00:00Z'))`, and is not after today. Otherwise use today, `utcDate(app.clock.now())`.
+- **Loading.** `loadDaily({date, fetchDailyFile, backup})`. `fetchDailyFile` is `app.http.getJson(new URL('data/daily.json', document.baseURI).href, {source: 'pages'})`. `backup` is `backupDaily({date, library: app.data.library, vaultStarter: app.data.vaultStarter, fetchWikiFeatured, fetchApod})`. `fetchWikiFeatured(d)` gets `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD` with `{source: 'wikipedia', headers: {'Api-User-Agent': 'Byways/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)'}}` and returns `.tfa`. `fetchApod(d)` gets `https://api.nasa.gov/planetary/apod?api_key=<key>&date=<d>&thumbs=true` with `{source: 'apod'}`, where the key is `await app.platform.secrets.get('src:apod')` or `DEMO_KEY`.
+- **Page.** `h1` "Daily Fate", or "Daily Fate (backup pick)" when `backup` is true. Then the lines `Picks for <date> (UTC)` and, for a backup, "This is the backup pick. Friends on another version may see a different game or web pick." Then one `h2` section per pick: "Game", "Web" or "Wonder". Each has a list item with `renderCard` and a player slot, and its actions go to `handleCardAction` (Play uses `mountPlayer`).
+- **Rollover.** For today only, show `Next Daily Fate: <time> your time`, where `<time>` is `new Date(nextUtcMidnight(now)).toLocaleTimeString(undefined, {hour: '2-digit', minute: '2-digit'})`. When the hash carries no date, set a `setTimeout` for `nextUtcMidnight(now) − now + 1000` ms that renders the view again. `leave()` clears it.
+- **Share.** A button "Share today's Fate" calls `app.platform.share({title: 'Byways Daily Fate', text: 'My Byways Daily Fate for <date>. No spoilers: open it to see the three picks.', url: location.href.split('#')[0] + '#/daily/<date>'})`. Then it calls `announce('Link copied')` for `'copied'` and `announce('Shared')` for `'shared'`.
+- **Streak.** Keep the UTC dates of visits on today's view in `health` under `daily:visits` (unique, last 60). Count the run of consecutive days that ends today. When it is 2 or more, show `<n> days in a row.` Show no prompts and no reminders.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/daily.spec.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/views/daily.js src/ui/views/index.js tests/fixtures/routes.js tests/fixtures/http/daily/daily-2026-11-11.json tests/e2e/daily.spec.js
+git commit -m "Add the Daily Fate view with backup label, rollover and share"
+```
+
+---
+
+### Task 10: The link check and the build exclusion
+
+**Files:**
+- Create: `tools/linkcheck.js`
+- Modify: `tools/build.js` (add `excludeDeadLinks`, the `--linkcheck <file>` option, and a main-module guard if it has none)
+- Test: `tests/unit/linkcheck.test.js`, `tests/unit/build-linkcheck.test.js`
+
+**Interfaces:**
+- Consumes: `fakeFetch` (Task 1); the `library.json` and `linkcheck.json` shapes.
+- Produces: `USER_AGENT = 'Byways-data-job/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)'` and `checkLibrary({entries, fetch, previous = null, now, concurrency = 4, timeoutMs = 10000}) → Promise<{v:1, checkedAt, results}>` from `tools/linkcheck.js`; `excludeDeadLinks(library, linkcheck|null) → library` from `tools/build.js`. CLI: `node tools/linkcheck.js [--library src/data/library.json] [--previous <file>] [--out dist/pwa/data/linkcheck.json]`.
+
+- [ ] **Step 1: Write the failing tests**
+
+`run = (responder, previous) => checkLibrary({entries: [{id: 'lib-a', url: 'https://a.example/'}], fetch: fakeFetch([[/a\.example/, responder]]).fetch, previous, now: Date.UTC(2026, 10, 11, 0, 7)})`. `prev = (n) => ({v: 1, results: {'lib-a': {ok: false, status: 404, failStreak: n}}})`.
+
+```js
+test('a live link resets its fail streak', async () => {
+  assert.deepEqual((await run(() => ({ status: 200 }), prev(1))).results['lib-a'], { ok: true, status: 200, failStreak: 0 });
+});
+test('a dead link counts up its streak', async () => {
+  assert.deepEqual((await run(() => ({ status: 404 }), prev(1))).results['lib-a'], { ok: false, status: 404, failStreak: 2 });
+  assert.equal((await run(() => ({ status: 500 }))).results['lib-a'].failStreak, 1);
+  assert.deepEqual((await run(() => { throw new Error('ENOTFOUND'); })).results['lib-a'], { ok: false, status: 0, failStreak: 1 });
+});
+test('HEAD 405 retries with GET, and 401/403/429 do not count as dead', async () => {   // Review Focus 4
+  const methods = [];
+  const r = await run((url, init) => { methods.push(init.method); return { status: init.method === 'HEAD' ? 405 : 200 }; });
+  assert.deepEqual(methods, ['HEAD', 'GET']); assert.equal(r.results['lib-a'].ok, true);
+  for (const s of [401, 403, 429]) assert.deepEqual((await run(() => ({ status: s }), prev(1))).results['lib-a'], { ok: true, status: s, failStreak: 0 });
+});
+test('sends the descriptive User-Agent and stamps checkedAt', async () => {
+  const net = fakeFetch([[/a\.example/, () => ({ status: 200 })]]);
+  const r = await checkLibrary({ entries: [{ id: 'lib-a', url: 'https://a.example/' }], fetch: net.fetch, now: Date.UTC(2026, 10, 11, 0, 7) });
+  assert.equal(new Headers(net.calls[0].init.headers).get('user-agent'), USER_AGENT);
+  assert.equal(USER_AGENT, 'Byways-data-job/1.0 (+https://github.com/iteatsthesalt/Game-Dev-Resources)');
+  assert.equal(r.checkedAt, '2026-11-11T00:07:00.000Z');
+});
+// tests/unit/build-linkcheck.test.js
+test('excludeDeadLinks drops entries that failed two checks in a row', () => {
+  const lib = { v: 1, entries: [{ id: 'lib-a' }, { id: 'lib-b' }, { id: 'lib-c' }] };
+  const lc = { v: 1, results: { 'lib-a': { failStreak: 2 }, 'lib-b': { failStreak: 1 } } };
+  assert.deepEqual(excludeDeadLinks(lib, lc).entries.map((e) => e.id), ['lib-b', 'lib-c']);
+  assert.equal(excludeDeadLinks(lib, null), lib);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js`
+Expected: FAIL with "Cannot find module '…/tools/linkcheck.js'" and "excludeDeadLinks is not a function" (or the import error).
+
+- [ ] **Step 3: Implement `tools/linkcheck.js` and the `build.js` change**
+
+- `checkLibrary` sends `HEAD` with `redirect: 'follow'`, `headers: {'User-Agent': USER_AGENT}` and `signal: AbortSignal.timeout(timeoutMs)`. On 405 or 501 it repeats the request as `GET`. A link is dead on a network error or timeout (`status: 0`), on 404 or 410, and on any status of 500 or more. `ok` is `!dead`, and `failStreak` is 0 when ok, else the previous streak plus 1. It runs at most `concurrency` checks at once.
+- The CLI writes the result to `--out` and prints `Checked <n> links; <m> dead; <k> flagged for review (failStreak ≥ 2).`
+- `build.js --linkcheck <file>`: when the file exists and parses, every target's `data/library.json` is written through `excludeDeadLinks`, and the build prints `Left out <n> library entries that failed two link checks in a row.` A missing file changes nothing. Guard the CLI with `if (import.meta.url === pathToFileURL(process.argv[1]).href)` so that tests can import the module.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js`
+Expected: PASS, 5 tests. Then run `npm test`; expected: all unit tests pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/linkcheck.js tools/build.js tests/unit/linkcheck.test.js tests/unit/build-linkcheck.test.js
+git commit -m "Add the daily link check and leave out links that failed twice"
+```
+
+---
+
+### Task 11: The daily data job
+
+**Files:**
+- Create: `tools/data-job.js`, `tests/fixtures/http/datajob/smallweb.txt`, `tests/fixtures/http/datajob/webring.html`
+- Test: `tests/unit/data-job.test.js`
+
+**Interfaces:**
+- Consumes: `createHttp`, `createCache`, `openStore(memoryBackend())`, `mulberry32`, `fnv1a32`, `utcDate`, `makeFind`, `toPlainText`, `isHttpUrl`, `siteOrigin`, `domainOf`; `createIaClient` (Task 1); `VAULT_COLLECTIONS`, `gemQuery`, `gemScore`, `CURATED_COLLECTIONS`, `iaDocToFind`, `validateCollections` (Task 2); `dailySeed`, `wikiFeaturedToFind`, `apodToFind`, `libraryEntryToFind` (Task 3); `ITCH_FEEDS`, `parseItchRss` (Task 5); `USER_AGENT`, `checkLibrary` (Task 10).
+- Produces: `runDataJob({fetch, clock, date, outDir, srcDir = 'src/data', liveBase, apodKey = 'DEMO_KEY'}) → Promise<{written: string[], kept: string[], failed: string[]}>`. CLI: `node tools/data-job.js --out dist/pwa/data --live <Pages base URL> [--date YYYY-MM-DD]` (`npm run data`). The date defaults to today in UTC, and `apodKey` comes from `NASA_API_KEY` or `DEMO_KEY`.
+
+Fixtures: `smallweb.txt` has these lines: `[DEBUG] Cross-domain redirect from x`, `https://alpha.example/feed.xml`, `https://beta.example/rss`, `https://alpha.example/atom.xml`, `https://gamma.example/index.xml`, `not a url`. `webring.html` has six `<li data-lang="en" id="ring<n>"><a href="https://ring<n>.example/">ring<n></a></li>` lines for n = 1–6.
+
+- [ ] **Step 1: Write the failing tests**
+
+`job = (over) => runDataJob({fetch: net.fetch, clock: instantClock(Date.UTC(2026, 10, 11, 0, 7)), date: '2026-11-11', outDir: tmp, srcDir: 'tests/fixtures/http/daily', liveBase: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/', ...over})`, with `tmp` a fresh `fs.mkdtemp` folder per test. Default routes: the Task 7 archive.org routes, the Task 9 Wikipedia and APOD routes, `/itch\.io\/games/` → `itch/platform-web.xml`, `/raw\.githubusercontent\.com\/kagisearch/` → `datajob/smallweb.txt`, `/raw\.githubusercontent\.com\/XXIIVV/` → `datajob/webring.html`, `/neocities\.org/` → 404, `/\.example\//` → 200 and `/iteatsthesalt\.github\.io/` → 404. `read = (n) => JSON.parse(readFileSync(join(tmp, n), 'utf8'))`.
+
+```js
+test('writes the data files for a date with the main recipe', async () => {
+  const r = await job();
+  assert.deepEqual(r.written.sort(), ['daily.json', 'itch.json', 'linkcheck.json', 'vault-index.json', 'webrings.json']);
+  const d = read('daily.json');
+  assert.deepEqual([d.v, d.date, d.picks.map((p) => p.slot)], [1, '2026-11-11', ['game', 'web', 'wonder']]);
+  assert.deepEqual(d.picks.map((p) => p.find.title), ['Whizz', 'A Tiny Handmade Site', 'Night moth.jpg']);
+  const s = new URL(net.calls.find((c) => /rows=1&/.test(c.url)).url).searchParams;
+  assert.equal(s.get('q'), 'collection:(softwarelibrary_c64_games) AND mediatype:software AND downloads:[20 TO 3000] AND publicdate:[* TO 2026-11-11T00:00:00Z]');
+  assert.equal(s.get('page'), '92');
+  const vi = read('vault-index.json');
+  assert.equal(Object.keys(vi.collections).length, 15);
+  assert.equal(vi.collections.softwarelibrary_c64_games.gems[0].identifier, 'msdos_Tiny_Tunes_1992');
+  assert.equal(read('itch.json').feeds.length, 3);
+});
+test('2026-11-16 takes the web pick from the Kagi list and the wonder from APOD', async () => {
+  await job({ date: '2026-11-16' });
+  assert.deepEqual(read('daily.json').picks.map((p) => p.find.title).slice(1), ['alpha.example', 'Fixture Nebula']);
+  const apod = new URL(net.calls.find((c) => c.url.includes('api.nasa.gov')).url).searchParams;
+  assert.deepEqual([apod.get('date'), apod.get('api_key')], ['2026-11-16', 'DEMO_KEY']);
+});
+test('re-runs on the same date write the same daily.json', async () => {
+  await job(); const first = readFileSync(join(tmp, 'daily.json'), 'utf8');
+  await job(); assert.equal(readFileSync(join(tmp, 'daily.json'), 'utf8'), first);
+});
+test('every request carries the descriptive User-Agent', async () => {
+  await job();
+  for (const c of net.calls) assert.equal(new Headers(c.init.headers).get('user-agent'), USER_AGENT, c.url);
+});
+test('a failing step keeps the last good file from the live site', async () => {
+  // /itch\.io\/games/ throws; /byways\/data\/itch\.json$/ → itch/itch.json
+  const r = await job();
+  assert.deepEqual(read('itch.json'), JSON.parse(readFileSync('tests/fixtures/http/itch/itch.json', 'utf8')));
+  assert.deepEqual(r.kept, ['itch.json']);
+});
+test('a failing step with no live copy writes nothing and reports it', async () => {
+  // every archive.org responder throws
+  const r = await job();
+  assert.ok(!existsSync(join(tmp, 'vault-index.json')));
+  assert.ok(r.failed.includes('vault-index.json') && r.failed.includes('daily.json'));
+});
+test('the snapshot extras are dropped quietly when their lists cannot be read', async () => {
+  // /raw\.githubusercontent\.com\/XXIIVV/ → 500
+  const r = await job();
+  assert.ok(!existsSync(join(tmp, 'webrings.json')));
+  assert.ok(!r.failed.includes('webrings.json'));
+});
+test('the link check carries fail streaks from the live file', async () => {
+  // /paper-toy-garden\.example/ → 404; /byways\/data\/linkcheck\.json$/ → {v: 1, results: {'lib-0001': {ok: false, status: 404, failStreak: 1}}}
+  await job();
+  assert.equal(read('linkcheck.json').results['lib-0001'].failStreak, 2);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/data-job.test.js`
+Expected: FAIL with "Cannot find module '…/tools/data-job.js'".
+
+- [ ] **Step 3: Implement `tools/data-job.js`**
+
+Every request goes through one transport that adds `User-Agent: USER_AGENT` to the caller's headers. That transport feeds `createHttp`, then `createIaClient` with a memory-backed cache. Each output is built on its own:
+
+- **`daily.json`.** `rand = mulberry32(dailySeed(date))`. Draw `rCol, rOff, rWebSrc, rWebIdx, rWonder` in that order before any request.
+  - Game: `cols = [...VAULT_COLLECTIONS.verified].sort()`, `col = cols[floor(rCol · 4)]`, and `q = gemQuery(col, 1).q + ' AND publicdate:[* TO <date>T00:00:00Z]'`. Count it, take `offset = floor(rOff · min(N, 10000))`, fetch one doc (`rows: 1`, `page: offset + 1`, `sort: ['identifier asc']`) and map it with `iaDocToFind(doc, {kind: 'game'})`.
+  - Web: when `rWebSrc < 0.5`, the starter library (entries with `added ≤ date`, sorted by `id`) at `floor(rWebIdx · n)`, mapped with `libraryEntryToFind`. Otherwise use `https://raw.githubusercontent.com/kagisearch/smallweb/main/smallweb.txt`: keep the lines that pass `isHttpUrl`, map them to `siteOrigin`, dedupe and sort, then take `floor(rWebIdx · n)`. Build it with `makeFind({source: 'kagi', kind: 'site', url: origin + '/', title: domainOf(origin), description: 'A personal site from the Kagi Small Web list.', attribution: 'Kagi Small Web (MIT)', why: ['Kagi Small Web'], tags: [], safety: 'mostly'})`.
+  - Wonder: `rWonder < 1/3` → `wikiFeaturedToFind(feed.tfa)`. `rWonder < 2/3` → the picture of the day: `makeFind({source: 'commons', kind: 'image', title: image.title without 'File:', url: image.file_page, imageUrl: image.thumbnail.source, description: toPlainText(image.description.text), author: toPlainText(image.artist.text), licence: image.license.type, attribution: 'Wikimedia Commons', why: ['Wikimedia Commons: picture of the day'], safety: 'curated'})`. Otherwise `apodToFind` of `https://api.nasa.gov/planetary/apod?api_key=<apodKey>&date=<date>&thumbs=true`. The feed URL is `https://en.wikipedia.org/api/rest_v1/feed/featured/YYYY/MM/DD`.
+  - Any slot that throws or gives `null` fails the whole file.
+- **`itch.json`.** Fetch every `ITCH_FEEDS` URL as text and parse it with `parseItchRss`. A feed with no items fails the file. The output is `{v: 1, generatedAt, feeds: [{feed, items}]}`.
+- **`vault-index.json`.** Run `validateCollections(ia, cache)`. For each id, use `rand = mulberry32(fnv1a32('vault-index-' + date + '-' + id))` and count `gemQuery(id, 1).q`. Then fetch `gemQuery(id, 1 + floor(rand() · ceil(min(N, 10000) / 100)))`, sort the docs by `gemScore` (`curated: CURATED_COLLECTIONS`, `currentYear` from `date`), and keep the top 24 with the contract's gem fields. A collection that throws is left out. If none succeeds, the file fails.
+- **`linkcheck.json`.** `checkLibrary({entries: library.entries, fetch, previous, now: clock.now()})`, where `previous` is the live `data/linkcheck.json` (or `null`).
+- **Extras.** `webrings.json` = `{v: 1, generatedAt, ring: 'xxiivv', sites: [{url, title}]}` from `https://raw.githubusercontent.com/XXIIVV/webring/main/index.html`, matching `<li … id="<title>"…>` followed by its first `<a href="<url>">`. `neocities.json` = `{v: 1, generatedAt, sites: [{url}]}` from the unique `https://<name>.neocities.org/` links on `https://neocities.org/browse?sort_by=featured`. Each is written only with 5 or more sites. Otherwise it is skipped, and it is never reported as failed.
+- **Fallback.** When one of the four main files fails, fetch `<liveBase>data/<name>`. If it parses with `v === 1`, write it unchanged and add it to `kept`; otherwise add the name to `failed`. `generatedAt` and `checkedAt` come from `clock.now()`.
+- **CLI.** Print the three lists. When `GITHUB_STEP_SUMMARY` is set, append `## Byways data job (<date>)`, the lists and a "Flagged for review" list of library ids with `failStreak ≥ 2`. Always exit 0, so the deploy still runs.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/data-job.test.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/data-job.js tests/fixtures/http/datajob tests/unit/data-job.test.js
+git commit -m "Add the daily data job with live fallbacks"
+```
+
+---
+
+### Task 12: The live probe
+
+**Files:**
+- Create: `tools/probe-live.js`
+- Test: `tests/unit/probe-live.test.js`
+
+**Interfaces:**
+- Consumes: `SOURCES`; `PROVIDERS` from `src/core/ai/providers.js` through a dynamic `import()` (Plan 05 may not have run yet); `VAULT_COLLECTIONS` (Task 2); `IA_COLLECTIONS` (Task 4); `ITCH_FEEDS`, `parseItchRss` (Task 5); `USER_AGENT` (Task 10); `realClock`.
+- Produces: `PAGES_ORIGIN = 'https://iteatsthesalt.github.io'`; `buildTargets({sources, providers, vaultStarter}) → Array<{check: 'cors'|'framing'|'collection'|'item'|'endpoint', name, url, requestHeaders?}>`; `runLiveProbe({fetch, targets, clock = realClock}) → Promise<Array<{check, name, url, pass, detail}>>`; `toMarkdown(rows, {date}) → string`. CLI: `node tools/probe-live.js [--out probe-report.md]` (`npm run probe`).
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const SRC = { a: { id: 'a', tier: 'open', probeUrl: 'https://a.example/x' }, vault: { id: 'vault', tier: 'snapshot' }, itch: { id: 'itch', tier: 'privileged' } };
+const PROV = { anthropic: { id: 'anthropic', baseURL: 'https://api.anthropic.com/v1', modelsPath: '/models', auth: { header: 'x-api-key' } } };
+const T = buildTargets({ sources: SRC, providers: PROV, vaultStarter: { entries: [{ id: 'ia:msdos_Whizz_1994' }] } });
+const of = (c) => T.filter((t) => t.check === c);
+test('buildTargets covers sources, providers, framing, collections and endpoints', () => {
+  assert.ok(of('cors').some((t) => t.name === 'a' && t.url === 'https://a.example/x'));
+  assert.ok(of('cors').some((t) => t.name === 'itch' && t.url === ITCH_FEEDS[0].url));
+  assert.ok(!T.some((t) => t.name === 'vault'));
+  assert.ok(of('cors').some((t) => t.name === 'provider:anthropic' && t.url === 'https://api.anthropic.com/v1/models' && t.requestHeaders === 'x-api-key,content-type'));
+  assert.deepEqual(of('framing').map((t) => t.url), ['https://archive.org/embed/msdos_Scorched_Earth_1991', 'https://archive.org/embed/msdos_Whizz_1994']);
+  assert.equal(of('collection').length, 23); assert.equal(of('item').length, 1);
+  assert.ok(of('endpoint').some((t) => t.url === 'https://kagi.com/smallweb/api/random'));
+  assert.equal(of('endpoint').filter((t) => t.url.startsWith('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/')).length, 4);
+});
+let net;
+const probe = (targets, routes) => { net = fakeFetch(routes); return runLiveProbe({ fetch: net.fetch, targets, clock: instantClock() }); };
+const acao = (v) => ({ headers: v ? { 'access-control-allow-origin': v } : {} });
+const t = (check, name, url) => ({ check, name, url });
+test('CORS passes on ACAO * after a preflight sent with Origin', async () => {
+  const [row] = await probe([of('cors')[0]], [[/a\.example/, (u, i) => ({ status: i.method === 'OPTIONS' ? 204 : 200, ...acao('*') })]]);
+  assert.deepEqual([row.pass, row.detail], [true, 'preflight 204 ACAO=* ACAH=none; GET 200 ACAO=*']);
+  const h = new Headers(net.calls[0].init.headers);
+  assert.deepEqual([net.calls[0].init.method, h.get('origin'), h.get('access-control-request-method')], ['OPTIONS', PAGES_ORIGIN, 'GET']);
+});
+test('CORS fails without ACAO, and a provider 401 with ACAO passes', async () => {
+  const prov = of('cors').find((x) => x.name === 'provider:anthropic');
+  const rows = await probe([of('cors')[0], prov], [[/a\.example/, () => ({ status: 200 })], [/anthropic/, (u, i) => ({ status: i.method === 'OPTIONS' ? 204 : 401, ...acao(PAGES_ORIGIN) })]]);
+  assert.deepEqual(rows.map((r) => r.pass), [false, true]);
+});
+test('framing fails on X-Frame-Options SAMEORIGIN or a closed frame-ancestors', async () => {
+  const rows = await probe(['a', 'b', 'c'].map((id) => t('framing', id, 'https://archive.org/embed/' + id)), [
+    [/embed\/a$/, () => ({ headers: { 'x-frame-options': 'SAMEORIGIN' } })],
+    [/embed\/b$/, () => ({ headers: { 'content-security-policy': "frame-ancestors 'self' https://*.archive.org" } })],
+    [/embed\/c$/, () => ({})]]);
+  assert.deepEqual(rows.map((r) => r.pass), [false, false, true]);
+  assert.equal(rows[0].detail, 'X-Frame-Options=SAMEORIGIN; frame-ancestors=none');
+});
+test('collections need mediatype collection, and items need an identifier', async () => {
+  const m = (id) => 'https://archive.org/metadata/' + id + '/metadata';
+  const rows = await probe([t('collection', 'good', m('good')), t('collection', 'bad', m('bad')), t('item', 'x', m('x'))], [
+    [/good/, () => ({ body: { result: { mediatype: 'collection' } } })], [/bad/, () => ({ body: {} })], [/\/x\//, () => ({ body: { result: { identifier: 'x' } } })]]);
+  assert.deepEqual(rows.map((r) => r.pass), [true, false, true]);
+  assert.equal(rows[1].detail, 'mediatype=missing');
+});
+test('endpoints check the itch format, the Kagi JSON and ACAO on Pages files', async () => {
+  const pages = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/';
+  const urls = [ITCH_FEEDS[0].url, 'https://kagi.com/smallweb/api/random', pages + 'daily.json', pages + 'itch.json'];
+  const rows = await probe(urls.map((u) => t('endpoint', u, u)), [
+    [/itch\.io/, () => ({ body: readFixture('itch/platform-web.xml') })], [/kagi\.com/, () => ({ body: { url: 'https://x.example/' } })],
+    [/daily\.json/, () => ({ body: {}, ...acao('*') })], [/itch\.json/, () => ({ body: {} })]]);
+  assert.deepEqual(rows.map((r) => r.pass), [true, true, true, false]);
+});
+test('a network error fails the row', async () => {
+  const [row] = await probe([of('cors')[0]], [[/a\.example/, () => { throw new Error('ECONNRESET'); }]]);
+  assert.deepEqual([row.pass, row.detail], [false, 'network error: ECONNRESET']);
+});
+test('toMarkdown writes the report', () => {
+  const md = toMarkdown([{ check: 'cors', name: 'a', url: 'u', pass: true, detail: 'ok' }, { check: 'framing', name: 'b', url: 'v', pass: false, detail: 'x|y' }], { date: '2026-11-11' });
+  assert.equal(md, '# Byways live probe, 2026-11-11\n\n1 passed, 1 failed.\n\n| Check | Name | Result | Detail |\n|---|---|---|---|\n| cors | a | pass | ok |\n| framing | b | **FAIL** | x\\|y |\n');
+});
+```
+
+(`readFixture` comes from Task 1's helper file.)
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/probe-live.test.js`
+Expected: FAIL with "Cannot find module '…/tools/probe-live.js'".
+
+- [ ] **Step 3: Implement `tools/probe-live.js`**
+
+- **`buildTargets`.**
+  - CORS rows: each source with a `probeUrl` (`itch` uses `ITCH_FEEDS[0].url`, and `snapshot`/`navigate` tiers are skipped). Add `archive-metadata` (`https://archive.org/metadata/softwarelibrary_c64_games/metadata`) and `archive-img` (`https://archive.org/services/img/softwarelibrary_c64_games`).
+  - Provider rows: each provider with an https `baseURL`, at `baseURL` (trailing slash dropped) + `/` + `modelsPath` (leading slash dropped), with `requestHeaders` = `auth.header` lowercased + `,content-type`.
+  - Framing rows: `msdos_Scorched_Earth_1991` and the first Vault starter id.
+  - Collection rows: the verified, likely and `IA_COLLECTIONS` ids at `/metadata/<id>/metadata`. Item rows: every Vault starter id.
+  - Endpoint rows: `https://kagi.com/smallweb/api/random`, every `ITCH_FEEDS` URL, and `daily.json`, `itch.json`, `vault-index.json` and `library.json` under `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/`.
+- **`runLiveProbe`.** Every request sends `Origin: PAGES_ORIGIN` and `User-Agent: USER_AGENT`, and waits 1000 ms (`clock.setTimeout`) after any archive.org request.
+  - CORS: an `OPTIONS` preflight with `Access-Control-Request-Method: GET` (and `Access-Control-Request-Headers` when given), then a GET. It passes when the GET's `access-control-allow-origin` is `*` or `PAGES_ORIGIN`, whatever the status.
+  - Framing: it fails on an `X-Frame-Options` of DENY or SAMEORIGIN, or on a `frame-ancestors` that has neither `*` nor `PAGES_ORIGIN`.
+  - Collection: passes on `result.mediatype === 'collection'`. Item: passes on `result.identifier`.
+  - Endpoints: Kagi passes on a JSON `url` string; itch passes on at least one parsed item; Pages files pass on ACAO `*`.
+  - A thrown error gives `network error: <message>`.
+- **`toMarkdown`.** Escape `|` in details as `\|`.
+- **CLI.** Load `PROVIDERS` with `import('../src/core/ai/providers.js')`. If that fails, add one failing row `cors | providers | not built yet`. Write the report to `--out` and append it to `GITHUB_STEP_SUMMARY` when that is set. Always exit 0.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/probe-live.test.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tools/probe-live.js tests/unit/probe-live.test.js
+git commit -m "Add the live probe for CORS, framing, collections and endpoints"
+```
+
+---
+
 <!-- PLAN CONTINUES -->

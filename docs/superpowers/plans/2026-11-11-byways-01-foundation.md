@@ -25,6 +25,7 @@
 - Store names: `settings, taste, collections, history, seen, cache, aiCache, usage, health, keys` in one IndexedDB database, `byways`.
 - Requests never set `credentials: 'include'`. No test touches the real network: every non-`localhost:4321` request in e2e goes through `mockNet`.
 - **Contract fix:** on Node 22, `node --test tests/unit/` fails with "Cannot find module …/tests/unit". The `test` script therefore runs `node --test "tests/unit/**/*.test.js"` (Node expands the quoted glob). The overview's script table should be updated to match.
+- "`--check` fails if a build output is stale." Once `dist/` exists, run `npm run build` after a source change and before `npm test`.
 - Commands run from `Apps/Byways/`. Keep every command under 500 characters with at most 10 statement separators.
 
 ## Review Focus
@@ -250,7 +251,7 @@ Parse with `new URL(String(u).trim())` inside try/catch. Keep only `http:`/`http
 
 - [ ] **Step 4: Implement `src/core/util/text.js`**
 
-`toPlainText`: when `globalThis.DOMParser` exists, return the collapsed `body.textContent` of `parseFromString(html,'text/html')`. Otherwise remove `<script>…</script>` and `<style>…</style>` blocks, replace `br`, `p`, `div`, `li`, `tr` and `h1`–`h6` tags with a space, remove other tags, decode the named entities `&amp; &lt; &gt; &quot; &#39; &nbsp;` and numeric entities (code point 0, surrogates or above `0x10FFFF` become `�`; unparseable ones stay as written), then collapse whitespace and trim. `firstSentence`: text up to the first `.`, `!` or `?` that is followed by whitespace or the end. `truncate`: work on `Array.from(text)`; when longer than `max`, keep `max - 1` code points, `trimEnd()`, and add `…`. `tokenize`: `text.toLowerCase().match(/\p{L}+/gu)`, keep length ≥ 3, drop `STOP_WORDS`. `STOP_WORDS` is exactly:
+`toPlainText`: when `globalThis.DOMParser` exists, parse with `parseFromString(html, 'text/html')`, remove every `script`, `style` and `template` element, and return the collapsed, trimmed `body.textContent`. Otherwise remove `<script>…</script>` and `<style>…</style>` blocks, replace `br`, `p`, `div`, `li`, `tr` and `h1`–`h6` tags with a space, remove other tags, decode the named entities `&amp; &lt; &gt; &quot; &#39; &nbsp;` and numeric entities (code point 0, surrogates or above `0x10FFFF` become `�`; unparseable ones stay as written), then collapse whitespace and trim. `firstSentence`: text up to the first `.`, `!` or `?` that is followed by whitespace or the end. `truncate`: work on `Array.from(text)`; when longer than `max`, keep `max - 1` code points, `trimEnd()`, and add `…`. `tokenize`: `text.toLowerCase().match(/\p{L}+/gu)`, keep length ≥ 3, drop `STOP_WORDS`. `STOP_WORDS` is exactly:
 
 `the and for are but not you all any can had her his was one our out has have this that with from they will would there their what about which when your into than then them these those were been also its who how why more some such only over very just`
 
@@ -960,7 +961,7 @@ Expected: FAIL with `Cannot find module` for `tools/build.js`.
 
 - [ ] **Step 5: Implement `tools/build.js`**
 
-`build` empties each output folder of the chosen target and writes `build.json` = `{id, builtAt: now.toISOString()}`. For `pwa`, it copies `src/core`, `src/ui`, `src/platform`, `src/data`, `src/assets`, and `src/versions.json` and `src/lab` when they exist, to the same paths under `dist/pwa/`. It copies `index.html`, `manifest.webmanifest` and `sw.js` from `shells/pwa/`. In `sw.js` it replaces `'__BUILD_ID__'` with `JSON.stringify(id)` and `["__PRECACHE__"]` with the JSON list: `'./'` plus every output file as `./<path>`, sorted, leaving out `sw.js`, `build.json` and anything under `lab/` or `vendor/`. `extension` and `android` write an empty output folder and `build.json` until Plan 07/08 adds files. `all` runs the three. The CLI `--check` builds `all` into `fs.mkdtemp(join(os.tmpdir(), 'byways-check-'))`. It then runs `runChecks({srcDir: 'src', outputs, extraHtml: ['shells/pwa/landing/index.html']})` and `findStale(tmp, APP_ROOT, all output dirs)`, prints each problem, and exits 1 when there are any. Otherwise it prints `check passed`. `APP_ROOT` is the folder above `tools/`.
+`build` empties each output folder of the chosen target and writes `build.json` = `{id, builtAt: now.toISOString()}`. For `pwa`, it copies `src/core`, `src/ui`, `src/platform`, `src/data`, `src/assets`, and `src/versions.json` and `src/lab` when they exist, to the same paths under `dist/pwa/`. It copies `index.html`, `manifest.webmanifest` and `sw.js` from `shells/pwa/`. In `sw.js` it replaces `'__BUILD_ID__'` with `JSON.stringify(id)` and `["__PRECACHE__"]` with the JSON list: `'./'` plus every output file as `./<path>`, sorted, leaving out `sw.js`, `build.json` and anything under `lab/` or `vendor/`. `extension` and `android` write an empty output folder and `build.json` until Plan 07/08 adds files. `all` runs the three. The CLI `--check` builds `all` into `fs.mkdtemp(join(os.tmpdir(), 'byways-check-'))`. It then runs `runChecks({srcDir: 'src', outputs, extraHtml: ['shells/pwa/landing/index.html']})` and `findStale(tmp, APP_ROOT, all output dirs)`, prints each problem, and exits 1 when there are any. Otherwise it prints `check passed`. `APP_ROOT` is the folder above `tools/`. As in `serve.js`, the CLI runs only when the file is run directly, so tests can import `build`.
 
 - [ ] **Step 6: Run it and see it pass**
 
@@ -1406,4 +1407,197 @@ git add src/ui/firstrun.js src/ui/boot.js tests/e2e/firstrun.spec.js
 git commit -m "Add the first-run registry with the Welcome step"
 ```
 
-<!-- PLAN CONTINUES -->
+### Task 14: Service worker and the update toast
+
+**Files:**
+- Modify: `shells/pwa/sw.js` (add the handlers below the Task 9 constants)
+- Modify: `src/ui/boot.js` (pass the real `onUpdate` to `registerServiceWorker`)
+- Test: `tests/e2e/sw.spec.js`
+
+**Interfaces:**
+- Consumes: `registerServiceWorker` (Task 7), `showToast` (Task 11), the stamped `BUILD_ID` and `PRECACHE` (Task 9).
+- Produces: the cache name `byways-<id>`; the message `{type: 'skip-waiting'}`; `UPDATE_MESSAGE = 'Update available, reload'` in `boot.js`.
+
+- [ ] **Step 1: Write the failing spec** `tests/e2e/sw.spec.js`
+
+```js
+test.use({ serviceWorkers: 'allow' });
+const swr = fileURLToPath(new URL('../../dist/pwa/data/swr-test.json', import.meta.url));
+test.afterAll(() => rmSync(swr, { force: true }));
+async function controlled(page) {
+  await gotoApp(page);
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await page.reload(); await page.waitForFunction(() => !!navigator.serviceWorker.controller);
+}
+test('precaches the shell under byways-<build id>', async ({ page }) => {
+  await controlled(page);
+  const { id } = await (await page.request.get('build.json')).json();
+  expect(await page.evaluate(async name => {
+    const c = await caches.open(name);
+    return [await caches.keys(), !!(await c.match('./index.html')), !!(await c.match('./ui/boot.js'))];
+  }, `byways-${id}`)).toEqual([[`byways-${id}`], true, true]);
+});
+test('reloads offline from the cache', async ({ page, context }) => {
+  await controlled(page); await context.setOffline(true); await page.reload();
+  await expect(page.getByRole('navigation', { name: 'Main' })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await context.setOffline(false);
+});
+test('data files are stale-while-revalidate', async ({ page }) => {
+  writeFileSync(swr, '{"n":1}'); await controlled(page);
+  const get = () => page.evaluate(() => fetch('data/swr-test.json').then(r => r.json()));
+  expect(await get()).toEqual({ n: 1 });
+  writeFileSync(swr, '{"n":2}');
+  expect(await get()).toEqual({ n: 1 });
+  await expect.poll(get).toEqual({ n: 2 });
+});
+```
+
+`page.route` cannot see service worker requests, so this spec makes only same-origin requests. The spec imports `rmSync` and `writeFileSync` from `node:fs` and `fileURLToPath` from `node:url`.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/sw.spec.js`
+Expected: FAIL: `caches.keys()` returns `[]`, because `sw.js` has no install handler yet.
+
+- [ ] **Step 3: Implement the handlers in `shells/pwa/sw.js`**
+
+- `install`: `event.waitUntil(caches.open(CACHE).then(c => c.addAll(PRECACHE)))`. It does not call `skipWaiting`.
+- `activate`: delete every cache whose name starts with `byways-` and is not `CACHE`, then `self.clients.claim()`.
+- `message`: `{type: 'skip-waiting'}` calls `self.skipWaiting()`.
+- `fetch`: ignore non-GET and cross-origin requests (no `respondWith`, so Archive thumbnails and source APIs are never cached). For a path matching `/\/data\/[^/]+\.json$/`, use stale-while-revalidate: answer from the cache when it has the file, and always fetch, putting ok responses in the cache inside `event.waitUntil`. For `request.mode === 'navigate'`, answer with the cached `./index.html` (resolved against `self.registration.scope`), else the network. For everything else, use the cache first, then the network.
+
+- [ ] **Step 4: Wire the update toast in `boot.js`**
+
+`onUpdate(reg)` calls `showToast(UPDATE_MESSAGE, {ms: 0, action: {label: 'Reload', run}})`. `run` sets a `reloading` flag and posts `{type: 'skip-waiting'}` to `reg.waiting`. A `controllerchange` listener calls `location.reload()` only when `reloading` is set, because `clients.claim()` on a first install also fires `controllerchange`.
+
+- [ ] **Step 5: Run it and see it pass**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/sw.spec.js`
+Expected: PASS, 3 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/pwa/sw.js src/ui/boot.js tests/e2e/sw.spec.js
+git commit -m "Add the offline service worker and the update toast"
+```
+
+### Task 15: CI and Pages workflows
+
+**Files:**
+- Create: `.github/workflows/byways.yml`, `.github/workflows/pages.yml` (repo root)
+- Test: `tests/unit/workflows.test.js`
+
+**Interfaces:**
+- Consumes: the npm scripts (Task 1), `tools/build.js --target pwa` (Task 9).
+- Produces: the `web` job in `byways.yml` (Plan 08 adds an `android` job), and the `build` and `deploy` jobs in `pages.yml` (Plan 04 adds the schedule and the data step between the build and the assembly).
+
+- [ ] **Step 1: Write the failing test** `tests/unit/workflows.test.js`
+
+```js
+const wf = name => readFileSync(new URL(`../../../../.github/workflows/${name}`, import.meta.url), 'utf8');
+test('byways.yml runs the web job on Byways changes', () => {
+  const y = wf('byways.yml');
+  for (const s of ["paths: ['Apps/Byways/**', '.github/workflows/byways.yml']", 'runs-on: ubuntu-24.04', 'working-directory: Apps/Byways',
+    'actions/checkout@v7', 'actions/setup-node@v4', 'node-version: 22', 'run: npm ci', 'run: npm test',
+    'run: npx playwright install --with-deps chromium', 'run: npm run e2e', 'actions/upload-artifact@v7',
+    'Apps/Byways/dist/chrome', 'Apps/Byways/dist/firefox']) assert.ok(y.includes(s), s);
+  assert.equal((y.match(/paths:/g) || []).length, 2);
+});
+test('pages.yml builds, assembles _site and deploys', () => {
+  const y = wf('pages.yml');
+  for (const s of ['branches: [main]', 'workflow_dispatch:', 'contents: read', 'node tools/build.js --target pwa',
+    'cp shells/pwa/landing/index.html "$RUNNER_TEMP/_site/index.html"', 'cp -R dist/pwa/. "$RUNNER_TEMP/_site/byways/"',
+    'actions/configure-pages@v6', 'actions/upload-pages-artifact@v5', 'path: ${{ runner.temp }}/_site',
+    'pages: write', 'id-token: write', 'name: github-pages', 'group: pages', 'actions/deploy-pages@v5']) assert.ok(y.includes(s), s);
+  assert.equal(y.includes('schedule:'), false);
+});
+```
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: FAIL with `ENOENT` for `byways.yml`.
+
+- [ ] **Step 3: Write `.github/workflows/byways.yml`**
+
+`name: Byways`. On `push` and `pull_request`, each with `paths: ['Apps/Byways/**', '.github/workflows/byways.yml']`. Top-level `permissions: contents: read`. Job `web` on `ubuntu-24.04` with `defaults.run.working-directory: Apps/Byways` runs these steps: `actions/checkout@v7`; `actions/setup-node@v4` with `node-version: 22`, `cache: npm` and `cache-dependency-path: Apps/Byways/package-lock.json`; `run: npm ci`; `run: npm test`; `run: npx playwright install --with-deps chromium`; `run: npm run e2e`; then `actions/upload-artifact@v7` with `name: byways-extensions` and a multi-line `path` of `Apps/Byways/dist/chrome` and `Apps/Byways/dist/firefox`. Artifact paths are relative to the workspace, not to `working-directory`.
+
+- [ ] **Step 4: Write `.github/workflows/pages.yml`**
+
+`name: Pages`. Triggers are `push` with `branches: [main]` and `paths: ['Apps/Byways/**', '.github/workflows/pages.yml']`, plus `workflow_dispatch:`. Top-level `permissions: contents: read` and `concurrency: { group: pages, cancel-in-progress: false }`. Job `build` (`ubuntu-24.04`, working directory `Apps/Byways`) runs: checkout@v7; setup-node@v4 (22, npm cache); `npm ci`; `node tools/build.js --target pwa`; `mkdir -p "$RUNNER_TEMP/_site/byways"`; `cp shells/pwa/landing/index.html "$RUNNER_TEMP/_site/index.html"`; `cp -R dist/pwa/. "$RUNNER_TEMP/_site/byways/"`; `actions/configure-pages@v6`; and `actions/upload-pages-artifact@v5` with `path: ${{ runner.temp }}/_site`. Job `deploy` has `needs: build`, runs on `ubuntu-24.04`, and sets `permissions: { pages: write, id-token: write }` and `environment: { name: github-pages, url: ${{ steps.deployment.outputs.page_url }} }`. Its one step is `id: deployment`, `uses: actions/deploy-pages@v5`.
+
+Add to `README.md` the §17.5 one-time step, verbatim: "In **Settings → Pages → Build and deployment**, set **Source** to **GitHub Actions**."
+
+- [ ] **Step 5: Run it and see it pass**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: PASS, 2 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add ../../.github/workflows/byways.yml ../../.github/workflows/pages.yml tests/unit/workflows.test.js README.md
+git commit -m "Add the Byways CI and Pages deploy workflows"
+```
+
+### Task 16: End-to-end smoke test
+
+**Files:**
+- Test: `tests/e2e/smoke.spec.js`
+
+**Interfaces:**
+- Consumes: `test`, `expect` (Task 10), `expectNoSeriousA11y` (Task 10), the shell (Tasks 9–14).
+- Produces: nothing new. This is the Plan 01 acceptance test.
+
+- [ ] **Step 1: Write the smoke spec** `tests/e2e/smoke.spec.js`
+
+```js
+const PRIVACY = 'There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on.';
+test('the app loads at the base path, welcomes, routes and passes axe', async ({ page }) => {
+  await page.goto('./');
+  await expect(page).toHaveURL('http://localhost:4321/Game-Dev-Resources/byways/');
+  await expect(page.getByRole('heading', { level: 1, name: 'Welcome to Byways' })).toBeVisible();
+  await expect(page.getByText(PRIVACY, { exact: true })).toBeVisible();
+  await expectNoSeriousA11y(page);
+  await page.getByRole('button', { name: 'Continue' }).click();
+  const nav = page.getByRole('navigation', { name: 'Main' });
+  for (const label of ['Stumble', 'Feed', 'Daily Fate', 'Vault', 'Saved', 'Settings']) {
+    await nav.getByRole('link', { name: label }).click();
+    await expect(page.getByRole('heading', { level: 1, name: label })).toBeVisible();
+    await expect(nav.getByRole('link', { name: label })).toHaveAttribute('aria-current', 'page');
+    await expectNoSeriousA11y(page);
+  }
+  for (const theme of ['dark', 'high-contrast']) {
+    await page.evaluate(t => { document.documentElement.dataset.theme = t; }, theme);
+    await expectNoSeriousA11y(page);
+  }
+  await expect(page.locator('#live-polite')).toHaveAttribute('role', 'status');
+  await expect(page.locator('#live-assertive')).toHaveAttribute('aria-live', 'assertive');
+});
+test('the manifest is served with relative scope', async ({ page }) => {
+  const r = await page.request.get('manifest.webmanifest');
+  expect(r.headers()['content-type']).toBe('application/manifest+json');
+  expect(await r.json()).toMatchObject({ start_url: './', scope: './' });
+});
+```
+
+The `test` fixture from `helpers/net.js` fails either test on any unmocked request, CSP violation or page error.
+
+- [ ] **Step 2: Run it**
+
+Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/smoke.spec.js`
+Expected: PASS, 2 tests. If axe reports a colour-contrast issue in one theme, fix the token in `themes.css` (Task 9), not the test.
+
+- [ ] **Step 3: Run the whole suite**
+
+Run: `npm test`, then `npm run e2e`
+Expected: `check passed`, every unit test passes, and every e2e spec passes with 0 retries.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add tests/e2e/smoke.spec.js
+git commit -m "Add the Plan 01 end-to-end smoke test"
+```

@@ -127,10 +127,10 @@ Apps/Byways/
                app/src/main/kotlin/io/github/iteatsthesalt/byways/*.kt
                app/src/test/kotlin/io/github/iteatsthesalt/byways/*.kt
   tools/
-    build.js  check.js  serve.js  vendor.js  data-job.js  linkcheck.js  probe-live.js  gpl-sources.js
+    build.js  check.js  serve.js  icons.js  vendor.js  data-job.js  linkcheck.js  probe-live.js  gpl-sources.js
   tests/
-    unit/**/*.test.js
-    e2e/playwright.config.js  e2e/helpers/net.js  e2e/helpers/fakes.js  e2e/**/*.spec.js
+    unit/**/*.test.js  unit/helpers/fake-dom.js
+    e2e/playwright.config.js  e2e/helpers/net.js  e2e/helpers/app.js  e2e/helpers/axe.js  e2e/helpers/fakes.js  e2e/**/*.spec.js
     fixtures/http/**        recorded responses (JSON, text)
     fixtures/routes.js      URL pattern → fixture file
     fixtures/files/**       tiny test files for the Lab (generated, open licence)
@@ -188,9 +188,21 @@ The `Platform`, `VoiceEngine`, `Tts` and `SecretStore` shapes below are the only
  *  @property {SecretStore} secrets
  *  @property {{privilegedFetch:boolean, localNetworkHttp:boolean, inAppSiteView:boolean, labHref:string, framesArchive:boolean}} caps
  *  @property {() => Promise<boolean>} persistStorage
+ *  @property {(origins:string[]) => Promise<boolean>} requestOrigins
+ *    Called from a button when the user adds a custom endpoint or a model on the local network.
+ *    PWA: resolves true (CORS decides). Extension: permissions.request for those origins.
+ *    Android: the native per-host approval dialog for http hosts (https needs none).
+ *  @property {(app:App) => Promise<void>} [attach]   optional; boot calls `await platform.attach?.(app)` once the app is built
+ *  @property {{version():Promise<{versionName:string, versionCode:number, sdk:number, micConsent:boolean}>,
+ *              checkUpdate():Promise<{available:boolean, latest:string|null, url:string|null}>,
+ *              openExternal(url:string):Promise<void>}} [app]   Android only
  */
 /** @typedef {{get(id:string):Promise<string|null>, set(id:string, value:string):Promise<void>, delete(id:string):Promise<void>, list():Promise<string[]>}} SecretStore */
 /** @typedef {{kind:'web-local'|'web-cloud'|'native'|'none', vendor:'google'|'apple'|'microsoft'|'mozilla'|'android'|null, needsDownload:boolean, continuous:boolean, reason:string|null}} VoiceStatus */
+/*  VoiceStatus convention for a recogniser that only works in the cloud, before the user opts in:
+ *    probe({allowCloud:false}) → {kind:'none', vendor:<the vendor>, reason:'cloud-only', …}.
+ *  The UI shows the vendor-named opt-in for exactly this case. After opt-in, probe({allowCloud:true})
+ *  returns 'web-cloud' (web) or 'native' with that vendor (Android). */
 /** @typedef {'no-speech'|'aborted'|'audio-capture'|'network'|'not-allowed'|'service-not-allowed'|'language-not-supported'|'phrases-not-supported'|'busy'|'too-many-requests'} VoiceErrorCode */
 /** @typedef {Object} VoiceEngine
  *  @property {(opts:{allowCloud:boolean}) => Promise<VoiceStatus>} probe
@@ -340,6 +352,25 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   The hands-free controller and the AI plan use only these three.
 
 - `data` has the keys `tags`, `library`, `vaultStarter` and `geocities`, and each later plan adds its own.
+- `dataUrl(file) → string` (Plan 01) gives the address of a generated data file such as `daily.json`, `itch.json` or `vault-index.json`. In the PWA it is relative (`data/<file>`). In the extension and Android it is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>`, because those builds do not include the generated files.
+
+**UI conventions (Plan 01):**
+
+- The router renders each view's `title` as the page's `<h1>`.
+- **Orders.**
+  - Settings sections: `taste` 10, `sources` 20, `voice` 30, `access` 40, `ai` 50, `data` 60, `privacy` 70, `about` 90, `licenses` 100.
+  - First-run steps: `welcome` 10, `interests` 20, `handsfree` 30, `ai` 40.
+- **Settings section ids and owners:**
+
+  | Sections | Plan |
+  |---|---|
+  | `about` (version, build id, links) | 01 creates; 08 adds the update check |
+  | `taste`, `sources`, `data`, `privacy` | 02 |
+  | `voice` and `access` (which holds the dwell time and, on Android, Plan 08's **Go straight to the site** checkbox) | 03 |
+  | `ai` | 05 |
+  | `licenses` | 06 |
+
+- **Android Back.** Plan 08 dispatches a cancelable `CustomEvent('byways:back')` on `window`. An open panel, menu or help card closes itself and calls `preventDefault()`. If nothing does, the router goes back.
 
 **UI registries (Plan 01).** Later plans add screens only through these, and each plan adds its import lines to `ui/views/index.js`:
 
@@ -359,6 +390,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   leanBackAI: false, aiInRabbitHole: false,
   singleKeyShortcuts: true, screenReaderMode: false,
   motion: 'system', theme: 'system', font: 'system', textScale: 1,   // textScale 1–2
+    // motion 'system' | 'reduced' | 'full'; theme 'system' | 'light' | 'dark' | 'high-contrast'; font 'system' | 'atkinson'
   goStraightToSite: false,                       // Android site view only
   sessionLengthMin: null, exploringCue: false,
   voice: { mode: 'auto', cloudOptIn: false, voiceURI: null, rate: 1, volume: 1, lang: 'en-US' },
@@ -458,6 +490,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - `search(query) → Promise<Find[]>`;
   - `inject(finds, origin)`;
   - `taste() → Taste`, `setTaste(t)` and `on(event, fn)`, with events `find`, `empty`, `error` and `taste`.
+  - `find` fires every time the engine hands a find to the UI: from `next`, `back`, `rabbit.next`, and the first find after `inject`.
 
 **`ui/components/card.js`**
 
@@ -483,7 +516,13 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 **`handsfree.js`**
 
-- `createHandsFree({engine, listener, reader, clock, getSettings, ui}) → {start(), pause(), resume(), stop(), suspend(), wake(), input(), command(id, arg), get state}`.
+- `createHandsFree({engine, listener, reader, clock, getSettings, ui, leanBack = true}) → {start(), pause(), resume(), stop(), suspend(), wake(), input(), command(id, arg), get state}`.
+- With `leanBack: false`, Start gives voice commands and read-aloud but no auto-advance. The extension side panel uses this, because §6.5 lists only the Byways tab as a lean-back surface in the extension.
+- Plan 03 also gives the controller:
+  - the option `getListenMode() → 'always'|'push'|'off'`, and accepts `listener: null` when there is no voice;
+  - the methods `showing(find)`, `hold(reason)`, `release(reason)`, `talk(on)`, `setMuted(on)` and `get muted`;
+  - the `ui` hooks `act(id)`, which presses the visible card button for that command, and `recap(shown)`.
+- **Recap.** It appears when a session ends (Stop, or the session length runs out), and only if something was saved in that session.
 - The states are `'idle'|'active'|'paused'|'suspended'`.
 - `ui = {show(result), announce(text, opts), setState(state), countdown(secondsLeft|null), openHelp(), navigate(route), search(text)}`.
 
@@ -573,11 +612,68 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 
 ### Plans 06–08
 
-These plans define their own runner, background and bridge protocols inside the plan. They use only the `Platform` shape above to talk to the shared UI.
+These plans define their own runner, background and bridge protocols inside the plan. They use only the `Platform` shape above to talk to the shared UI. Their entry points:
+
+- **Plan 07 (extension):**
+  - `platform/extension.js`: `createExtensionPlatform({ext, win, surface: 'background'|'panel'|'tab'}) → Platform`.
+  - `shells/extension/bg.js`: `createBackground({ext, getEngine, resetEngine})`.
+  - `tools/build.js`: `buildExtension(browser, outDir, opts)`.
+  - `tools/check.js`: `checkExtensionDir(dir, browser)`.
+  - Extension pages use `EXT_PAGE_CSP`, which is the web app CSP with `connect-src 'self' https: http:`.
+  - `mockNet` and `unmocked` also accept a `BrowserContext`.
+- **Plan 08 (Android):**
+  - `platform/android.js`: `createAndroidPlatform({bridge, base, win}) → Platform`, including `app` and `attach`.
+  - `labSaveFile(name, blob, win)`, which the Lab's storage panel uses on Android.
+  - The build writes the entry `assets/www/android-boot.js`.
+  - The test helper `installFakeAndroidBridge(page, opts)` lives in `fakes.js`.
+
+### Settings → Privacy (Plan 02 owns it)
+
+Plan 02 creates `ui/views/settings/privacy.js` with the whole text. No other plan edits it. The text holds:
+
+- the §15.1 network table and the "no Byways server, no analytics" lines;
+- the voice-vendor note (§6.2) and the shared-origin microphone note;
+- the key advice (§12.8);
+- the Lab limit in the web app (§11.2).
+
+### Plan 06: Lab
+
+**`tools/vendor.js`**
+
+- It exports:
+  - `VENDOR_PACKAGES(versions) → Array<{name, version, dir, files}>`;
+  - `LICENCE_NOTES`: an object of `{name, licence, source, note?}` entries, keyed by npm name plus `'seabios'`, `'atkinson'` and `'byways'`. This is the one licence table, used by the Licenses screen, `THIRD_PARTY_NOTICES.md` and Plan 09;
+  - `vendor({root, fetchImpl}) → Promise<manifest>`, which writes `vendor/manifest.json`;
+  - `labOutputs(target) → Array<{from, to}>`;
+  - `buildLicenses({versions, target}) → {v:1, components}`, written as `licenses.json` at each output's app root.
+- Vendored files live in `vendor/<npm name>@<version>/`.
+- `npm test` and `npm run e2e` need `vendor/`, and the build stops with `vendor/ is missing. Run npm run vendor first.` CI runs `npm run vendor` after `npm ci`.
+
+**Stopping the Lab.** The Lab opens with `rel=noopener`. App and Lab talk over `BroadcastChannel('byways-lab')`:
+
+- Lab → app: `{type:'running', on:boolean}`;
+- app → Lab: `{type:'stop'}`.
+
+`ui/handsfree-ui.js` gains `connectLab({channel, handsFree, announce}) → {get running, stopLab(), close()}`. The channel is same-origin only, so the extension (which opens the hosted Lab) and Android (where the Lab has its own origin) rely on the visible **Exit** button.
+
+**Lab CSP.** The Lab pages extend the web app CSP. On top of the global Lab additions:
+
+- `lab/index.html` adds `'self'` to `frame-src`, so it can frame its runner pages;
+- `dos.html` and `console.html` add `blob:` to `connect-src`;
+- `flash.html` may add `style-src 'unsafe-inline'`, but only if its e2e test shows Ruffle needs it.
+
+**Other Lab facts:**
+
+- **Android layout:** `assets/lab/{lab/**, vendor/**, versions.json}`. Nothing Lab-related goes in `assets/www`.
+- **Licenses screen:** a settings section with `id:'licenses'` and `order:100`.
+- **Service worker:** the `byways-vendor` cache holds same-origin GETs under `vendor/` and is never deleted on activate.
+- **Test files:** `tests/fixtures/files/make.js` generates the tiny Lab test files.
 
 ### Version numbers and Android signing (Plan 08 creates; Plan 09 uses)
 
 **Version numbers.** `shells/android/gradle.properties` holds `byways.versionName=<x.y.z>` and `byways.versionCode=<x*10000 + y*100 + z>`. `app/build.gradle.kts` reads both with `providers.gradleProperty(...)`. The versionName must equal `package.json` `version` and the `version` in both extension manifests.
+
+No environment variable sets the version. The release APK asset is named `byways-<version>.apk`, and a debug build is named `byways-<version>-debug.apk`. Android's update check picks the first `.apk` asset of the newest `byways-v*` release.
 
 **Release signing.** `app/build.gradle.kts` sets up a release `signingConfig` only when `BYWAYS_KEYSTORE_PATH` is set. It reads that keystore file with `KEYSTORE_PASSWORD`, `KEY_ALIAS` and `KEY_PASSWORD`. The release workflow decodes the `KEYSTORE_BASE64` secret into a file and exports `BYWAYS_KEYSTORE_PATH`. Without it, only debug builds are signed.
 
@@ -595,9 +691,9 @@ These plans define their own runner, background and bridge protocols inside the 
   - `fetchSources(targets, {fetch, outDir, writeFile}) → Promise<Result[]>`;
   - `sourcesManifest(results) → string`, which writes `SOURCES.txt`;
   - `parseRepoUrl(url) → string|null`;
-  - `codeloadUrl(repo, ref) → string`;
-  - `CORE_LICENCES`, which maps each core id to its licence name. Plan 06's Licenses screen may read it.
-- Each Release attaches source archives for every vendored emulator component and core, plus SeaBIOS at the ref v86 used.
+  - `codeloadUrl(repo, ref) → string`.
+- It takes its component list from `VENDOR_PACKAGES` and its licences from `LICENCE_NOTES`, both in `tools/vendor.js`. There is no second licence table.
+- Each Release attaches source archives for every vendored emulator component and core, whatever the licence, plus SeaBIOS at the ref v86 used.
 
 ## Data file shapes
 
@@ -656,6 +752,8 @@ These plans define their own runner, background and bridge protocols inside the 
 - checks that the manifests parse;
 - checks that `src/data/*.json` follow the shapes above.
 
+**Icons (Plan 01):** `node tools/icons.js` renders `src/assets/icons/icon.svg` to `icon-192.png`, `icon-512.png` and `maskable-512.png` with Playwright's Chromium. The PNGs are committed, and the web manifest lists all four icons.
+
 **Serve:** `node tools/serve.js --root dist/pwa --base /Game-Dev-Resources/byways/ --port 4321`. It serves the build with correct MIME types, including `application/wasm`.
 
 **npm scripts:**
@@ -664,7 +762,7 @@ These plans define their own runner, background and bridge protocols inside the 
 |---|---|
 | `build` | `node tools/build.js --target all` |
 | `check` | `node tools/build.js --check` |
-| `test` | `node tools/build.js --check && node --test tests/unit/` |
+| `test` | `node tools/build.js --check && node --test "tests/unit/**/*.test.js"` (the bare folder form fails on Node 22.23) |
 | `e2e` | `node tools/build.js --target all && playwright test -c tests/e2e/playwright.config.js` |
 | `vendor` | `node tools/vendor.js` |
 | `data` | `node tools/data-job.js` |
@@ -679,6 +777,17 @@ These plans define their own runner, background and bridge protocols inside the 
   - a fake `speechSynthesis` that records `window.__spoken`;
   - a fake `navigator.wakeLock`.
 - **`tests/fixtures/routes.js`:** exports an array of `{match: RegExp, file: string, status?: number, headers?: object}`.
+- **The one set of e2e helpers (Plan 01).** Later plans use these and do not define their own versions:
+  - **`tests/e2e/helpers/net.js`:**
+    - `test` and `expect`: a Playwright `test` whose `page` fixture calls `mockNet` and, after each test, asserts that `unmocked(page)` and `pageProblems(page)` are both empty;
+    - the fixture option `ignoreProblems: RegExp[]` (default `[]`), set with `test.use({ignoreProblems: [...]})`, for known harmless console errors such as EmulatorJS's missing `emulator.min.js`;
+    - `pageProblems(page, {ignore = []} = {}) → string[]`: page errors and console errors that no pattern matches.
+  - **`tests/e2e/helpers/app.js`:**
+    - `gotoApp(page, hash = '#/stumble') → Promise<void>`: opens the app at the base path and skips first run;
+    - `skipFirstRun(page) → Promise<void>`: clicks **Skip** while it is visible.
+  - **`tests/e2e/helpers/axe.js`:** `expectNoSeriousA11y(page, {exclude = []} = {}) → Promise<void>`.
+  - **`tests/e2e/helpers/fakes.js`:** `installFakeSpeech(page)`. Plan 08 later adds `installFakeAndroidBridge(page, opts)`.
+  - **`tests/unit/helpers/fake-dom.js`:** a minimal DOM for unit tests of `ui/dom.js`.
 
 ## Global constraints (every plan)
 

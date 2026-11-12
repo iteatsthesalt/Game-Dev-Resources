@@ -307,13 +307,13 @@ Expected: PASS, 8 tests.
 
 - [ ] **Step 6: Run the whole check**
 
-Run: `npm run check`
-Expected: exit code 0.
+Run: `node --test tests/unit/build.test.js && npm run check`
+Expected: PASS, then exit code 0.
 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add tools/build.js tools/check.js tests/unit/ext-check.test.js
+git add tools/build.js tools/check.js tests/unit/ext-check.test.js tests/unit/build.test.js
 git commit -m "Build the Chrome and Firefox extensions and check their manifests"
 ```
 
@@ -655,8 +655,8 @@ Both `Page` and `BrowserContext` have `route()` and `on('request')`, so only the
 
 - [ ] **Step 2: Write the pages**
 
-- `app.html` and `panel.html` copy the `<body>` skeleton of `shells/pwa/index.html` (live regions, navigation, `#main`, the hands-free controls) and its stylesheet links. They load one script, `<script type="module" src="panel.js"></script>`. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`. `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
-- Both carry this CSP `<meta>`, exactly: `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`.
+- `app.html` and `panel.html` copy `shells/pwa/index.html` (Plan 01): its `#app`, `#main`, `#live-polite`, `#live-assertive`, `#hf-bar` and `#toasts` ids and its stylesheet links. Two things change. The root is `<html lang="en" data-shell="extension" data-theme="system" data-motion="system" data-font="system">`, so `bootFromShell()` (which boots only `'pwa'`) does nothing. The one script is `<script type="module" src="panel.js"></script>`, with no manifest link and no service worker. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`. `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
+- Both carry `EXT_PAGE_CSP` (Task 2) as their CSP `<meta>`.
 - `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
 
 - [ ] **Step 3: Write the harness and the first two tests** in `tests/e2e/extension.spec.js`
@@ -687,6 +687,8 @@ test('service worker requests go through the mocks', async ({ sw }) => {
   expect(await sw.evaluate(() => fetch('https://itch.io/byways-sw-probe').then((r) => r.status, () => 0))).toBe(200);
 });
 ```
+
+`test` here extends `@playwright/test` directly, not the `test` from `helpers/net.js`: the context is launched by hand, so the config's `use` block (including `serviceWorkers: 'block'`) does not apply to it.
 
 Helpers in the same file:
 - `libraryRoutes()` reads `src/data/library.json` and maps each entry to `{match: new RegExp('^' + escapeRe(url without its trailing slash) + '/?$'), file: 'html/find-page.html', headers: {'content-type': 'text/html'}}`.
@@ -773,7 +775,7 @@ git commit -m "Add the Byways tab and an e2e harness that loads the Chrome build
 - Test: `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: `showResult(result)`, `getCurrentFind()` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})`; `app.engine.feed(n)`, `app.engine.rabbit.start(find)` and `.next()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers.
+- Consumes: `showResult(result)`, `getCurrentFind()` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})`; `app.engine.feed(n)`, `app.engine.rabbit.start(find)` and `.next()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
 - Produces: nothing new for other tasks.
 
 All extras are only on `data-surface="panel"`, except the access banner, which both pages show.
@@ -829,13 +831,20 @@ test('the access banner grants and disappears', async ({ context, sw, extId }) =
   await banner.getByRole('button', { name: 'Grant access' }).click();
   await expect(banner).toBeHidden();
 });
+
+test('the panel has no serious accessibility issues', async ({ context, extId }) => {
+  const panel = await extPage(context, extId, 'panel.html');
+  await onlyLibrary(panel);
+  await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
+  await expectNoSeriousA11y(panel);                       // tests/e2e/helpers/axe.js (Plan 01)
+});
 ```
 
 Add to the `mockNet` overrides in the fixture: `{match: /^https:\/\/api2\.marginalia-search\.com\/api\/v2\/site\/small\.example\/similar/, file: 'html/find-page.html', status: 503}`. Marginalia's 503 means "busy", so the panel must cope with it.
 
 - [ ] **Step 2: Run them and see them fail**
 
-Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "panel|Open Byways|mini feed|banner|seed"`
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "panel|Open Byways|mini feed|banner|seed|accessibility"`
 Expected: FAIL. The first fails on `toContainText(r.find.title)` and the others on missing elements.
 
 - [ ] **Step 3: Add the markup to `panel.html`**
@@ -852,8 +861,8 @@ Above `#main`: `<div id="access-banner" hidden>` holding `<p>Byways lost access 
 
 - [ ] **Step 5: Run them and see them pass**
 
-Run the Step 2 command.
-Expected: PASS, 6 tests.
+Run the Step 2 command with `-g "panel|Open Byways|mini feed|banner|seed|accessibility"`.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 6: Commit**
 
@@ -870,7 +879,7 @@ git commit -m "Show the tab's find, a mini feed and Grant access in the side pan
 - Test: `tests/e2e/extension.spec.js`
 
 **Interfaces:**
-- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}` (Task 3); `app.handsFree.state`, `.start()` and `.command(id)` (`handsfree.js`); `announce`; `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`); the Task 5 spec helpers and the `extArgs` fixture option.
+- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}` (Task 3); `app.handsFree.state`, `.start()` and `.command(id)` (`handsfree.js`); `announce`; `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`); `expectNoSeriousA11y` (`tests/e2e/helpers/axe.js`); the Task 5 spec helpers and the `extArgs` fixture option.
 - Produces: the `micGranted` message `{type: 'micGranted', granted: boolean}`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -914,14 +923,23 @@ test('the toggle-listening command stops listening in the Byways tab', async ({ 
   await onlyLibrary(app);
   await app.getByRole('button', { name: 'Start' }).click();
   await sw.evaluate(() => chrome.runtime.sendMessage({ type: 'toggleListening' }));
-  await expect(app.locator('#live-polite')).toHaveText('Listening paused');
+  await expect(app.locator('#live-polite')).toHaveText('Listening off');   // Plan 03's stopListening announcement
+});
+
+test.describe('mic page accessibility', () => {
+  test.use({ extArgs: ['--deny-permission-prompts'] });        // the page stays open
+  test('the mic page has no serious accessibility issues', async ({ context, extId }) => {
+    const perm = await extPage(context, extId, 'permission.html');
+    await expect(perm.locator('#status')).not.toBeEmpty();
+    await expectNoSeriousA11y(perm);
+  });
 });
 ```
 
 - [ ] **Step 2: Run them and see them fail**
 
-Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "mic|Start|toggle"`
-Expected: FAIL. `permission.html` is missing, so `#status` times out, and the toggle test never sees `Listening paused`.
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "mic|Start|toggle"` (this also picks up the mic page accessibility test)
+Expected: FAIL. `permission.html` is missing, so `#status` times out, and the toggle test never sees `Listening off`.
 
 - [ ] **Step 3: Write `permission.html`**
 
@@ -940,8 +958,8 @@ It calls `navigator.mediaDevices.getUserMedia({audio: true})` on load and stops 
 
 - [ ] **Step 6: Run them and see them pass**
 
-Run the Step 2 command.
-Expected: PASS, 4 tests.
+Run the Step 2 command with `-g "mic|Start|toggle"`.
+Expected: PASS, 5 tests.
 
 - [ ] **Step 7: Run the whole suite**
 
