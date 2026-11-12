@@ -42,3 +42,37 @@ test('commons turns extmetadata HTML into plain text', async () => {
   assert.equal(new URL(calls[0].url).searchParams.get('gsrnamespace'), '6'); assert.equal(calls[0].headers['api-user-agent'], IDENT);
   assert.equal(commons.fate, false); assert.equal(commons.safety, 'mixed');
 });
+
+// Added in fix round 1: picture-of-the-day fields, a feed without an image, and the 24 h search cache.
+const DAY = 24 * 3600e3;
+test('commons picture of the day carries its image, licence and description', async () => {
+  const { ctx } = await adapterCtx(); const [f] = await commons.random(ctx);
+  assert.equal(f.imageUrl, 'https://upload.wikimedia.org/aurora-640.jpg'); assert.equal(f.licence, 'CC BY-SA 4.0');
+  assert.equal(f.description, 'Green aurora over a frozen lake.');
+  assert.equal(f.attribution, 'Jane Doe · CC BY-SA 4.0 · Wikimedia Commons');
+});
+test('commons random returns [] when the featured feed has no image', async () => {
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /feed\/featured\//, json: { tfa: {} } }] });
+  assert.deepEqual(await commons.random(ctx), []);
+});
+test('wikipedia search is cached for 24 hours, and more shares that cache', async () => {
+  const { ctx, calls } = await adapterCtx(); const first = await wikipedia.search('moth', ctx);
+  assert.deepEqual(await wikipedia.search('moth', ctx), first); assert.equal(calls.length, 1);
+  ctx.clock.advance(DAY + 1); await wikipedia.search('moth', ctx); assert.equal(calls.length, 2);
+  await wikipedia.more(first[0], ctx); await wikipedia.more(first[0], ctx); assert.equal(calls.length, 3);
+  ctx.clock.advance(DAY + 1); await wikipedia.more(first[0], ctx); assert.equal(calls.length, 4);
+});
+test('wikipedia random is never cached', async () => {
+  const { ctx, calls } = await adapterCtx(); await wikipedia.random(ctx); await wikipedia.random(ctx);
+  assert.equal(calls.length, 2);
+});
+test('commons search is cached for 24 hours', async () => {
+  const { ctx, calls } = await adapterCtx(); const first = await commons.search('map', ctx);
+  assert.deepEqual(await commons.search('map', ctx), first); assert.equal(calls.length, 1);
+  ctx.clock.advance(DAY + 1); await commons.search('map', ctx); assert.equal(calls.length, 2);
+});
+test('commons picture of the day feed is cached for 24 hours', async () => {
+  const { ctx, calls } = await adapterCtx(); const first = await commons.random(ctx);
+  assert.deepEqual(await commons.random(ctx), first); assert.equal(calls.length, 1);
+  ctx.clock.advance(DAY + 1); await commons.random(ctx); assert.equal(calls.length, 2);
+});

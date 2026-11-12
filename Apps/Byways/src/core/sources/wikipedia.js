@@ -1,14 +1,11 @@
 import { makeFind } from '../model/find.js';
-import { IDENT } from './index.js';
+import { getJson, cachedJson, searchPages } from './wikimedia.js';
 
 const ID = 'wikipedia';
 const TAGS = ['education'];
 const LICENCE = 'CC BY-SA 4.0';
 const API = 'https://en.wikipedia.org/w/api.php';
 const RANDOM_URL = 'https://en.wikipedia.org/api/rest_v1/page/random/summary';
-
-// IDENT is read here, inside a function, because index.js imports this module (an import cycle).
-const getJson = (ctx, url) => ctx.http.getJson(url, { source: ID, headers: { 'Api-User-Agent': IDENT } });
 
 function article({ id, title, description, url, imageUrl, why }) {
   return makeFind({
@@ -46,12 +43,7 @@ async function query(text, why, ctx) {
     format: 'json',
     origin: '*',
   });
-  const body = await getJson(ctx, `${API}?${params}`);
-  const pages = body?.query?.pages;
-  if (!pages || typeof pages !== 'object') return [];
-  return Object.values(pages)
-    .filter(page => page && typeof page.title === 'string')
-    .sort((a, b) => (a.index ?? 0) - (b.index ?? 0))
+  return searchPages(await cachedJson(ctx, ID, `${API}?${params}`))
     .map(page => article({
       id: idOf(page.title),
       title: page.title,
@@ -75,7 +67,7 @@ const wikipedia = {
   tags: TAGS,
 
   async random(ctx) {
-    const summary = await getJson(ctx, RANDOM_URL);
+    const summary = await getJson(ctx, ID, RANDOM_URL);
     if (!summary || typeof summary !== 'object' || summary.type === 'disambiguation') return [];
     const canonical = summary.titles?.canonical;
     if (typeof canonical !== 'string' || !canonical) return [];
