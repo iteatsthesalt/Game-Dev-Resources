@@ -1,14 +1,20 @@
-// The QR code a phone scans to join: an SVG string, dark modules on a light background.
+// The QR code a phone scans to join: an SVG string, dark modules on a light background, with
+// the four-module quiet zone scanners need. See CONTRACTS.md, "main/qr.js".
 //
-// First version, written by the spine. The link part owns this file and replaces it.
+// Only shapes go into the SVG, never the text itself, so whatever the text holds it cannot
+// add markup to the page that shows the code. tests/unit/link-qr.test.js checks the modules
+// against qrcode-generator's own.
 import qrcode from 'qrcode-generator';
 
-const QUIET_ZONE = 4; // modules of light margin, which scanners need to find the code
+const QUIET_ZONE = 4; // modules of light margin
 
 export function qrSvg(text) {
-  // type 0 picks the smallest version that fits; 'M' survives about 15% damage or glare
+  if (typeof text !== 'string' || !text) throw new TypeError('qrSvg: the text to encode is missing');
+  // type 0 picks the smallest version that fits; 'M' survives about 15% damage or glare,
+  // and fits a controller URL with an IPv4 address (about 52 characters) in version 4,
+  // 33 modules across, easy to scan from across a room
   const qr = qrcode(0, 'M');
-  qr.addData(String(text), 'Byte');
+  qr.addData(text, 'Byte');
   qr.make();
   const n = qr.getModuleCount();
   const size = n + QUIET_ZONE * 2;

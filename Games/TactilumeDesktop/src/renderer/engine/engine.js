@@ -295,7 +295,11 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
 
     // a new size starts the light from black
     r.light?.destroy();
-    for (const l of r.levels) l.texture.destroy();
+    for (const l of r.levels) {
+      l.texture.destroy();
+      l.down?.buffer.destroy();
+      l.up?.buffer.destroy();
+    }
     r.light = device.createTexture({ label: 'light', size: [w, h], format: LIGHT_FORMAT, usage: T.RENDER_ATTACHMENT | T.TEXTURE_BINDING });
     r.lightView = r.light.createView();
     r.clearLight = true;
@@ -408,8 +412,11 @@ export async function createEngine(canvas, { particles = 20000, maxParticles = 0
     if (res !== r || disposed) { buffer.destroy(); return; }
     if (noMemory) {
       buffer.destroy();
+      // not even the smallest buffer: this GPU cannot run the engine, and the classic one
+      // (which needs far less) takes over, as when there is no WebGPU at all
+      if (r.capacity === 0 && need <= PARTICLE_STEP) throw new Error('webgpu');
       // what is there already fits; ask for no more than half of what failed
-      knownLimit = Math.max(r.capacity, Math.floor(need / 2 / PARTICLE_STEP) * PARTICLE_STEP, PARTICLE_STEP);
+      knownLimit = Math.max(r.capacity, Math.floor(need / 2 / PARTICLE_STEP) * PARTICLE_STEP, Math.min(need, PARTICLE_STEP));
       count = Math.min(count, particleLimit());
       console.warn(`Tactilume: not enough GPU memory for ${need} particles; using at most ${particleLimit()}`);
       if (r.capacity < Math.min(count, particleLimit())) await resizeParticles(count);

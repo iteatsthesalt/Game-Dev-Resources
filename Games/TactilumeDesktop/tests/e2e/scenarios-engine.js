@@ -1,13 +1,13 @@
 // The WebGPU engine, in the built renderer: the light renders, poles move it, every
 // behaviour runs cleanly, symmetry and team colours work, the flash guard holds back a
-// sudden brightening, the particle buffer grows and dispatches in two dimensions, and a lost
+// sudden brightening, the particle buffer grows and dispatches in two dimensions, HDR output
+// is chosen as the settings and the screen say, a resize gives a new picture, and a lost
 // device is recovered once. See CONTRACTS.md, "renderer/engine/".
 //
 // The software GPU draws about ten frames a second here, and the engine skips animation
 // frames while the GPU is behind, so these scenarios wait on frames the engine has drawn
 // (engine.stats.frames), not on the app's frame counter.
-
-const BEHAVIOURS = ['well', 'whirl', 'burst', 'halo', 'current', 'weave', 'chime', 'storm', 'lattice', 'nova', 'murmur', 'fountain'];
+import { BEHAVIOUR_KEYS as BEHAVIOURS } from '../../../Tactilume/src/js/core/behaviours.js';
 
 // ---- helpers ------------------------------------------------------------------------------
 
@@ -340,6 +340,31 @@ export default [
         checks.push(h.check(`${label}: no WebGPU errors, and it carries on offscreen`, seen.errors?.count === 0 && seen.caps?.presenting === false && seen.caps?.hdr === false, info));
         await p.close();
       }
+      return checks;
+    },
+  },
+
+  {
+    name: 'engine resize: a new window size gives a picture of that size, and touches land right',
+    async run(page, h) {
+      await h.open(page);
+      await setScene(page, { orbit: 0 });
+      await drawFrames(h, page, 3);
+      await page.setViewportSize({ width: 640, height: 360 });
+      const resized = await h.until(page, () => window.TACTILUME_DESKTOP.engine.stats.width === 640 && window.TACTILUME_DESKTOP.engine.stats.height === 360);
+      const checks = [h.check('the drawing follows the window to 640 x 360', resized, await page.evaluate(() => window.TACTILUME_DESKTOP.engine.stats))];
+      checks.push(h.check('the engine keeps drawing', await drawFrames(h, page, 6)));
+      const pic = await h.capture(page);
+      checks.push(h.check('the picture read back is 640 x 360, with light in it', pic.width === 640 && pic.height === 360 && pic.mean > 8, pic));
+      // the right edge of the window is x = aspect on the touch plane, the top is y = 1
+      const edges = await page.evaluate(() => {
+        const e = window.TACTILUME_DESKTOP.engine;
+        return { aspect: e.aspect, right: e.screenToWorld(640, 180), top: e.screenToWorld(320, 0) };
+      });
+      const near = (a, b) => Math.abs(a - b) < 0.01;
+      checks.push(h.check('touches map onto the new shape', near(edges.aspect, 640 / 360) && near(edges.right.x, 640 / 360) && near(edges.right.y, 0) && near(edges.top.x, 0) && near(edges.top.y, 1), edges));
+      const e = await engineErrors(page);
+      checks.push(h.check('no WebGPU errors', e.count === 0, e));
       return checks;
     },
   },

@@ -77,15 +77,17 @@ describe('createGovernor', () => {
     assert.equal(gov.particles, 1e5);
   });
 
-  test('after stepping down, it does not climb back to the count that was too slow', () => {
+  test('after a few tries it settles below a count that is too slow, instead of swinging', () => {
     const gov = createGovernor({ min: 1000, max: 1e6, start: 100000, refreshHz: 60 });
     // too slow above 90,000 particles: frames take 25 ms there, 16.7 ms below
     const ms = () => (gov.particles > 90000 ? 25 : HZ60);
-    const { changes } = run(gov, ms, 50);
+    const { changes } = run(gov, ms, 75);
     assert.equal(changes[0].particles, 80000);
-    // it may climb toward the count that missed, but stays below it
     assert.ok(changes.every((c) => c.particles < 100000), JSON.stringify(changes));
-    assert.ok(gov.particles >= 80000 && gov.particles < 100000, `ends at ${gov.particles}`);
+    // each count that misses lowers how high it climbs next, until it stops trying
+    const late = changes.filter((c) => c.at > 30000);
+    assert.deepEqual(late, [], `still changing after 30 s: ${JSON.stringify(changes)}`);
+    assert.ok(gov.particles > 80000 && gov.particles <= 90000, `settles at ${gov.particles}`);
   });
 
   test('a count that was too slow a long time ago may be tried again', () => {

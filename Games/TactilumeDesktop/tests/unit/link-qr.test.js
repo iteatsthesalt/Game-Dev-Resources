@@ -37,6 +37,11 @@ test('a controller URL fits a small code that phones read easily', () => {
   assert.ok(size - 8 <= 37, `version too large: ${size - 8} modules`); // version 5 or smaller
 });
 
+test('no text is a mistake, not an empty code', () => {
+  assert.throws(() => qrSvg(''), TypeError);
+  assert.throws(() => qrSvg(undefined), TypeError);
+});
+
 test('the SVG is only shapes: nothing from the text is copied into it', () => {
   const svg = qrSvg('"><script>alert(1)</script>');
   assert.equal(svg.includes('script'), false);
