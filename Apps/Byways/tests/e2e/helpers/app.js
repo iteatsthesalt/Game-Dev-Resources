@@ -6,8 +6,11 @@ export async function skipFirstRun(page) {
   await page.locator(`${FIRST_RUN}, ${ROUTED_HEADING}`).first().waitFor({ state: 'visible' });
   const firstRun = page.locator(FIRST_RUN);
   while (await firstRun.isVisible()) {
-    await firstRun.getByRole('button', { name: 'Skip' }).click();
-    await firstRun.waitFor({ state: 'hidden' });
+    // Wait for the clicked section itself to go away: a later step may replace it at once,
+    // and the re-resolving locator would then match that new, visible section.
+    const clicked = await firstRun.first().elementHandle();
+    await firstRun.first().getByRole('button', { name: 'Skip' }).click();
+    await clicked.waitForElementState('hidden');
   }
 }
 
