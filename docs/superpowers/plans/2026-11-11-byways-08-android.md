@@ -782,7 +782,7 @@ Expected: FAIL with `Cannot find module '…/src/platform/android.js'`.
 - `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`, `redirect` is `'error'` when `init.redirect === 'error'` and `'follow'` otherwise, and `fetch.request` goes out at once, `http:` included. Statuses 204, 205 and 304 build `new Response(null, …)`. Every constructed `Response` gets the header `x-byways-final-url` with the reply's `url` (the contract's rule; the constructor cannot set `Response.url`). A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. `not-approved` gives `Object.assign(new TypeError(\`Local network host not approved: ${host}\`), { code })`; any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
 - `requestOrigins(origins)`: `https:` origins need nothing. Each `http:` origin, one at a time, sends `fetch.approve {host}` with `new URL(origin).hostname` minus IPv6 brackets. It resolves `true` only when every one is approved.
 - `openFind(find, how)`: every `how` (none, `'tab'`, `'current'`, `'inapp'`) sends `app.openSite {url, title}`, because Android shows finds in the site view (§4). A non-http(s) url rejects with `not an http(s) link`, as the PWA's does. The way out to the browser is `app.openExternal` and the site view's **Open in browser**.
-- `share`, `files.save` (one message with the base64 of `blob.arrayBuffer()` and mime `blob.type || 'application/octet-stream'`; a backup over 12 MB rejects with `too-large`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`. `files.pick`, `secrets` and `persistStorage` come from `base`.
+- `share`, `files.save` (one message with the base64 of `blob.arrayBuffer()` and mime `blob.type || 'application/octet-stream'`; a backup over 12 MB rejects with `too-large`), `wakeLock` and `app` as in the bridge table; `identity.launchWebAuthFlow({url})` sends `app.auth {url}`, and `identity.redirectUrl` is `win.location.origin + win.location.pathname`. `files.pick`, `secrets` and `persistStorage` come from `base`.
 - `extractSharedLink`: take every `https?://` run up to whitespace, `<`, `>` or a quote. Trim trailing `.,;:!?'"]}` and a trailing `)` when the run has no `(`. A run whose `origin + pathname` is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/` and whose hash starts with `#s=` wins, as `{kind:'share', hash}`. Otherwise the first run is `{kind:'url', url}`.
 
 - [ ] **Step 4: Run them to see them pass**
@@ -826,7 +826,7 @@ test('voice goes over the bridge', async () => {
 test('speak resolves only when native finishes', async () => {
   const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
   let done = false; const s = p.tts.speak('Hello.', { rate: 1.2 }).then(() => { done = true; });
-  assert.deepEqual(port.last().args, { text: 'Hello.', voiceURI: null, rate: 1.2, volume: 1 });
+  assert.deepEqual(port.last().args, { text: 'Hello.', voiceURI: null, rate: 1.2, volume: 1, lang: null });
   await tick(); assert.equal(done, false);
   port.reply(port.last().id, true); await s; assert.equal(done, true);
   p.tts.cancel(); assert.deepEqual([port.last().ch, port.last().op, port.last().args], ['tts', 'cancel', {}]);
@@ -847,7 +847,7 @@ Expected: the three new tests FAIL with `TypeError: Cannot read properties of un
 
 - [ ] **Step 3: Implement `voice`, `tts` and `media`**
 
-`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1` and `volume ?? 1` and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set. `voice.probe` passes native's `VoiceStatus` through unchanged, including the contract's cloud-only form (Task 8).
+`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1`, `volume ?? 1` and `lang ?? null` (the contract's `Tts.speak(text, {voiceURI, rate, volume, lang})`) and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set. `voice.probe` passes native's `VoiceStatus` through unchanged, including the contract's cloud-only form (Task 8).
 
 - [ ] **Step 4: Run them to see them pass**
 
