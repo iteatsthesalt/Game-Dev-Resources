@@ -2095,8 +2095,8 @@ git commit -m "Add modes, Familiar to Strange, search, the Rabbit Hole trail and
 - Test: `tests/e2e/feed.spec.js`
 
 **Interfaces:**
-- Consumes: `engine.feed(30)` (Task 20), `renderCard`, `makeActionHandler` (Tasks 22–23), `EMPTY_REASONS`, `registerView`.
-- Produces: `registerView('feed', {title: 'Feed', render})`. The view has `h1 'Feed'`, a `fieldset` with legend **Order** and radios **Shuffled** (default; the engine's random order) and **Newest first** (the batch sorted by `meta.published`, newest first, finds without a date last), and a `ul.feed` of compact cards. After each batch: `p.end`, which reads `"That's 30. Stumble on or call it a day"` with a **Stumble on** button that appends the next batch when the batch had 30 finds, and otherwise reads `EMPTY_REASONS.exhausted` with no button. Never ranked by engagement.
+- Consumes: `engine.feed(30)` (Task 20), `renderCard`, `makeActionHandler` (Tasks 22–23), `EMPTY_REASONS`, `registerView`, `navigate`.
+- Produces: `registerView('feed', {title: 'Feed', render})`. The view has a `fieldset` with legend **Order** and radios **Shuffled** (default; the engine's random order) and **Newest first** (the batch sorted by `meta.published`, newest first, finds without a date last), and a `ul.feed` of compact cards whose actions go through `makeActionHandler(app, {advance})`, with Task 23's Feed `advance`. After each batch comes `p.end`: when the batch had 30 finds it reads `"That's 30. Stumble on or call it a day"` and is followed (as a sibling, not inside it) by a **Stumble on** button, which appends the next batch and then goes away; otherwise it reads `EMPTY_REASONS.exhausted` and has no button. Never ranked by engagement.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -2104,35 +2104,44 @@ git commit -m "Add modes, Familiar to Strange, search, the Rabbit Hole trail and
 // same imports and helpers as stumble.spec.js
 const many = (n) => Array.from({ length: n }, (_, i) => ({ id: `lib-${String(i + 1).padStart(4, '0')}`, url: `https://site-${i}.example.com/`,
   title: `Site ${i}`, blurb: `Blurb ${i}.`, tags: ['toy'], kind: 'site', added: `2026-10-${String((i % 28) + 1).padStart(2, '0')}` }));
+const cards = (page) => page.locator('ul.feed article.card');
 test('axe finds no serious issues on the Feed', async ({ page }) => {
-  await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed'); await expectNoSeriousA11y(page);
+  await open(page, many(3), '#/feed'); await expect(cards(page)).toHaveCount(3); await expectNoSeriousA11y(page);
 });
 test('the feed comes in batches of 30 with an end', async ({ page }) => {
-  await stageLibrary(page, many(31)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
-  await expect(page.locator('ul.feed article.card')).toHaveCount(30);
+  await open(page, many(31), '#/feed');
+  await expect(cards(page)).toHaveCount(30);
   await expect(page.locator('p.end')).toHaveText("That's 30. Stumble on or call it a day");
   await page.getByRole('button', { name: 'Stumble on' }).click();
-  await expect(page.locator('ul.feed article.card')).toHaveCount(31);
+  await expect(cards(page)).toHaveCount(31);
   await expect(page.locator('p.end').last()).toHaveText('You have seen everything we have right now. Turn on more sources in Settings, or try Fate.');
 });
 test('Newest first sorts the batch by date', async ({ page }) => {
-  await stageLibrary(page, many(3)); await page.goto('./#/feed'); await skipFirstRun(page, 'Feed');
+  await open(page, many(3), '#/feed');
   await page.getByRole('radio', { name: 'Newest first' }).check();
   await expect(page.locator('ul.feed article.card h2')).toHaveText(['Site 2', 'Site 1', 'Site 0']);
+});
+test('Never this site removes the card, and More like this goes to Stumble', async ({ page }) => {
+  await open(page, many(3), '#/feed'); await expect(cards(page)).toHaveCount(3);
+  await cards(page).first().getByRole('button', { name: 'More actions' }).click();
+  await page.getByRole('menuitem', { name: 'Never this site' }).click(); await expect(cards(page)).toHaveCount(2);
+  await cards(page).first().getByRole('button', { name: 'More like this' }).click();
+  await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
+  await expect(page.getByRole('navigation', { name: 'Rabbit Hole' }).locator('li')).toHaveCount(2);
 });
 ```
 
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/feed.spec.js`
-Expected: FAIL: the `Feed` heading never shows.
+Expected: FAIL: no `ul.feed` cards, because the Feed is still Plan 01's placeholder.
 
 - [ ] **Step 3: Implement `feed.js`**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/feed.spec.js`
-Expected: PASS, 3 tests.
+Run: `npm run e2e -- tests/e2e/feed.spec.js`, then `npm run e2e`
+Expected: PASS, 4 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 

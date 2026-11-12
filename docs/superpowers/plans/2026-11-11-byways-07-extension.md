@@ -962,7 +962,7 @@ Expected: PASS, 3 tests.
 ```js
 test('toolbar Stumble loads a find in the tab', async ({ context, extId }) => {
   const app = await extPage(context, extId, 'app.html#/saved');
-  await onlyLibrary(app);
+  await useSources(app);
   const site = await extPage(context, extId, 'app.html#/saved');
   const { id } = await tabInfo(site);
   const r = await stumbleTab(app, id);
@@ -976,22 +976,41 @@ test('toolbar Stumble loads a find in the tab', async ({ context, extId }) => {
 
 test('the Byways tab routes between views', async ({ context, extId }) => {
   const page = await extPage(context, extId, 'app.html');
-  await onlyLibrary(page);
-  for (const [hash, heading] of [['#/feed', 'Feed'], ['#/daily', 'Daily Fate'], ['#/vault', 'Vault'], ['#/saved', 'Saved'], ['#/settings', 'Settings']]) {
+  await useSources(page);
+  // Daily Fate is the backup pick unless today is the date of the mocked daily.json, so only its start is fixed.
+  for (const [hash, heading] of [['#/feed', /^Feed$/], ['#/daily', /^Daily Fate/], ['#/vault', /^Vault$/], ['#/saved', /^Saved$/], ['#/settings', /^Settings$/]]) {
     await page.goto(`chrome-extension://${extId}/app.html${hash}`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
   }
 });
 
+test('Daily Fate in the Byways tab reads the file from the Pages site', async ({ context, extId }) => {
+  await context.clock.setFixedTime('2026-11-11T12:00:00Z');                // the date in daily-2026-11-11.json
+  const asked = []; context.on('request', (r) => asked.push(r.url()));
+  const page = await extPage(context, extId, 'app.html#/daily');
+  await useSources(page);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate');
+  expect(asked).toContain('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json');
+  expect(asked.some((u) => u.includes('/feed/featured/'))).toBe(false);   // the backup recipe never ran
+});
+
+test('the Licenses screen lists what the extension ships', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html#/settings/licenses');
+  await useSources(page);
+  await expect(page.locator('#main')).toContainText('Atkinson Hyperlegible');
+  await expect(page.getByText('Could not load the licence list.')).toHaveCount(0);
+});
+
 test('the Lab button opens the hosted web Lab', async ({ context, extId }) => {
   const page = await extPage(context, extId, 'app.html');
+  await useSources(page);
   await expect(page.getByRole('link', { name: 'Lab' }))
     .toHaveAttribute('href', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/');
 });
 
 test('Open in the Byways tab uses a new tab', async ({ context, extId }) => {
   const page = await extPage(context, extId, 'app.html');
-  await onlyLibrary(page);
+  await useSources(page);
   await page.goto(`chrome-extension://${extId}/app.html#/stumble`);
   const [opened] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Open' }).click()]);
   await expect(opened).toHaveTitle('Mock find');
@@ -1002,16 +1021,16 @@ test('Open in the Byways tab uses a new tab', async ({ context, extId }) => {
 - [ ] **Step 6: Run them and see them fail**
 
 Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
-Expected: the three page tests FAIL. `panel.js` does not exist yet, so the pages stay blank and `getByRole('heading', { level: 1 })`, the `Lab` link and the `Open` button time out. `toolbar Stumble loads a find in the tab` may already pass, because `bg.js` handles `stumble`.
+Expected: the five page tests FAIL. `panel.js` does not exist yet, so the pages stay blank and the `h1`, the Licenses text, the `Lab` link and the `Open` button time out. `toolbar Stumble loads a find in the tab` may already pass, because `bg.js` handles `stumble`. `Daily Fate in the Byways tab reads the file from the Pages site` also needs Plan 04's Daily view to fetch `app.dataUrl('daily.json')`, the contract's address, and not a path under the page.
 
 - [ ] **Step 7: Write `panel.js` (boot only)**
 
-`const ext = globalThis.browser ?? globalThis.chrome`. Read `document.body.dataset.surface`, then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}` (ending in `.catch(() => {})`). Task 6 adds the panel extras and Task 7 the mic messages.
+`const ext = globalThis.browser ?? globalThis.chrome`; `surface = document.body.dataset.surface`. Before `boot`, add the page's one `ext.runtime.onMessage` listener (it replies to nothing; Tasks 6 and 7 add its cases) and every click handler that needs no `app`. A case that needs `app` first awaits `ready`, a promise that resolves with `app` once `boot` returns, so a message that arrives during first run waits instead of being lost. Then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))` and resolve `ready`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}`.
 
 - [ ] **Step 8: Run them and see them pass**
 
 Run the Step 6 command again.
-Expected: PASS, 6 tests (or 5 and 1 fixme).
+Expected: PASS, 9 tests (or 8 and 1 fixme).
 
 - [ ] **Step 9: Commit**
 

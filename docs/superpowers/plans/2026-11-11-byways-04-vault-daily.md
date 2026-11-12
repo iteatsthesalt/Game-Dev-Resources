@@ -739,32 +739,32 @@ Expected: FAIL with "Cannot find module '…/src/core/sources/itch.js'".
 - [ ] **Step 3: Implement `parseItchRss`, the adapter and the registration**
 
 - `parseItchRss`: split on `<item>`, read `plainTitle` (else `title`), `link`, `pubDate`, `imageurl` and `description`, unwrap CDATA, and turn HTML into text with `toPlainText`. `imageUrl` is `imageurl`, else the first `<img src>` in the description, else `null`. Keep only `https://<name>.itch.io/…` links; `author` is `<name>`. `published` is `new Date(pubDate).toISOString()`, or `null` when the date is invalid.
-- `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'privileged'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.platformName !== 'pwa'` (the shells whose `caps.privilegedFetch` is true): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `ctx.data.loadSnapshot('itch')`, and a `null` snapshot gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`. `search(query)` filters every item by title or description. `more` is `random`.
-- `sources/index.js`: import both and add them to `SOURCES` under `oldweb` and `itch`.
+- `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'open'` (the contract's tier: Plan 02's `enabledSources` drops `privileged` sources in the web app, which has the snapshot), `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.caps?.privilegedFetch` is true (the extension and Android): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `readSnapshot(ctx, 'itch.json')`, and `null` gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`, with `author`, `imageUrl` and `meta.published`. `search(query)` filters every item by title or description. `more` is `random`.
+- `sources/index.js`: append the adapter to `ADAPTERS`.
 
 - [ ] **Step 4: Run the tests to see them pass**
 
-Run: `node --test tests/unit/sources-oldweb-itch.test.js`
-Expected: PASS, 7 tests.
+Run: `node --test tests/unit/sources-itch.test.js tests/unit/sources-index.test.js`
+Expected: PASS, 3 tests plus Plan 02's.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/core/sources/oldweb.js src/core/sources/itch.js src/core/sources/index.js tests/fixtures/http/ia/wayback-hit.json tests/fixtures/http/ia/wayback-empty.json tests/fixtures/http/itch tests/unit/sources-oldweb-itch.test.js
-git commit -m "Add the old web and itch.io source adapters"
+git add src/core/sources/itch.js src/core/sources/index.js tests/fixtures/http/itch tests/fixtures/routes.js tests/unit/sources-itch.test.js tests/unit/sources-index.test.js
+git commit -m "Add the itch.io source adapter"
 ```
 
 ---
 
-### Task 6: Curate the Vault starter list and the GeoCities seeds
+### Task 8: Curate the Vault starter list and the GeoCities seeds
 
 **Files:**
-- Create: `src/data/vault-starter.json`, `src/data/geocities-seeds.json` (replace Plan 01's placeholders if they exist)
+- Modify: `src/data/vault-starter.json`, `src/data/geocities-seeds.json` (Plan 01 creates both empty)
 - Test: `tests/unit/data-vault.test.js`
 
 **Interfaces:**
 - Consumes: the contract shapes for both files; `normalizeUrl`, `utcDate`.
-- Produces: the two data files, read by `backupDaily` (Task 3), the `oldweb` adapter (Task 5), the data job (Task 11) and the probe (Task 12).
+- Produces: the two data files, read by `backupDaily` (Task 3), the `oldweb` adapter (Task 6), the data job (Task 13) and the probe (Task 15).
 
 - [ ] **Step 1: Write the failing schema tests**
 
@@ -801,7 +801,7 @@ test('geocities seeds cover at least 10 neighbourhoods', () => {
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `node --test tests/unit/data-vault.test.js`
-Expected: FAIL (the files are missing, or the counts are wrong).
+Expected: FAIL: the counts are wrong (Plan 01's files hold 0 entries).
 
 - [ ] **Step 3: Curate `vault-starter.json` with WebSearch**
 
@@ -814,7 +814,7 @@ Search for GeoCities-era page URLs (for example `"geocities.com/Area51"`, `"geoc
 - [ ] **Step 5: Run the tests to see them pass**
 
 Run: `node --test tests/unit/data-vault.test.js`
-Expected: PASS, 4 tests. Then run `npm run check`; expected: exit 0 (the contract shape checks pass).
+Expected: PASS, 4 tests. Then run `npm run build && npm run check`; expected: exit 0 (the contract shape checks pass, and the fresh build is not stale).
 
 - [ ] **Step 6: Commit**
 
