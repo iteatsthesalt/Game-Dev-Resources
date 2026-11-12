@@ -436,4 +436,277 @@ git commit -m "Add the tag-triggered release workflow"
 Push a tag `byways-v<version>` that matches `package.json`.
 Expected: the `byways-release` run is green, and the Release lists one APK, two zips, the `.xpi` (only when the AMO secrets exist), 6 `.tar.gz` archives and `SOURCES.txt`. If the keystore secrets are absent, the notes carry the debug warning. If the run fails at "GPL source archives", the log names the component and every ref it tried.
 
-<!-- PLAN CONTINUES -->
+---
+
+### Task 4: Third-party notices and privacy policy
+
+**Files:**
+- Modify: `Apps/Byways/THIRD_PARTY_NOTICES.md` (create it if Plan 06 has not)
+- Create: `Apps/Byways/PRIVACY.md`
+- Test: `Apps/Byways/tests/unit/docs.test.js`
+
+**Interfaces:**
+- Consumes: `CORE_LICENCES` from `tools/gpl-sources.js` (Task 1); `src/versions.json`; the `repository.url` of each installed `@emulatorjs/core-<core>` package, for the core source links.
+- Produces: the two documents. The in-app Licenses screen (Plan 06) and the Privacy settings section (Plan 01/02) keep their own text, so this task does not touch them.
+
+- [ ] **Step 1: Write the failing tests**
+
+`read(rel)` returns the text of `new URL('../../' + rel, import.meta.url)`. `versions` is the parsed `src/versions.json`.
+
+```js
+test('notices list every pinned component at its pinned version', () => {
+  const lines = read('THIRD_PARTY_NOTICES.md').split('\n');
+  for (const [name, v] of [['js-dos', versions.jsdos.version], ['EmulatorJS', versions.emulatorjs.version],
+      ['v86', versions.v86.version], ['Ruffle', versions.ruffle.version], ['fflate', versions.fflate.version]])
+    assert.ok(lines.some(l => l.startsWith('| ' + name + ' |') && l.includes('| ' + v + ' |')), name + ' ' + v);
+});
+test('notices give each core its licence and source', () => {
+  const lines = read('THIRD_PARTY_NOTICES.md').split('\n');
+  for (const core of new Set(Object.values(versions.emulatorjs.cores)))
+    assert.ok(lines.some(l => l.startsWith('| ' + core + ' |') && l.includes(CORE_LICENCES[core]) && l.includes('https://github.com/')), core);
+});
+test('notices state the licences from the spec', () => {
+  const t = read('THIRD_PARTY_NOTICES.md');
+  for (const s of ['GPL-2.0', 'GPL-3.0', 'BSD-2-Clause', 'LGPLv3', 'MIT OR Apache-2.0', 'OFL-1.1', versions.v86.commit,
+    'No ads or payments in the Lab, ever, because some cores have non-commercial licences.']) assert.ok(t.includes(s), s);
+});
+const NETWORK = [
+  ['You stumble or browse', 'Only the enabled sources and the site you open'],
+  ['Link check (if on)', 'The find\'s site, before it is shown'],
+  ['AI Search or AI team', 'Only the providers you set up, with your query, your tags and recent domains'],
+  ['Cloud voice (only if you opted in)', 'Google, Apple or Microsoft, depending on your browser'],
+  ['Vault play', 'archive.org'],
+  ['Daily data', 'The Byways Pages site (static files)'],
+  ['Android update check', 'api.github.com']];
+test('privacy holds the network table from the spec', () => {
+  const t = read('PRIVACY.md');
+  for (const [when, to] of NETWORK) assert.ok(t.includes(`| ${when} | ${to} |`), when);
+});
+test('privacy states there is no server and no analytics', () => {
+  assert.ok(read('PRIVACY.md').includes('Nothing goes to a Byways server, because there is none. There are no analytics.'));
+});
+test('privacy explains the shared origin, voice vendors and keys', () => {
+  const t = read('PRIVACY.md');
+  for (const s of ['Every `iteatsthesalt.github.io` project shares one origin. A custom domain would isolate Byways.',
+    'Google, Apple or Microsoft', 'A key is sent only to its own provider\'s host.', '600,000']) assert.ok(t.includes(s), s);
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/docs.test.js`
+Expected: FAIL. The notices tests fail on the first missing component, and the privacy tests fail with `ENOENT` for `PRIVACY.md`.
+
+- [ ] **Step 3: Write `THIRD_PARTY_NOTICES.md`**
+
+Sections, in order:
+1. **Byways**: MIT, with a link to `LICENSE`.
+2. **Components**: a table `| Component | Version | Licence | Source |`. The rows are:
+   - `js-dos`, `GPL-2.0`, `https://github.com/caiiiycuk/js-dos`;
+   - `EmulatorJS`, `GPL-3.0`, `https://github.com/EmulatorJS/EmulatorJS`;
+   - `v86`, `BSD-2-Clause`, `https://github.com/copy/v86`;
+   - `SeaBIOS and VGABIOS`, version `—`, `LGPLv3`, `https://www.seabios.org/` plus `https://github.com/copy/v86/tree/<v86.commit>/bios`;
+   - `Ruffle`, `MIT OR Apache-2.0`, `https://github.com/ruffle-rs/ruffle`;
+   - `fflate`, `MIT`, `https://github.com/101arrowz/fflate`;
+   - `Atkinson Hyperlegible`, the version in the vendored font's `OFL.txt` or name table, `OFL-1.1`, `https://github.com/googlefonts/atkinson-hyperlegible`.
+   
+   Each version comes from `versions.json`.
+3. **EmulatorJS cores**: a table `| Core | Systems | Licence | Source |`. It has one row per core in `versions.emulatorjs.cores`. The systems are the keys that map to that core, the licence is the `CORE_LICENCES` value, and the source is the core package's `repository.url` as an `https://github.com/…` link.
+4. **Non-commercial cores**: snes9x and genesis_plus_gx are under non-commercial licences. Add the exact sentence `No ads or payments in the Lab, ever, because some cores have non-commercial licences.`
+5. **Source code**: each GitHub Release attaches the upstream source archives of the GPL components at their pinned tags, and lists them in `SOURCES.txt`. The emulators run unmodified, each inside its own runner page. Licence texts are inside each source archive and on the in-app **Licenses** screen.
+
+- [ ] **Step 4: Write `PRIVACY.md`**
+
+Sections, in order:
+1. **The promise**, from §1: "There is no Byways server. Your keys, collections and history are stored only on this device. Network calls go only to the sources and AI providers you turn on."
+2. **What goes over the network, and when**: a table `| When | To |` with the seven `NETWORK` rows, worded exactly as in the test, then the sentence `Nothing goes to a Byways server, because there is none. There are no analytics.` Add one line saying there are no ads, no sponsored finds and no ranking by engagement.
+3. **What stays on this device**: the one IndexedDB database `byways` and its stores (§14.1). The extension keeps keys in `chrome.storage.local`. The three versions keep separate storage.
+4. **Rules**: the five §15.2 bullets in plain words (text through `textContent`; `http(s)` links, images only through `<img>`; only `archive.org` embeds, only after **Play**; pinned, vendored third-party code; no CDN code at runtime).
+5. **Keys**: `A key is sent only to its own provider's host.` Keys never go into exports (unless you choose), share links or logs. The optional passphrase lock uses AES-GCM with a PBKDF2-SHA-256 key (600,000 iterations).
+6. **Voice**: voice stays on the device where it can (desktop Chrome and Edge 139+, Firefox 160+, and the Android recogniser when it is on-device). Cloud voice goes to Google, Apple or Microsoft only after a consent screen that names the company. The microphone grant is per origin.
+7. **The shared origin**: the exact sentence from the test. It also says the Lab shares that origin in the web app, and that the passphrase lock protects keys from it.
+8. **Identification header**: Wikimedia and the Art Institute get `Byways/<version> (+https://github.com/iteatsthesalt/Game-Dev-Resources)`, which never carries user details.
+9. **Questions**: open an issue on the GitHub repo.
+
+- [ ] **Step 5: Run the tests and see them pass**
+
+Run: `node --test tests/unit/docs.test.js`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add THIRD_PARTY_NOTICES.md PRIVACY.md tests/unit/docs.test.js
+git commit -m "Write the third-party notices and the privacy policy"
+```
+
+---
+
+### Task 5: README, root README entry and real-device checklist
+
+**Files:**
+- Modify: `Apps/Byways/README.md` (create or replace it with the full version)
+- Create: `Apps/Byways/CHECKLIST.md`
+- Modify: `README.md` at the repo root (add an `## Apps` section between `## Editors and tools` and `## Guides`)
+- Modify: `Apps/Byways/tests/unit/docs.test.js` (add tests)
+
+**Interfaces:**
+- Consumes: the Release file names (Task 3); the version rule (Task 2); the serve command and npm scripts (overview); `DEBUG_WARNING` wording (Task 3).
+- Produces: documents only.
+
+- [ ] **Step 1: Write the failing tests (append to `docs.test.js`)**
+
+`readRoot(rel)` reads from `new URL('../../../../' + rel, import.meta.url)`.
+
+```js
+test('readme gives install steps for every version', () => {
+  const t = read('README.md');
+  for (const s of ['https://iteatsthesalt.github.io/Game-Dev-Resources/byways/', 'Load unpacked', 'byways-chrome-',
+    'about:debugging#/runtime/this-firefox', 'Load Temporary Add-on', '.xpi', 'Install unknown apps',
+    'Uninstall any earlier Byways APK before you install it.']) assert.ok(t.includes(s), s);
+});
+test('readme lists the one-time setup', () => {
+  const t = read('README.md');
+  for (const s of ['Settings → Pages → Build and deployment', 'GitHub Actions', 'KEYSTORE_BASE64', 'KEYSTORE_PASSWORD',
+    'KEY_ALIAS', 'KEY_PASSWORD', 'AMO_API_KEY', 'AMO_API_SECRET']) assert.ok(t.includes(s), s);
+});
+test('readme explains the version bump and the release', () => {
+  const t = read('README.md');
+  for (const s of ['package.json', 'manifest.base.json', 'byways.versionName', 'byways.versionCode',
+    'x·10000 + y·100 + z', 'git tag byways-v', 'npm test', 'npm run e2e',
+    'node tools/serve.js --root dist/pwa --base /Game-Dev-Resources/byways/ --port 4321']) assert.ok(t.includes(s), s);
+});
+test('checklist covers every real-device item from the spec', () => {
+  const t = read('CHECKLIST.md');
+  for (const h of ['## Desktop Chrome', '## Desktop Edge', '## Firefox', '## Extension (Chrome and Edge)', '## Android phone'])
+    assert.ok(t.includes(h), h);
+  for (const s of ['Speech output', 'side panel', 'Firefox 160', 'processLocally', 'local network', 'Media Session',
+    'Fullscreen', 'segmented', 'module background']) assert.ok(t.includes(s), s);
+  assert.ok(t.split('\n').filter(l => l.startsWith('- [ ] ')).length >= 10);
+});
+test('root readme links Byways', () => {
+  const t = readRoot('README.md');
+  assert.ok(t.includes('## Apps'));
+  assert.ok(t.includes('(./Apps/Byways/README.md)'));
+  assert.ok(t.indexOf('## Apps') > t.indexOf('## Editors and tools') && t.indexOf('## Apps') < t.indexOf('## Guides'));
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/docs.test.js`
+Expected: FAIL on `readme gives install steps for every version` (and on the checklist and root readme tests).
+
+- [ ] **Step 3: Write `Apps/Byways/README.md`**
+
+Sections, in order:
+1. **What Byways is**: two or three sentences adapted from §1, the privacy promise with a link to `PRIVACY.md`, and a link to `THIRD_PARTY_NOTICES.md`.
+2. **Install**:
+   - **Web app**: open the URL. On a phone, use the browser's "Add to Home screen".
+   - **Chrome and Edge**: download `byways-chrome-<version>.zip` from the latest Release and unzip it. Open `chrome://extensions` (or `edge://extensions`), turn on Developer mode, choose **Load unpacked** and pick the unzipped folder, the one that holds `manifest.json`. To update, unzip the new version over the same folder, then press reload on the extension card.
+   - **Firefox**: when the Release has `byways-firefox-<version>.xpi`, open it in Firefox and confirm. Otherwise unzip `byways-firefox-<version>.zip`, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on** and pick its `manifest.json`. It goes away when Firefox restarts.
+   - **Android**: download the APK on the phone and open it. Allow **Install unknown apps** for the browser or file app when Android asks. Signed builds (`byways-<version>.apk`) update in place. Debug builds (`-debug.apk`) carry the exact warning sentence `Uninstall any earlier Byways APK before you install it.` and the advice to export a backup first. Moving between a debug and a signed build also needs one uninstall.
+3. **One-time setup (repo owner)**: the three §17.5 steps verbatim, naming all four keystore secrets and both AMO secrets. Add the keystore commands: `keytool -genkeypair -v -keystore byways.jks -alias byways -keyalg RSA -keysize 4096 -validity 10000`, then `base64 -w0 byways.jks`, whose output becomes `KEYSTORE_BASE64`. Keep the `.jks` file out of git, and back it up, because losing it means friends must uninstall to update.
+4. **Cut a release**: (1) choose `x.y.z`, with each part below 100; (2) run `npm version x.y.z --no-git-tag-version`, set the same version in `shells/extension/manifest.base.json` and `byways.versionName`, and set `byways.versionCode` to `x·10000 + y·100 + z` in `shells/android/gradle.properties`; (3) run `npm test`, which names any file that disagrees; (4) fill in `CHECKLIST.md`; (5) commit and merge to `main`; (6) run `git tag byways-vx.y.z` and `git push origin byways-vx.y.z`; (7) check the Release page and its notes.
+5. **Local development**: `npm ci`, `npm test`, `npm run e2e`, `npm run build`, and the serve command (then open `http://localhost:4321/Game-Dev-Resources/byways/`). Add **Load unpacked** from `dist/chrome`. Android builds run in GitHub Actions, or locally with an Android SDK through `gradle -p shells/android assembleDebug`. `npm run probe` needs open network.
+
+- [ ] **Step 4: Write `Apps/Byways/CHECKLIST.md`**
+
+Start with a line to fill in: `Version: ____  Date: ____  Tester: ____`. Each item is `- [ ] ` plus what to try and what passing looks like. Then add `Fallback:` with the spec's fallback.
+- **Before you tag**: the latest `byways-probe` run is green, or its report has been read.
+- **Desktop Chrome**: Speech output (does it need a press on each launch?); Media Session without a media element (headset and media keys with only speech playing; fallback: the silent audio element).
+- **Desktop Edge**: Edge on-device voice (does Edge honour `processLocally`? Turn off the network and say "next").
+- **Firefox**: Firefox 160 voice in the web app page and in the sidebar; Firefox module background (toolbar Stumble works with the module `bg.js`).
+- **Extension (Chrome and Edge)**: microphone in the side panel (can it show the mic prompt? Fallback: `permission.html`); local network (`http://` models on another computer on your network; fallback: this-computer-only models in the extension and network models on Android); Media Session in the Byways tab.
+- **Android phone**: Fullscreen for Archive embeds in the WebView; Android voice (the on-device recogniser and segmented sessions on 13+ with no beeps, and tap to talk on 24–32); installing a signed release over the previous signed release keeps your data.
+
+- [ ] **Step 5: Add the root `README.md` entry**
+
+Insert, between `## Editors and tools` and `## Guides`:
+
+```markdown
+## Apps
+
+- [Byways](./Apps/Byways/README.md): a free discovery app for the small web, little-known games and odd museum finds, with hands-free voice. A web app, a browser extension and an Android APK. No account and no server. MIT; the bundled emulators keep their own licences.
+```
+
+- [ ] **Step 6: Run the tests and see them pass**
+
+Run: `node --test tests/unit/docs.test.js`
+Expected: PASS, 11 tests.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add README.md CHECKLIST.md tests/unit/docs.test.js ../../README.md
+git commit -m "Write the Byways README and real-device checklist"
+```
+
+---
+
+### Task 6: Whole-app release pass
+
+This task checks the whole app the way a friend first meets it. Every route and the Lab load with mocked network and throw no page errors. Then the full unit and e2e suites run green.
+
+**Files:**
+- Create: `Apps/Byways/tests/e2e/release-smoke.spec.js`
+- Modify: only the files a failure points to, each in the module its plan owns
+
+**Interfaces:**
+- Consumes: `mockNet(page)` and `unmocked(page) → string[]` from `tests/e2e/helpers/net.js`; `installFakeSpeech(page)` from `tests/e2e/helpers/fakes.js`; `ROUTES` (overview); the settings section ids, which are the file names in `ui/views/settings/` (`taste sources ai voice access data privacy about licenses`); the `baseURL` set in `tests/e2e/playwright.config.js` (`http://localhost:4321/Game-Dev-Resources/byways/`); first-run steps that each show **Skip**.
+- Produces: nothing new.
+
+- [ ] **Step 1: Write the smoke spec**
+
+```js
+const PAGES = ['#/stumble', '#/feed', '#/daily', '#/vault', '#/saved', '#/settings',
+  ...['taste', 'sources', 'ai', 'voice', 'access', 'data', 'privacy', 'about', 'licenses'].map(id => '#/settings/' + id)];
+test.beforeEach(async ({page}) => { await mockNet(page); await installFakeSpeech(page); });
+for (const hash of PAGES) {
+  test(`release smoke: ${hash} loads cleanly`, async ({page}) => {
+    const errors = [];
+    page.on('pageerror', e => errors.push(e.message));
+    page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+    await page.goto('./' + hash);
+    for (let i = 0; i < 6 && await page.getByRole('button', {name: 'Skip'}).isVisible(); i++)
+      await page.getByRole('button', {name: 'Skip'}).click();
+    await expect(page.locator('main')).toBeVisible();
+    await expect(page.locator('#live-polite')).toHaveAttribute('role', 'status');
+    expect(errors).toEqual([]);
+    expect(unmocked(page)).toEqual([]);
+  });
+}
+test('release smoke: the Lab loads cleanly', async ({page}) => {
+  const errors = [];
+  page.on('pageerror', e => errors.push(e.message));
+  await page.goto('./lab/index.html');
+  await expect(page.locator('main')).toBeVisible();
+  expect(errors).toEqual([]);
+  expect(unmocked(page)).toEqual([]);
+});
+```
+
+- [ ] **Step 2: Run the smoke spec**
+
+Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/release-smoke.spec.js`
+Expected: `16 passed`. A failure names the route. Fix it in the owning module, not in this spec. An unmocked URL means a fixture is missing: add it to `tests/fixtures/routes.js` with a hand-written fixture in `tests/fixtures/http/`, shaped from the research notes.
+
+- [ ] **Step 3: Run the full unit suite**
+
+Run: `npm test`
+Expected: the check passes (including `checkVersions`), and `node --test` reports `fail 0`.
+
+- [ ] **Step 4: Run the full e2e suite**
+
+Run: `npm run e2e`
+Expected: every spec passes (`0 failed`), and no test reports an unmocked request.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add tests/e2e/release-smoke.spec.js
+git commit -m "Add the whole-app release smoke test"
+```
+
+If Steps 2–4 needed fixes, commit each fix on its own, adding exactly the files `git status --short` lists for it, with a subject that names the fix (for example `Fix the console error on the Vault view`).
+
