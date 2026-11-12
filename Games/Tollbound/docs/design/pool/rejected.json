@@ -1,0 +1,202 @@
+[
+ {
+  "id": "bells-69",
+  "area": "event",
+  "name": "The Silent Band",
+  "idea": "For 60 s a ring of ground between 12 and 20 m from the district's bell tower falls silent, drawn as a pale band. Inside it no sigil casts and no enemy can use anything but its bare touch; drops lying inside do not fade. Outside it, everything is as normal. The player can drag an elite into the band to strip its powers, or shelter there from powers while unable to fight back, and has to leave it to kill anything.",
+  "source": "A great sound can be heard near its source and far away while a band between, the zone of silence, hears nothing.",
+  "nearest": "Anti-magic zones. Differs in applying to both sides alike and lying as a ring at a known distance from a landmark.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 2,
+    "where": "The Antimagic Field of Dungeons & Dragons and the dead-magic zones of Baldur's Gate II: no power works for anyone inside, and a caster dragged in is reduced to its fists. Disruption Web in StarCraft and the bubble shield in Halo also bind both sides alike.",
+    "mutation": "Let sound pass over the band instead of dying in it: a sigil cast toward the band skips it and lands beyond its far edge, its reach lengthened by the band's width, and bodies inside can be neither hit nor hit back except by bare touch. The band becomes a moat the player's skills leap, not a two-sided antimagic field."
+   },
+   {
+    "lens": "stories",
+    "seen": 3,
+    "where": "The antimagic field of Dungeons and Dragons and the stedding of The Wheel of Time: ground where nobody's powers work, used to strip a foe or to shelter. A null-magic zone for both sides is stock known to everyone; the ring shape and the timer are dress.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "customs-70",
+  "area": "district",
+  "name": "The Lychway",
+  "idea": "One pale corpse road 6 m wide crosses the district from the far gate to the lychgate under the bell, past five resting stones. The dead rise at the far end and walk the road like a current; they leave it only for a living person within 8 m, and cannot turn back along it. The player fights from the banks, darting in. Shapes: flat slab road, low box stones, a gate of two posts and a tapered roof, cone yews. Colours: yew green, wet slate, bone, tallow yellow, rust.",
+  "source": "Outlying hamlets carried their dead to the mother church along one fixed corpse road, with resting stones on the way and a lychgate at the end.",
+  "nearest": "Lane maps in tower defence. In a horde-survival game, a horde with a known course that is fought from the side is unusual.",
+  "cost": "medium",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 3,
+    "where": "The lane: MOBA creep waves in Dota 2 and League of Legends (rise at one end, walk the lane, turn aside only for a hero inside their aggro range) and the enemy path of Orcs Must Die! or any tower defence. A corpse road is a lane under a new name.",
+    "mutation": ""
+   },
+   {
+    "lens": "stories",
+    "seen": 1,
+    "where": "The Santa Compana of Galicia, a procession of the dead walking the parish paths; Welsh corpse candles and phantom funerals that walk the route a coffin will take; the Night Parade of One Hundred Demons; the herd led down a walled road in The Walking Dead; lane maps in tower defence. A horde fought from the banks of its own road is its own.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "thumbs-08",
+  "area": "condition",
+  "name": "Unheard",
+  "idea": "After 1 s with no movement and no sigil cast, the player is Unheard. Common dead more than 2 m away stop steering at the player and walk to the loudest recent point within 15 m: the latest sigil impact, or the spot where the player last moved. Wardens and keepers are not fooled. It ends on the first step or cast and cannot begin again for 2 s. Shown by the figure's outline dimming.",
+  "source": "Lifting the thumb is the one input that is always available, and the choice to go toward the noise or away needs noise to be a place.",
+  "nearest": "Feign Death in World of Warcraft and thrown-bottle distractions in stealth games; here it is free, has no button, and needs the nerve to stand still while the crowd closes.",
+  "cost": "medium",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 2,
+    "where": "Clickers in The Last of Us and Eyeless Dogs in Lethal Company (blind hunters that lose you when you stand still and go to the last noise); thrown-bottle lures; Brogue halving stealth range while you do not move.",
+    "mutation": "Do not make the player vanish. Let every sigil impact linger as a fading sound for a few seconds, and let a still player's crowd divide among those sounds by loudness, so where the last casts landed decides how the crowd splits."
+   },
+   {
+    "lens": "stories",
+    "seen": 3,
+    "where": "The sound- or motion-hunting monster that loses a victim who freezes and then goes to the latest noise: Tremors' graboids, A Quiet Place, the T. rex of Jurassic Park ('don't move'), The Descent's crawlers, the clickers of The Last of Us. As a no-button rule it is also Teemo's stand-still camouflage in League of Legends.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "thumbs-53",
+  "area": "pick",
+  "name": "Hurry",
+  "idea": "The outer third of the steering thumb's travel becomes a hurry: 30% more speed, but no sigil casts while hurrying or for 0.5 s after. The inner two thirds work as before. One thumb now holds two paces, and the player decides moment by moment between fighting and getting away.",
+  "source": "How far the thumb is pushed is a second signal that these games throw away.",
+  "nearest": "Sprint buttons that lower your weapon in shooters; here it lives on the same thumb, with no button, in a game where attacks are automatic.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 3,
+    "where": "Sprint in every shooter (faster, weapon lowered), on the push-the-stick-further control of PUBG Mobile and Call of Duty Mobile; walk and run by stick tilt since Super Mario 64. A new name on the stock sprint.",
+    "mutation": ""
+   },
+   {
+    "lens": "stories",
+    "seen": 1,
+    "where": "Tilt to walk, push to run on the analog stick of Super Mario 64; sprinting lowers the weapon in Call of Duty; fight or flight. Both are everyday parts; putting them on the one steering thumb of an auto-attack game is a small step of its own.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "thumbs-56",
+  "area": "enemy",
+  "name": "Hark",
+  "idea": "A tall figure with a tilted sphere head and no eyes. Every 8 s a ring of small cones lifts around its head for 2.5 s: it is listening. Each half second the player moves during that time adds a pip above it (max 5); when the cones drop it throws one fast shot per pip. Standing still earns none. It listens while the common dead keep coming.",
+  "source": "Standing still is the cheapest input and the dearest decision, so one enemy should demand it at the worst moment.",
+  "nearest": "Red light, green light, and sound-hunting monsters in stealth games; here the penalty is counted per half second moved and the crowd makes stillness costly.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 2,
+    "where": "Red light, green light as an enemy: Pyretic and Acceleration Bomb in Final Fantasy XIV (punished for moving inside a marked window), the doll in Squid Game adaptations, monsters that hunt by the sound of motion.",
+    "mutation": "Let it throw at the path, not the player: one shot per half second moved, each landing on the stretch of wake walked in that half second. Moving while it listens then lays a bombardment the player can draw through the train."
+   },
+   {
+    "lens": "stories",
+    "seen": 3,
+    "where": "Red Light, Green Light with a gun: the doll of Squid Game, here hearing instead of seeing. The eyeless listener is the creature of A Quiet Place (head plates lifting to hear), the crawlers of The Descent, the Pale Man of Pan's Labyrinth.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "thumbs-60",
+  "area": "enemy",
+  "name": "Poleman",
+  "idea": "Carries a pole 7 m long, held level, so its reach is drawn at true length. Every 3 s it sweeps a full circle, shown 0.8 s ahead, that hits everything between 2 m and 7 m from it. Inside 2 m nothing is touched. It walks slowly at the player. The answer is to stay beyond the pole's tip or to step in close and stay close.",
+  "source": "Holding an exact distance from one enemy is hardest when the safe distance is right beside it.",
+  "nearest": "Artillery with a minimum range in strategy games; here it is a walking melee threat and the safe zone moves with it.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 3,
+    "where": "The donut attack of every raid and action boss (Dynamo-type attacks in Final Fantasy XIV, halberd sweeps in Dark Souls): a ring that hits at range and is safe at the feet. A long pole does not change the rule.",
+    "mutation": ""
+   },
+   {
+    "lens": "stories",
+    "seen": 2,
+    "where": "The 'donut' attack of raid and hunting games, a deadly ring that is safe at the feet: the dynamo attacks of Final Fantasy XIV, tail spins in Monster Hunter, Zelda's Ball and Chain Trooper. In story, stepping inside the swing of the giant's club or Little John's staff.",
+    "mutation": "Hold the pole a third of the way along, so the sweep has a long arm and a short arm on opposite sides: the safe ground is not a disc at its feet but a crescent that turns with the pole, and the player must walk round with the short end."
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "water-65",
+  "area": "enemy",
+  "name": "Jibber",
+  "idea": "A false light. In fog or dark it shows the same lamp as an open gate, or the glow of a rich find, 12 to 20 metres off. Coming within 2 metres puts it out and wakes the 12 dead standing dark around it. The tells: a true gate lamp is steady and has a reflection on the water beneath it; a Jibber's bobs on a slow uneven beat and throws no reflection. Destroying it from beyond 4 metres pays as a find.",
+  "source": "Wreckers were said to hang a lantern on a hobbled horse so that its bobbing looked like a ship riding at anchor; still water doubles a real flame.",
+  "nearest": "Mimic chests. This one counterfeits the exit, and the game gives two honest tells built from how light behaves on water.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 2,
+    "where": "The mimic chest of Dark Souls, with its honest tell (the chain) and its reward for dealing with it from a distance, crossed with the will-o'-the-wisp that leads to an ambush (Dungeons and Dragons, The Witcher 3) and the anglerfish lure; From Software's glowing item with enemies lying round it.",
+    "mutation": "Drop the ambush and make it a thief of the moment: a Jibber lights only in the last 15 seconds before a toll, within 20 metres of the gate about to open, and has nothing hidden round it. Its whole harm is that the player is standing at the wrong lamp when the bell sounds and owes another tide; the missing reflection and the bob stay as the tells."
+   },
+   {
+    "lens": "stories",
+    "seen": 3,
+    "where": "The will-o'-the-wisp: jack-o'-lantern, hinkypunk, the Fenland Lantern Men, the lights in the Dead Marshes ('don't follow the lights'), the anglerfish's lure in Finding Nemo, and the wreckers' false light of Jamaica Inn. The missing reflection is the vampire's tell, and the ambush on approach is the mimic chest.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ },
+ {
+  "id": "water-89",
+  "area": "event",
+  "name": "Fog-bank",
+  "idea": "A bank of fog 20 metres across crosses the district in 40 seconds. Inside it light reaches 1.5 metres, skills reach half as far, gate lamps cannot be seen beyond 6 metres, and enemies are drawn only as shapes within 2. Sound is unchanged. False lights appear only in fog. A lantern with its shutter narrowed cuts through to 5 metres one way.",
+  "source": "Fog swallows a flame's light within a few steps, and a shielded lantern throws what is left one way.",
+  "nearest": "Fog of war and darkness modifiers. This is a moving weather front that the player can walk out of or wait out.",
+  "cost": "small",
+  "seen": 3,
+  "notes": [
+   {
+    "lens": "games",
+    "seen": 2,
+    "where": "Fog and storm events that cut sight for a while: roaming fog banks in Sea of Thieves, storm bursts in Hard Rain (Left 4 Dead 2), fog rounds in Hunt: Showdown, darkness in the Delve of Path of Exile and in Darkest Dungeon.",
+    "mutation": "Let the fog lie low on the water and hide the ground while every flame shows through it at full distance: in the bank the player sees lamps, lit bodies, votives and their own light, but not water depth, pickups, stubs or anything unlit. Finding the way is done by lights alone, which is exactly when a false one matters."
+   },
+   {
+    "lens": "stories",
+    "seen": 3,
+    "where": "The fog bank that rolls in off the sea with the drowned dead and a wreckers' false light in its history is John Carpenter's The Fog; also The Mist, Silent Hill, the London pea-souper, and darkness or low-visibility modifiers in any action game. Fog that shortens sight while things wait in it is stock weather under its own name.",
+    "mutation": ""
+   }
+  ],
+  "status": "recognised"
+ }
+]
