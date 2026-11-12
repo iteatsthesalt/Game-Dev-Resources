@@ -48,26 +48,31 @@
 //                                   fog      {color: [r, g, b], near, far}: in metres up the screen beyond the point
 //                                            looked at, where the fog begins and where it is whole
 //   b.parts(shape, buffer, count) count records of Gfx.PART_STRIDE floats, all of one shape (its id or its name)
-//   b.decals(buffer, count)       flat marks just above the ground, blended over it, unlit: records of
-//                                 Gfx.DECAL_STRIDE. A record of 8 is a ring at its radius, filled in faintly as far
-//                                 as fill says. Once Gfx.DECAL_STRIDE is 11 or more, the three floats after fill are
-//                                 read too: shape, angle and arc (radians; the angle as the simulation turns, 0 along
-//                                 +x and a quarter turn along +y). The shapes: 0 disc (filled whole), 1 ring (as
-//                                 above), 2 sector (the ring and its fill cut to arc, centred on angle, with its two
-//                                 straight sides drawn), 3 bar (from the centre towards angle, radius long and arc
-//                                 metres wide, its outline drawn and filled from the centre as far as fill says).
+//   b.decals(buffer, count)       flat marks just above the ground, blended over it in the order given, unlit:
+//                                 records of Gfx.DECAL_STRIDE (65-gfx.js says what each float is). A ring, sector
+//                                 or bar is its rim (3% of its radius, at most 0.12 m, at least a pixel and a fifth
+//                                 of the picture) and its filled part, both in its colour and alpha; fill from
+//                                 0 to 1 fills from the middle out, below 0 from the rim in. The shapes: 0 disc
+//                                 (filled whole), 1 ring, 2 sector (the ring cut to arc, centred on angle, with its
+//                                 two straight sides drawn), 3 bar (from the centre towards angle, radius long and
+//                                 arc metres wide, its outline drawn and filled along its length), 4 lee (drawn as
+//                                 nothing: the first 64 of a frame, in any call, are what shelters the ground from
+//                                 the cut decals), and 8 added to 0 to 3 for a cut decal: its pixels in the lee of
+//                                 any lee record, seen from its own centre, are left out, so clean ground shows.
+//                                 Lee records count in no stat.
 //   b.billboards(buffer, count)   soft squares facing the camera, unlit, records of Gfx.BILLBOARD_STRIDE, drawn after
 //                                 the solids and hidden by them, but not hiding anything: glow above 0.5 adds light
 //                                 (and feeds the bloom), otherwise the billboard covers what is behind it
 //   b.discs(buffer, count)        records of Gfx.DISC_STRIDE, each drawn as an upright 8-sided cylinder as wide as
 //                                 the disc and twice its radius tall, in the disc's colour (for the stand-in picture)
 //   b.lights(buffer, count)       records of Gfx.LIGHT_STRIDE; the first 32 of a frame are used
-//   b.end(post)                   draws the frame. post {outline, bloom, dither, vignette, flash}, each 0 to 1. What
-//                                 is left out (all of it, with null) is 1 for outline and bloom and 0 for the rest.
-//                                 outline: a dark pixel where the depth jumps, round whatever stands in front; bloom:
-//                                 a glow round glowing parts and light-adding billboards (at 'high'); dither: an
-//                                 ordered dither down to 5 bits a channel; vignette darkens the corners; flash
-//                                 whitens the whole frame.
+//   b.end(post)                   draws the frame. post {outline, bloom, dither, vignette, flash, grey}, each 0 to 1.
+//                                 What is left out (all of it, with null) is 1 for outline and bloom and 0 for the
+//                                 rest. outline: a dark pixel where the depth jumps, round whatever stands in front;
+//                                 bloom: a glow round glowing parts and light-adding billboards (at 'high'); dither:
+//                                 an ordered dither down to 5 bits a channel; vignette darkens the corners; flash
+//                                 whitens the whole frame; grey takes the colour out of everything that does not
+//                                 glow (a part's glow, a billboard that adds light), so lit things keep theirs.
 //   Between begin() and end() the other calls come in any number and order. Nothing is drawn before end(). The view
 //   copies what it is given before it returns, so a buffer may be refilled at once. Up to maxInstances parts of each
 //   shape, 4096 decals, 4096 billboards of each kind and 32 lights count in one frame; the rest is left out.
@@ -92,6 +97,7 @@
   const DECAL = Gfx.DECAL_STRIDE, BOARD = Gfx.BILLBOARD_STRIDE, DISC = Gfx.DISC_STRIDE;
   const SHAPES = Mesh.SHAPES, KINDS = SHAPES.length, CYL = SHAPES.indexOf('cyl');
   const WIDE_DECAL = 11;      // a decal record this long carries, after fill: shape, angle and arc
+  const LEE_SHAPE = 4;        // a decal of this shape is a lee record: what shelters the ground from cut decals
   const BELOW = { high: 'medium', medium: 'low', low: 'low' };
 
   // ---- the camera ----
@@ -104,7 +110,7 @@
 
   // ---- sizes ----
   const CAP = 16384;                   // parts of one shape in one frame
-  const DECALS = 4096, BOARDS = 4096, DISCS = 2048, LIGHTS = 32;
+  const DECALS = 4096, BOARDS = 4096, DISCS = 2048, LIGHTS = 32, LEES = 64;
   const PIXELS = 2.5e6;                // the canvas holds at most this many device pixels
   const SHORT_LO = 300, SHORT_HI = 432, SHORT_MID = 360;   // the shorter side of the low-resolution target
   const SHADOW_SIZE = { high: 1024, medium: 512, low: 0 };
@@ -114,14 +120,13 @@
   const SUN_MARGIN = 40;      // metres towards the sun past the picture from which a caster may still cast
   const BIAS = 0.05;          // metres: the shadow test's allowance in depth
   const DISC_TALL = 2;        // a disc's cylinder is its radius times this tall
-  const FILL = 0.3;           // the filled part of a decal, against its ring
   const OUTLINE_JUMP = 0.35, OUTLINE_PER_METRE = 0.006, OUTLINE_DARK = 0.7;   // where an outline is drawn, and how dark
   const BLOOM_GAIN = 1.8;
   const SLOW = 20, SLOW_FOR = 2000, PAUSE = 250;   // ms: frames this far apart, for this long, step the quality
                                                   // down; a gap longer than PAUSE is a pause, not a slow frame
   const GROUND = [0.27, 0.28, 0.3], AMBIENT = [0.42, 0.44, 0.5], SUN_DIR = [0.45, -1, -0.35], SUN = [0.95, 0.9, 0.8];
   const FOG = [0.1, 0.11, 0.14], FOG_NEAR = 8, FOG_FAR = 32, TILE_SPAN = 8;
-  const POST = { outline: 1, bloom: 1, dither: 0, vignette: 0, flash: 0 };
+  const POST = { outline: 1, bloom: 1, dither: 0, vignette: 0, flash: 0, grey: 0 };
   const ATTRIBUTES = { alpha: false, antialias: false, depth: false, stencil: false, premultipliedAlpha: false, preserveDrawingBuffer: false };
 
   // ---- the shaders ----
@@ -319,19 +324,25 @@ out vec2 vLocal;
 out float vZ;
 flat out vec4 vColor;
 flat out vec4 vShape;
-flat out float vArc;
+flat out vec3 vArc;
 void main() {
-  // A: x, y, radius, red. B: green, blue, alpha, fill. C: shape (0 disc, 1 ring, 2 sector, 3 bar), angle, arc
-  // (for a bar, its width in metres), unused.
-  float r = max(aDecalA.z, 0.0);
-  float reach = aDecalC.x > 2.5 ? sqrt(r * r + 0.25 * aDecalC.z * aDecalC.z) : r;
+  // A: x, y, radius, red. B: green, blue, alpha, fill. C: shape (0 disc, 1 ring, 2 sector, 3 bar, 4 lee; 8 added:
+  // cut by lee), angle, arc (for a bar, its width in metres). vArc carries the arc and the decal's centre.
+  float r = max(aDecalA.z, 0.0), code = aDecalC.x >= 7.5 ? aDecalC.x - 8.0 : aDecalC.x;
+  vColor = vec4(aDecalA.w, aDecalB.x, aDecalB.y, aDecalB.z);
+  vShape = vec4(r, aDecalB.w, aDecalC.x, aDecalC.y);
+  vArc = vec3(aDecalC.z, aDecalA.x, aDecalA.y);
+  vLocal = vec2(0.0);
+  vZ = 0.0;
+  if (code > 3.5) {                      // a lee record is not drawn
+    gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+    return;
+  }
+  float reach = code > 2.5 ? sqrt(r * r + 0.25 * aDecalC.z * aDecalC.z) : r;
   vec2 local = aCorner * reach;
   vec3 world = vec3(aDecalA.x + local.x, 0.02, aDecalA.y + local.y);
   vLocal = local;
   vZ = world.z;
-  vColor = vec4(aDecalA.w, aDecalB.x, aDecalB.y, aDecalB.z);
-  vShape = vec4(r, aDecalB.w, aDecalC.x, aDecalC.y);
-  vArc = aDecalC.z;
   gl_Position = uViewProj * vec4(world, 1.0);
 }
 `;
@@ -341,30 +352,56 @@ in vec2 vLocal;
 in float vZ;
 flat in vec4 vColor;
 flat in vec4 vShape;
-flat in float vArc;
+flat in vec3 vArc;
+uniform vec4 uLee[${LEES}];
+uniform int uLees;
 out vec4 outColor;
+// Whether the point p (from the decal's centre s) lies in the lee of one of the lee records, by the rule of
+// Dmg.inLee: the record's circle meets the last reach metres of the line from s to p, and its centre lies short
+// of p along that line. A record round s itself casts none.
+bool inLee(vec2 s, vec2 p) {
+  vec2 sp = p - s;
+  float d = length(sp);
+  if (d < 1e-4) return false;
+  vec2 u = sp / d;
+  for (int i = 0; i < ${LEES}; i++) {
+    if (i >= uLees) break;
+    vec4 c = uLee[i];
+    vec2 sc = c.xy - s;
+    float along = dot(sc, u);
+    if (dot(sc, sc) <= c.z * c.z || along >= d) continue;
+    vec2 q = u * max(along, max(d - c.w, 0.0)) - sc;
+    if (dot(q, q) <= c.z * c.z) return true;
+  }
+  return false;
+}
 void main() {
-  float r = vShape.x, fill = clamp(vShape.y, 0.0, 1.0);
-  int shape = int(vShape.z + 0.5);
+  float r = vShape.x, fill = clamp(vShape.y, -1.0, 1.0);
+  int code = int(vShape.z + 0.5);
+  bool cut = code >= 8;
+  int shape = cut ? code - 8 : code;
   float px = max(length(dFdx(vLocal)), length(dFdy(vLocal)));
-  float rim = max(1.2 * px, 0.03 * r);
+  float rim = max(1.2 * px, min(0.03 * r, 0.12));
   float d = length(vLocal), a = 0.0;
   if (shape == 3) {
     vec2 dir = vec2(cos(vShape.w), sin(vShape.w));
-    float along = dot(vLocal, dir), across = abs(dot(vLocal, vec2(-dir.y, dir.x))), side = 0.5 * vArc;
+    float along = dot(vLocal, dir), across = abs(dot(vLocal, vec2(-dir.y, dir.x))), side = 0.5 * vArc.x;
     if (along < 0.0 || along > r || across > side) discard;
-    a = (along > r - rim || along < rim || across > side - rim) ? 1.0 : along <= r * fill ? ${FILL} : 0.0;
+    bool filled = fill > 0.0 ? along <= r * fill : fill < 0.0 && along >= r * (1.0 + fill);
+    a = (along > r - rim || along < rim || across > side - rim || filled) ? 1.0 : 0.0;
   } else {
     if (d > r) discard;
     bool edge = d > r - rim;
     if (shape == 2) {
       float off = abs(mod(atan(vLocal.y, vLocal.x) - vShape.w + 3.14159265, 6.28318531) - 3.14159265);
-      if (off > 0.5 * vArc) discard;
-      edge = edge || d * sin(min(0.5 * vArc - off, 1.5707963)) < rim;
+      if (off > 0.5 * vArc.x) discard;
+      edge = edge || d * sin(min(0.5 * vArc.x - off, 1.5707963)) < rim;
     }
-    a = shape == 0 ? 1.0 : edge ? 1.0 : d <= r * fill ? ${FILL} : 0.0;
+    bool filled = fill > 0.0 ? d <= r * fill : fill < 0.0 && d >= r * (1.0 + fill);
+    a = shape == 0 || edge || filled ? 1.0 : 0.0;
   }
   if (a <= 0.0) discard;
+  if (cut && uLees > 0 && inLee(vArc.yz, vArc.yz + vLocal)) discard;
   outColor = vec4(mix(vColor.rgb, uFogColor, fogAt(vZ)), vColor.a * a);
 }
 `;
@@ -445,6 +482,7 @@ uniform highp sampler2D uDepth;
 uniform sampler2D uBloom;
 uniform vec4 uPost;
 uniform float uFlash;
+uniform float uGrey;
 uniform vec4 uDepthInfo;
 uniform vec2 uBloomScale;
 uniform ivec2 uSize;
@@ -455,8 +493,11 @@ float depthAt(ivec2 p) {
 }
 void main() {
   // uPost: outline, bloom, dither, vignette. uDepthInfo: near, far, the least jump, and the jump per metre of depth.
+  // uGrey: how much colour goes out of what does not glow (the scene's alpha holds the glow).
   ivec2 p = ivec2(gl_FragCoord.xy);
-  vec3 c = texelFetch(uScene, p, 0).rgb;
+  vec4 scene = texelFetch(uScene, p, 0);
+  vec3 c = scene.rgb;
+  if (uGrey > 0.0) c = mix(c, vec3(dot(c, vec3(0.3, 0.55, 0.15))), uGrey * (1.0 - clamp(scene.a * 3.0, 0.0, 1.0)));
   if (uPost.x > 0.0) {
     float d = depthAt(p);
     float nearest = min(min(depthAt(p + ivec2(1, 0)), depthAt(p - ivec2(1, 0))), min(depthAt(p + ivec2(0, 1)), depthAt(p - ivec2(0, 1))));
@@ -545,13 +586,14 @@ void main() {
 
     // the frame being gathered
     const used = new Int32Array(KINDS);
-    let decalN = 0, coverN = 0, addN = 0, lightN = 0;
+    let decalN = 0, coverN = 0, addN = 0, lightN = 0, leeN = 0;
+    const leeData = new Float32Array(LEES * 4);   // the lee records: x, y, radius, reach
     const coverData = new Float32Array(BOARDS * BOARD), addData = new Float32Array(BOARDS * BOARD);
     const discData = new Float32Array(DISCS * STRIDE);
     const lightPos = new Float32Array(LIGHTS * 4), lightCol = new Float32Array(LIGHTS * 4);
     const ground = new Float32Array(4), ambient = new Float32Array(3), fog = new Float32Array(3);
     let fogNear = FOG_NEAR, fogFar = FOG_FAR, tile = null;
-    const post = { outline: 1, bloom: 1, dither: 0, vignette: 0, flash: 0 };
+    const post = { outline: 1, bloom: 1, dither: 0, vignette: 0, flash: 0, grey: 0 };
     const tiles = new Map();      // tileset id -> {texture, span} | null
 
     // ---- building ----
@@ -649,11 +691,11 @@ void main() {
         lit('ground', false, GROUND_VS, GROUND_FS, ['uGroundBox', 'uGround', 'uTileSpan']),
         lit('groundShadow', true, GROUND_VS, GROUND_FS, ['uGroundBox', 'uGround', 'uTileSpan']),
         plain('depth', DEPTH_VS, DEPTH_FS, ['uLightViewProj']),
-        plain('decal', DECAL_VS, DECAL_FS, ['uViewProj', 'uFogColor', 'uFog']),
+        plain('decal', DECAL_VS, DECAL_FS, ['uViewProj', 'uFogColor', 'uFog', 'uLee', 'uLees']),
         plain('board', BOARD_VS, BOARD_FS, ['uViewProj', 'uRight', 'uUp', 'uFogColor', 'uFog', 'uAdd']),
         plain('halve', FULL_VS, HALVE_FS, ['uSrcSize', 'uGlow'], { uSrc: UNIT.src }),
         plain('blur', FULL_VS, BLUR_FS, ['uSrcSize', 'uStep'], { uSrc: UNIT.src }),
-        plain('compose', FULL_VS, COMPOSE_FS, ['uPost', 'uFlash', 'uDepthInfo', 'uBloomScale', 'uSize'],
+        plain('compose', FULL_VS, COMPOSE_FS, ['uPost', 'uFlash', 'uGrey', 'uDepthInfo', 'uBloomScale', 'uSize'],
           { uScene: UNIT.src, uDepth: UNIT.depth, uBloom: UNIT.bloom }),
         plain('blit', FULL_VS, BLIT_FS, ['uBlit'], { uSrc: UNIT.src }),
       ]);
@@ -1005,6 +1047,7 @@ void main() {
       post.dither = share(p ? p.dither : NaN, POST.dither);
       post.vignette = share(p ? p.vignette : NaN, POST.vignette);
       post.flash = share(p ? p.flash : NaN, POST.flash);
+      post.grey = share(p ? p.grey : NaN, POST.grey);
     }
 
     function setLevel(next) {
@@ -1036,7 +1079,7 @@ void main() {
       stats.drawCalls = 0;
       stats.instances = 0;
       for (let s = 0; s < KINDS; s++) used[s] = 0;
-      decalN = coverN = addN = lightN = 0;
+      decalN = coverN = addN = lightN = leeN = 0;
       const x = cam ? +cam.x || 0 : 0, y = cam ? +cam.y || 0 : 0, zoom = cam && cam.zoom > 0 ? +cam.zoom : 1;
       aim(x, y, zoom);
       readEnv(env);
@@ -1060,7 +1103,16 @@ void main() {
       gl.bindBuffer(gl.ARRAY_BUFFER, R.decalBuf);
       gl.bufferSubData(gl.ARRAY_BUFFER, decalN * DECAL * 4, buffer, 0, n * DECAL);
       decalN += n;
-      stats.instances += n;
+      // lee records are not drawn: they go to the decal shader as what shelters the ground from cut decals
+      let lees = 0;
+      for (let i = 0, o = 0; DECAL >= WIDE_DECAL && i < n; i++, o += DECAL) {
+        if (Math.abs(buffer[o + 8] - LEE_SHAPE) > 0.25) continue;
+        lees++;
+        if (leeN >= LEES) continue;
+        const k = leeN++ * 4;
+        leeData[k] = buffer[o]; leeData[k + 1] = buffer[o + 1]; leeData[k + 2] = buffer[o + 2]; leeData[k + 3] = buffer[o + 10];
+      }
+      stats.instances += n - lees;
     }
 
     function billboards(buffer, count) {
@@ -1223,6 +1275,8 @@ void main() {
         gl.uniformMatrix4fv(r.decal.uViewProj, false, vp32);
         gl.uniform3f(r.decal.uFogColor, fog[0], fog[1], fog[2]);
         gl.uniform3f(r.decal.uFog, fogNear, fogFar, tgtZ);
+        gl.uniform1i(r.decal.uLees, leeN);
+        if (leeN) gl.uniform4fv(r.decal.uLee, leeData, 0, leeN * 4);
         gl.bindVertexArray(r.decalVao);
         if (DECAL < WIDE_DECAL) gl.vertexAttrib4f(3, 1, 0, 2 * Math.PI, 0);   // a ring, until the record says otherwise
         gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, decalN);
@@ -1289,6 +1343,7 @@ void main() {
       bind(UNIT.bloom, t.qa);
       gl.uniform4f(c.uPost, level === 'low' ? 0 : post.outline, bloom ? post.bloom : 0, post.dither, post.vignette);
       gl.uniform1f(c.uFlash, post.flash);
+      gl.uniform1f(c.uGrey, post.grey);
       gl.uniform4f(c.uDepthInfo, near, far, OUTLINE_JUMP, OUTLINE_PER_METRE);
       gl.uniform2f(c.uBloomScale, 1 / (4 * qw), 1 / (4 * qh));
       gl.uniform2i(c.uSize, tw, th);

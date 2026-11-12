@@ -1,6 +1,7 @@
 // tests/scenarios/31-scene.js: the scene, the rigs and the effects in the page (src/js/61-rigs.js, 63-ground.js,
 // 68-scene.js, 69-vfx.js), on a desktop window and on a phone, in the plain view and in the 3D view.
-//   - a run started from the title is drawn through Scene.draw, without an error
+//   - a run started from the title is drawn through Scene.draw, without an error; the checks after it start the
+//     debug scene (Game.start() with no zone), whose rings of husks they count on
 //   - the buffers of a frame hold the player and every enemy on screen: in the 3D view parts round each of them,
 //     in the plain view a disc at each
 //   - with 600 enemies the budgets hold (parts, lights), and a lower part budget drops detail parts first and
@@ -19,16 +20,22 @@ const scene = async function () {
   T.check('the view is the one asked for', !!view && view.name === wanted, view && view.name);
   const puppets = !!(view && view.caps && view.caps.puppets);
 
-  // ---- a run from the title ----
+  // ---- a run from the title: whatever run the title starts is drawn ----
   const begin = Array.from(document.querySelectorAll('#ui button')).find((b) => /begin/i.test(b.textContent));
   T.check('the title offers a way into a run', !!begin);
   if (!begin) return T.done();
   begin.click();
-  const S = Game.S;
-  T.check('it starts the debug scene', Game.state === 'run' && !!S && S.debug !== null && S.enemies.n > 0, S && S.enemies.n);
+  const first = Game.S;
+  T.check('it starts a run', Game.state === 'run' && !!first, Game.state);
+  if (!first) return T.done();
+  await T.until(() => first.step >= 20 && Scene.stats.figures > 0, 20000);
+  T.check('the frame loop draws it through Scene.draw', Scene.stats.figures > 0 && UI.top() === null, Scene.stats);
+
+  // ---- the debug scene, whose rings of husks the checks below count on ----
+  const S = Game.start();
+  T.check('a run without a zone is the debug scene', Game.state === 'run' && !!S && S.debug !== null && S.enemies.n > 0, S && S.enemies.n);
   if (!S) return T.done();
   await T.until(() => S.step >= 20 && Scene.stats.figures > 0, 20000);
-  T.check('the frame loop draws it through Scene.draw', Scene.stats.figures > 0 && UI.top() === null, Scene.stats);
 
   // ---- what a frame holds: drawn here at alpha 1, so things stand where the run has them ----
   const canvas = view.canvas, w = canvas.clientWidth, h = canvas.clientHeight, at = { x: 0, y: 0 };

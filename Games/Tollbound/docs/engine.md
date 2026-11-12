@@ -318,7 +318,7 @@ b.decals(buffer, count)             flat on the ground: telegraphs, scorch, pick
 b.billboards(buffer, count)         facing the camera: particles, bolts (alpha or additive)
 b.discs(buffer, count)              one disc per entity: the plain view's figures; the 3D view draws each as a cylinder
 b.lights(buffer, count)             point lights: Gfx.LIGHT_STRIDE floats each
-b.end(post {outline, bloom, flash, vignette, dither} | null)      each 0 to 1
+b.end(post {outline, bloom, flash, vignette, dither, grey} | null)   each 0 to 1; grey: colour out of all that does not glow
 b.worldToScreen(x, y, z, out)   b.screenToWorld(sx, sy, out)
 b.visibleRadius() -> metres         3D view: from the point looked at to the farthest ground on screen; under 24 at zoom 1
 b.readPixels(x, y, w, h) -> bytes   3D view, for tests: the finished low-resolution picture, rows from the top
@@ -338,7 +338,13 @@ Instance buffers are `Float32Array`s of whole records, and `count` is a number o
 
 ```
 Gfx.DISC_STRIDE = 7        x, y, radius, red, green, blue, alpha
-Gfx.DECAL_STRIDE = 8       x, y, radius, red, green, blue, alpha, fill      fill: the share of the radius filled in, 0 to 1
+Gfx.DECAL_STRIDE = 11      x, y, radius, red, green, blue, alpha, fill, shape, angle, arc
+                           fill: the share filled in, drawn like the rim: 0 to 1 from the middle out, below 0 from the
+                           rim in. shape: 0 disc, 1 ring, 2 sector, 3 bar, 4 lee (not drawn: a body or prop at x, y,
+                           radius round, that shelters by the rule of Dmg.inLee with arc as its reach); 8 added to 0 to
+                           3: cut, the frame's lee as seen from the decal's x, y cut out of it as clean ground. angle:
+                           which way a sector or bar points. arc: a sector's opening (radians), a bar's width or a
+                           lee record's reach (metres)
 Gfx.BILLBOARD_STRIDE = 9   x, y, z, size, red, green, blue, alpha, glow     glow above 0.5: it adds its light, else it covers
 Gfx.PART_STRIDE = 18       a 3x4 matrix in rows (m00 m01 m02 m03 m10 ... m23) taking a unit-shape point to the world,
                            then red, green, blue, flash (toward white, for a hit), glow (shines by itself, feeds the
@@ -346,7 +352,7 @@ Gfx.PART_STRIDE = 18       a 3x4 matrix in rows (m00 m01 m02 m03 m10 ... m23) ta
 Gfx.LIGHT_STRIDE = 8       x, y on the ground, z height, radius, red, green, blue, strength
 ```
 
-The decal record will widen to 11 floats: after `fill` come `shape` (0 disc, 1 ring, 2 sector, 3 bar: `Scene.DISC` to `Scene.BAR`), `angle` (radians: which way a sector or a bar points) and `arc` (a sector's opening in radians, a bar's width in metres). The 3D view and `Scene.decal` read and write those three already, whenever `Gfx.DECAL_STRIDE` is 11 or more; until then every decal is drawn as a ring filled in by `fill`. A Swell's wedge and its lane need them: the figures' package widens the record in Stage 1.
+The decal record is 11 floats: after `fill` come `shape` (`Scene.DISC` 0, `RING` 1, `SECTOR` 2, `BAR` 3, `LEE` 4, and `Scene.CUT` 8 added for a decal cut by lee), `angle` and `arc`, and both views draw every shape. A Swell is two cut records of its shape, its fill in pale bone and its dark rim, and each body or prop that may shelter from it is a lee record in the same buffer: the lee is worked out per pixel from those, so the clean ground left in the fill is exactly the ground where a body would stand in lee. Both views read up to 64 lee records a frame.
 
 In the plain view the longer side of the canvas shows 30 m of ground at zoom 1, and a metre of height lifts a point half a metre up the screen.
 

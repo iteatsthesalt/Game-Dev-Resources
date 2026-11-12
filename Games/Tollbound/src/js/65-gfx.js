@@ -22,10 +22,21 @@
 //
 // Instance buffers are Float32Arrays of whole records, and count is a number of records:
 //   Gfx.DISC_STRIDE = 7        x, y, radius, red, green, blue, alpha
-//   Gfx.DECAL_STRIDE = 8       x, y, radius, red, green, blue, alpha, fill
+//   Gfx.DECAL_STRIDE = 11      x, y, radius, red, green, blue, alpha, fill, shape, angle, arc
 //   Gfx.BILLBOARD_STRIDE = 9   x, y, z, size, red, green, blue, alpha, glow
 //   x, y, z, radius and size are metres; colours and alpha run from 0 to 1.
-//   fill   how much of a decal's radius is filled in, 0 to 1: a telegraph can fill up as its attack comes
+//   fill   how much of a decal is filled in, drawn in its colour and alpha like its rim: from 0 to 1 the share of
+//          its radius filled from the middle out; below 0, -fill of it filled from the rim in (a falling Swell)
+//   shape  0 disc (filled whole), 1 ring (its rim, and its fill), 2 sector (a ring cut to arc radians, centred on
+//          angle, its two straight sides drawn), 3 bar (from x, y toward angle, radius long and arc metres wide:
+//          its outline, and its fill along its length), 4 lee: drawn as nothing, it is a body or a prop at x, y,
+//          radius round, that shelters the ground behind it (arc is its reach). 8 added to shapes 0 to 3 (cut):
+//          the lee of every lee record of the frame, seen from the decal's own x, y, is cut out of it, so clean
+//          ground shows there. A point is in lee by the rule of Dmg.inLee (11-damage.js): a lee record's circle
+//          meets the last arc metres of the line to the point from x, y, and the record's centre lies short of the
+//          point along that line. A lee record whose circle holds x, y casts no lee for that decal.
+//   angle  radians, as the simulation turns: 0 along +x, a quarter turn along +y
+//   arc    a sector's opening in radians; a bar's width in metres; a lee record's reach in metres
 //   glow   above 0.5 the billboard adds its light to what is behind it; otherwise it covers it
 // The records of b.parts and b.lights belong to the 3D view, the only one that reads those buffers: it gives
 // their strides when it is written.
@@ -39,7 +50,7 @@
   const PLAIN = '2d';                         // the view every browser can show: tried last, whatever the order
 
   Gfx.DISC_STRIDE = 7;
-  Gfx.DECAL_STRIDE = 8;
+  Gfx.DECAL_STRIDE = 11;
   Gfx.BILLBOARD_STRIDE = 9;
 
   const supportTests = Object.create(null);   // name -> isSupported, or null

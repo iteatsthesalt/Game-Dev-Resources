@@ -8,7 +8,7 @@
 //   - a red box is red where it stands and the ground beside it is not
 //   - a box under the sun darkens the ground on its shadow side at 'high', and not at 'low'
 //   - a point light brightens the ground near it; a glowing part is brighter than the same part without glow
-//   - decals, billboards (covering and adding) and discs draw where they should
+//   - decals (a ring of the 11-float record), billboards (covering and adding) and discs draw where they should
 //   - b.stats counts what was drawn and stays within 24 draw calls with 2000 parts
 //   - resize and a change of quality keep drawing; so does the next frame after a lost and restored context
 //   - worldToScreen and screenToWorld are each other's inverse on the ground; 30 metres of ground fit the longer
@@ -27,7 +27,8 @@ const view = async function () {
   T.check('it says what it can do', b.caps.puppets === true && b.caps.shadows === true && b.caps.lights === true && b.caps.bloom === true &&
     b.caps.maxInstances >= 10000, b.caps);
   T.check('the records it reads: shapes, part and light strides', JSON.stringify(Gfx.SHAPES) === '["box","taper","cyl","sphere","cone"]' &&
-    Gfx.PART_STRIDE === 18 && Gfx.LIGHT_STRIDE === 8 && Gfx.DECAL_STRIDE === 8 && Gfx.BILLBOARD_STRIDE === 9, [Gfx.PART_STRIDE, Gfx.LIGHT_STRIDE]);
+    Gfx.PART_STRIDE === 18 && Gfx.LIGHT_STRIDE === 8 && Gfx.DECAL_STRIDE === 11 && Gfx.BILLBOARD_STRIDE === 9,
+    [Gfx.PART_STRIDE, Gfx.LIGHT_STRIDE, Gfx.DECAL_STRIDE]);
   T.check('the canvas has the pixels of the window', canvas.width === Math.round(innerWidth * devicePixelRatio) && canvas.height === Math.round(innerHeight * devicePixelRatio),
     [canvas.width, canvas.height]);
   let refusal = '';
@@ -178,8 +179,8 @@ const view = async function () {
   const noHalo = read(1.0, 0, 0.6, 1);
   T.check('and with bloom its light spills past its edge', lum(halo) > lum(noHalo) + 4, { bloom: halo, none: noHalo });
 
-  // ---- decals, billboards and discs ----
-  const decal = new Float32Array([-2.5, 3, 1.2, 0.1, 0.9, 0.2, 1, 0]);
+  // ---- decals, billboards and discs (a ring: shape 1, no fill; 32-dial-figures.js tests every shape) ----
+  const decal = new Float32Array([-2.5, 3, 1.2, 0.1, 0.9, 0.2, 1, 0, 1, 0, 0]);
   const boards = new Float32Array([4, 2, 1, 1.4, 0.95, 0.3, 0.2, 1, 1, 4, -2, 1, 1.4, 0.15, 0.25, 0.95, 1, 0]);
   const disc = new Float32Array([0, -3, 0.5, 0.95, 0.85, 0.1, 1]);
   frame(DAY, null);

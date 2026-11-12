@@ -1,0 +1,180 @@
+/* 30-hud.css: what 71-hud.js puts in #hud (the canvas of the HUD, the grey of Tolled-for, a probe of the safe area)
+   and the title and results screens of 73-screens.js in #ui.
+   The HUD draws on its canvas in the colours of the tokens below and of 00-base.css: 71-hud.js reads them from the
+   root when it lays itself out, so a colour is changed here and nowhere else.
+   The screens are built from the classes of 10-ui.css; what is theirs alone is named scr-*. Sizes are in rem, so the
+   setting "Text and controls" (--ui-scale) scales them; a control is never lower than 44px. */
+
+:root {
+  --hud-trough: rgba(10, 12, 17, 0.62);     /* the empty part of a bar */
+  --hud-edge: rgba(10, 12, 17, 0.88);       /* the dark line round every mark, so it reads on any ground */
+  --hud-fill: rgba(10, 12, 17, 0.5);        /* the body of a disc: the ground shows through */
+  --hud-scar: #3b1d20;                      /* scars: the dark end of the life bar */
+  --hud-heed: #a9ddd1;                      /* free Heed */
+  --hud-lamp: #e6c25a;                      /* lamp yellow: the lit lychgate of Tolled-for */
+  --hud-grey: grayscale(1) brightness(0.8) contrast(1.05);   /* Tolled-for */
+  --scr-emblem: 3.4rem;
+}
+
+/* ---- the HUD (71-hud.js) ---- */
+
+.hud-canvas {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Tolled-for: everything under the HUD loses its colour. Hidden once faded, so that the filter costs nothing. */
+.hud-grey {
+  position: absolute;
+  inset: 0;
+  visibility: hidden;
+  opacity: 0;
+  -webkit-backdrop-filter: var(--hud-grey);
+  backdrop-filter: var(--hud-grey);
+  pointer-events: none;
+  transition: opacity 600ms ease, visibility 0s linear 600ms;
+}
+
+.hud-grey.is-on {
+  visibility: visible;
+  opacity: 1;
+  transition: opacity 600ms ease, visibility 0s;
+}
+
+/* Where the safe area begins: 71-hud.js measures it to keep the toll's ring clear of a notch. */
+.hud-probe {
+  position: absolute;
+  top: env(safe-area-inset-top, 0px);
+  right: env(safe-area-inset-right, 0px);
+  bottom: env(safe-area-inset-bottom, 0px);
+  left: env(safe-area-inset-left, 0px);
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ---- the title (73-screens.js) ---- */
+
+.scr-title {
+  gap: 1rem;
+  max-width: 34rem;
+}
+
+.scr-emblem {
+  display: flex;
+  justify-content: center;
+  width: var(--scr-emblem);
+  height: var(--scr-emblem);
+  margin-bottom: -0.4rem;
+}
+
+.scr-emblem > canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.scr-choices {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.85rem;
+  width: min(100%, 17rem);
+  margin-top: 0.6rem;
+}
+
+.scr-choices > .ui-btn { width: 100%; }
+
+/* ---- the results (73-screens.js) ---- */
+
+.scr-results {
+  width: min(100%, 30rem);
+  gap: 0.85rem;
+}
+
+.scr-kicker {
+  margin: 0;
+  color: var(--accent-bright);
+  font: 600 0.78rem/1.2 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.scr-outcome { max-width: 26rem; }
+
+/* The tally: a label over its number in each cell. The cells wrap onto more lines on a narrow screen and widen to
+   fill each line, so no line ends in an empty cell; the lines between them are the gaps over the frame's colour. */
+.scr-tally {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  width: 100%;
+  margin: 0.2rem 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.scr-cell {
+  display: flex;
+  flex: 1 1 5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.55rem 0.4rem 0.6rem;
+  background: var(--surface-raised);
+}
+
+.scr-k {
+  color: var(--ink-faint);
+  font: 600 0.72rem/1.2 var(--font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.scr-v {
+  color: var(--ink);
+  font: 400 1.35rem/1.15 var(--font-display);
+  font-variant-numeric: tabular-nums;
+}
+
+.scr-cell.is-kept .scr-v { color: var(--second-bright); }
+.scr-cell.is-lost .scr-v { color: var(--ink-faint); text-decoration: line-through; }
+
+.scr-meta {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+}
+
+.scr-results .ui-row { width: 100%; }
+
+/* Each button keeps its words on one line: two side by side where they fit, else one above the other. */
+.scr-results .ui-row > .ui-btn {
+  flex: 1 1 11.5rem;
+  white-space: nowrap;
+}
+
+/* A phone on its side, or any short window: the title and the results draw closer together and the emblem goes. */
+@media (max-height: 500px) {
+  .scr-title { gap: 0.55rem; }
+  .scr-emblem { display: none; }
+  .scr-title .ui-rule { margin: 0.1rem 0; }
+
+  .scr-choices {
+    flex-direction: row;
+    width: min(100%, 26rem);
+    margin-top: 0.2rem;
+  }
+
+  .scr-choices > .ui-btn { flex: 1 1 0; }
+
+  .scr-results {
+    gap: 0.5rem;
+    padding-top: 0.9rem;
+    padding-bottom: 0.9rem;
+  }
+
+  .scr-cell { padding: 0.35rem 0.4rem; }
+}

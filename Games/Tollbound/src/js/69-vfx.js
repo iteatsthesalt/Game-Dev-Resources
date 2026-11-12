@@ -12,8 +12,10 @@
 //   Vfx.burst(kind, x, y, z, count, r, g, b)   particles: kind 'spark' (fast, glowing, falls), 'puff' (slow dust
 //                              that covers), 'mote' (rises and glows), 'ring' (a ring of motes spreading out)
 //   Vfx.billboards(buffer, n, max) -> n    writes the particles as Gfx.BILLBOARD_STRIDE records from record n on
-//   Vfx.decals(buffer, n, max) -> n        writes the warnings of attacks ('telegraph' events: x, y, a = radius,
-//                              b = seconds until it lands) as rings that fill up, and the marks kills leave
+//   Vfx.decals(buffer, n, max) -> n        writes the marks kills leave, and where a Swell broke: a 'telegraph'
+//                              event (x, y, a = radius, b = seconds until it lands) is timed, and when it lands a
+//                              pale ring spreads there for a moment, with dust. The filling shape itself is the
+//                              scene's, drawn from the area (68-scene.js).
 //   Vfx.offset(out) -> out     {x, y}: where the shake moves the camera now, in metres
 //   Vfx.post(post)             raises post.flash to the screen flash now
 //   Vfx.overlay(bars, count)   draws the numbers, and the life bars Scene.draw collected (Scene.BAR_STRIDE floats
@@ -28,15 +30,19 @@
 // toll, telegraph (a: radius, b: seconds), drop, phase, gate, stroke. A number never comes from an event:
 // Scene.draw sees life fall and calls Vfx.harm, so the numbers are right whatever the events carry. The wounds
 // themselves, postures, the wake and the dead's Swells are the scene's to draw from the run's state.
+// Only flames and hot metal glow (docs/design/01-world.md): sparks, embers, coin's glint and the lychgate's lamp
+// light; the air a voice, a pull or a toll moves is pale dust that covers.
 (function () {
   'use strict';
 
   const TAU = Core.TAU, sin = Math.sin, cos = Math.cos, sqrt = Math.sqrt, floor = Math.floor;
-  const MOST = 1500, FEW = 400, NUMBERS = 96, WARNINGS = 64, MARKS = 64;
+  const MOST = 1500, FEW = 400, NUMBERS = 96, WARNINGS = 64, MARKS = 64, LANDINGS = 32;
   const ADD_FOR = 0.25, NUMBER_LIFE = 0.9, RISE = 46;     // seconds, seconds, CSS px a second
   const SHAKE_MAX = 0.38, SHAKE_FALL = 1.6, FLASH_FALL = 4;               // metres; trauma lost a second; flash lost a second
-  const MARK_LIFE = 3.2;
-  const PICKUP = [[0.45, 0.95, 0.85], [1, 0.82, 0.35], [0.95, 0.95, 1], [1, 0.5, 0.6], [0.55, 0.7, 1], [0.8, 1, 0.5]];
+  const MARK_LIFE = 3.2, LAND_LIFE = 0.35;
+  // pickups by kind: an ember (warm, it glows), coin (a gold glint), a find, a favour's shape
+  const PICKUP = [[1, 0.55, 0.2], [1, 0.8, 0.36], [0.95, 0.93, 0.86], [0.92, 0.88, 0.78]];
+  const DUST = [0.9, 0.88, 0.82];                          // pale air: what a voice, a pull or a toll moves
 
   // ---- settings ----
   function setting(name) {
@@ -102,10 +108,13 @@
         0.7 + 0.6 * rand(), r, g, b, 1, 1, 0, 0.6);
     }
   }
-  function ring(x, y, z, n, r, g, b, speed) {
+  // A ring of motes spreading out; glow 1 adds light (a flame's), 0 covers (dust).
+  function ring(x, y, z, n, r, g, b, speed, glow) {
+    const lit = glow === undefined ? 1 : glow;
     for (let k = 0; k < n; k++) {
       const a = (k + rand() * 0.5) / n * TAU;
-      spawn(x + cos(a) * 0.3, y + sin(a) * 0.3, z, cos(a) * speed, sin(a) * speed, 0.6 + 0.4 * rand(), 0.14, 0.05, 0.8 + 0.3 * rand(), r, g, b, 1, 1, 0, 1.2);
+      spawn(x + cos(a) * 0.3, y + sin(a) * 0.3, z, cos(a) * speed, sin(a) * speed, 0.6 + 0.4 * rand(), lit ? 0.14 : 0.2, lit ? 0.05 : 0.1,
+        0.8 + 0.3 * rand(), r, g, b, lit ? 1 : 0.55, lit, 0, 1.2);
     }
   }
 
@@ -113,7 +122,7 @@
     const n = count > 0 ? count | 0 : 8, cr = r === undefined ? 1 : r, cg = g === undefined ? 0.85 : g, cb = b === undefined ? 0.55 : b, h = z || 0;
     if (kind === 'puff') puffs(x, y, h, n, cr, cg, cb);
     else if (kind === 'mote') motes(x, y, h, n, cr, cg, cb, 0.6, 1.2);
-    else if (kind === 'ring') ring(x, y, h, n, cr, cg, cb, 3);
+    else if (kind === 'ring') ring(x, y, h, n, cr, cg, cb, 3, 1);
     else sparks(x, y, h, n, cr, cg, cb, 4);
   };
 
@@ -128,6 +137,15 @@
   let wN = 0;
   const mX = new Float32Array(MARKS), mY = new Float32Array(MARKS), mR = new Float32Array(MARKS), mAge = new Float32Array(MARKS);
   let mN = 0, mOver = 0;
+  const lX = new Float32Array(LANDINGS), lY = new Float32Array(LANDINGS), lR = new Float32Array(LANDINGS), lAge = new Float32Array(LANDINGS);
+  let lN = 0;
+
+  // where a Swell broke: a pale ring that spreads for a moment
+  function landed(x, y, radius) {
+    if (lN >= LANDINGS) return;
+    const i = lN++;
+    lX[i] = x; lY[i] = y; lR[i] = radius; lAge[i] = 0;
+  }
 
   function warn(x, y, radius, seconds) {
     if (wN >= WARNINGS) return;
@@ -210,7 +228,7 @@
         motes(x, y, 0.5, 2 + rank * 3, 1, 0.7, 0.35, 0.3, 1.3);
         mark(x, y, 0.45 + 0.25 * rank);
         if (rank >= 1) jolt(0.12 + 0.15 * rank);
-      } else if (k === 'cast') motes(x, y, 1.2, 4, 0.7, 0.85, 1, 0.35, 1.5);
+      } else if (k === 'cast') ring(x, y, 1, 8, DUST[0], DUST[1], DUST[2], 1.6, 0);
       else if (k === 'hurt') {
         sparks(x, y, 1.1, 6, 1, 0.3, 0.25, 3);
         jolt(0.32);
@@ -218,26 +236,29 @@
       } else if (k === 'wound') puffs(x, y, 0.4, 3, 0.42, 0.06, 0.07);
       else if (k === 'mend') motes(x, y, 0.2, 2, 1, 0.55, 0.5, 0.5, 1.1);
       else if (k === 'scar') { puffs(x, y, 0.3, 5, 0.42, 0.4, 0.38); blink(0.1); }
-      else if (k === 'pull') ring(x, y, 0.6, 12, 0.95, 0.92, 0.85, 2.2);
-      else if (k === 'trade') ring(x, y, 1.8, 16, 1, 0.8, 0.45, 1.4);
+      else if (k === 'pull') ring(x, y, 0.6, 12, DUST[0], DUST[1], DUST[2], 2.2, 0);
+      else if (k === 'trade') ring(x, y, 1.8, 16, 0.98, 0.82, 0.5, 1.4, 0);
       else if (k === 'heave') puffs(x, y, 0.3, 6, 0.55, 0.5, 0.45);
       else if (k === 'pickup') {
-        const c = PICKUP[(e.a | 0) % PICKUP.length];
-        motes(x, y, 0.3, 6, c[0], c[1], c[2], 0.25, 1.8);
-      } else if (k === 'favour') motes(x, y, 0.3, 14, 1, 0.85, 0.45, 0.6, 1.8);
-      else if (k === 'level') {
-        ring(x, y, 0.2, 24, 1, 0.85, 0.4, 2.5);
+        const kind = e.a | 0, c = PICKUP[kind < PICKUP.length ? kind : 0];
+        if (kind <= 1) motes(x, y, 0.3, 6, c[0], c[1], c[2], 0.25, 1.8);
+        else puffs(x, y, 0.4, 6, c[0], c[1], c[2]);
+      } else if (k === 'favour') {
+        puffs(x, y, 0.5, 10, PICKUP[3][0], PICKUP[3][1], PICKUP[3][2]);
+        ring(x, y, 0.3, 14, PICKUP[3][0], PICKUP[3][1], PICKUP[3][2], 2.4, 0);
+      } else if (k === 'level') {
+        ring(x, y, 0.2, 24, 1, 0.85, 0.4, 2.5, 1);
         motes(x, y, 0.2, 12, 1, 0.9, 0.5, 0.8, 1.6);
         blink(0.2);
       } else if (k === 'toll') {
-        ring(x, y, 0.3, 40, 0.8, 0.85, 1, 6);
+        ring(x, y, 0.3, 40, DUST[0], DUST[1], DUST[2], 6, 0);
         jolt(0.22);
         blink(0.14);
       } else if (k === 'telegraph') warn(x, y, e.a, e.b);
       else if (k === 'drop') motes(x, y, 0.1, 6, 1, 0.95, 0.75, 0.15, 0.9);
       else if (k === 'phase') { jolt(0.5); blink(0.25); }
-      else if (k === 'gate') ring(x, y, 0.2, 20, 0.6, 0.9, 1, 2);
-      else if (k === 'stroke') ring(x, y, 1.2, 10 + 2 * (e.a | 0), 0.75, 0.9, 1, 1.6);
+      else if (k === 'gate') ring(x, y, 0.2, 20, 1, 0.76, 0.4, 2, 1);
+      else if (k === 'stroke') ring(x, y, 1.2, 10 + 2 * (e.a | 0), 1, 0.8, 0.46, 1.6, 1);
     }
   };
 
@@ -275,7 +296,8 @@
     for (let i = 0; i < wN; i++) {
       wAge[i] += dt;
       if (wAge[i] >= wLen[i]) {
-        puffs(wX[i], wY[i], 0.2, 3, 0.5, 0.45, 0.4);
+        puffs(wX[i], wY[i], 0.2, 3 + Math.min(9, floor(wR[i] * 2)), 0.62, 0.58, 0.52);
+        landed(wX[i], wY[i], wR[i]);
         wN--;
         wX[i] = wX[wN]; wY[i] = wY[wN]; wR[i] = wR[wN]; wLen[i] = wLen[wN]; wAge[i] = wAge[wN];
         i--;
@@ -290,6 +312,14 @@
       }
     }
     if (mOver >= mN) mOver = 0;
+    for (let i = 0; i < lN; i++) {
+      lAge[i] += dt;
+      if (lAge[i] >= LAND_LIFE) {
+        lN--;
+        lX[i] = lX[lN]; lY[i] = lY[lN]; lR[i] = lR[lN]; lAge[i] = lAge[lN];
+        i--;
+      }
+    }
   };
 
   // ---- into the scene's buffers ----
@@ -307,13 +337,13 @@
   };
 
   Vfx.decals = function (buf, n, max) {
-    for (let i = 0; i < wN && n < max; i++) {
-      const k = wAge[i] / wLen[i], pulse = 0.75 + 0.25 * sin(wAge[i] * 18);
-      n = Scene.decal(buf, n, wX[i], wY[i], wR[i], 1, 0.28 + 0.3 * k, 0.15, (0.55 + 0.4 * k) * pulse, k, Scene.DISC, 0, 0);
-    }
     for (let i = 0; i < mN && n < max; i++) {
       const k = mAge[i] / MARK_LIFE;
-      n = Scene.decal(buf, n, mX[i], mY[i], mR[i] * (1 + 0.25 * Math.min(1, mAge[i] * 6)), 0.12, 0.09, 0.08, 0.55 * (1 - k * k), 1, Scene.DISC, 0, 0);
+      n = Scene.decal(buf, n, mX[i], mY[i], mR[i] * (1 + 0.25 * Math.min(1, mAge[i] * 6)), 0.14, 0.12, 0.12, 0.4 * (1 - k * k), 1, Scene.DISC, 0, 0);
+    }
+    for (let i = 0; i < lN && n < max; i++) {
+      const k = lAge[i] / LAND_LIFE;
+      n = Scene.decal(buf, n, lX[i], lY[i], lR[i] * (0.85 + 0.3 * k), 0.95, 0.92, 0.84, 0.85 * (1 - k), -0.12, Scene.RING, 0, 0);
     }
     return n;
   };
@@ -444,7 +474,7 @@
   };
 
   Vfx.clear = function () {
-    pN = 0; over = 0; nN = 0; wN = 0; mN = 0; mOver = 0;
+    pN = 0; over = 0; nN = 0; wN = 0; mN = 0; mOver = 0; lN = 0;
     trauma = 0; flashNow = 0;
     dirty = true;
     wipe();

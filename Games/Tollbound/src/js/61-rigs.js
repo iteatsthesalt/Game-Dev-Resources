@@ -3,13 +3,16 @@
 // Owns: Rigs
 // Public:
 //   Rigs.register(name, rig)       adds a rig (and allows its name for the field "rig" of a puppet, while files
-//                                  load). rig = {joints, core, anim, prepare?, stride?, pose}:
+//                                  load). rig = {joints, core, strike?, anim, prepare?, stride?, pose}:
 //                                    joints   [{name, parent, at: [x, y, z], turn?: [rx, ry, rz]}], a parent before
 //                                             its children; the first joint is the root and has parent null.
 //                                             at is the joint's place in its parent (metres, for a figure of
 //                                             scale 1); turn a rotation it has at rest (radians, see below)
 //                                    core     the names of the joints whose largest part stays when a figure is
 //                                             drawn at its least (a body and a head)
+//                                    strike   the names of the joints whose parts strike a Blow: they turn white
+//                                             over the last 40% of a wind-up, white at its top, and back in the
+//                                             first 30% of the strike
 //                                    anim     the defaults of the puppet's anim numbers this rig reads
 //                                    prepare(fig)    optional: works out numbers of a compiled figure once
 //                                    stride(fig, speed)   optional: metres of one walk cycle, at scale 1, for a
@@ -18,7 +21,8 @@
 //                                             about x, y and z (radians) and its move along x, y and z (metres,
 //                                             in the figure's own units), added to its rest. P starts at 0.
 //   Rigs.figure(puppetId) -> fig   the puppet compiled for drawing, made once and kept; null if there is none.
-//                                  fig: {id, rigName, rig, scale, n, height, radius (metres at scale 1, standing),
+//                                  fig: {id, rigName, rig, scale, n, height, radius (metres, standing, with the
+//                                  puppet's own scale and a state's scale of 1),
 //                                  color3: [r, g, b] (of its largest part), counts: {all, plain, core}, anim} and
 //                                  the typed arrays the writer reads
 //   Rigs.state() -> st             a state record with every field at rest. Make one and fill it for each figure:
@@ -39,9 +43,18 @@
 //                                    flash, opacity, glow  0..1 toward white; 0..1 screen-door alpha; a factor on
 //                                                          the glow of its parts
 //                                    tintR, tintG, tintB   factors on its palette colours
+//                                    grey                  0..1: how much of their colour its parts lose (to their
+//                                                          own lightness), before the tint
 //                                    seed                  0..1, for small differences between figures
 //                                    detail, lod           false leaves out the parts marked detail; lod 1 draws
 //                                                          only the core parts (a body and a head)
+//                                    shell                 metres: above 0, each part also gets a white shell that
+//                                                          much bigger on every side, turned inside out, so only
+//                                                          its far side is drawn: a white outline round the figure
+//                                                          (the Wrong-footed). It doubles the parts written.
+//                                    strike                the joints that strike, as a mask (bit j for joint j of
+//                                                          the rig, see Rigs.mask); 0 for the rig's own strike list
+//                                    lift                  metres the whole figure is raised off the ground
 //   Rigs.advance(fig, st, metres)  moves its walk on: st.walk by metres (negative when it goes backward) and
 //                                  st.cycle by the cycles that is at its stride for st.speed. Call it once a frame
 //                                  with what it moved since the last frame, after setting st.speed.
@@ -51,6 +64,7 @@
 //   Rigs.draw(fig, st, out) -> n   writes one record for each part straight into the buffer of its shape and
 //                                  returns how many it wrote. Allocates nothing.
 //   Rigs.joints(name) -> [name]    the joints of a rig; [] if there is no such rig
+//   Rigs.mask(fig, names) -> mask  the joints of a figure's rig among names, as a mask for st.strike (0 if none)
 //   Rigs.names() -> [name]         the rigs registered
 //   Rigs.NONE = 0, Rigs.WINDUP = 1, Rigs.STRIKE = 2, Rigs.CAST = 3
 //   Rigs.SHAPES                    ['box', 'taper', 'cyl', 'sphere', 'cone']: a shape's id is its index, as in
@@ -64,15 +78,25 @@
 // forward, a hanging limb swings back), about y it turns +z toward +x, about z it turns +x toward +y. A joint
 // turns by yaw, then pitch, then roll (R = Ry Rx Rz), after its rest turn.
 //
-// The rigs and their joints (names of the field "joint" of a part):
+// The rigs and their joints (names of the field "joint" of a part), and the joints that strike:
 //   biped       root, torso, head, armL, armR, legL, legR, handR (a thing held, written standing up from the grip)
 //               anim: stride (m, a whole cycle), swing (arm swing, rad), bob (m), lean (rad), lift (foot lift, m),
-//               reach (arms held forward, rad)
+//               reach (arms held forward, rad), droop (the head bowed further, rad), sway (the body rolled from
+//               foot to foot, rad), hop (m: above 0 both feet move together and the body leaves the ground by
+//               this much in each cycle), plumb (1: the thing held stands upright whatever the arm does),
+//               clasp (rad: the left arm turned in toward the right hand, two hands on one rope), pull (1: an
+//               act CAST is a pull on a rope, both hands up and hard down, in place of a raised left arm).
+//               strike: armR, handR
 //   quadruped   root, torso, head, legFL, legFR, legBL, legBR, tail          anim: stride, swing, bob, lift
+//                                                                            strike: head, legFL, legFR
 //   floater     root, torso, head, armL, armR, handR, tail (a hem or wisp)   anim: hover (m), bob, swing
+//                                                                            strike: armL, armR, handR
 //   crawler     root, torso, head, leg1L, leg1R, leg2L, leg2R, leg3L, leg3R, tail     anim: stride, lift, leg (m)
+//                                                                            strike: head
 //   winged      root, torso, head, wingL, wingR, legL, legR, tail            anim: hover, flap (beats a second), swing
+//                                                                            strike: head, legL, legR
 //   serpent     root, s0 (the head), s1 .. s7                                anim: stride (wave length), swing (m)
+//                                                                            strike: s0
 //   static      root
 // A puppet may move a joint's rest place with anim.joints = {name: [x, y, z]}.
 (function () {
@@ -86,6 +110,10 @@
   const MAX_JOINTS = 32;
   const HURT_TIME = 0.26;          // seconds a flinch lasts
   const FALL = 0.34, SINK_FROM = 0.42, SINK = 0.45;   // of dying: the share spent falling, where sinking starts, metres sunk
+  const WHITE_FROM = 0.6, WHITE_BACK = 0.3;          // of a wind-up, where its striking parts begin to whiten; of a
+                                                     // strike, by when they are back to their colour
+  const HOLD = 0.9;                // the biped's hand at rest points what it holds this far forward of up (radians)
+  const DIE_FLASH = 0.35;          // how far toward white a figure goes as its death begins
 
   Rigs.NONE = NONE; Rigs.WINDUP = WINDUP; Rigs.STRIKE = STRIKE; Rigs.CAST = CAST;
   Rigs.SHAPES = SHAPES;
@@ -136,10 +164,11 @@
       rotation(r ? r[0] : 0, r ? r[1] : 0, r ? r[2] : 0, turn, j * 9);
       turned[j] = r && (r[0] !== 0 || r[1] !== 0 || r[2] !== 0) ? 1 : 0;
     }
-    const core = [];
+    const core = [], strikes = new Uint8Array(J);
     for (const c of rig.core || []) if (index[c] !== undefined) core.push(index[c]);
+    for (const c of rig.strike || []) if (index[c] !== undefined) strikes[index[c]] = 1;
     rigs[name] = {
-      name, J, index, parent, rest, turn, turned, core, names: rig.joints.map((s) => s.name),
+      name, J, index, parent, rest, turn, turned, core, strikes, names: rig.joints.map((s) => s.name),
       anim: Object.assign({}, rig.anim || {}), prepare: typeof rig.prepare === 'function' ? rig.prepare : null,
       stride: typeof rig.stride === 'function' ? rig.stride : null, pose: rig.pose,
     };
@@ -149,6 +178,14 @@
 
   Rigs.joints = function (name) { return rigs[name] ? rigs[name].names.slice() : []; };
   Rigs.names = function () { return order.slice(); };
+  Rigs.mask = function (fig, names) {
+    let m = 0;
+    for (let i = 0; fig && i < names.length; i++) {
+      const j = fig.rig.index[names[i]];
+      if (j !== undefined) m |= 1 << j;
+    }
+    return m;
+  };
 
   // R = Ry(b) Rx(a) Rz(c), written row by row into m at o. Most joints turn about one or two axes only.
   function rotation(a, b, c, m, o) {
@@ -252,7 +289,8 @@
     return {
       x: 0, y: 0, px: 0, py: 0, alpha: 1, face: 0, scale: 1, speed: 0, walk: 0, cycle: 0, t: 0,
       act: NONE, actT: 0, actLen: 0, hurt: 99, dying: false, die: 0,
-      flash: 0, opacity: 1, glow: 1, tintR: 1, tintG: 1, tintB: 1, seed: 0, detail: true, lod: 0,
+      flash: 0, opacity: 1, glow: 1, tintR: 1, tintG: 1, tintB: 1, grey: 0, seed: 0, detail: true, lod: 0, shell: 0,
+      strike: 0, lift: 0,
     };
   };
 
@@ -288,19 +326,20 @@
     P.fill(0, 0, J * 6);
     rig.pose(fig, st, P);
 
-    // dying: every rig sinks and fades the same way after its own fall
+    // dying: every rig sinks and fades the same way after its own fall, lightening a little as it starts (white
+    // is kept for the top of a wind-up and for the outline of the Wrong-footed)
     let alpha = st.opacity, flash = st.flash;
     if (st.dying) {
       const k = clamp01((st.die - SINK_FROM) / (1 - SINK_FROM));
       P[4] -= SINK * smooth(k);
       alpha *= 1 - k;
-      const f = 1 - st.die * 5;
+      const f = DIE_FLASH * (1 - st.die * 5);
       if (f > flash) flash = f;
     }
     if (!(alpha > 0.004)) return 0;
 
     // the base: the figure's place on the ground, its facing and its size
-    const a = st.alpha, x = st.px + (st.x - st.px) * a, z = st.py + (st.y - st.py) * a;
+    const a = st.alpha, x = st.px + (st.x - st.px) * a, z = st.py + (st.y - st.py) * a, up = st.lift || 0;
     const s = fig.scale * (st.scale > 0 ? st.scale : 1), sf = sin(st.face), cf = cos(st.face);
     const b00 = s * sf, b02 = s * cf, b11 = s, b20 = -s * cf, b22 = s * sf;
 
@@ -336,7 +375,7 @@
       let p00, p01, p02, p03, p10, p11, p12, p13, p20, p21, p22, p23;
       const pj = parent[j];
       if (pj < 0) {
-        p00 = b00; p01 = 0; p02 = b02; p03 = x; p10 = 0; p11 = b11; p12 = 0; p13 = 0; p20 = b20; p21 = 0; p22 = b22; p23 = z;
+        p00 = b00; p01 = 0; p02 = b02; p03 = x; p10 = 0; p11 = b11; p12 = 0; p13 = up; p20 = b20; p21 = 0; p22 = b22; p23 = z;
       } else {
         const q = pj * 12;
         p00 = W[q]; p01 = W[q + 1]; p02 = W[q + 2]; p03 = W[q + 3];
@@ -351,11 +390,17 @@
       W[o + 11] = p20 * tx + p21 * ty + p22 * tz + p23;
     }
 
+    // the striking parts whiten toward the top of a wind-up, and come back early in the strike
+    let white = 0;
+    if (st.act === WINDUP) white = smooth((actK(st) - WHITE_FROM) / (1 - WHITE_FROM));
+    else if (st.act === STRIKE) white = 1 - smooth(actK(st) / WHITE_BACK);
+    const strikes = rig.strikes, mask = st.strike | 0, shell = st.shell > 0 && !st.dying ? st.shell : 0;
+
     // the parts
     const n = fig.n, shape = fig.shape, joint = fig.joint, size = fig.size, at = fig.at, color = fig.color, glowOf = fig.glow;
     const skipDetail = !st.detail, coreOnly = st.lod > 0, detail = fig.detail, core = fig.core;
     const cap = out.cap, stride = out.stride, counts = out.n, bufs = out.buf, map = viewShape;
-    const tr = st.tintR, tg = st.tintG, tb = st.tintB, glowK = st.glow;
+    const tr = st.tintR, tg = st.tintG, tb = st.tintB, glowK = st.glow, grey = st.grey > 0 ? (st.grey < 1 ? st.grey : 1) : 0;
     let written = 0;
     for (let i = 0; i < n; i++) {
       if (coreOnly ? core[i] === 0 : skipDetail && detail[i] === 1) continue;
@@ -370,20 +415,50 @@
       buf[o] = w0 * sx; buf[o + 1] = w1 * sy; buf[o + 2] = w2 * sz; buf[o + 3] = w0 * ax + w1 * ay + w2 * az + W[w + 3];
       buf[o + 4] = w4 * sx; buf[o + 5] = w5 * sy; buf[o + 6] = w6 * sz; buf[o + 7] = w4 * ax + w5 * ay + w6 * az + W[w + 7];
       buf[o + 8] = w8 * sx; buf[o + 9] = w9 * sy; buf[o + 10] = w10 * sz; buf[o + 11] = w8 * ax + w9 * ay + w10 * az + W[w + 11];
-      buf[o + 12] = color[i3] * tr;
-      buf[o + 13] = color[i3 + 1] * tg;
-      buf[o + 14] = color[i3 + 2] * tb;
-      buf[o + 15] = flash;
+      let cr = color[i3], cg = color[i3 + 1], cb = color[i3 + 2];
+      if (grey > 0) {
+        const l = 0.3 * cr + 0.55 * cg + 0.15 * cb;
+        cr += (l - cr) * grey; cg += (l - cg) * grey; cb += (l - cb) * grey;
+      }
+      buf[o + 12] = cr * tr;
+      buf[o + 13] = cg * tg;
+      buf[o + 14] = cb * tb;
+      buf[o + 15] = white > flash && (mask !== 0 ? (mask >>> joint[i]) & 1 : strikes[joint[i]]) === 1 ? white : flash;
       const g = glowOf[i] * glowK;
       buf[o + 16] = g > 1 ? 1 : g;
       buf[o + 17] = alpha;
       written++;
+      if (shell > 0) written += shellOf(buf, o, out, sh, shell);
     }
     out.total += written;
     return written;
   };
 
-  // The height and the ground radius of a figure at rest, from where its parts stand: a figure of scale 1.
+  // A white copy of the part record at buf[o], grown by m metres on every side about its middle and mirrored
+  // across its own x (every unit shape is the same either way round), so its faces turn inside out: the view
+  // draws only its far side, which shows as a white rim round whatever stands in front of it. Returns 1 if it
+  // found room.
+  function shellOf(buf, o, out, sh, m) {
+    const c = out.n[sh];
+    if (c >= out.cap) { out.dropped++; return 0; }
+    out.n[sh] = c + 1;
+    const s = c * out.stride;
+    const lx = sqrt(buf[o] * buf[o] + buf[o + 4] * buf[o + 4] + buf[o + 8] * buf[o + 8]) || 1;
+    const ly = sqrt(buf[o + 1] * buf[o + 1] + buf[o + 5] * buf[o + 5] + buf[o + 9] * buf[o + 9]) || 1;
+    const lz = sqrt(buf[o + 2] * buf[o + 2] + buf[o + 6] * buf[o + 6] + buf[o + 10] * buf[o + 10]) || 1;
+    const kx = -(1 + 2 * m / lx), ky = 1 + 2 * m / ly, kz = 1 + 2 * m / lz, lift = 0.5 * (1 - ky);
+    for (let r = 0; r < 12; r += 4) {
+      buf[s + r] = buf[o + r] * kx;
+      buf[s + r + 1] = buf[o + r + 1] * ky;
+      buf[s + r + 2] = buf[o + r + 2] * kz;
+      buf[s + r + 3] = buf[o + r + 3] + buf[o + r + 1] * lift;
+    }
+    buf[s + 12] = 1; buf[s + 13] = 1; buf[s + 14] = 1; buf[s + 15] = 1; buf[s + 16] = 0; buf[s + 17] = buf[o + 17];
+    return 1;
+  }
+
+  // The height and the ground radius of a figure at rest, from where its parts stand, in metres: its puppet's own
+  // scale counts, a state's scale (st.scale 1) does not.
   function measure(fig) {
     const out = Rigs.sink(Math.max(1, fig.n)), st = Rigs.state(), keep = viewShape;
     viewShape = null;
@@ -410,8 +485,8 @@
         }
       }
     }
-    fig.height = top / fig.scale;
-    fig.radius = reach / fig.scale;
+    fig.height = top;
+    fig.radius = reach;
   }
 
   // Called once the view exists: its shape ids by name, and its stride.
@@ -476,42 +551,45 @@
       { name: 'armR', parent: 'torso', at: [-0.23, 0.5, 0] },
       { name: 'legL', parent: 'root', at: [0.1, 0.92, 0] },
       { name: 'legR', parent: 'root', at: [-0.1, 0.92, 0] },
-      { name: 'handR', parent: 'armR', at: [0, -0.62, 0.02], turn: [0.9, 0, 0] },
+      { name: 'handR', parent: 'armR', at: [0, -0.62, 0.02], turn: [HOLD, 0, 0] },
     ],
     core: ['torso', 'head'],
-    anim: { stride: 1.4, swing: 0.5, bob: 0, lean: 0, lift: 0.12, reach: 0 },
+    strike: ['armR', 'handR'],
+    anim: { stride: 1.4, swing: 0.5, bob: 0, lean: 0, lift: 0.12, reach: 0, droop: 0, sway: 0, hop: 0, plumb: 0, clasp: 0, pull: 0 },
     prepare: function (fig) { fig.hip = Math.max(0.2, (fig.rest[B.legL * 3 + 1] + fig.rest[B.legR * 3 + 1]) / 2); },
     // longer steps when hurrying, never so long that a rigid leg swings past about 32 degrees
     stride: function (fig, speed) { return Math.min(fig.anim.stride * (0.8 + 0.45 * smooth((speed - 1) / 4)), fig.hip * 2.1); },
     pose: function (fig, st, P) {
       const A = fig.anim, s = fig.scale * (st.scale > 0 ? st.scale : 1), L = fig.hip, seed = st.seed;
       const speed = st.speed / s, w = walking(speed), t = st.t + seed * 17;
-      const quarter = this.stride(fig, speed) / 4, p = frac(st.cycle);
-      // legs: the one on the ground carries the hips, the other swings and lifts
+      const quarter = this.stride(fig, speed) / 4, p = frac(st.cycle), hop = A.hop > 0;
+      // legs: the one on the ground carries the hips, the other swings and lifts. A hop moves both feet together:
+      // on the ground for the first half of the cycle, then off it, the body thrown up by hop at the middle
       gait(p, quarter, A.lift);
       const oL = gaitO, lL = gaitL;
-      gait(frac(p + 0.5), quarter, A.lift);
+      gait(hop ? p : frac(p + 0.5), quarter, A.lift);
       const oR = gaitO, lR = gaitL;
-      const oStand = p < 0.5 ? oL : oR, h = sqrt(L * L - oStand * oStand);
-      leg(oL, L, h, lL);
+      const oStand = p < 0.5 ? oL : oR, h = sqrt(L * L - oStand * oStand), up = hop && p >= 0.5 ? A.hop * sin(PI * (2 * p - 1)) : 0;
+      leg(oL, L, h + up, lL);
       P[B.legL * 6] = -legA * w; P[B.legL * 6 + 4] = legS * w;
-      leg(oR, L, h, lR);
+      leg(oR, L, h + up, lR);
       P[B.legR * 6] = -legA * w; P[B.legR * 6 + 4] = legS * w;
       const c = cos(TAU * p), breathe = sin(t * 1.9) * (1 - w);
-      P[B.root * 6 + 4] = -(L - h) * w + A.bob * w * (0.5 - 0.5 * cos(2 * TAU * p));
-      // torso: its lean, more when hurrying, a twist against the legs, breath when still
+      P[B.root * 6 + 4] = -(L - h) * w + up * w + A.bob * w * (0.5 - 0.5 * cos(2 * TAU * p));
+      // torso: its lean, more when hurrying, a twist against the legs, a roll from foot to foot, breath when still
       const lean = A.lean + w * 0.07 * Math.min(speed, 3);
       P[B.torso * 6] = lean + breathe * 0.012;
-      P[B.torso * 6 + 1] = w * 0.13 * c;
+      P[B.torso * 6 + 1] = hop ? 0 : w * 0.13 * c;
+      P[B.torso * 6 + 2] = hop ? 0 : A.sway * w * sin(TAU * p);
       P[B.torso * 6 + 4] = breathe * 0.008;
-      P[B.head * 6] = -lean * 0.7;
+      P[B.head * 6] = -lean * 0.7 + A.droop;
       P[B.head * 6 + 1] = -w * 0.1 * c + (1 - w) * 0.28 * sin(t * 0.45) * sin(t * 0.21 + 1);
-      // arms against the legs, hanging plumb whatever the lean, held forward by reach
+      // arms against the legs, hanging plumb whatever the lean, held forward by reach (in a hop, together)
       const swing = A.swing * (0.85 + 0.3 * seed) * w;
-      P[B.armL * 6] = swing * c - lean - A.reach + breathe * 0.02;
+      P[B.armL * 6] = (hop ? -swing * c : swing * c) - lean - A.reach + breathe * 0.02;
       P[B.armR * 6] = -swing * c - lean - A.reach * 0.8;
-      P[B.armL * 6 + 2] = 0.07;
-      P[B.armR * 6 + 2] = -0.07;
+      P[B.armL * 6 + 2] = 0.07 - A.clasp;
+      P[B.armR * 6 + 2] = A.plumb > 0 ? 0 : -0.07;
 
       // an act: a wind-up that shows before the blow lands, the blow, the way back
       const act = st.act;
@@ -530,6 +608,14 @@
         P[B.handR * 6] += 2.2 * drawn + 1.9 * blow;    // the blade follows the line of the arm over and down
         P[B.armL * 6] += -0.55 * drawn - 0.3 * blow;
         P[B.head * 6 + 1] += 0.3 * drawn - 0.25 * blow;
+      } else if (act === CAST && A.pull > 0) {
+        // a pull on the rope: both hands up, then hard down past where they were, then back
+        const k = actK(st);
+        const a = k < 0.3 ? -0.6 * smooth(k / 0.3) : k < 0.6 ? -0.6 + 0.95 * smooth((k - 0.3) / 0.3) : 0.35 * (1 - smooth((k - 0.6) / 0.4));
+        P[B.armL * 6] += a;
+        P[B.armR * 6] += a;
+        P[B.torso * 6] += a > 0 ? 0.12 * a : 0.04 * a;
+        P[B.root * 6 + 4] += a > 0 ? -0.04 * a : 0;
       } else if (act === CAST) {
         const k = actK(st), bump = sin(PI * k);
         P[B.armL * 6] += -1.5 * bump;
@@ -559,6 +645,9 @@
         P[B.legL * 6] += -0.25 * e;
         P[B.legR * 6] += 0.15 * e;
         P[B.head * 6] += 0.35 * e;
+      } else if (A.plumb > 0) {
+        // the thing held stands upright: the hand undoes the pitch of the torso and the arm above it
+        P[B.handR * 6] = -(P[B.torso * 6] + P[B.armR * 6]) - HOLD;
       }
     },
   });
@@ -577,6 +666,7 @@
       { name: 'tail', parent: 'torso', at: [0, 0.06, -0.52] },
     ],
     core: ['torso', 'head'],
+    strike: ['head', 'legFL', 'legFR'],
     anim: { stride: 1.3, swing: 0.15, bob: 0, lift: 0.1 },
     prepare: function (fig) {
       fig.hip = Math.max(0.15, fig.rest[QJ.legFL * 3 + 1]);
@@ -653,6 +743,7 @@
       { name: 'tail', parent: 'torso', at: [0, -0.3, 0] },
     ],
     core: ['torso', 'head'],
+    strike: ['armL', 'armR', 'handR'],
     anim: { hover: 0.35, bob: 0.06, swing: 0.25 },
     pose: function (fig, st, P) {
       const A = fig.anim, s = fig.scale * (st.scale > 0 ? st.scale : 1), t = st.t + st.seed * 11;
@@ -724,6 +815,7 @@
       { name: 'tail', parent: 'torso', at: [0, 0, -0.25] },
     ],
     core: ['torso', 'head'],
+    strike: ['head'],
     anim: { stride: 0.6, lift: 0.06, leg: 0.5 },
     // fig.reach: how far out from its hip a foot stands, so that even the farthest step needs no longer leg
     prepare: function (fig) {
@@ -794,6 +886,7 @@
       { name: 'tail', parent: 'torso', at: [0, -0.08, -0.14] },
     ],
     core: ['torso', 'head'],
+    strike: ['head', 'legL', 'legR'],
     anim: { hover: 1.3, flap: 3, swing: 0.7 },
     prepare: function (fig) { fig.hip = fig.rest[WJ.torso * 3 + 1]; },
     pose: function (fig, st, P) {
@@ -856,6 +949,7 @@
       { name: 's7', parent: 'root', at: [0, 0.06, -1.8] },
     ],
     core: ['s0', 's1'],
+    strike: ['s0'],
     anim: { stride: 1.8, swing: 0.16 },
     pose: function (fig, st, P) {
       const A = fig.anim, s = fig.scale * (st.scale > 0 ? st.scale : 1), t = st.t + st.seed * 9;
