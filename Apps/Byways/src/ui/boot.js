@@ -11,6 +11,7 @@ import { h, clear } from './dom.js';
 import { announce, focusMain } from './a11y.js';
 import { applyAccessSettings } from './theme.js';
 import { getView, startRouter } from './router.js';
+import { runFirstRun } from './firstrun.js';
 import './views/index.js';
 
 export { DATA_FILES, EMPTY_DATA, dataUrlFor, loadAppData };
@@ -84,6 +85,7 @@ export async function boot(platform) {
     event.preventDefault();
     focusMain();
   });
+  await runFirstRun(app);
   startRouter(makeShow(app));
   if (blocked) announce(STORAGE_OFF_MESSAGE, { assertive: true });
   await platform.attach?.(app);
