@@ -180,24 +180,24 @@ WebHID works in Chromium-based browsers and in Electron through session handlers
   - `hid-device-added` and `hid-device-removed` fire only until the `select-hid-device` callback runs; they are not general device listeners.
   - `ses.setDevicePermissionHandler(handler)` grants devices without a `requestDevice` prompt, and is also how an app persists grants. By default Electron keeps a grant only for the lifetime of the WebContents.
   - `ses.setPermissionCheckHandler(handler)` can deny HID for specific origins (`permission === 'hid'`, `details.deviceType === 'hid'` in the examples).
-  - Sources: [Electron devices tutorial](https://github.com/electron/electron/blob/main/docs/tutorial/devices.md); [Electron session.md](https://github.com/electron/electron/blob/main/docs/api/session.md)
+  - Sources: [Electron devices tutorial](https://github.com/electron/electron/blob/main/docs/tutorial/devices.md); [Electron session.md](https://github.com/electron/electron/blob/main/docs/api/session.md) [Verified: https://github.com/electron/electron/blob/v45.3.0/docs/tutorial/devices.md; https://github.com/electron/electron/blob/v45.3.0/docs/api/session.md]
 - Chromium's static HID blocklist (`kStaticEntries`) covers:
   - every top-level collection on the FIDO usage page;
   - a list of security keys (Yubikey, Feitian, HyperFIDO, Titan, Nitrokey, OnlyKey, and others);
   - "Jabra access to certain proprietary functionality".
   - There are no gamepad vendors in it. The same file also parses extra entries from a string in the form `vendor:product:usage_page:usage:report_id:report_type`.
-  - Source: [hid_blocklist.cc](https://github.com/chromium/chromium/blob/main/services/device/public/cpp/hid/hid_blocklist.cc)
+  - Source: [hid_blocklist.cc](https://github.com/chromium/chromium/blob/main/services/device/public/cpp/hid/hid_blocklist.cc) [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/services/device/public/cpp/hid/hid_blocklist.cc]
 - `IsAlwaysProtected()` protects:
   - the Keyboard usage page;
   - Generic Desktop Pointer, Mouse, Keyboard and Keypad (input/output reports; feature reports allowed);
   - Generic Desktop System Control through System Warm Restart;
   - System Dock through System Display Swap.
   - Nothing else is protected, so Gamepad (0x05) and Joystick (0x04) collections are not.
-  - Source: [hid_report_utils.cc](https://github.com/chromium/chromium/blob/main/services/device/public/cpp/hid/hid_report_utils.cc)
+  - Source: [hid_report_utils.cc](https://github.com/chromium/chromium/blob/main/services/device/public/cpp/hid/hid_report_utils.cc) [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/services/device/public/cpp/hid/hid_report_utils.cc]
 - Valve's `60-steam-input.rules` gives hidraw `uaccess` (82 occurrences) to Valve devices and to many pads:
   - DualShock 3; DualShock 4 (USB, Bluetooth, wireless adapter, Slim); DualSense and DualSense Edge (USB and Bluetooth); Switch Pro (USB and Bluetooth); Joy-Con L/R; many third-party Switch/PS4 pads.
   - Its comments mention a "Steam Controller 2026 receiver".
-  - Source: [Valve steam-devices 60-steam-input.rules](https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules)
+  - Source: [Valve steam-devices 60-steam-input.rules](https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules) [Verified: https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules]
 - On Linux, Chromium's Gamepad API opens hidraw only for allowlisted IDs (`kAllowlistHidrawGamepads`). — [gamepad_features.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/public/cpp/gamepad_features.cc)
 - The kernel's hid-steam driver notes that Steam Client and similar apps "use the hidraw interface directly to create input devices (XTest, uinput...)". The driver creates a layered hidraw device so it can tell when the client is running. — [hid-steam.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-steam.c)
 - SDL drives Switch 2 controllers over libusb **bulk** endpoints (claiming an interface). Bluetooth returns "Nintendo Switch2 controllers not supported over Bluetooth" (a FIXME). — [SDL_hidapi_switch2.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c)
@@ -228,12 +228,12 @@ WebHID works in Chromium-based browsers and in Electron through session handlers
 - **Linux.** On distros without Steam's udev rules, WebHID opens will fail for lack of hidraw permissions. Ship equivalent `uaccess` rules or document installing `steam-devices`.
 - **Double input.** On Linux the Gamepad API reads Sony pads through evdev while WebHID uses hidraw, so both can probably run at once [I]. When both are active, the app must dedupe: treat the WebHID device and the Gamepad API pad with the same vendor/product (and matching timing of input changes) as one player.
 - **Output-report conflicts.** If Steam, DS4Windows-type tools or the OS driver also write output reports, LEDs and rumble may fight. Re-assert lightbar state periodically and offer an "advanced features off" toggle.
-- **Electron and remote config.** Electron builds do not receive Chrome's remote field-trial configuration [I, not verified]. Any remotely pushed HID blocklist additions or origin trials probably do not apply, so behaviour follows compiled-in defaults.
+- **Electron and remote config.** Electron builds do not receive Chrome's remote field-trial configuration. Electron 45 builds its feature list only from `--enable-features`/`--disable-features` plus a short hard-coded list, none of it gamepad- or HID-related, and creates field trials only from `--force-fieldtrials`. [Verified: https://github.com/electron/electron/blob/v45.3.0/shell/browser/feature_list.cc] So remotely pushed HID blocklist additions do not apply, and behaviour follows compiled-in defaults plus the app's own switches. Whether origin-trial tokens work in an Electron page was not checked. [Unverified]
 
 ### Gaps
 - I found no source on whether Windows allows a HID gamepad to be opened by WebHID while another process (Steam, DS4Windows, HidHide) holds it. Exclusive-access behaviour on Windows and macOS is unverified.
 - I did not verify whether macOS asks for an Input Monitoring (or other) permission before WebHID opens a gamepad, or how that interacts with the GameController framework holding the device.
-- I did not check what Electron does if `select-hid-device` is not handled (cancel or first device).
+- What Electron does if `select-hid-device` is not handled: the fact-check found that unless a listener calls `event.preventDefault()`, Electron runs the callback with no device, so `requestDevice()` resolves with an empty list. It never picks the first device. [Verified: https://github.com/electron/electron/blob/v45.3.0/shell/browser/hid/hid_chooser_controller.cc]
 - I could not see the contents of any remotely pushed (Finch) HID blocklist.
 - Whether WebUSB in Electron can claim the Switch 2 controllers' bulk interface on Windows (driver binding) is unknown.
 
@@ -248,7 +248,7 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
 - Output reports: USB 0x02 (63 bytes) and BT 0x31 (78 bytes).
 - Feature reports: calibration 0x05 (41 bytes), pairing info 0x09 (20 bytes), firmware info 0x20 (64 bytes).
 - CRC seeds: input 0xA1, output 0xA2, feature 0xA3.
-- Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
+- Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - The kernel comment says "DualSense in USB uses the full HID report for reportID 1, but Bluetooth uses a minimal HID report for reportID 1 and reports the full report using reportID 49". On USB the struct starts at `&data[1]`; on BT it starts at `&data[2]`, and "Last 4 bytes of input report contain crc32". — [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
 - SDL detects the mode from the first report:
   - 64 bytes means USB.
@@ -279,11 +279,11 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - Bytes 1–4: sticks (0x00 left/up, 0xff right/down, neutral about 0x80).
   - Bytes 5–6: L2/R2 (0x00–0xff).
   - Hat: neutral 0x8, N 0x0, NE 0x1, E 0x2, SE 0x3, S 0x4, SW 0x5, W 0x6, NW 0x7.
-  - The repo also documents the Bluetooth simple 0x01 layout, which differs from USB, and links a "DualSense explorer" WebHID tool. It has no LICENSE file (LICENSE and LICENSE.md both returned 404).
+  - The repo also documents the Bluetooth simple 0x01 layout, which differs from USB, and links a "DualSense explorer" WebHID tool. It has no LICENSE file (LICENSE and LICENSE.md both returned 404; the fact-check also tried LICENSE.txt, LICENCE, COPYING and three other names, while the README itself loads). [Verified: https://github.com/nondebug/dualsense]
   - Source: [nondebug/dualsense README](https://github.com/nondebug/dualsense)
 
 **Scaling and calibration**
-- After calibration the kernel normalises to `DS_ACC_RES_PER_G = 8192` (range ±4 g) and `DS_GYRO_RES_PER_DEG_S = 1024` (range ±2048 °/s). The touchpad is 1920×1080. — [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
+- After calibration the kernel normalises to `DS_ACC_RES_PER_G = 8192` (range ±4 g) and `DS_GYRO_RES_PER_DEG_S = 1024` (range ±2048 °/s). The touchpad is 1920×1080. — [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - Calibration feature report 0x05, little-endian int16 fields, offsets counted from the report-ID byte at buf[0]:
 
   | Field | Offset (buf[]) |
@@ -305,7 +305,7 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
 
 **Sample rate**
-- SDL: "Standard DualSense sensor update rate is 250 Hz over USB". "Bluetooth sensor update rate appears to be 1000 Hz". "DualSense Edge sensor update rate is 1000 Hz over USB". SDL exposes a touchpad with 2 fingers. — [SDL_hidapi_ps5.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps5.c)
+- SDL: "Standard DualSense sensor update rate is 250 Hz over USB". "Bluetooth sensor update rate appears to be 1000 Hz". "DualSense Edge sensor update rate is 1000 Hz over USB". SDL exposes a touchpad with 2 fingers. — [SDL_hidapi_ps5.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps5.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps5.c]
 
 **Output reports**
 - USB: report 0x02, then the 47-byte common block, then `reserved[15]`. BT: report 0x31, `seq_tag`, `tag` (= 0x10; "Tag must be set. Exact meaning is unclear."), the common block, `reserved[24]`, then a little-endian CRC32. — [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
