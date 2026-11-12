@@ -71,13 +71,38 @@ Phone browser ── WebSocket (JSON, protocol v1) ──► link-server ──�
 - While the app runs, a governor steps the count down after sustained misses and back up after sustained headroom.
 - The Settings panel shows the detected GPU, the tier and the particle count, and lets the user override them.
 
-**System requirements** (to be checked against the research report and the desktop check):
+**System requirements.** The user asked for a system like theirs to be the default requirement. So their laptop is the reference machine: the app's defaults and its look are tuned for it. Weaker machines get the same features at a lower density, set by calibration.
 
-| | OS | GPU (examples) | Memory |
-|---|---|---|---|
-| Minimum | Windows 10 64-bit, macOS 13, Ubuntu 22.04 | WebGPU-capable integrated: Intel Iris Xe, Radeon 680M, Apple M1 | 8 GB |
-| Recommended | Windows 11, macOS 14 | RTX 3060 / RX 6600 / Apple M2 Pro class, 1440p 144 Hz | 16 GB |
-| Ultra | | RTX 4070 Ti / RX 7900 class or better, HDR display | 16 GB+ |
+| Tier | Example hardware | Expected light (calibration sets the real number) |
+|---|---|---|
+| Minimum | WebGPU-capable integrated graphics (Intel Iris Xe, Radeon 780M, Apple M1), 8 GB, Windows 10 64-bit / macOS 13 / Ubuntu 22.04 | about 1–3M particles at 60 Hz |
+| Standard | RTX 3060 / RX 6600 / Apple M2 Pro class, 16 GB | about 5–10M |
+| **Reference (default)** | **The user's laptop: RTX 5080 Laptop GPU (Blackwell, 16 GB), 16 threads, 32 GB, Windows 11** | **about 15–30M at 60 Hz with every effect on** |
+| Ultra | RTX 5090 / desktop RTX 5080 class or better, HDR display | 30M+ particles, or 15M+ at 144–240 Hz |
+
+### The reference machine (the user's desktop check, 2026-11-12)
+
+The check ran inside an Electron 45.2.1 app (Chromium 156) on Windows 11. That is the same runtime this app ships.
+
+- **Adapter:** NVIDIA Blackwell, for both the high-performance and low-power requests, so the discrete GPU is the one in use. Subgroup size 32.
+- **Features:** `shader-f16`, `subgroups`, `subgroup-size-control`, `timestamp-query`, `dual-source-blending`, `float32-blendable`, `float32-filterable`, `rg11b10ufloat-renderable`, `texture-formats-tier1/2`, `primitive-index`, `clip-distances`, `indirect-first-instance`, `bgra8unorm-storage`.
+- **WGSL language features:** `subgroup_id`, `subgroup_uniformity`, `linear_indexing`, `uniform_buffer_standard_layout`, `pointer_composite_access`, `readonly_and_readwrite_storage_textures`, `packed_4x8_integer_dot_product` and others.
+- **Limits:** `maxStorageBufferBindingSize` 2,147,483,644 and `maxBufferSize` 2,147,483,648 (that is 67M particles at 32 bytes in one binding). `maxComputeInvocationsPerWorkgroup` 1024, `maxStorageBuffersPerShaderStage` 16, `maxTextureDimension2D` 16384.
+- **Measured throughput:** the check's simple path is a 32-byte compute step plus 1-pixel additive points at 1920×1080 into rgba16float. Timings:
+
+  | Particles | 2M | 4M | 8M | 16M | 32M | 64M |
+  |---|---|---|---|---|---|---|
+  | ms per frame | 0.56 | 1.23 | 2.33 | 4.79 | 10.15 | 19.21 |
+
+  That is about 0.30 ms per million. Within 70% of a frame, about 37M fit at 60 Hz, 17M at 120 Hz and 6.5M at 240 Hz. The full renderer (soft quads, trails, bloom, composite) costs more per particle, so calibration should settle well below those figures.
+- **Display:** 1920×1080 physical at 150% scaling. It measured 59.9 Hz; laptops often limit the refresh rate on battery or in power-saving modes. The display is SDR (sRGB, 24-bit) and Windows HDR is off, although the canvas accepts extended tone mapping. HDR "auto" must therefore stay SDR here.
+- **Inputs:** no gamepad was connected during the check. WebHID is available.
+
+**What the engine does with this:**
+- It uses `subgroups` and `shader-f16` when the adapter offers them, with fallbacks, so the same code still runs on integrated GPUs and Apple.
+- It requests the adapter's full buffer limits.
+- It chooses workgroup sizes per adapter: 256 everywhere, and 1024-invocation reductions where allowed.
+- On this machine, the default first-run target is the 60 Hz budget with every effect on.
 
 ## Testing
 

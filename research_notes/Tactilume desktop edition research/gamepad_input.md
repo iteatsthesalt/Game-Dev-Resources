@@ -156,7 +156,7 @@ These limits apply on every OS: at most 8 pads, and no gyro, accelerometer, LEDs
 - I could not read chromestatus, so the GamepadRawInputChangeEvent origin-trial milestones (start/end) are unknown.
 - I did not confirm whether the Elite 2 paddles reach the Gamepad API on macOS or Linux, or whether WGI itself limits how many gamepads it reports.
 - The 4 ms polling interval and the per-OS mapping tables were first read on trunk (160). The fact-check closed this: the interval is the same at the 156 tag, and the Windows, macOS and Linux mapping tables and `gamepad_id_list.cc` are byte-identical at 156.0.8078.96 and on trunk. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_provider.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_standard_mappings_linux.cc]
-- I did not verify which macOS GameController models report trigger haptic localities. That decides whether trigger-rumble works on Mac for Xbox Series pads or DualSense.
+- I did not verify which macOS GameController models report trigger haptic localities. That decides whether trigger-rumble works on Mac for Xbox Series pads or DualSense. The fact-check found that Apple documents `leftTrigger`, `rightTrigger` and `triggers` localities (macOS 11+) but does not say which controllers report them, so this stays open. [Verified: https://developer.apple.com/documentation/gamecontroller/gchapticslocality]
 - The exact `Gamepad.id` string format, which an app would use to match Gamepad API pads to WebHID devices, was not verified in source.
 
 ## 2. WebHID in Chrome and Electron: availability, Electron handlers, blocklisted and protected usages, which controllers can be opened (USB/Bluetooth), OS-level conflicts
@@ -358,9 +358,9 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - factory-calibrated gyro and accel with orientation tracking and shake detection;
   - battery level and charging state;
   - DualSense Access controllers.
-  - Sources: [npm: dualsense-ts](https://registry.npmjs.org/dualsense-ts); [dualsense-ts README and LICENSE](https://github.com/nsfm/dualsense-ts)
-- **daidr/dualsense-tester**: MIT (© 2023 Xuezhou Dai). A browser tester for DualSense, DualSense Edge and DualShock 4: touchpad, gyro/accel, adaptive triggers, plus DualSense Edge profile customisation. — [dualsense-tester README and LICENSE](https://github.com/daidr/dualsense-tester)
-- **dualsensectl**: GPL-2.0, a C command-line tool. — [dualsensectl LICENSE](https://github.com/nowrep/dualsensectl)
+  - Sources: [npm: dualsense-ts](https://registry.npmjs.org/dualsense-ts); [dualsense-ts README and LICENSE](https://github.com/nsfm/dualsense-ts) [Verified: https://registry.npmjs.org/dualsense-ts; https://github.com/nsfm/dualsense-ts/blob/HEAD/LICENSE]
+- **daidr/dualsense-tester**: MIT (© 2023 Xuezhou Dai). A browser tester for DualSense, DualSense Edge and DualShock 4: touchpad, gyro/accel, adaptive triggers, plus DualSense Edge profile customisation. — [dualsense-tester README and LICENSE](https://github.com/daidr/dualsense-tester) [Verified: https://github.com/daidr/dualsense-tester/blob/HEAD/LICENSE]
+- **dualsensectl**: GPL-2.0, a C command-line tool. — [dualsensectl LICENSE](https://github.com/nowrep/dualsensectl) [Verified: https://github.com/nowrep/dualsensectl/blob/HEAD/LICENSE]
 - **SDL**: the file header shows SDL's zlib-style "provided 'as-is'" licence text. — [SDL_hidapi_ps5.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps5.c)
 
 ### Inferences
@@ -371,16 +371,16 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - timestamp uint32 at 27;
   - touch 0 at 32–35 and touch 1 at 36–39;
   - status at 52–54.
-  - These are derived from the kernel struct and match nondebug's map, where USB byte 1 is LX when the ID is counted as byte 0.
+  - These are derived from the kernel struct and match nondebug's map, where USB byte 1 is LX when the ID is counted as byte 0. [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - **Touch decode.** x = x_lo | ((byte2 & 0x0F) << 8) and y = (byte2 >> 4) | (y_hi << 4). This matches Chromium's 12-bit DS4 parser. The low 7 bits of `contact` are probably a tracking ID [I, not verified].
-- **Bluetooth CRC.** Compute standard CRC-32 over the seed byte (0xA2) followed by the report ID and the next 73 bytes, and write it little-endian into the last 4 bytes. With WebHID `sendReport(0x31, body)` the body is 77 bytes: `seq_tag`, `tag` 0x10, the 47-byte common block, 24 reserved bytes and the CRC. Input CRCs (seed 0xA1) can be checked the same way to drop corrupt BT frames.
+- **Bluetooth CRC.** Compute standard CRC-32 over the seed byte (0xA2) followed by the report ID and the next 73 bytes, and write it little-endian into the last 4 bytes. With WebHID `sendReport(0x31, body)` the body is 77 bytes: `seq_tag`, `tag` 0x10, the 47-byte common block, 24 reserved bytes and the CRC. Input CRCs (seed 0xA1) can be checked the same way to drop corrupt BT frames. [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - **Rumble mapping.** Use compatible vibration (flag0 bit 0, plus flag2 bit 2 on newer firmware) for classic rumble. By the common convention, motor-left is the strong/low-frequency motor and motor-right the weak/high-frequency one [not verified in fetched code].
 - **Sensor rate.** At 250–1000 Hz the sensor arrives faster than the render frame rate. Integrate gyro per report using timestamp deltas, not per animation frame.
 - **Licences.** dualsense-ts is LGPL-3.0. For a commercial Electron app, dynamic linking or keeping it as a separately replaceable module is the usual way to comply with LGPL. Writing an in-house parser from the kernel's documented layout (GPL code read for facts, not copied) avoids the question. nondebug/dualsense has no licence, so treat it as reference only.
 
 ### Gaps
 - I did not confirm how to force Bluetooth from simple (0x01) to full (0x31) reports. The kernel reads feature reports 0x05 and 0x20 at probe, and SDL only detects the mode; community code reportedly requests feature 0x05, but that was not verified here.
-- Whether `receiveFeatureReport()` includes the report-ID byte as byte 0 in Chromium (which would shift the calibration offsets above by one) was not verified.
+- Whether `receiveFeatureReport()` includes the report-ID byte as byte 0 in Chromium (which would shift the calibration offsets above by one) was not verified in Chromium. The WebHID spec says the returned data "may" start with the report ID, because it is whatever the OS returns, so a parser should check byte 0 and accept both layouts. [Verified: https://github.com/WICG/webhid/blob/main/index.bs]
 - Parameter ranges for the trigger modes (zones 0–9, strength 0–8, and so on), the official-effect bit-packing details, Nielk1's TriggerEffectGenerator (gist unreachable) and its licence were not checked.
 - DualSense Edge-specific reports (paddles, profiles) and the DualSense haptics-select (audio-driven) mode were not researched.
 
@@ -398,13 +398,13 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - Output: USB 0x05 (32 bytes); BT 0x11 (78 bytes).
   - Feature: calibration 0x02 on USB (37 bytes) and 0x05 on BT (41 bytes); firmware 0xA3; pairing 0x12.
   - BT hardware-control byte: CRC flag 0x40, HID flag 0x80, poll-interval mask 0x3F, default BT poll interval 4 ms.
-  - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
+  - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - Input layout:
   - Common struct: x, y, rx, ry, `buttons[3]`, z, rz, `sensor_timestamp` (le16), temperature, `gyro[3]`, `accel[3]`, `reserved[5]`, `status[2]`, reserved.
   - BT 0x11 wrapper: `reserved[2]` before the common struct, then `num_touch_reports` and `touch_reports[4]` ("BT has 4 compared to 3 for USB"), then the CRC32.
   - The timestamp converts to µs as ×16/3.
   - Scaling 8192/g and 1024 per °/s; touchpad 1920×942.
-  - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
+  - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c]
 - Calibration:
   - Bias at buf[1], [3], [5].
   - USB order: pitch+, pitch−, yaw+, yaw−, roll+, roll− at buf[7..17].
@@ -413,7 +413,7 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - Source: [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
 - Output common block: `valid_flag0`, `valid_flag1`, reserved, `motor_right`, `motor_left`, lightbar R/G/B, blink on, blink off. — [hid-playstation.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-playstation.c)
 - SDL warns: "We can't even send an invalid effects packet, or it will put the controller in enhanced mode". It exposes enhanced-report settings "0", "1" and "auto", and sets the sensor rate to `1000 / report_interval` Hz. — [SDL_hidapi_ps4.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_ps4.c)
-- **WebHID-DS4** (npm `webhid-ds4` 1.0.5, 2026-02-16, **MIT**, © 2019 TheBITLINK): USB and Bluetooth, gyro and accel, touchpad, lightbar RGB, rumble motors. — [WebHID-DS4 README and LICENSE](https://github.com/TheBITLINK/WebHID-DS4); [npm: webhid-ds4](https://registry.npmjs.org/webhid-ds4)
+- **WebHID-DS4** (npm `webhid-ds4` 1.0.5, 2026-02-16, **MIT**, © 2019 TheBITLINK): USB and Bluetooth, gyro and accel, touchpad, lightbar RGB, rumble motors. — [WebHID-DS4 README and LICENSE](https://github.com/TheBITLINK/WebHID-DS4); [npm: webhid-ds4](https://registry.npmjs.org/webhid-ds4) [Verified: https://registry.npmjs.org/webhid-ds4; https://github.com/TheBITLINK/WebHID-DS4/blob/HEAD/LICENSE]
 
 **Switch Pro / Joy-Con**
 - Report IDs:
@@ -433,28 +433,29 @@ The Linux kernel driver gives a complete, citable byte map. The input body is a 
   - "Under most circumstances IMU reports are pushed every 15ms".
   - Valid report deltas are 8–17 ms.
   - Subcommand rate limit: 20 ms over USB, 60 ms over BT.
-  - Source: [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c)
-- SDL registers Switch gyro and accel at 200 Hz, including separate left and right sensors for a combined Joy-Con pair. — [SDL_hidapi_switch.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch.c)
+  - The driver's author also sees 11 ms report intervals on some set-ups, and each IMU input report carries 3 samples ("usually 5ms apart"), so 200 Hz at a 15 ms interval.
+  - Source: [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c]
+- SDL registers Switch gyro and accel at 200 Hz, including separate left and right sensors for a combined Joy-Con pair. — [SDL_hidapi_switch.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch.c]
 - **joy-con-webhid** (npm 0.11.0, 2025-07-17, **Apache-2.0**):
   - reads buttons, sticks, LEDs, gyro and accelerometer;
   - `enableIMUMode()`;
   - `rumble(600, 600, 0.5)`.
   - Its README notes that the Gamepad API "does not have a concept of orientation", so "the Joy-Cons' accelerometer and gyroscope data cannot be accessed" that way.
-  - Sources: [joy-con-webhid README and LICENSE](https://github.com/tomayac/joy-con-webhid); [npm: joy-con-webhid](https://registry.npmjs.org/joy-con-webhid)
+  - Sources: [joy-con-webhid README and LICENSE](https://github.com/tomayac/joy-con-webhid); [npm: joy-con-webhid](https://registry.npmjs.org/joy-con-webhid) [Verified: https://registry.npmjs.org/joy-con-webhid; https://github.com/tomayac/joy-con-webhid/blob/HEAD/LICENSE]
 
 **Switch 2**
-- hid-nintendo's header now reads "Nintendo Switch 2 Joy-Cons, Pro Controller, and GameCube Controller". It carries "Copyright (c) 2026 Valve Software", cites ndeadly/switch2_controller_research, and has a "Switch 2 support" section with `NS2_*` button maps. — [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c)
-- SDL's Switch 2 driver covers the GameCube controller, Joy-Con L/R and Pro over USB via libusb bulk transfers. Bluetooth: "FIXME: Need to add Bluetooth support". It has gyro/accel bias calibration fields, rumble sent every 12 ms (`RUMBLE_INTERVAL`) and `RUMBLE_MAX 29000`. — [SDL_hidapi_switch2.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c)
-- Press, search summary only, not verified: the Steam client added Switch 2 Pro Controller (and GameCube controller) support in November 2025, wired USB on Windows, with Bluetooth not working in Steam. — [Nintendo Life (Nov 2025)](https://nintendolife.com/news/2025/11/valves-steam-client-adds-switch-2-pro-controller-support); [Final Weapon (2025-11-26)](https://finalweapon.net/2025/11/26/steam-nintendo-switch-2-pro-controller-gamecube-controller/); [TechRadar](https://www.techradar.com/gaming/the-nintendo-switch-2-pro-controller-is-now-supported-on-steam); [PC Gamer](https://www.pcgamer.com/uk/how-to-use-a-nintendo-switch-pro-controller-on-pc)
+- hid-nintendo's header now reads "Nintendo Switch 2 Joy-Cons, Pro Controller, and GameCube Controller". It carries "Copyright (c) 2026 Valve Software", cites ndeadly/switch2_controller_research, and has a "Switch 2 support" section with `NS2_*` button maps. — [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c]
+- SDL's Switch 2 driver covers the GameCube controller, Joy-Con L/R and Pro over USB via libusb bulk transfers. Bluetooth: "FIXME: Need to add Bluetooth support". It has gyro/accel bias calibration fields, rumble sent every 12 ms (`RUMBLE_INTERVAL`) and `RUMBLE_MAX 29000`. — [SDL_hidapi_switch2.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c]
+- Press, search summary only, not verified: the Steam client added Switch 2 Pro Controller (and GameCube controller) support in November 2025, wired USB on Windows, with Bluetooth not working in Steam. [Unverified] Primary-source support for the USB-only part: Valve's udev rules grant raw USB-device (not hidraw) access to the Switch 2 Joy-Con L/R, Pro and GameCube controllers over USB, and have no Bluetooth rule for them. [Verified: https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules] — [Nintendo Life (Nov 2025)](https://nintendolife.com/news/2025/11/valves-steam-client-adds-switch-2-pro-controller-support); [Final Weapon (2025-11-26)](https://finalweapon.net/2025/11/26/steam-nintendo-switch-2-pro-controller-gamecube-controller/); [TechRadar](https://www.techradar.com/gaming/the-nintendo-switch-2-pro-controller-is-now-supported-on-steam); [PC Gamer](https://www.pcgamer.com/uk/how-to-use-a-nintendo-switch-pro-controller-on-pc)
 
 ### Inferences
 - **DS4 offsets in WebHID.** The common body starts at `data` offset 0 for USB 0x01 and at offset 2 for BT 0x11 (after two reserved bytes; the report ID is stripped). Relative to the body start: gyro int16 at 12/14/16 and accel at 18/20/22.
 - **Getting DS4 Bluetooth full reports.** Send one valid output report 0x11 (lightbar colour plus zero rumble, with CRC seed 0xA2) or request feature 0x05. The SDL comment shows that any effects packet switches the pad into enhanced mode.
-- **Switch IMU start-up sequence.** For a Pro over USB, first send 0x80 0x02 and then 0x80 0x04 (no timeout). Then send subcommand 0x40 with argument 0x01 (IMU on) and 0x03 with 0x30 (full mode), and read calibration through 0x10 SPI reads. Respect the 20/60 ms subcommand spacing. The 200 Hz SDL rate against a 15 ms report interval suggests each 0x30 report carries several IMU samples; integrate every sample.
+- **Switch IMU start-up sequence.** For a Pro over USB, first send 0x80 0x02 and then 0x80 0x04 (no timeout). Then send subcommand 0x40 with argument 0x01 (IMU on) and 0x03 with 0x30 (full mode), and read calibration through 0x10 SPI reads. Respect the 20/60 ms subcommand spacing. Each 0x30 report carries 3 IMU samples (200 Hz at a 15 ms report interval), so integrate every sample. [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c]
 - **Switch 2.** Plan on Steam Input (USB) or the Linux kernel driver. Do not plan on WebHID for Switch 2 in 2026.
 
 ### Gaps
-- The exact 0x30 input layout (stick packing, IMU frames per report and their offsets) and the HD-rumble encoding were not extracted. The kernel driver and dekuNukem's notes (cited by the kernel) are the references.
+- The exact 0x30 input layout (stick packing and the byte offsets of the 3 IMU samples) and the HD-rumble encoding were not extracted. The kernel driver and dekuNukem's notes (cited by the kernel) are the references.
 - Whether Joy-Con 2 or Pro 2 expose any HID path on Windows or macOS without the bulk init, or whether Chrome's WebUSB can do the init, is unknown.
 
 ## 5. Gyro best practice: player, world and local space, calibration, tightening, smoothing, acceleration; sensor fusion (Madgwick/Mahony); gyro as a 2D pointer vs 3D orientation
@@ -491,7 +492,7 @@ Absolute 3D orientation needs sensor fusion, and its yaw drifts without a magnet
   - `GYRO_CUTOFF_RECOVERY` (tightening) smooths the transition and "does a good job of reducing shakiness", but the author uses it only "as a last resort".
   - Smoothing "unavoidably introduces latency", so it should never apply to "any input faster than a very small threshold". Smoothing is full below half of `GYRO_SMOOTH_THRESHOLD` and fades to none at the threshold. `GYRO_SMOOTH_TIME` defaults to 0.125 s.
   - Source: [JoyShockMapper README](https://github.com/Electronicks/JoyShockMapper/blob/HEAD/README.md)
-- **GamepadMotionHelpers** (MIT, header-only C++ library for sensor fusion and calibration):
+- **GamepadMotionHelpers** (MIT, header-only C++ library for sensor fusion and calibration) [Verified: https://github.com/JibbSmart/GamepadMotionHelpers/blob/HEAD/LICENSE]:
   - `GetCalibratedGyro` returns °/s minus bias.
   - `GetGravity` returns about (0, −1, 0) when flat.
   - `GetProcessedAcceleration` returns acceleration with gravity removed.
@@ -499,11 +500,11 @@ Absolute 3D orientation needs sensor fusion, and its yaw drifts without a magnet
   - Calibration modes: Manual (the default), Stillness and SensorFusion (corrections from the accelerometer-derived angular velocity).
   - Sensor fusion "cannot be used to correct the controller's orientation around the gravity vector (the yaw axis)" without a magnetometer.
   - Source: [GamepadMotionHelpers README and LICENSE](https://github.com/JibbSmart/GamepadMotionHelpers)
-- JoyShockMapper is MIT-licensed (© 2018–2021 Julian "Jibb" Smart; © 2021– Nicolas Lessard). — [JoyShockMapper LICENSE](https://github.com/Electronicks/JoyShockMapper)
-- The JavaScript AHRS library `ahrs` (psiphi75; Madgwick and Mahony filters) is at npm 1.3.3 (2023-10-28). Its LICENSE file is **Apache-2.0**, but the npm metadata says "APSL-2.0", so the two sources conflict. — [psiphi75/ahrs LICENSE](https://github.com/psiphi75/ahrs); [npm: ahrs](https://registry.npmjs.org/ahrs)
+- JoyShockMapper is MIT-licensed (© 2018–2021 Julian "Jibb" Smart; © 2021– Nicolas Lessard). — [JoyShockMapper LICENSE](https://github.com/Electronicks/JoyShockMapper) [Verified: https://github.com/Electronicks/JoyShockMapper/blob/HEAD/LICENSE.md]
+- The JavaScript AHRS library `ahrs` (psiphi75; Madgwick and Mahony filters) is at npm 1.3.3 (2023-10-28). Its LICENSE file is **Apache-2.0**, but the npm metadata says "APSL-2.0", so the two sources conflict. — [psiphi75/ahrs LICENSE](https://github.com/psiphi75/ahrs); [npm: ahrs](https://registry.npmjs.org/ahrs) [Verified: https://github.com/psiphi75/ahrs/blob/HEAD/LICENSE; https://registry.npmjs.org/ahrs]
 - SDL normalises raw IMU data:
   - Steam Deck and the 2026 Steam Controller: gyro = raw/32768 × 2000 °/s (in rad/s) and accel = raw/32768 × 2 g. SDL reorders axes as (X, Z, −Y) into its convention. The Deck updates every 4 ms (250 Hz) and the 2026 controller every 4.032 ms.
-  - Sources: [SDL_hidapi_steamdeck.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c); [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c)
+  - Sources: [SDL_hidapi_steamdeck.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c); [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c; https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c]
 - dualsense-ts ships built-in "orientation tracking" and "shake detection". — [dualsense-ts README](https://github.com/nsfm/dualsense-ts)
 
 ### Inferences
@@ -532,24 +533,24 @@ Separate pointer use from orientation use:
 When Steam Input is active it presents controllers to applications as a "Steam Virtual Gamepad" (28de:11ff). Chromium classifies that as an Xbox 360-type pad, which gives a standard mapping but drops gyro, touch, LEDs and adaptive triggers at the Gamepad API level. Steam's client also opens controllers' raw HID (hidraw) itself. Steam Controllers emulate keyboard and mouse ("lizard mode") unless a driver or Steam disables it. On a Steam Deck the built-in controls are a Valve HID device (28de:1205). Chromium on Linux has a standard mapping for it.
 
 ### Cited Findings
-- 28de:11ff is the "Steam Virtual Gamepad" (SDL), and Chromium's ID list types it as `kXInputTypeXbox360`. — [SDL controller_list.h](https://github.com/libsdl-org/SDL/blob/main/src/joystick/controller_list.h); [gamepad_id_list.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_id_list.cc)
+- 28de:11ff is the "Steam Virtual Gamepad" (SDL), and Chromium's ID list types it as `kXInputTypeXbox360`. — [SDL controller_list.h](https://github.com/libsdl-org/SDL/blob/main/src/joystick/controller_list.h); [gamepad_id_list.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_id_list.cc) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/controller_list.h; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_id_list.cc]
 - The kernel's hid-steam driver (Steam Controller and Steam Deck):
   - "This controller has a builtin emulation of mouse and keyboard … known as the 'lizard mode'".
   - The driver disables lizard mode when its input device is opened and re-enables it on close.
   - "Disabling lizard mode automatically is only done on the Steam Controller. On the Steam Deck, this is toggled manually by holding the options button". The new Ibex controller quirk is excluded from automatic toggling, like the Deck.
   - Steam Client uses hidraw directly. The driver uses a layered hidraw device to detect the client and drops its own input device while the client runs.
   - It has IMU-mode settings to send raw accel and gyro.
-  - Source: [hid-steam.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-steam.c)
+  - Source: [hid-steam.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-steam.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-steam.c]
 - SDL's driver for the new controller ("Triton", 28de:1302 USB, 1303 BLE, 1304/1305 proprietary dongles):
   - re-sends "disable lizard mode" every 3 s;
   - re-sends rumble every 40 ms because of a "hardware safety timeout … around 50ms";
   - reads ±2000 °/s and ±2 g IMU data about every 4 ms;
   - parses touchpad data.
-  - Source: [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c)
-- Valve's udev rules name a "Steam Controller 2026 receiver" and a "Steam Controller 2015 receiver". — [steam-devices 60-steam-input.rules](https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules)
-- Chromium's Linux mapping table includes the Steam Deck (1205), Steam Controller 2015 (1102, 1142) and the 2026 family (1302–1305). The Windows and macOS tables do not. — [gamepad_standard_mappings_linux.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_standard_mappings_linux.cc); [gamepad_standard_mappings_win.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_standard_mappings_win.cc)
-- Steam Deck IMU (SDL): 250 Hz, ±2000 °/s, ±2 g. — [SDL_hidapi_steamdeck.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c)
-- Press, search summary only, not verified: Steam added Switch 2 Pro Controller support over USB on Windows in November 2025. — [Nintendo Life](https://nintendolife.com/news/2025/11/valves-steam-client-adds-switch-2-pro-controller-support); [PC Gamer](https://www.pcgamer.com/uk/how-to-use-a-nintendo-switch-pro-controller-on-pc)
+  - Source: [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c]
+- Valve's udev rules name a "Steam Controller 2026 receiver" and a "Steam Controller 2015 receiver". — [steam-devices 60-steam-input.rules](https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules) [Verified: https://github.com/ValveSoftware/steam-devices/blob/master/60-steam-input.rules]
+- Chromium's Linux mapping table includes the Steam Deck (1205), Steam Controller 2015 (1102, 1142) and the 2026 family (1302–1305). The Windows and macOS tables do not. — [gamepad_standard_mappings_linux.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_standard_mappings_linux.cc); [gamepad_standard_mappings_win.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_standard_mappings_win.cc) [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_standard_mappings_linux.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_standard_mappings_win.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_standard_mappings_mac.mm]
+- Steam Deck IMU (SDL): 250 Hz, ±2000 °/s, ±2 g. — [SDL_hidapi_steamdeck.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steamdeck.c]
+- Press, search summary only, not verified: Steam added Switch 2 Pro Controller support over USB on Windows in November 2025. — [Nintendo Life](https://nintendolife.com/news/2025/11/valves-steam-client-adds-switch-2-pro-controller-support); [PC Gamer](https://www.pcgamer.com/uk/how-to-use-a-nintendo-switch-pro-controller-on-pc) [Unverified] (Valve's udev rules do give Steam raw USB access to Switch 2 pads on Linux, USB only; see section 4.)
 
 ### Inferences
 Two strategies when Tactilume ships on Steam, or when players have Steam running:
@@ -626,19 +627,19 @@ Design for up to 8 pads at once with colour plus shape identity, mirrored on the
 ## 8. Haptic design: syncing rumble and trigger effects with visuals and audio, limits (durations, magnitudes, update rates), comfort
 
 ### Takeaway
-- **Gamepad API haptics are coarse.** Effects are fixed-duration and constant-intensity, with magnitudes from 0 to 1 and at most 5 s per call. Trigger-rumble is Xbox-on-Windows only, plus macOS where supported.
+- **Gamepad API haptics are coarse.** Effects are fixed-duration and constant-intensity, with magnitudes from 0 to 1 and at most 5 s per call. Trigger-rumble is Xbox-on-Windows only, plus macOS where supported. [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/modules/gamepad/gamepad_haptic_actuator.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/gamepad_id_list.cc]
 - **Richer effects need WebHID**, mainly on the DualSense: adaptive-trigger resistance and vibration modes, attenuation, and rumble on Windows.
 - **Treat haptics as short, event-locked accents** with renewable continuous layers, keep them personal to each player, and make them optional.
 
 ### Cited Findings
 - `dual-rumble` and `trigger-rumble` are "fixed-duration, constant-intensity" effects. The user agent may alter an effect for compatibility and should use the `playEffect` timestamp for timing when `startDelay` is not 0. — [W3C Gamepad ED](https://github.com/w3c/gamepad/blob/gh-pages/index.html)
-- Chromium enforces magnitudes in [0, 1] and `duration + startDelay` ≤ 5000 ms. — [gamepad_haptic_actuator.cc](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/modules/gamepad/gamepad_haptic_actuator.cc); [gamepad.h](https://github.com/chromium/chromium/blob/main/device/gamepad/public/cpp/gamepad.h)
+- Chromium enforces magnitudes in [0, 1] and `duration + startDelay` ≤ 5000 ms. — [gamepad_haptic_actuator.cc](https://github.com/chromium/chromium/blob/main/third_party/blink/renderer/modules/gamepad/gamepad_haptic_actuator.cc); [gamepad.h](https://github.com/chromium/chromium/blob/main/device/gamepad/public/cpp/gamepad.h) [Verified: https://github.com/chromium/chromium/blob/156.0.8078.96/third_party/blink/renderer/modules/gamepad/gamepad_haptic_actuator.cc; https://github.com/chromium/chromium/blob/156.0.8078.96/device/gamepad/public/cpp/gamepad.h]
 - Which pads get trigger-rumble: on Windows the Xbox One, Series and Elite IDs through WGI; on macOS only controllers whose GameController haptics report trigger localities. — [gamepad_id_list.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/gamepad_id_list.cc); [game_controller_gamepad.mm](https://github.com/chromium/chromium/blob/main/device/gamepad/game_controller_gamepad.mm)
 - Nintendo dual-rumble in Chromium plays fixed tones: 141 Hz strong (≤ 0.9) and 182 Hz weak (≤ 0.1). — [nintendo_controller.cc](https://github.com/chromium/chromium/blob/main/device/gamepad/nintendo_controller.cc)
 - Native rumble timing constraints:
-  - The 2026 Steam Controller has a rumble "hardware safety timeout … around 50ms", so SDL re-sends every 40 ms. — [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c)
-  - SDL sends Switch 2 rumble every 12 ms. — [SDL_hidapi_switch2.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c)
-  - Switch subcommands are rate-limited to 20 ms (USB) and 60 ms (BT). — [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c)
+  - The 2026 Steam Controller has a rumble "hardware safety timeout … around 50ms", so SDL re-sends every 40 ms. — [SDL_hidapi_steam_triton.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_steam_triton.c]
+  - SDL sends Switch 2 rumble every 12 ms. — [SDL_hidapi_switch2.c](https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c) [Verified: https://github.com/libsdl-org/SDL/blob/main/src/joystick/hidapi/SDL_hidapi_switch2.c]
+  - Switch subcommands are rate-limited to 20 ms (USB) and 60 ms (BT). — [hid-nintendo.c](https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c) [Verified: https://github.com/torvalds/linux/blob/master/drivers/hid/hid-nintendo.c]
 - DualSense extras:
   - Adaptive-trigger modes: feedback, weapon, bow, galloping, machine, vibration, and raw per-zone strength or amplitude.
   - Attenuation 0–7 for rumble and triggers.
