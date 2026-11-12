@@ -216,11 +216,15 @@
       rig: one('rig'), scale: at(0),
       parts: list(obj({
         key: str, shape: one('partShape'), size: vec3, at: vec3, parent: opt(str), joint: opt(str), color: str, emissive: opt(num),
+        glow: opt(at(0, 1)), detail: opt(bool),
       })),
-      palette: map(hex), anim: obj({ stride: opt(num), swing: opt(num), bob: opt(num) }, true),
+      palette: map(either(hex, list(at(0, 1), 3))), anim: obj({ stride: opt(num), swing: opt(num), bob: opt(num) }, true),
     },
-    prop: { puppet: ref('puppet'), radius: at(0), light: opt(obj({ radius: at(0), color: any })), breakable: opt(obj({ loot: any })) },
-    tileset: {},
+    prop: {
+      puppet: ref('puppet'), radius: at(0), light: opt(obj({ radius: at(0), color: any, height: opt(at(0)), strength: opt(at(0)) })),
+      breakable: opt(obj({ loot: any })),
+    },
+    tileset: { recipe: opt(str), span: opt(at(0.5)), colors: opt(map(either(hex, list(at(0, 1), 3)))) },
     base: {
       name: str, slot: one('slot'), family: nul(row('family')), tags: list(str), level: whole(1), req, twoHanded: bool,
       weapon: nul(obj({ damage: map(list(at(0), 2), row('dtype')), aps: at(0), crit: at(0, 100) })), defence: nul(map(at(0))),
