@@ -18,7 +18,7 @@
 - Permissions: `storage`, `unlimitedStorage`, `sidePanel`, `contextMenus` and `activeTab`; optional: `tts`, and `identity` (for Connect OpenRouter, through `platform.identity`, Task 3).
 - `host_permissions`: `https://archive.org/*` and `https://*.archive.org/*`; the provider API hosts; the open and probe source hosts; `raw.githubusercontent.com`, `itch.io` and the Pages URL. Task 1, Step 3 lists them exactly.
 - `optional_host_permissions`: `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` and `http://*/*`, each asked for from a button when you add a custom endpoint or a model on your local network, through `platform.requestOrigins(origins)` (Task 3).
-- Firefox overlay: drops `side_panel` and `sidePanel`, adds `sidebar_action.default_panel: panel.html` and `_execute_sidebar_action`; `browser_specific_settings.gecko`: `id: byways@iteatsthesalt`, `strict_min_version: 140.0`; `data_collection_permissions`: `required: ['none']`, `optional: ['searchTerms', 'browsingActivity']`. These are asked for when AI or "More like this page" is turned on (Tasks 3 and 4). The list is checked against AMO's current list by hand only (Task 9).
+- Firefox overlay: drops `side_panel` and `sidePanel`, adds `sidebar_action.default_panel: panel.html` and `_execute_sidebar_action`; `browser_specific_settings.gecko`: `id: byways@iteatsthesalt`, `strict_min_version: 140.0`; `data_collection_permissions`: `required: ['none']`, `optional: ['searchTerms', 'browsingActivity']`. These are asked for when AI Search or "More like this page" is first used, inside the user's click (Tasks 3 and 4); a use with no click (a voice "search for …", a Rabbit Hole) is covered by the grant stored at an earlier click, which `requestDataCollection` checks in the same turn. The list is checked against AMO's current list by hand only (Task 9).
 - At startup, Byways checks `permissions.contains` and offers **Grant access** if anything was revoked.
 - Namespace: `const ext = globalThis.browser ?? globalThis.chrome`. No polyfill.
 - Suggested shortcuts: Alt+Shift+S to Stumble, Alt+Shift+B to open the panel, Alt+Shift+V to toggle listening, Alt+Shift+M for "More like this page".
@@ -380,17 +380,17 @@ git commit -m "Build the Chrome and Firefox extensions and check their manifests
 **Interfaces:**
 - Consumes: `createWebVoice(win) → VoiceEngine` and `createNoVoice() → VoiceEngine` (`platform/web-voice.js`); `createWebTts(speechSynthesis) → Tts` (`platform/web-tts.js`); `createWebMedia(navigator)` and `createWebWakeLock(navigator, document)` (`platform/web-media.js`); `isHttpUrl(u) → boolean` (`core/util/url.js`); the `Platform`, `VoiceEngine` and `SecretStore` shapes in `core/types.js`; Plan 03's `HandsFree` (`state`, `command(id)`) plus the contract additions `get listening → boolean` and `setListening(on) → Promise<boolean>`.
 - Produces (in `src/platform/extension.js`):
-  - `createExtensionPlatform({ext, win, surface: 'background'|'panel'|'tab'}) → Platform`, including the contract's `requestOrigins(origins: string[]) → Promise<boolean>`, `identity` with `getRedirectURL() → Promise<string>` (Plan 05's Connect OpenRouter passes it to `startPkce` as `redirectUri`), `requestDataCollection(kinds) → Promise<boolean>` (Plan 05 calls it when AI is first set up), and `caps.leanBack: false` on the `'panel'` surface only. The tab and the background leave `caps.leanBack` out, which means `true`. There is no top-level `platform.leanBack`: Plan 03's `installHandsFreeUi` passes `leanBack: app.platform.caps.leanBack !== false` to `createHandsFree`
+  - `createExtensionPlatform({ext, win, surface: 'background'|'panel'|'tab'}) → Platform`, including the contract's `requestOrigins(origins: string[]) → Promise<boolean>`, `identity` with `getRedirectURL() → Promise<string>` (Plan 05's Connect OpenRouter passes it to `startPkce` as `redirectUri`), `requestDataCollection(kinds) → Promise<boolean>` (Plan 05's `aiSearch` calls it on the first AI Search in an app session, inside the user's click: the contract's Stumble form, Plan 02, calls `app.search(text)` as its submit handler's first statement, so Firefox's prompt stays inside the gesture; a voice "search for …" or a Rabbit Hole has no click and gets its yes from the stored grant, Step 3), and `caps.leanBack: false` on the `'panel'` surface only. The tab and the background leave `caps.leanBack` out, which means `true`. There is no top-level `platform.leanBack`: Plan 03's `installHandsFreeUi` passes `leanBack: app.platform.caps.leanBack !== false` to `createHandsFree`
   - `gateVoice(inner: VoiceEngine, {win, ext}) → VoiceEngine`
   - `createExtSecrets(ext) → SecretStore`
   - `requestDataCollection(ext, kinds: Array<'searchTerms'|'browsingActivity'>) → Promise<boolean>`
-  - `toggleListening(hf: HandsFree, {activated: boolean, start: () => Promise<void>}) → Promise<'needs-start'|'started'|'stopped'|'listening'>`
+  - `toggleListening(hf: HandsFree, {activated: boolean, start: () => Promise<void>}) → Promise<'needs-start'|'started'|'stopped'|'listening'|'not-listening'>`
 
 The tests use these fakes, written at the top of the test file:
-- `fakeExt({hosts = ['https://archive.org/*'], firefox = false} = {})` returns `{calls, messages, local, session, answer: true, storage, tabs, runtime, permissions, identity}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`, and `tabs.create` resolves `{id: 99, ...props}`. Storage calls are not recorded in `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`. `runtime.getManifest()` returns `{host_permissions: hosts}`, plus, with `firefox: true`, `browser_specific_settings: {gecko: {data_collection_permissions: {required: ['none'], optional: ['searchTerms', 'browsingActivity']}}}`. `permissions.contains({origins})` resolves whether every pattern is in `hosts` (not recorded). `permissions.request(q)` pushes `['permissions.request', q]` synchronously, then resolves `ext.answer`, or rejects with it when it is an `Error`. `identity.getRedirectURL()` returns `'https://test.chromiumapp.org/'`; `identity.launchWebAuthFlow(o)` pushes `['identity.launchWebAuthFlow', o]` and resolves `'https://test.chromiumapp.org/?code=abc'`.
+- `fakeExt({hosts = ['https://archive.org/*'], firefox = false, dataGranted = false} = {})` returns `{calls, messages, local, session, answer: true, dataGranted, storage, tabs, runtime, permissions, identity}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`, and `tabs.create` resolves `{id: 99, ...props}`. Storage calls are not recorded in `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`. `runtime.getManifest()` returns `{host_permissions: hosts}`, plus, with `firefox: true`, `browser_specific_settings: {gecko: {data_collection_permissions: {required: ['none'], optional: ['searchTerms', 'browsingActivity']}}}`. `permissions.contains(q)`: with `origins`, it resolves whether every pattern is in `hosts` (not recorded); with `data_collection`, it pushes `['permissions.contains', q]` synchronously, then resolves `ext.dataGranted`, or rejects with it when it is an `Error`. `permissions.request(q)` pushes `['permissions.request', q]` synchronously, then resolves `ext.answer`, or rejects with it when it is an `Error`. `identity.getRedirectURL()` returns `'https://test.chromiumapp.org/'`; `identity.launchWebAuthFlow(o)` pushes `['identity.launchWebAuthFlow', o]` and resolves `'https://test.chromiumapp.org/?code=abc'`.
 - `fakeWin({mic = 'granted'})` returns `{calls, fetch, navigator, speechSynthesis}`. `fetch(url, init)` pushes `[url, init]` to `calls` and resolves `new Response('ok')`. `navigator.permissions.query({name})` resolves `{state: mic}`, or rejects when `mic === 'throws'`. `navigator.clipboard.writeText(t)` pushes `['copy', t]`. It has no `share` and no `document`.
 - `fakeVoice()` is a `VoiceEngine` whose `start` sets `started = true`, and whose `emit(event, data)` calls the `on` listeners.
-- `fakeHf(fields, calls)` is a `HandsFree` with the given `state` and `listening`, whose `command(id)` pushes `['command', id]` and whose `setListening(on)` pushes `['setListening', on]` to `calls`.
+- `fakeHf(fields, calls)` is a `HandsFree` with the given `state`, `listening` and `canListen` (default `true`), whose `command(id)` pushes `['command', id]` and whose `setListening(on)` pushes `['setListening', on]` to `calls` and resolves `on && canListen`, as Plan 03's does.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -414,11 +414,13 @@ test('transport omits cookies, drops the privileged flag and checks hosts it has
   await p.transport.fetch('https://blog.example/post', { method: 'HEAD', privileged: true });
   await p.transport.fetch('https://blog.example/feed.xml', { privileged: true });
   await p.transport.fetch('https://blog.example/post', { method: 'HEAD' });
+  await p.transport.fetch('https://api.openai.com/v1/models', { redirect: 'error', privileged: true });   // Plan 05 sends this with every key
   assert.deepEqual(win.calls, [
     ['https://archive.org/x', { headers: { a: '1' }, credentials: 'omit' }],
     ['https://blog.example/post', { method: 'HEAD', mode: 'no-cors', credentials: 'omit' }],
     ['https://blog.example/feed.xml', { credentials: 'omit' }],
-    ['https://blog.example/post', { method: 'HEAD', credentials: 'omit' }]]);
+    ['https://blog.example/post', { method: 'HEAD', credentials: 'omit' }],
+    ['https://api.openai.com/v1/models', { redirect: 'error', credentials: 'omit' }]]);
 });
 
 test('requestOrigins asks for match patterns inside the click and returns the answer', async () => {
@@ -451,13 +453,26 @@ test('identity asks for its permission first, then runs the browser flow', async
 test('requestDataCollection asks Firefox inside the click, and is a yes elsewhere', async () => {
   const ff = fakeExt({ firefox: true });
   const asked = requestDataCollection(ff, ['searchTerms']);
-  assert.deepEqual(ff.calls, [['permissions.request', { data_collection: ['searchTerms'] }]]);
+  assert.deepEqual(ff.calls, [['permissions.request', { data_collection: ['searchTerms'] }],
+    ['permissions.contains', { data_collection: ['searchTerms'] }]]);                       // both start before any await
   assert.equal(await asked, true);
   ff.answer = new TypeError('Unexpected property "data_collection"');
   assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);   // no consent, nothing is sent
   const chrome = fakeExt();
   assert.equal(await createExtensionPlatform({ ext: chrome, win: fakeWin({}), surface: 'tab' }).requestDataCollection(['searchTerms']), true);
   assert.deepEqual(chrome.calls, []);
+});
+
+test('requestDataCollection takes a stored grant when there is no click, and sends nothing when both say no', async () => {
+  const ff = fakeExt({ firefox: true, dataGranted: true });
+  ff.answer = new Error('permissions.request may only be called from a user input handler');   // a voice "search for …" or a Rabbit Hole
+  assert.equal(await requestDataCollection(ff, ['searchTerms']), true);
+  ff.permissions.request = () => { throw ff.answer; };                                           // the same, thrown synchronously
+  assert.equal(await requestDataCollection(ff, ['searchTerms']), true);
+  ff.dataGranted = false;
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);                   // both say no: nothing is sent
+  ff.dataGranted = new Error('contains is not here');
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);
 });
 
 test('secrets live in storage.local under secret:', async () => {
@@ -545,11 +560,13 @@ test('toggleListening starts hands-free from idle, but only after a press on the
   assert.deepEqual(calls, [['start']]);
 });
 
-test('toggleListening turns the mic off, then on again', async () => {
+test('toggleListening turns the mic off, then on again, and says when it could not', async () => {
   const calls = []; const start = async () => { calls.push(['start']); };
   assert.equal(await toggleListening(fakeHf({ state: 'active', listening: true }, calls), { activated: false, start }), 'stopped');
   assert.equal(await toggleListening(fakeHf({ state: 'paused', listening: false }, calls), { activated: false, start }), 'listening');
-  assert.deepEqual(calls, [['command', 'stopListening'], ['setListening', true]]);
+  assert.equal(await toggleListening(fakeHf({ state: 'active', listening: false, canListen: false }, calls), { activated: false, start }),
+    'not-listening');                                                      // no listener, or voice mode 'off'
+  assert.deepEqual(calls, [['command', 'stopListening'], ['setListening', true], ['setListening', true]]);
 });
 ```
 
@@ -563,10 +580,10 @@ Expected: FAIL with `Cannot find module` for `src/platform/extension.js`.
 - `createExtSecrets(ext)`: keys are stored as `secret:<id>` in `ext.storage.local`. `get` returns `null` when the key is missing. `list` returns the ids with the prefix removed and ignores other keys.
 - `gateVoice(inner, {win, ext})`: `probe`, `install`, `stop` pass through. `on('result'|'state')` subscribe to `inner`. `on('error')` subscribes to the gate's own list, which receives every inner error. `start(opts)` queries `win.navigator.permissions.query({name: 'microphone'})`. On `'granted'`, or when the query rejects, it calls `inner.start(opts)`. Otherwise it sends `{type: 'openPermission'}` and emits `{code: 'not-allowed'}`. An inner `not-allowed` error also sends `{type: 'openPermission'}`.
 - `originPattern(url)` (internal) is `<scheme>://<hostname>/*`, with no port: a match pattern without one matches every port.
-- `requestDataCollection(ext, kinds)`: when `ext.runtime.getManifest()` declares `browser_specific_settings.gecko.data_collection_permissions.optional` (Firefox), it calls `ext.permissions.request({data_collection: kinds})` as its first statement and resolves the answer. A throw, synchronous or not, resolves `false`, as from a Firefox that does not know `data_collection`, so nothing is sent without consent. Without that key (Chrome and Edge) it resolves `true` and calls nothing.
-- `toggleListening(hf, {activated, start})`: from `'idle'` it resolves `'needs-start'` when `activated` is false (a page that was never pressed cannot start speech), else awaits `start()` and resolves `'started'`. In any other state it runs `hf.command('stopListening')` when `hf.listening` (`'stopped'`), or else `hf.setListening(true)` (`'listening'`).
+- `requestDataCollection(ext, kinds)`: when `ext.runtime.getManifest()` declares `browser_specific_settings.gecko.data_collection_permissions.optional` (Firefox), it starts, in one synchronous step, `ext.permissions.request({data_collection: kinds})` as its first statement and then `ext.permissions.contains({data_collection: kinds})`, and resolves `true` when either resolves `true`. A throw from either, synchronous or not, counts as `false` for that one: `request` throws outside a user gesture (a voice "search for …", a Rabbit Hole), and `contains` then answers from the grant stored at an earlier click; a Firefox that does not know `data_collection` throws from both, so nothing is sent without consent. Without that key (Chrome and Edge) it resolves `true` and calls nothing.
+- `toggleListening(hf, {activated, start})`: from `'idle'` it resolves `'needs-start'` when `activated` is false (a page that was never pressed cannot start speech), else awaits `start()` and resolves `'started'`. In any other state it runs `hf.command('stopListening')` when `hf.listening` (`'stopped'`), or else awaits `hf.setListening(true)` and reports what the boolean says: `'listening'` on `true`, `'not-listening'` on `false` (Plan 03 gives `false` with no listener, in `'off'` mode, while suspended, or when the listener's `start()` rejects).
 - `createExtensionPlatform({ext, win, surface})`:
-  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`. When `init.privileged` is set and the method is `HEAD`, it first checks `await ext.permissions.contains({origins: [originPattern(url)]})`. For a host Byways has no access to, the request also gets `mode: 'no-cors'`: Plan 02's privileged link check then gets an opaque reply with status 0, which `checkLive` counts as live, the same reachability check the web app makes. Every other request keeps CORS, which host permissions lift.
+  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`. When `init.privileged` is set and the method is `HEAD`, it first checks `await ext.permissions.contains({origins: [originPattern(url)]})`. For a host Byways has no access to, the request also gets `mode: 'no-cors'`: Plan 02's privileged link check then gets an opaque reply with status 0, which `checkLive` counts as live, the same reachability check the web app makes. Every other request keeps CORS, which host permissions lift. The rest of `init` (`method`, `headers`, `body`, `signal`, and `redirect: 'error'`, which Plan 05 sends with every key) goes to `win.fetch` unchanged, and the browser's `Response` keeps `url`, the final address after redirects, which Plan 05's `resolveRedirect` reads (contract, "Transport rules every shell honours").
   - `voice`: `createNoVoice()` for `'background'`, else `gateVoice(createWebVoice(win), {win, ext})`.
   - `tts`: for `'background'`, a silent `Tts` (`speak` resolves, `voices` resolves `[]`); else `createWebTts(win.speechSynthesis)`.
   - `openFind(find, how = 'tab')` throws `Error('not an http(s) link')` unless `isHttpUrl(find.url)`. `'current'` queries `{active: true, currentWindow: true}`, calls `ext.tabs.update(tab.id, {url})`, then sets `storage.session['find:<id>'] = {find, branch: null, why: find.why}`. `'tab'` and `'inapp'` call `ext.tabs.create({url})`.
@@ -581,7 +598,7 @@ Expected: FAIL with `Cannot find module` for `src/platform/extension.js`.
 - [ ] **Step 4: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-platform.test.js`
-Expected: PASS, 16 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -615,12 +632,12 @@ git commit -m "Add the extension platform with storage.local secrets, a mic gate
 The tests import from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
 
 Test fakes, written at the top of the test file:
-- `fakeExt({granted = true, sidebar = false} = {})` returns an object with `calls`, `messages`, `local`, `session`, `tabsById = {}`, `granted` (starts as the option) and `answer = true`, and:
+- `fakeExt({granted = true, sidebar = false, dataGranted = false} = {})` returns an object with `calls`, `messages`, `local`, `session`, `tabsById = {}`, `granted` and `dataGranted` (each starts as its option) and `answer = true`, and:
   - `storage.local` and `storage.session`: plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API, not recorded;
   - `tabs.query()` resolves `[{id: 7, windowId: 1}]`; `tabs.get(id)` resolves `tabsById[id]` or rejects `'No tab'` (not recorded); `tabs.update(id, p)` → `['tabs.update', id, p]`; `tabs.create(p)` → `['tabs.create', p]` and resolves `{id: 99, ...p}`;
   - `action.setBadgeText(o)` → `['badge', o]`; `action.setTitle(o)` → `['title', o]`;
   - `sidePanel.open(o)` → `['sidePanel.open', o]`, or, with `sidebar: true` (Firefox), no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`;
-  - `permissions.contains(q)` → `['contains', q]`, resolves `ext.granted`; `permissions.request(q)` → `['permissions.request', q]`, resolves `ext.answer`;
+  - `permissions.contains(q)` → `['contains', q]`, resolves `ext.granted` for an `origins` query and `ext.dataGranted` for a `data_collection` query; `permissions.request(q)` → `['permissions.request', q]`, resolves `ext.answer`;
   - `contextMenus.removeAll()` → `['menus.removeAll']`; `contextMenus.create(o)` → `['menus.create', o]`;
   - `runtime.sendMessage(m)` pushes `m` to `messages`; `runtime.getURL(p)` returns `'chrome-extension://test/' + p`; `runtime.getManifest()` returns `{host_permissions: ['https://archive.org/*']}`, plus, with `sidebar: true`, `browser_specific_settings.gecko.data_collection_permissions` `{required: ['none'], optional: ['searchTerms', 'browsingActivity']}`.
 
@@ -724,7 +741,8 @@ test('more like this page on Firefox asks for browsing activity in the same turn
   const { bg, ext } = bgWith([], { sidebar: true });
   const page = { ...tab, url: 'https://small.example/blog/', title: 'Small blog' };
   const done = bg.morePage(page);
-  assert.deepEqual(ext.calls.slice(0, 2), [['sidebarAction.open'], ['permissions.request', { data_collection: ['browsingActivity'] }]]);
+  assert.deepEqual(ext.calls.slice(0, 3), [['sidebarAction.open'], ['permissions.request', { data_collection: ['browsingActivity'] }],
+    ['contains', { data_collection: ['browsingActivity'] }]]);                                 // all three before any await
   await done;
   assert.equal(ext.session.pendingRabbit.source, 'marginalia');
   ext.answer = false;

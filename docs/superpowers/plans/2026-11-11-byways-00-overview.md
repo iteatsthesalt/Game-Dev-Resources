@@ -773,7 +773,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - The Claude row lists every current Claude model price from the claude-api reference, including the fallback targets.
   - OpenRouter and xAI estimates use the prices their model lists return.
 - **Claude request details.**
-  - `fallbackModels` is the reference's list (Opus 5.5, Sonnet 5.5, Fable 5.2, Fable 5.1 and Opus 5). Requests to those models send `fallbacks: 'default'` and `anthropic-beta: server-side-fallback-2026-07-01`.
+  - `fallbackModels` is the reference's list (Opus 5.5, Sonnet 5.5, Fable 5.2, Mythos 5.2, Fable 5.1, Mythos 5.1 and Opus 5; the reference says each Mythos model refuses and falls back as its Fable twin does). Requests to those models send `fallbacks: 'default'` and `anthropic-beta: server-side-fallback-2026-07-01`. Haiku 5.5 and Mythos 5 are not on it.
   - Cost and **Found by** follow `res.model`.
   - The web search tool version is chosen per model from the reference's list of models that support `web_search_20260209`. Any other model gets `web_search_20250305`.
 - **Local models** (Ollama, LM Studio) return leads (§12.5). Nano ranks candidates.
@@ -977,6 +977,8 @@ No environment variable sets the version. The release APK asset is named `byways
 // The data job ALWAYS writes every generated file (daily, itch, vault-index, linkcheck, webrings, neocities).
 // If a source fails it keeps the last good file from the live site; if there is none, it writes a valid
 // empty shape, so the app never requests a missing file (a 404 would show as a console error).
+// A failed extra (webrings, neocities) is listed under `failed` in the job's output and step summary,
+// and the job still exits 0: §7.2's "dropped quietly" means the app runs without it, not that the job hides it.
 // dist/pwa/data/webrings.json: { "v":1, "generatedAt":"ISO", "ring":"xxiivv", "sites":[ { "url", "title" } ] }
 // dist/pwa/data/neocities.json: { "v":1, "generatedAt":"ISO", "sites":[ { "url", "title"? } ] }
 // dist/pwa/data/linkcheck.json
