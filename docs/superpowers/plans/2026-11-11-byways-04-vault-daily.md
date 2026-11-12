@@ -522,30 +522,50 @@ git commit -m "Read generated data files through dataUrl, with build placeholder
 
 `IA_COLLECTIONS` (in this order): `prelinger` "Prelinger Archives" video; `feature_films` "Feature Films" video, safety `mixed`; `georgeblood` "Great 78 Project" audio; `78rpm` "78 RPMs and Cylinder Recordings" audio; `oldtimeradio` "Old Time Radio" audio; `librivoxaudio` "LibriVox" audio; `etree` "Live Music Archive" audio; `computermagazines` "Computer Magazines" book. Safety is `mostly` unless stated.
 
-Fixtures: `meta-collection.json` = `{"result":{"identifier":"x","mediatype":"collection"}}`; `meta-game.json` = `{"result":{"identifier":"msdos_Whizz_1994","mediatype":"software","emulator":"dosbox","emulator_ext":"zip"}}`; `count-250.json` = `{"responseHeader":{"status":0},"response":{"numFound":250,"start":0,"docs":[]}}`; `search-gems.json` holds three docs in this order: `msdos_Whizz_1994` "Whizz" (312 downloads, year "1994", creator "Flair", avg_rating 4.5, num_reviews 3), `msdos_Tiny_Tunes_1992` "Tiny Tunes" (20, "1992") and `msdos_Big_Blast_1995` "Big Blast" (2900, "1995"), all in `["softwarelibrary_msdos_shareware"]`; `search-film.json` holds `DayAtTheFair1950` "A Day at the Fair" (`mediatype` "movies", collection `["feature_films"]`); `vault-index.json` follows the contract shape with `softwarelibrary_msdos_shareware` (the three gems above) and `softwarelibrary_c64_games` (one gem `c64_Fixture_Game_1985` "Comet Hopper", 40 downloads, 1985).
+Fixtures: `meta-collection.json` = `{"result":{"identifier":"x","mediatype":"collection"}}`; `meta-game.json` = `{"result":{"identifier":"msdos_Whizz_1994","mediatype":"software","emulator":"dosbox","emulator_ext":"zip"}}`; `count-250.json` = `{"responseHeader":{"status":0},"response":{"numFound":250,"start":0,"docs":[]}}`; `search-gems.json` holds three docs in this order: `msdos_Whizz_1994` "Whizz" (312 downloads, year "1994", creator "Flair", avg_rating 4.5, num_reviews 3), `msdos_Tiny_Tunes_1992` "Tiny Tunes" (20, "1992") and `msdos_Big_Blast_1995` "Big Blast" (2900, "1995"), all in `["softwarelibrary_msdos_shareware"]`; `search-film.json` holds `DayAtTheFair1950` "A Day at the Fair" (`mediatype` "movies", collection `["feature_films"]`); `vault-index.json` follows the contract shape with `softwarelibrary_msdos_shareware` (the three gems above) and `softwarelibrary_c64_games` (one gem `c64_Fixture_Game_1985` "Comet Hopper", 40 downloads, 1985); `thumb.svg` is `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`.
+
+Add these entries at the top of `tests/fixtures/routes.js`, in this order, so that e2e runs cover every request the two adapters make (Plan 02's convention):
+
+| match | file | headers |
+|---|---|---|
+| `/^https:\/\/archive\.org\/advancedsearch\.php\?.*[?&]rows=0(&\|$)/` | `ia/count-250.json` | |
+| `/^https:\/\/archive\.org\/advancedsearch\.php\?/` | `ia/search-gems.json` | |
+| `/^https:\/\/archive\.org\/metadata\/msdos_[^/]+\/metadata$/` | `ia/meta-game.json` | |
+| `/^https:\/\/archive\.org\/metadata\/[^/]+\/metadata$/` | `ia/meta-collection.json` | |
+| `/^https:\/\/(archive\.org\/services\/img\|upload\.wikimedia\.org\|apod\.nasa\.gov\/apod\/image)\//` | `ia/thumb.svg` | `content-type: image/svg+xml` |
 
 - [ ] **Step 1: Write the failing tests**
 
-`ctx = {http: createHttp({transport: net, clock}), rand, clock, cache, settings: DEFAULT_SETTINGS, secrets: null, data: {embedBroken: new Set(), loadSnapshot: async () => VAULT_INDEX}, platformName: 'pwa'}` with `clock = instantClock()`. Routes: `/\/metadata\//` → `meta-collection.json`, `/rows=0/` → `count-250.json`, `/advancedsearch/` → `search-gems.json` (per-test overrides).
+Each test gets a fresh `clock = instantClock()`, `net = fakeFetch(routes, {clock})` and `ctx = {http: createHttp({transport: net, clock}), rand, clock, cache: createCache(await openStore(memoryBackend()), clock), settings: DEFAULT_SETTINGS, secrets: null, data: {embedBroken: new Set()}, platformName: 'pwa', caps: {privilegedFetch: false}, dataUrl: (f) => DATA + f}`, with `DATA` as in Task 4 and `seq` as in Task 2. Routes, after a test's own: `/\/metadata\//` → `meta-collection.json`, `/rows=0/` → `count-250.json`, `/advancedsearch/` → `search-gems.json`, `/data\/vault-index\.json$/` → `ia/vault-index.json`.
 
 ```js
 test('ia adapter declares the contract shape', () => {
-  assert.deepEqual([ia.id, ia.tier, ia.key, ia.safety, ia.fate], ['ia', 'probe', 'none', 'mostly', true]);
+  assert.deepEqual([ia.id, ia.name, ia.tier, ia.key, ia.safety, ia.fate], ['ia', 'Internet Archive', 'probe', 'none', 'mostly', true]);
   assert.deepEqual(ia.rate, { perMinute: 60, concurrent: 2 });
   assert.deepEqual(IA_COLLECTIONS.map((c) => c.id), ['prelinger', 'feature_films', 'georgeblood', '78rpm', 'oldtimeradio', 'librivoxaudio', 'etree', 'computermagazines']);
   assert.equal(IA_COLLECTIONS[1].safety, 'mixed');
 });
 test('ia random picks a validated collection and returns one find with an embed', async () => {
-  // advancedsearch (rows=1) → search-film.json; rand = seq(0.13, 0.5)
+  // Family filter off; /rows=1/ → search-film.json; rand = seq(0.13, 0.5)
+  ctx.settings = { ...DEFAULT_SETTINGS, familyFilter: false };
   const [f] = await ia.random(ctx);
   const u = new URL(net.calls.at(-1).url);
   assert.deepEqual([u.searchParams.get('q'), u.searchParams.get('rows'), u.searchParams.get('page'), u.searchParams.getAll('sort[]')[0]], ['collection:(feature_films)', '1', '126', 'identifier asc']);
   assert.deepEqual([f.kind, f.safety, f.source, f.embedUrl], ['video', 'mixed', 'ia', 'https://archive.org/embed/DayAtTheFair1950']);
   assert.deepEqual(f.why, ['Internet Archive: Feature Films']);
+  ctx.data.embedBroken.add(f.id); ctx.rand = seq(0.13, 0.5);
+  assert.deepEqual(await ia.random(ctx), []);
+  ctx.rand = seq(0.9); await ia.more({ meta: { collection: 'feature_films' } }, ctx);
+  assert.deepEqual([...new URL(net.calls.at(-1).url).searchParams].filter(([k]) => k === 'q' || k === 'page'), [['q', 'collection:(feature_films)'], ['page', '226']]);
+});
+test('with the Family filter on, ia leaves feature_films out', async () => {
+  // rand = seq(0.13, 0.5)
+  await ia.random(ctx);
+  assert.equal(new URL(net.calls.at(-1).url).searchParams.get('q'), 'collection:(prelinger)');
 });
 test('ia search escapes Lucene characters', async () => {
   await ia.search('C++ (1990)', ctx);
-  assert.equal(new URL(net.calls.at(-1).url).searchParams.get('q'), '(C\\+\\+ \\(1990\\)) AND collection:(prelinger OR feature_films OR georgeblood OR 78rpm OR oldtimeradio OR librivoxaudio OR etree OR computermagazines)');
+  assert.equal(new URL(net.calls.at(-1).url).searchParams.get('q'), '(C\\+\\+ \\(1990\\)) AND collection:(prelinger OR georgeblood OR 78rpm OR oldtimeradio OR librivoxaudio OR etree OR computermagazines)');
 });
 test('vault random returns a Vault Fate find and skips embed-broken games', async () => {
   // rand = seq(0, 0.5)

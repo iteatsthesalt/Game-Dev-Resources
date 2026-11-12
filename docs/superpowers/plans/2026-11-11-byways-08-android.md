@@ -1525,7 +1525,7 @@ test('Connect OpenRouter finishes through the login view', async ({ page }) => {
 - [ ] **Step 3: Run it to see it fail**
 
 Run: `npm run build`, then `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/android.spec.js`
-Expected: FAIL. Every test times out: `openAndroid` waits for **Like**, which never shows, because `boot()` does not call `attach` yet and nothing sends `app.ready`; the later assertions wait for the site view message, the share-in texts, the `back` results and states, `voice.start` and `app.auth`.
+Expected: FAIL in every test except `Connect OpenRouter finishes through the login view`, which passes already because Task 6 built `identity`. Nothing calls `attach` yet, so `app.ready`, `Opened in the site view.`, the second `openSite`, `siteControls`, the share-in texts, the `back` results and states, and `voice.start` never arrive.
 
 - [ ] **Step 4: Implement `attach(app)` in `src/platform/android.js`**
 
