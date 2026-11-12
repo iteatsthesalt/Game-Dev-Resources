@@ -59,6 +59,7 @@ This is the fact-checked digest of audio_input_analysis.md (Tactilume Desktop sy
 - Test `video: request.frame` (the app's own frame) as the dummy video, to avoid the Screen Recording prompt and the Wayland picker; undocumented.
 - macOS onboarding: an `ended` track or zero RMS over the first second is the only permission signal; then show System Settings help. Ship signed with the usage key.
 - Linux fallback: reroute to "Monitor of …" in pavucontrol, or a native helper (PipeWire/PulseAudio addon, `pw-record`/`parec`) streaming PCM over a MessagePort. Keep a per-OS native addon (the OBS/projectMSDL pattern) in reserve.
+- Open: whether `getDisplayMedia` needs a user gesture in Electron (the handler sees `request.userGesture`); how Wallpaper Engine, NestDrop, Plane9 and Discord capture audio. [Unverified]
 
 ## 3. Microphone and line-in
 - Electron's `media` permission covers camera, microphone and speakers. ED/api/session.md [Verified]
@@ -101,7 +102,7 @@ All versions, dates and licences match npm and the licence files (table row) [Ve
 
 ## 7. Latency and sync
 - Chrome: `baseLatency` 58, `outputLatency` 102, `getOutputTimestamp` 57, `playbackStats` 146 (experimental; stable in Chromium 156), `latencyHint` 58. BCD/AudioContext.json; CR156 runtime_enabled_features.json5 [Verified]
-- `getOutputTimestamp()` returns `contextTime` and a matching `performanceTime`; `playbackStats` reports underruns and latency. MDN/audiocontext/ [Cited]
+- `getOutputTimestamp()` returns `contextTime` and a matching `performanceTime`; `playbackStats` reports underruns and latency. MDN/audiocontext/getoutputtimestamp/index.md; MDN/audiocontext/playbackstats/index.md [Cited]
 - The spec's AnalyserNode smoothing blends with the previous smoothing call's output. GH/WebAudio/web-audio-api/HEAD/index.bs [Cited]
 - Budget [Inference]: live features arrive about 30–60 ms late (capture 10–21 ms, render quantum 2.7 ms, half a 2048 window 21 ms, presentation 2–17 ms).
 - Design [Inference]:
