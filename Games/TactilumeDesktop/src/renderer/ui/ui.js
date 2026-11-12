@@ -192,7 +192,11 @@ export function createUI({ root, store, actions, bridge, engine, audio, hub, des
     clearTimeout(idleTimer);
     idleTimer = setTimeout(goIdle, IDLE_MS);
   }
-  for (const type of ['pointermove', 'pointerdown', 'wheel', 'keydown']) listen(window, type, wake, { passive: true, capture: true });
+  // A drag across the light (a button held down) is playing it, not looking for the controls,
+  // so only a free move, a click, the wheel or a key brings them back.
+  const onPointer = (e) => { if (!(e.type === 'pointermove' && e.buttons)) wake(); };
+  for (const type of ['pointermove', 'pointerdown']) listen(window, type, onPointer, { passive: true, capture: true });
+  for (const type of ['wheel', 'keydown']) listen(window, type, wake, { passive: true, capture: true });
   wake();
 
   // ---- the size of the controls ---------------------------------------------------------------

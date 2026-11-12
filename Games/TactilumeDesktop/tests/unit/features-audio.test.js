@@ -484,6 +484,25 @@ describe('features and devices', () => {
     assert.ok(r.audio.features().bass > 0.9, 'features() hands out a copy');
   });
 
+  test('the features run on the sound\'s own clock, so slow frames do not make the tempo fast', async () => {
+    // A kick every 0.8 s (75 bpm) of sound. The frames come every 0.1 s of sound, but main.js
+    // caps each frame's dt at 1/20 s: on the frames' clock the kicks would be 0.4 s apart,
+    // 150 bpm.
+    const r = rig();
+    await r.audio.useMic();
+    const ctx = r.ctx();
+    ctx.currentTime = 0;
+    for (let i = 0; i < 160; i++) {
+      ctx.currentTime = Math.round((ctx.currentTime + 0.1) * 10) / 10;
+      const since = (ctx.currentTime + 1e-9) % 0.8;
+      ctx.spectrum.fill(-90);
+      for (let k = 2; k <= 6; k++) ctx.spectrum[k] = Math.max(-90, -20 - since * 70);
+      r.audio.update(1 / 20);
+    }
+    const f = r.audio.features();
+    assert.ok(Math.abs(f.bpm - 75) <= 2, `bpm ${f.bpm}`);
+  });
+
   test('a suspended context counts as silence', async () => {
     const r = rig();
     await r.audio.useMic();

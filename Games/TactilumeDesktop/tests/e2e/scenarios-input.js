@@ -184,11 +184,13 @@ export default [
       const rumble = await page.evaluate(() => window.__tlRumble.slice());
       checks.push(h.check('the pad buzzes when it joins and when its cursor goes down, briefly', rumble.length >= 2 && rumble.every((r) => r.index === 0 && r.type === 'dual-rumble' && r.duration > 0 && r.duration <= 200 && r.strongMagnitude <= 1 && r.weakMagnitude <= 1), rumble));
 
-      // unplugged, it keeps its player a moment (for a hiccup), then leaves
+      // Unplugged, it keeps its player a moment (for a hiccup), then leaves. The 5 s are counted
+      // in the frames' time, which main.js caps at 1/20 s a frame, so a slow software GPU can
+      // stretch them; the wait allows for that.
       await page.evaluate(() => window.__tlPads.disconnect(0));
       await h.waitFrames(page, 5);
       const kept = (await players(page)).some((p) => p.kind === 'gamepad');
-      const left = await h.until(page, () => !window.TACTILUME_DESKTOP.hub.players().some((p) => p.kind === 'gamepad'), undefined, 12000);
+      const left = await h.until(page, () => !window.TACTILUME_DESKTOP.hub.players().some((p) => p.kind === 'gamepad'), undefined, 40000);
       checks.push(h.check('an unplugged pad keeps its player for a moment, then leaves', kept && left, { kept, left }));
       return checks;
     },
@@ -256,9 +258,16 @@ export default [
       const resting = await poll(() => poleOf(page, 'pointer'), (p) => p && Math.abs(p.vx) < 0.05, { timeout: 3000, every: 100 });
       checks.push(h.check('a pointer that rests has no speed', resting && Math.abs(resting.vx) < 0.05, resting));
 
-      // a quick flick to the left, let go at once: the pole glides on, slows and fades
-      await page.mouse.move(0.6 * W, 0.5 * H, { steps: 4 });
-      await page.mouse.up();
+      // A quick flick to the left, let go at once: the pole glides on, slows and fades. The
+      // moves and the release carry their own times, 8 ms apart, through the DevTools
+      // protocol, so a busy machine delivering them late cannot turn the flick into a pause
+      // (a pointer that rests 80 ms before letting go is not flicked, by design).
+      const cdp = await page.context().newCDPSession(page);
+      const t0 = Date.now() / 1000;
+      for (let i = 1; i <= 4; i++) {
+        await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: (0.7 - i * 0.025) * W, y: 0.5 * H, button: 'left', buttons: 1, timestamp: t0 + i * 0.008 });
+      }
+      await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: 0.6 * W, y: 0.5 * H, button: 'left', buttons: 0, clickCount: 1, timestamp: t0 + 0.04 });
       await h.until(page, () => !window.TACTILUME_DESKTOP.hub.poles().some((p) => p.held), undefined, 2000);
       const lifted = await poleOf(page, 'pointer');
       await h.wait(120);
@@ -275,8 +284,7 @@ export default [
       checks.push(h.check('a right click makes no pole', right === 0, right));
 
       // a pen's pressure is its strength (the DevTools protocol can play a pen)
-      const cdp = await page.context().newCDPSession(page);
-      const pen = (type, force, x = 0.5) => cdp.send('Input.dispatchMouseEvent', { type, x: x * W, y: 0.4 * H, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'pen', force });
+      const pen =(type, force, x = 0.5) => cdp.send('Input.dispatchMouseEvent', { type, x: x * W, y: 0.4 * H, button: 'left', buttons: type === 'mouseReleased' ? 0 : 1, clickCount: 1, pointerType: 'pen', force });
       await pen('mousePressed', 0.25);
       await h.waitFrames(page, 2);
       const light = await poleOf(page, 'pointer');

@@ -640,6 +640,16 @@ export default [
       await h.wait(4600);
       await page.keyboard.press('Shift');
       checks.push(h.check('so does a key', await h.until(page, () => !window.TACTILUME_DESKTOP.ui.idle, undefined, 2000)));
+      // dragging across the light is playing: the controls fade during a long drag all the same
+      await page.mouse.move(200, 250);
+      await page.mouse.down();
+      for (let i = 0; i < 26; i++) {
+        await page.mouse.move(200 + (i % 2 ? 40 : -40), 250 + i * 2);
+        await h.wait(200);
+      }
+      const duringDrag = await page.evaluate(() => window.TACTILUME_DESKTOP.ui.idle);
+      await page.mouse.up();
+      checks.push(h.check('a long drag across the light lets the controls fade', duringDrag));
       return checks;
     },
   },

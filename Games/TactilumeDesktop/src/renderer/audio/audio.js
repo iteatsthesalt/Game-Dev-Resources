@@ -138,6 +138,7 @@ export function createAudio({
   let hint = '';
   let latest = { ...SILENT };
   let ticket = 0;       // every request takes a ticket; a later request outranks an earlier one
+  let heardAt = null;   // the audio clock (ctx.currentTime) at the last update
 
   const changed = () => ev.emit('change', { source, label, error, hint });
   const platform = () => (bridge && typeof bridge.platform === 'string' ? bridge.platform : '');
@@ -204,6 +205,7 @@ export function createAudio({
     hint = '';
     tracker.reset();
     latest = { ...SILENT };
+    heardAt = null;
     changed();
     return { ok: true, label };
   }
@@ -418,12 +420,20 @@ export function createAudio({
 
     update(dt) {
       if (!current || !analyser) return;
+      const running = ctx.state === 'running';
+      // The features follow the sound's own clock, not the frame's: main.js caps a frame's dt
+      // for the simulation, and on a slow frame that would slow the tracker's clock and make
+      // every tempo read too fast. The frame's dt stands in until the clock has a reading.
+      const now = ctx.currentTime;
+      const audioStep = running && Number.isFinite(now) && heardAt !== null ? Math.max(0, Math.min(now - heardAt, 0.25)) : null;
+      heardAt = running && Number.isFinite(now) ? now : null;
+      const step = audioStep ?? (Number.isFinite(dt) && dt > 0 ? dt : 0);
       // a suspended context delivers no new sound; it counts as silence
-      if (ctx.state === 'running') analyser.getFloatFrequencyData(bins);
-      latest = tracker.update(ctx.state === 'running' ? bins : quiet, dt);
+      if (running) analyser.getFloatFrequencyData(bins);
+      latest = tracker.update(running ? bins : quiet, step);
       if (current.watchQuiet && !current.heard) {
         if (latest.level > 0) current.heard = true;
-        else if ((current.quietFor += Number.isFinite(dt) && dt > 0 ? dt : 0) > QUIET_SECONDS && !hint) {
+        else if ((current.quietFor += step) > QUIET_SECONDS && !hint) {
           hint = REASONS.systemQuiet;
           changed();
         }
