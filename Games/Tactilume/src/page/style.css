@@ -566,7 +566,7 @@ body {
 .tl-seg .tl-opt {
   position: relative; z-index: 1; min-height: var(--tap); padding: 0 var(--sp-1);
   border-radius: var(--r-s); color: var(--text-2);
-  font-size: var(--fs-s); font-weight: 600; letter-spacing: 0.005em;
+  font-size: calc(var(--fs-s) * var(--fit-shrink, 1)); font-weight: 600; letter-spacing: 0.005em;
   transition: color var(--t) var(--ease);
 }
 .tl-seg .tl-opt:hover { color: var(--text); }
@@ -678,7 +678,9 @@ body {
 /* side by side when both names fit on one line, else one under the other (each starts at
    its own name's width); a hidden button leaves the whole row to the one that is shown */
 .tl-actions-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-.tl-actions-row .tl-btn { flex: 1 1 auto; max-width: 100%; padding: 0 var(--sp-3); }
+.tl-actions-row .tl-btn { flex: 1 1 auto; min-width: 0; max-width: 100%; padding: 0 var(--sp-3); font-size: calc(var(--fs-m) * var(--fit-shrink, 1)); }
+/* one line each; a name too wide for the whole row is shrunk to fit (fitLabels in controls.js) */
+.tl-actions-row .tl-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tl-confirm-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }
 .tl-confirm-q { font-size: var(--fs-s); color: var(--text); font-weight: 500; }

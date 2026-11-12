@@ -1439,20 +1439,25 @@ export default [
       c.push(h.check('with Control size 160% too, they stop at twice their size', Math.abs(await scale() - 2) < 0.01, await scale()));
       const strip = await tabStrip(page, { uiScale: 1.6 });
       c.push(h.check('every tab still fits at twice the size', !strip.problems.length, strip));
-      const clipped = await page.evaluate(async () => {
-        const t = window.TACTILUME;
-        const out = [];
-        for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
-          t.ui.open(tab);
-          await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-          for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
-            if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+      // in the device's own font, then in the wide DejaVu Sans (see 'large controls')
+      for (const font of ['', "'DejaVu Sans'"]) {
+        const style = font ? await page.addStyleTag({ content: `#ui#ui { --font: ${font}, sans-serif !important; }` }) : null;
+        const clipped = await page.evaluate(async () => {
+          const t = window.TACTILUME;
+          const out = [];
+          for (const tab of ['scenes', 'play', 'look', 'motion', 'sound', 'capture', 'settings']) {
+            t.ui.open(tab);
+            await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+            for (const el of document.querySelectorAll(`#tl-tabpanel-${tab} :is(.tl-opt-text, .tl-swatch-name, .tl-chips .tl-opt)`)) {
+              if (el.getClientRects().length && el.scrollWidth > el.clientWidth + 1) out.push(`${tab}: "${el.textContent.trim()}" ${el.scrollWidth} > ${el.clientWidth}`);
+            }
           }
-        }
-        t.ui.close();
-        return out;
-      });
-      c.push(h.check('no option name is cut short at twice the size', !clipped.length, clipped.join('; ')));
+          t.ui.close();
+          return out;
+        });
+        c.push(h.check(`no option name is cut short at twice the size${font ? ` in ${font}` : ''}`, !clipped.length, clipped.join('; ')));
+        if (style) await style.evaluate((el) => el.remove());
+      }
       // the person changes Font size while the app is open
       await page.evaluate(() => { window.TACTILUME.store.setSettings({ uiScale: 1 }, { source: 'test' }); window.__appSend({ t: 'font', scale: 1 }); });
       c.push(h.check('a new font scale from the app applies at once', Math.abs(await scale() - 1) < 0.01, await scale()));
@@ -1782,6 +1787,7 @@ export default [
             range.selectNodeContents(text);
             const tops = new Set([...range.getClientRects()].map((x) => Math.round(x.top)));
             if (tops.size > 1) out.push(`"${name}" runs to ${tops.size} lines`);
+            if (text.scrollWidth > text.clientWidth + 1) out.push(`"${name}" is cut short (${text.scrollWidth} > ${text.clientWidth})`);
             if (r.left < rr.left - 0.5 || r.right > rr.right + 0.5) out.push(`"${name}" sticks out of its row`);
           }
         }
@@ -1791,14 +1797,20 @@ export default [
         t.ui.close();
         return out;
       }, { tab, showCopy });
-      for (const width of [412, 393, 360, 320, 300, 280]) {
-        await page.setViewportSize({ width, height: 780 });
-        const scenes = await measure('scenes', false);
-        c.push(h.check(`${width} px: Surprise me and Share link stay on one line each`, !scenes.length, scenes.join('; ')));
-        const before = await measure('settings', false);
-        c.push(h.check(`${width} px: Check this device stays on one line`, !before.length, before.join('; ')));
-        const after = await measure('settings', true);
-        c.push(h.check(`${width} px: with Copy shown, both stay on one line`, !after.length, after.join('; ')));
+      // in the device's own font, then in the wide DejaVu Sans (see 'large controls')
+      for (const font of ['', "'DejaVu Sans'"]) {
+        const style = font ? await page.addStyleTag({ content: `#ui#ui { --font: ${font}, sans-serif !important; }` }) : null;
+        const tag = font ? ` in ${font}` : '';
+        for (const width of [412, 393, 360, 320, 300, 280]) {
+          await page.setViewportSize({ width, height: 780 });
+          const scenes = await measure('scenes', false);
+          c.push(h.check(`${width} px${tag}: Surprise me and Share link stay on one line each`, !scenes.length, scenes.join('; ')));
+          const before = await measure('settings', false);
+          c.push(h.check(`${width} px${tag}: Check this device stays on one line`, !before.length, before.join('; ')));
+          const after = await measure('settings', true);
+          c.push(h.check(`${width} px${tag}: with Copy shown, both stay on one line`, !after.length, after.join('; ')));
+        }
+        if (style) await style.evaluate((el) => el.remove());
       }
       return c;
     },

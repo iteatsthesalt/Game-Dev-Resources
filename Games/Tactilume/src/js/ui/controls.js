@@ -256,6 +256,25 @@ function overflow(el) {
   return most > 1 ? most : 0;
 }
 
+// The last resort, when even one name per row is too wide for its box (twice the size on a
+// small phone, in a wide font): the box's text shrinks just enough, never below 75%. style.css
+// multiplies the text size by --fit-shrink. Text width scales with its size, so one
+// measurement nearly fits; a second pass takes up what letter rounding leaves.
+const MIN_SHRINK = 0.75;
+function shrinkToFit(box, selector) {
+  let shrink = 1;
+  for (let pass = 0; pass < 2; pass++) {
+    let worst = 1;
+    for (const t of box.querySelectorAll(selector)) {
+      if (!t.getClientRects().length || t.scrollWidth <= t.clientWidth + 1) continue;
+      worst = Math.min(worst, (t.clientWidth - 1) / t.scrollWidth);
+    }
+    if (worst >= 1 || shrink <= MIN_SHRINK) break;
+    shrink = Math.max(MIN_SHRINK, Math.floor(shrink * worst * 100) / 100);
+    box.style.setProperty('--fit-shrink', String(shrink));
+  }
+}
+
 // System fonts differ in width (Roboto, DejaVu Sans and San Francisco can be 15% apart),
 // so the layout rules in style.css are only a first guess. This measures: a segmented
 // control whose names do not fit drops to two rows, then one; a chip grid widens its
@@ -264,10 +283,17 @@ function overflow(el) {
 export function fitLabels(root) {
   for (const seg of root.querySelectorAll('.tl-seg')) {
     seg.removeAttribute('data-fit');
+    seg.style.removeProperty('--fit-shrink');
     for (const fit of ['2', '1']) {
       if (!overflow(seg)) break;
       seg.setAttribute('data-fit', fit);
     }
+    shrinkToFit(seg, '.tl-opt-text');
+  }
+  // a row of pill buttons: names stay on one line (style.css), smaller if they must
+  for (const row of root.querySelectorAll('.tl-actions-row')) {
+    row.style.removeProperty('--fit-shrink');
+    shrinkToFit(row, '.tl-btn-text');
   }
   for (const grid of root.querySelectorAll('.tl-chips')) {
     grid.style.removeProperty('--chip-min');

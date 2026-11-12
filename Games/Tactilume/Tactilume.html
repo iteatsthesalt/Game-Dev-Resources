@@ -581,7 +581,7 @@ body {
 .tl-seg .tl-opt {
   position: relative; z-index: 1; min-height: var(--tap); padding: 0 var(--sp-1);
   border-radius: var(--r-s); color: var(--text-2);
-  font-size: var(--fs-s); font-weight: 600; letter-spacing: 0.005em;
+  font-size: calc(var(--fs-s) * var(--fit-shrink, 1)); font-weight: 600; letter-spacing: 0.005em;
   transition: color var(--t) var(--ease);
 }
 .tl-seg .tl-opt:hover { color: var(--text); }
@@ -693,7 +693,9 @@ body {
 /* side by side when both names fit on one line, else one under the other (each starts at
    its own name's width); a hidden button leaves the whole row to the one that is shown */
 .tl-actions-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
-.tl-actions-row .tl-btn { flex: 1 1 auto; max-width: 100%; padding: 0 var(--sp-3); }
+.tl-actions-row .tl-btn { flex: 1 1 auto; min-width: 0; max-width: 100%; padding: 0 var(--sp-3); font-size: calc(var(--fs-m) * var(--fit-shrink, 1)); }
+/* one line each; a name too wide for the whole row is shrunk to fit (fitLabels in controls.js) */
+.tl-actions-row .tl-btn-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .tl-confirm-ask { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2) var(--sp-3); }
 .tl-confirm-q { font-size: var(--fs-s); color: var(--text); font-weight: 500; }
@@ -6197,13 +6199,33 @@ void main() {
     }
     return most > 1 ? most : 0;
   }
+  var MIN_SHRINK = 0.75;
+  function shrinkToFit(box, selector) {
+    let shrink = 1;
+    for (let pass = 0; pass < 2; pass++) {
+      let worst = 1;
+      for (const t of box.querySelectorAll(selector)) {
+        if (!t.getClientRects().length || t.scrollWidth <= t.clientWidth + 1) continue;
+        worst = Math.min(worst, (t.clientWidth - 1) / t.scrollWidth);
+      }
+      if (worst >= 1 || shrink <= MIN_SHRINK) break;
+      shrink = Math.max(MIN_SHRINK, Math.floor(shrink * worst * 100) / 100);
+      box.style.setProperty("--fit-shrink", String(shrink));
+    }
+  }
   function fitLabels(root) {
     for (const seg of root.querySelectorAll(".tl-seg")) {
       seg.removeAttribute("data-fit");
+      seg.style.removeProperty("--fit-shrink");
       for (const fit of ["2", "1"]) {
         if (!overflow(seg)) break;
         seg.setAttribute("data-fit", fit);
       }
+      shrinkToFit(seg, ".tl-opt-text");
+    }
+    for (const row of root.querySelectorAll(".tl-actions-row")) {
+      row.style.removeProperty("--fit-shrink");
+      shrinkToFit(row, ".tl-btn-text");
     }
     for (const grid of root.querySelectorAll(".tl-chips")) {
       grid.style.removeProperty("--chip-min");
