@@ -507,4 +507,162 @@ git commit -m "Add the Archive and Vault source adapters"
 
 ---
 
+### Task 5: The `oldweb` and `itch` source adapters
+
+**Files:**
+- Create: `src/core/sources/oldweb.js`, `src/core/sources/itch.js`, `tests/fixtures/http/ia/wayback-hit.json`, `tests/fixtures/http/ia/wayback-empty.json`, `tests/fixtures/http/itch/platform-web.xml`, `tests/fixtures/http/itch/itch.json`
+- Modify: `src/core/sources/index.js` (register both)
+- Test: `tests/unit/sources-oldweb-itch.test.js`
+
+**Interfaces:**
+- Consumes: `sharedIaClient(...).wayback(url, timestamp)` (Task 1); `makeFind`, `toPlainText`, `domainOf`; `ctx.data.geocities`, `ctx.data.loadSnapshot` (Task 7).
+- Produces: default-exported adapters `oldweb` and `itch`; `ITCH_FEEDS: Array<{url, label}>` and `parseItchRss(xml) → Array<{url, title, description, imageUrl, author, published}>` from `sources/itch.js` (used by Tasks 11 and 12).
+
+`ITCH_FEEDS` (in this order): `https://itch.io/games/free/platform-web.xml` "Free web games"; `https://itch.io/games/free/tag-game-jam.xml` "Free game jam games"; `https://itch.io/games/newest/tag-pico-8.xml` "New PICO-8 games".
+
+Fixtures: `wayback-hit.json` = the Task 1 hit body; `wayback-empty.json` = `{"url":"http://www.geocities.com/gone/","archived_snapshots":{}}`. `platform-web.xml` is an RSS 2.0 channel with three items: (1) `<title>Moss &amp; Mirrors</title>`, `<plainTitle>Moss &amp; Mirrors</plainTitle>`, `<link>https://mossdev.itch.io/moss-and-mirrors</link>`, `<pubDate>Tue, 10 Nov 2026 18:00:00 GMT</pubDate>`, `<imageurl>https://img.itch.zone/aW1n/315x250%23c/moss.png</imageurl>`, `<description><![CDATA[<p>A short puzzle walk &amp; more.</p>]]></description>`; (2) "Tiny Rocket" at `https://pixelpal.itch.io/tiny-rocket`, no `<imageurl>`, description `<![CDATA[<img src="https://img.itch.zone/cm9j/315x250%23c/rocket.png"/><p>Fly up.</p>]]>`; (3) "Elsewhere" with `<link>http://example.com/x</link>`. `itch.json` follows the contract shape with the first feed URL and items (1) and (2) as parsed.
+
+- [ ] **Step 1: Write the failing tests**
+
+Same `ctx` as Task 4 (fresh for each test, `rand = () => 0` unless a test says otherwise), with `data.geocities = {v: 1, urls: ['http://www.geocities.com/Area51/1234/', 'http://www.geocities.com/Area51/5678/', 'http://www.geocities.com/Tokyo/1/']}` and `data.loadSnapshot = async (n) => (n === 'itch' ? ITCH_SNAPSHOT : null)`.
+
+```js
+test('oldweb random resolves a seed through wayback with timestamp=2009', async () => {
+  // /wayback\/available/ → wayback-hit.json; rand = seq(0)
+  const [f] = await oldweb.random(ctx);
+  const u = new URL(net.calls[0].url);
+  assert.deepEqual([u.searchParams.get('url'), u.searchParams.get('timestamp')], ['http://www.geocities.com/Area51/1234/', '2009']);
+  assert.equal(f.url, 'https://web.archive.org/web/20091027000000/http://www.geocities.com/Area51/1234/');
+  assert.equal(f.title, 'geocities.com/Area51/1234');
+  assert.equal(f.description, 'A GeoCities page, as the Wayback Machine saved it in 2009.');
+  assert.deepEqual([f.source, f.kind, f.why[0]], ['oldweb', 'site', 'Old web: GeoCities']);
+});
+test('oldweb random counts an empty wayback result as a miss', async () => {
+  // /wayback\/available/ → wayback-empty.json
+  assert.deepEqual(await oldweb.random(ctx), []);
+});
+test('oldweb more stays in the same neighbourhood', async () => {
+  await oldweb.more({ meta: { original: 'http://www.geocities.com/Area51/1234/' } }, ctx);
+  assert.equal(new URL(net.calls[0].url).searchParams.get('url'), 'http://www.geocities.com/Area51/5678/');
+});
+test('parseItchRss reads items and drops links outside itch.io', () => {
+  const items = parseItchRss(readFixture('itch/platform-web.xml'));
+  assert.equal(items.length, 2);
+  assert.deepEqual(items[0], { url: 'https://mossdev.itch.io/moss-and-mirrors', title: 'Moss & Mirrors', description: 'A short puzzle walk & more.', imageUrl: 'https://img.itch.zone/aW1n/315x250%23c/moss.png', author: 'mossdev', published: '2026-11-10T18:00:00.000Z' });
+  assert.equal(items[1].imageUrl, 'https://img.itch.zone/cm9j/315x250%23c/rocket.png');
+  assert.equal(items[1].author, 'pixelpal');
+});
+test('itch random reads the snapshot on the web app', async () => {
+  const finds = await itch.random({ ...ctx, platformName: 'pwa' });
+  assert.equal(net.calls.length, 0);
+  assert.deepEqual(finds.map((f) => f.title).sort(), ['Moss & Mirrors', 'Tiny Rocket']);
+  assert.deepEqual([finds[0].source, finds[0].kind, finds[0].why[0]], ['itch', 'game', 'itch.io: Free web games']);
+});
+test('itch random reads a feed live through privileged fetch elsewhere', async () => {
+  // /itch\.io\/games/ → platform-web.xml as text; rand = seq(0, 0.1, 0.2)
+  await itch.random({ ...ctx, platformName: 'extension' });
+  assert.equal(net.calls[0].url, ITCH_FEEDS[0].url);
+  assert.equal(net.calls[0].init.privileged, true);
+});
+test('sources/index.js registers oldweb and itch', () => {
+  assert.equal(getSource('oldweb'), oldweb); assert.equal(getSource('itch'), itch);
+  assert.deepEqual([oldweb.tier, itch.tier, itch.fate], ['open', 'privileged', false]);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/sources-oldweb-itch.test.js`
+Expected: FAIL with "Cannot find module '…/src/core/sources/oldweb.js'".
+
+- [ ] **Step 3: Implement both adapters and the registration**
+
+- `oldweb`: `name: 'Old web (GeoCities)'`, `kinds: ['site']`, `tier: 'open'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 60, concurrent: 2}`, `fate: false`, `probeUrl: 'https://archive.org/wayback/available?url=geocities.com&timestamp=2009'`. `random`: one seed picked with `ctx.rand()`, one `wayback(seed, '2009')` call; `null` → `[]`. The title is the seed's host without `www.` plus its path without the trailing slash. Set `tags: ['retro']`, `attribution: 'Internet Archive Wayback Machine'`, `meta: {original, timestamp}`. `more(find)`: the seeds that share the first path segment with `find.meta.original` (not itself), picked with `ctx.rand()`; with none, plain `random`. `search(query)`: up to 3 seeds whose URL contains the lowercased query, resolved one by one, with misses dropped.
+- `parseItchRss`: split on `<item>`, read `plainTitle` (else `title`), `link`, `pubDate`, `imageurl` and `description`, unwrap CDATA, and turn HTML into text with `toPlainText`. `imageUrl` is `imageurl`, else the first `<img src>` in the description, else `null`. Keep only `https://<name>.itch.io/…` links; `author` is `<name>`. `published` is `new Date(pubDate).toISOString()`, or `null` when the date is invalid.
+- `itch`: `name: 'itch.io'`, `kinds: ['game']`, `tier: 'privileged'`, `key: 'none'`, `safety: 'mostly'`, `rate: {perMinute: 10, concurrent: 1}`, `fate: false`. It reads live when `ctx.platformName !== 'pwa'` (the shells whose `caps.privilegedFetch` is true): one feed picked with `ctx.rand()`, fetched with `ctx.http.getText(url, {source: 'itch', privileged: true})` and cached in `ctx.cache` under `itch:<url>` for 86400000 ms. Otherwise it reads `ctx.data.loadSnapshot('itch')`, and a `null` snapshot gives `[]`. `random` returns up to 10 items in a `ctx.rand` shuffle, as `kind: 'game'`, `tags: ['indie']`, `why: ['itch.io: ' + feedLabel]`. `search(query)` filters every item by title or description. `more` is `random`.
+- `sources/index.js`: import both and add them to `SOURCES` under `oldweb` and `itch`.
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+Run: `node --test tests/unit/sources-oldweb-itch.test.js`
+Expected: PASS, 7 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/core/sources/oldweb.js src/core/sources/itch.js src/core/sources/index.js tests/fixtures/http/ia/wayback-hit.json tests/fixtures/http/ia/wayback-empty.json tests/fixtures/http/itch tests/unit/sources-oldweb-itch.test.js
+git commit -m "Add the old web and itch.io source adapters"
+```
+
+---
+
+### Task 6: Curate the Vault starter list and the GeoCities seeds
+
+**Files:**
+- Create: `src/data/vault-starter.json`, `src/data/geocities-seeds.json` (replace Plan 01's placeholders if they exist)
+- Test: `tests/unit/data-vault.test.js`
+
+**Interfaces:**
+- Consumes: the contract shapes for both files; `normalizeUrl`, `utcDate`.
+- Produces: the two data files, read by `backupDaily` (Task 3), the `oldweb` adapter (Task 5), the data job (Task 11) and the probe (Task 12).
+
+- [ ] **Step 1: Write the failing schema tests**
+
+```js
+const VS = JSON.parse(readFileSync('src/data/vault-starter.json', 'utf8'));
+const GEO = JSON.parse(readFileSync('src/data/geocities-seeds.json', 'utf8'));
+test('vault-starter has about 60 unique Archive games', () => {
+  assert.equal(VS.v, 1);
+  assert.ok(VS.entries.length >= 50 && VS.entries.length <= 70, String(VS.entries.length));
+  assert.equal(new Set(VS.entries.map((e) => e.id)).size, VS.entries.length);
+  for (const e of VS.entries) {
+    assert.match(e.id, /^ia:[A-Za-z0-9][A-Za-z0-9._-]*$/);
+    assert.ok(['DOS', 'C64', 'Apple II', 'ZX Spectrum'].includes(e.platform), e.id);
+    assert.ok(Number.isInteger(e.year) && e.year >= 1977 && e.year <= 2005, e.id);
+    assert.ok(e.title.trim().length > 0 && e.title.length <= 200, e.id);
+    assert.match(e.added, /^\d{4}-\d{2}-\d{2}$/);
+    assert.ok(e.added <= utcDate(Date.now()), e.id);
+  }
+});
+test('vault-starter has at least 10 games on each verified platform', () => {
+  for (const p of ['DOS', 'C64', 'Apple II', 'ZX Spectrum']) assert.ok(VS.entries.filter((e) => e.platform === p).length >= 10, p);
+});
+test('geocities seeds are about 100 distinct GeoCities URLs', () => {
+  assert.equal(GEO.v, 1);
+  assert.ok(GEO.urls.length >= 90 && GEO.urls.length <= 110, String(GEO.urls.length));
+  for (const u of GEO.urls) { assert.match(u, /^http:\/\/www\.geocities\.com\/[A-Za-z0-9_.~-]+(\/[^?#]*)?$/, u); }
+  assert.equal(new Set(GEO.urls.map(normalizeUrl)).size, GEO.urls.length);
+});
+test('geocities seeds cover at least 10 neighbourhoods', () => {
+  assert.ok(new Set(GEO.urls.map((u) => new URL(u).pathname.split('/')[1])).size >= 10);
+});
+```
+
+- [ ] **Step 2: Run the tests to see them fail**
+
+Run: `node --test tests/unit/data-vault.test.js`
+Expected: FAIL (the files are missing, or the counts are wrong).
+
+- [ ] **Step 3: Curate `vault-starter.json` with WebSearch**
+
+Search only; do not fetch archive.org (this machine blocks it, and the probe checks every id live in CI). Use queries such as `"Software Library: MS-DOS Shareware" site:archive.org/details`, `softwarelibrary_c64_games`, `"The Apple II Library: Games"` and `zx_spectrum_library_games`. Take the identifier from each `archive.org/details/<id>` result URL. DOS comes from `softwarelibrary_msdos_shareware`, C64 from `softwarelibrary_c64_games`, Apple II from `softwarelibrary_apple_games` and ZX Spectrum from `zx_spectrum_library_games`. Prefer little-known titles. Take the year from the result title or the identifier's year suffix, and skip an item when neither gives a year. Write 15 per platform (60 in all) with `added` set to today's UTC date, then stop.
+
+- [ ] **Step 4: Curate `geocities-seeds.json` with WebSearch**
+
+Search for GeoCities-era page URLs (for example `"geocities.com/Area51"`, `"geocities.com/SoHo"`, `"geocities.com/Heartland"`, `"geocities.com/TimesSquare"` and `"geocities.com/EnchantedForest"`) and copy the `http://www.geocities.com/…` addresses that the results quote. Spread them over at least 10 neighbourhoods and write about 100, then stop. Leave out pages whose titles suggest adult or hateful content. Wayback misses are fine, because the adapter treats them as misses.
+
+- [ ] **Step 5: Run the tests to see them pass**
+
+Run: `node --test tests/unit/data-vault.test.js`
+Expected: PASS, 4 tests. Then run `npm run check`; expected: exit 0 (the contract shape checks pass).
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add src/data/vault-starter.json src/data/geocities-seeds.json tests/unit/data-vault.test.js
+git commit -m "Add the Vault starter list and GeoCities seeds"
+```
+
+---
+
 <!-- PLAN CONTINUES -->
