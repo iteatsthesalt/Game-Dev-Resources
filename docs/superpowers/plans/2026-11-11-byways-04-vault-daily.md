@@ -1286,9 +1286,20 @@ test('2026-11-16 takes the web pick from the Kagi list and the wonder from APOD'
   const apod = new URL(net.calls.find((c) => c.url.includes('api.nasa.gov')).url).searchParams;
   assert.deepEqual([apod.get('date'), apod.get('api_key')], ['2026-11-16', 'DEMO_KEY']);
 });
+test('a dead Kagi origin moves to the next one, and a failed APOD gives the featured article', async () => {
+  // /alpha\.example/ → 404; /api\.nasa\.gov/ throws
+  await job({ date: '2026-11-16' });
+  assert.deepEqual(read('daily.json').picks.map((p) => p.find.title).slice(1), ['beta.example', 'Ada Lovelace']);
+});
 test('re-runs on the same date write the same daily.json', async () => {
   await job(); const first = readFileSync(join(tmp, 'daily.json'), 'utf8');
   await job(); assert.equal(readFileSync(join(tmp, 'daily.json'), 'utf8'), first);
+});
+test("a live daily.json for the same date is final for the day", async () => {
+  // /byways\/data\/daily\.json$/ → {v: 1, date: '2026-11-11', picks: [{slot: 'web', find: {title: 'Kept'}}]}
+  const r = await job();
+  assert.equal(read('daily.json').picks[0].find.title, 'Kept');
+  assert.deepEqual(r.kept, ['daily.json']);
 });
 test('every request carries the descriptive User-Agent', async () => {
   await job();
@@ -1313,7 +1324,7 @@ test('the snapshot extras are dropped quietly when their lists cannot be read', 
   assert.ok(!r.failed.includes('webrings.json'));
 });
 test('the link check carries fail streaks from the live file', async () => {
-  // /paper-toy-garden\.example/ → 404; /byways\/data\/linkcheck\.json$/ → {v: 1, results: {'lib-0001': {ok: false, status: 404, failStreak: 1}}}
+  // /paper-toy-garden\.example/ → 404; /byways\/data\/linkcheck\.json$/ → {v: 1, checkedAt: '2026-11-10T00:07:00.000Z', results: {'lib-0001': {ok: false, status: 404, failStreak: 1}}}
   await job();
   assert.equal(read('linkcheck.json').results['lib-0001'].failStreak, 2);
 });

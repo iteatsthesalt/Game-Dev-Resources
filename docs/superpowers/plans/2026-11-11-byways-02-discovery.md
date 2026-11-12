@@ -1537,7 +1537,7 @@ git commit -m "Add the starter library adapter and check the registry"
 - Consumes: `createSeen`, `createHistory` (Task 2), `DEFAULT_TASTE` (Task 3), `pickNext`, `eligible` (Task 4), `enabledSources`, `SOURCES`, `runProbes`, `adapterCtx`, `memorySecrets` (Task 5), `fatePull` (Task 6), `createCollections` (Task 8), `createCache`, `normalizeUrl`, `hash64`, `domainOf`.
 - Produces: `createEngine({store, http, clock, rand, data, platform, settings, seen?, history?, collections?, sources?, secrets?, dataUrl?}) → Promise<Engine>`. `settings` is an object or a getter for the live settings, read on every call. `seen`, `history` and `collections` are created from `store` when not passed. `sources` defaults to `Object.values(SOURCES)`. `secrets` is a `SecretStore` or a getter for the current one (default `platform.secrets`); boot passes `() => app.secrets`, so Plan 05's keyring swap reaches every adapter. `dataUrl` defaults to `(file) => 'data/' + file`.
   - **Start.** It calls `http.register(a.id, a.rate)` once for every adapter in `sources` (Plan 04's adapters included), loads the `broken:*` keys of `health` into the dead set, and starts `runProbes(<enabled probe-tier adapters>, http, store, clock, platform.name)` in the background; until a result says `'ok'`, the web app leaves those sources out.
-  - **ctx.** One object serves every call: `{http, rand, clock, cache: createCache(store, clock), settings, secrets, data, platformName: platform.name, caps: platform.caps, dataUrl}`, where `settings` is a getter for the current settings object and `secrets` is a `SecretStore` whose four methods call the same method on the current store.
+  - **ctx.** One object serves every call: `{http, rand, clock, cache: createCache(store, clock), settings, secrets, data, platformName: platform.name, caps: platform.caps, dataUrl}`, where `settings` is a getter for the current settings object and `secrets` is a `SecretStore` whose four methods call the same method on the current store. `dataUrl` is only for generated snapshot files (Plan 04); the library and the tags reach adapters through `data`, which is `app.data`.
   - **Pool.** Unseen candidates from `random(ctx)` of the enabled sources (`enabledSources(settings, probe, platform.name, sources)`), at most 50, never a find already in the pool, the queue or the prepared finds (Task 21). A *network source* is every adapter except `library` and `tier: 'snapshot'` ones. A refill starts when the pool holds fewer than 20 candidates and none is running. It runs rounds of one `random` call per enabled source, with at most 3 network calls in flight (the others start at once), adding each call's finds as soon as it resolves. It runs another round while the pool is under 20, and stops after a round that adds nothing.
   - `next({mode}) → Promise<{find, branch, why}|{empty: true, reason}>`. Calls are serialised, so two at once never return the same find. It serves, in order: the history forward entry if Back was used (`branch 'history'`, why `'seen before'`); the injected queue (`branch` = its origin, why `'search result'` or `'AI find'`); then by mode: `tuned` uses `pickNext` over the pool; `fate` uses `fatePull` over the enabled `fate: true` sources (minus `safety 'mixed'` ones when `familyFilter` is on) with `settings.sources[id]?.fateWeight ?? 1` and `accept` = `eligible` with no domain cooldown (`branch 'fate'`, why `'pure random'`); `ai` serves the injected queue only. It waits only until the pool holds an eligible candidate or the refill ends; the rest of a refill runs in the background. Each find it hands out is added to `seen` and `history` and emitted as `find` with the payload `{find, branch, why}`.
   - `back() → Find|null` (it emits `find` with `{find, branch: 'history', why: 'seen before'}`) and `current() → Find|null`, both from history.
@@ -2552,7 +2552,7 @@ test('at least 80 games or toys, and no domain more than 3 times', () => {
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `node --test tests/unit/library-data.test.js`
-Expected: FAIL with `only 0` (or `ENOENT`).
+Expected: FAIL with `only 0` (Plan 01's stub has no entries).
 
 - [ ] **Step 3: Curate the entries into `src/data/library.json`**
 
@@ -2561,7 +2561,7 @@ Work in batches of about 50 and run the test after each batch to catch duplicate
 - [ ] **Step 4: Run the test and the full unit suite**
 
 Run: `node --test tests/unit/library-data.test.js`, then `npm test`
-Expected: PASS, and `npm test` green, including Plan 01's `--check` data-shape check.
+Expected: PASS, 4 tests, and `npm test` green, including Plan 01's `--check` data-shape check.
 
 - [ ] **Step 5: Commit**
 
