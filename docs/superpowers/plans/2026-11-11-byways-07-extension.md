@@ -856,13 +856,13 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `bg.js` in the build folder.
 - [ ] **Step 5: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-bg.test.js`
-Expected: PASS, 13 tests.
+Expected: PASS, 20 tests.
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add shells/extension/bg.js tests/unit/ext-bg.test.js
-git commit -m "Add the extension background: toolbar Stumble, commands, menu and access checks"
+git commit -m "Add the extension background: toolbar Stumble, commands, menu, consent and access checks"
 ```
 
 ### Task 5: Byways tab, page boot and the extension e2e harness

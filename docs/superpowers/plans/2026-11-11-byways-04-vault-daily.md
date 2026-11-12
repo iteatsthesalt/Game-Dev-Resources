@@ -556,7 +556,8 @@ test('ia random picks a validated collection and returns one find with an embed'
   ctx.data.embedBroken.add(f.id); ctx.rand = seq(0.13, 0.5);
   assert.deepEqual(await ia.random(ctx), []);
   ctx.rand = seq(0.9); await ia.more({ meta: { collection: 'feature_films' } }, ctx);
-  assert.deepEqual([...new URL(net.calls.at(-1).url).searchParams].filter(([k]) => k === 'q' || k === 'page'), [['q', 'collection:(feature_films)'], ['page', '226']]);
+  const s = new URL(net.calls.at(-1).url).searchParams;
+  assert.deepEqual([s.get('q'), s.get('page')], ['collection:(feature_films)', '226']);
 });
 test('with the Family filter on, ia leaves feature_films out', async () => {
   // rand = seq(0.13, 0.5)

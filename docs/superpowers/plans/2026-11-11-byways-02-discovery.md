@@ -1874,24 +1874,34 @@ test('card shows markup as plain text', async ({ page }) => {
   await expect(title(page)).toHaveText('<b>Bold</b>');
   await expect(page.locator('article.card b, article.card img[src="x"]')).toHaveCount(0);
 });
+test('card shows the creator, the licence and the AI badges', async ({ page }) => {
+  await open(page, small);
+  await mount(page, { source: 'commons', kind: 'image', title: 'Old map', url: 'https://example.com/map', safety: 'mixed', author: 'Ann',
+    licence: 'CC BY 4.0', attribution: 'Wikimedia Commons', foundBy: ['Scout · model-a', 'Digger · model-b'], teamPick: true });
+  const card = page.locator('article.card').last();
+  await expect(card.locator('.domain')).toHaveText('example.com · by Ann');
+  await expect(card.locator('.licence')).toHaveText('CC BY 4.0 · Wikimedia Commons');
+  await expect(card.locator('.found-by')).toHaveText('Found by Scout · model-a, Digger · model-b');
+  await expect(card.locator('.team-pick')).toHaveText('Team pick');
+});
 ```
 
 - [ ] **Step 2: Run it and see it fail**
 
 Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/stumble.spec.js`
-Expected: FAIL: `stageLibrary` is not exported, then the `Stumble` heading never shows.
+Expected: FAIL with `SyntaxError: The requested module './helpers/net.js' does not provide an export named 'stageLibrary'`.
 
-- [ ] **Step 3: Add the helpers, the boot wiring, `generated-image.js`, `card.js` and `stumble.js`**
+- [ ] **Step 3: Add `stageLibrary`, the two catch-all routes, the boot wiring, `generated-image.js`, `card.js` and `stumble.js`**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/stumble.spec.js`
-Expected: PASS, 4 tests; the `test` fixture's checks (no unmocked request, no CSP violation, no page error) pass after each.
+Run: `npm run e2e -- tests/e2e/stumble.spec.js`, then `npm run e2e`
+Expected: PASS, 5 tests; the `test` fixture's checks (no unmocked request, no console error, no page error) pass after each. The whole suite passes, Plan 01's specs included.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add src/ui/boot.js src/ui/views/index.js src/ui/components/card.js src/ui/components/generated-image.js src/ui/views/stumble.js tests/e2e/helpers/net.js tests/e2e/helpers/fakes.js tests/fixtures/http/library/small.json tests/e2e/stumble.spec.js
+git add src/ui/boot.js src/ui/views/index.js src/ui/components/card.js src/ui/components/generated-image.js src/ui/views/stumble.js tests/e2e/helpers/net.js tests/fixtures/routes.js tests/fixtures/http/library/small.json tests/e2e/stumble.spec.js
 git commit -m "Wire the engine into boot and add the card and Stumble view"
 ```
 
