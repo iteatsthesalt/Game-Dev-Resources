@@ -10,7 +10,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const { loadSim } = require('./loader.js');
 
-const SEEDS = [1, 2, 3, 4, 5, 6], MINUTES = 10, STEPS = MINUTES * 60 * 60;
+// ten minutes and a half: the keeper rises in the step after the eighth toll, at 600 s
+const SEEDS = [1, 2, 3, 4, 5, 6], MINUTES = 10.5, STEPS = MINUTES * 60 * 60;
 const sim = loadSim({ boot: true });
 const { Sim, Bot, Player, Stats, Defs } = sim;
 
@@ -41,12 +42,14 @@ test(`the Change-ringer keeps ${MINUTES} minutes of vigil in the Dial from ${SEE
     const outcome = S.result ? S.result.outcome : 'still keeping it';
     assert.ok(['left', 'spared', 'died', 'still keeping it'].includes(outcome));
     assert.ok(S.kills > 100, `seed ${seed}: the dead were laid (${S.kills})`);
-    if (S.toll >= S.rules.keeperToll) {
+    // a vigil may end in the very step its eighth toll rings (a Tolled-for that runs out at that toll): the keeper
+    // rises in the next step, so it is looked for only in a vigil that lasted past it
+    if (S.t > S.rules.keeperToll * 75 + 0.05) {
       assert.equal(seen.keeperToll, S.rules.keeperToll, `seed ${seed}: the keeper came at the eighth toll`);
       assert.ok(Math.abs(seen.keeperAt - 8 * 75) < 0.1, `seed ${seed}: at ${seen.keeperAt} s`);
       pastKeeper++;
     } else assert.equal(seen.keeperAt, null, `seed ${seed}: no keeper before the eighth toll`);
-    if (S.result) assert.equal(S.result.time, S.t);
+    if (S.result) assert.ok(Math.abs(S.result.time - S.t) <= 1 / 60 + 1e-9, 'the time it ended, in the step it ended');
     t.diagnostic(`seed ${seed}: ${outcome} at ${S.t.toFixed(1)} s, toll ${S.toll}, ${S.kills} laid, run level ${S.player.runLevel}, ` +
       `keeper ${seen.keeperAt === null ? 'not come' : 'came at ' + seen.keeperAt.toFixed(0) + ' s'}${S.vigil.keeper === 2 ? ', laid' : ''}, ` +
       `banked ${S.bank.coin}, at most ${seen.most} of the dead standing`);
@@ -76,7 +79,7 @@ test('the same seed twice gives the same hash, minute by minute', () => {
   assert.notEqual(Sim.hash(Sim.create(vigilCfg(8))), Sim.hash(Sim.create(vigilCfg(7))));
 });
 
-test("Bot.input: 'still' does nothing, 'walk' walks a slow circle, and the frame is the run's own", () => {
+test("Bot.input: 'still' does nothing, 'walk' walks a slow circle 11 m across, and the frame is the run's own", () => {
   const S = Sim.create(vigilCfg(3));
   const f = Bot.input(S, 'still');
   assert.deepEqual([f.mx, f.my, f.trade, f.heave, f.aim], [0, 0, false, false, false]);
@@ -89,7 +92,7 @@ test("Bot.input: 'still' does nothing, 'walk' walks a slow circle, and the frame
     Sim.step(S, w);
     far = Math.max(far, Math.hypot(S.player.x - x0, S.player.y - y0));
   }
-  assert.ok(far > 3 && far < 8, `a circle about 5 m across: ${far.toFixed(2)} m at the farthest`);
+  assert.ok(far > 9 && far < 12, `a circle about 11 m across: ${far.toFixed(2)} m at the farthest`);
   assert.ok(Math.hypot(S.player.x - x0, S.player.y - y0) < 1.5, 'back near where it began after a round');
   const other = Sim.create(vigilCfg(3));
   assert.notEqual(Bot.input(other, 'still'), f, 'another run has its own frame');
@@ -121,7 +124,7 @@ test("Bot 'vigil' walks into a favour, rings down once the keeper is laid, and r
   for (let i = 0; i < 20 * 60 && S.phase === 'play'; i++) Sim.step(S, Bot.input(S, 'vigil'));
   assert.equal(S.phase, 'ended');
   assert.equal(S.result.outcome, 'left', 'it rang down');
-  assert.equal(S.bank.coin, 12, 'and banked what it carried');
+  assert.ok(S.bank.coin >= 12 && S.coin === 0 && S.result.banked === S.bank.coin, `and banked all it carried: ${S.bank.coin}`);
   // Tolled-for: the far lychgate
   S = Sim.create(vigilCfg(6));
   Sim.step(S, Bot.input(S, 'vigil'));

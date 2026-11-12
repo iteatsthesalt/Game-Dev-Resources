@@ -36,6 +36,7 @@
   const RIM = 'rgba(0, 0, 0, 0.55)', RIM_FROM = 3;   // a disc gets its dark rim from this radius on, in CSS pixels
   const DISC = 0, RING = 1, SECTOR = 2, BAR = 3, LEE = 4, CUT = 8;   // the shapes of a decal (65-gfx.js)
   const LEES = 64, LEE_RAYS = 10;                    // lee records a frame; lines across each one's lee
+  const RIM_LEAST = 2;      // CSS pixels: a decal's rim is 3% of its radius, at most 0.12 m, and never thinner than this
 
   // A colour channel from 0..1 to 0..255. Anything that is not a number counts as 0.
   function channel(v) { return v >= 1 ? 255 : v > 0 ? (v * 255 + 0.5) | 0 : 0; }
@@ -144,7 +145,7 @@
     function paint(c, buffer, o, shape, sx, sy, r) {
       const fill = buffer[o + 7] >= 1 ? 1 : buffer[o + 7] <= -1 ? -1 : buffer[o + 7] || 0, angle = buffer[o + 9] || 0, arc = buffer[o + 10] || 0;
       const from = fill < 0 ? r * (1 + fill) : 0, to = fill > 0 ? r * fill : fill < 0 ? r : 0;
-      c.lineWidth = Math.max(1.5, Math.min(0.03 * r, 0.12 * ppm));
+      c.lineWidth = Math.max(RIM_LEAST, Math.min(0.03 * r, 0.12 * ppm));
       if (shape === DISC) {
         c.beginPath();
         c.arc(sx, sy, r, 0, TAU);

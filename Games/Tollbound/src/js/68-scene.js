@@ -68,8 +68,9 @@
 //              red wax disc), coined (two bright discs at the eyes), Tolled-for on the player (the world grey, all
 //              but what glows, and the far lychgate lit, with a lit way toward it); the Change-ringer's set bell
 //              (setBell) as a bell mouth-up over it
-//   the place  the tileset's hour lines and the bell-post's wedge of shadow (tileset fields of 47-dial-ground.js;
-//              figures in the shadow are darker), Vfx's marks, pickups (embers as warm motes, coin as small discs,
+//   the place  the tileset's hour lines round the bell-post (its field hours, 47-dial-ground.js), the Dial's shadow
+//              as the director keeps it (S.vigil.shade: a dark wedge with a darker leading edge, in the tileset's
+//              shadow colour; figures in it are darker), Vfx's marks, pickups (embers as warm motes, coin as small discs,
 //              finds as small boxes, favours (kind 3) as solid shapes that rise from the ground, by their icon),
 //              the open lychgate's ring of strokes filling one by one as the player rings down (S.gate.ring and
 //              strokes against ringStrokes and strokeSeconds)
@@ -1110,7 +1111,7 @@
           if ((p.x - e.x) * (p.x - e.x) + (p.y - e.y) * (p.y - e.y) < (gateR + 0.8) * (gateR + 0.8)) st.opacity = 0.45;
         }
       }
-      // the bell-post's shadow darkens what stands in it
+      // the Dial's shadow darkens what stands in it
       if (kind !== KIND_GATE && inShadow(x, y)) { st.tintR *= 0.7; st.tintG *= 0.7; st.tintB *= 0.74; }
       st.scale = scale;
       if (puppets) {

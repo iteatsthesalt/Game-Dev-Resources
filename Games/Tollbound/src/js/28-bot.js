@@ -4,22 +4,35 @@
 //   Bot.input(S, policy) -> InputFrame       the input of the next step: one frame of the run's own (S.bot.frame),
 //                                            refilled each call. policy (default 'vigil'):
 //     'still'    does nothing
-//     'walk'     a slow circle, about 5 m across
-//     'vigil'    plays the Change-ringer through the Dial. In order of need: Tolled-for, it runs for the far
-//                lychgate; it steps out of a Swell of the dead that will land on it; it rings down at an open lychgate
-//                once the keeper is laid or its life is low; it walks into the favour it likes best of those standing;
-//                with no dead near it goes to an open wound and stands on it to mend; and otherwise it fights: it
-//                walks a wide round of the plaza with the train behind, stops to set the bell when the train is long
-//                (pressing the trade when it is ready), rocks back and forth in the crowd so that every reversal is a
-//                pull, and breaks out the thin way when the crowd is too thick or its life runs low. Whatever it
-//                does, it keeps 5 m from the keeper and turns aside from the ground of a Swell about to land.
+//     'walk'     a slow circle, about 11 m across (0.6 of top speed, turning half a radian a second)
+//     'vigil'    plays the Change-ringer through the Dial. In order of need, each step: Tolled-for, it runs for the
+//                far lychgate; it steps out of a Swell of the dead about to land on it (only while it stands in one);
+//                it rings down at an open lychgate once the keeper is laid, or when its life is low after the keeper's
+//                coming, and otherwise keeps out of an open lychgate (standing in one would ring it down); it walks
+//                into the favour it likes best of those standing; unless Braced and well, it steps out of the arc of
+//                a large body near the end of a Blow's wind-up; then it fights:
+//                  shed   with riders on it, it strides close past the nearest large body (not the keeper), so that
+//                         they move onto it
+//                  hold   it stands: Braced, so the crowd's Blows land at half and every wound within reach mends; it
+//                         stands on an open wound when one worth the walk lies within 4 m (or, with few dead about,
+//                         the oldest within 14 m); it presses the trade, Set, as the crowd arrives; and it rocks once
+//                         three of the dead are within its ring after a stand of 1.8 s, at once when three press it,
+//                         and whenever a hanger-on comes near enough to leap on
+//                  rock   back and forth along one line, a reversal every 0.2 s, so that every reversal is a pull, for
+//                         0.75 s (2.5 s in a thick crowd), then a stand again
+//                  break  out the thin way for 1 s when the crowd is too thick to stand in
+//                  kite   with nothing near, a round of the plaza 13 m out, until the dead come
+//                With the keeper up and few of the dead near, it goes to the keeper and fights it close, within the
+//                ring but not pressed against it. Whatever it does, it turns aside from the ground of a Swell about
+//                to land and from pressing against the keeper.
 //   Bot.choose(S, offer) -> index            for an offer that pauses (none in Stage 1): the first option
 //
-// Its memory lives in S.bot = {frame, mode, modeT, flick, flickT, round, aim, set}: the frame it hands out, what it is
-// doing ('kite', 'set', 'rock', 'break') and for how long, the sign and age of the present flick, which way round the
-// plaza it walks (1 sunwise, -1 widdershins), the direction it last chose, and whether it has set the bell for this
-// stop. It reads only the run (S.player, S.wounds, S.gate, S.boss, S.areas, S.pickups, S.grid) and draws from no
-// stream of the run, so it never changes what the run itself would draw.
+// Its memory lives in S.bot = {frame, mode, modeT, flick, flickT, round, aim, set, why}: the frame it hands out, what
+// it is doing ('hold', 'rock', 'break', 'shed', 'kite') and for how long, the sign and age of the present flick, which
+// way round the plaza it walks (1 sunwise), the direction it last chose, whether it has pressed the trade for this
+// stand, and why it last moved (a word, for whoever studies it). It reads only the run (S.player, S.wounds, S.gate,
+// S.boss, S.vigil, S.areas, S.pickups, S.grid) and draws from no stream of the run, so it never changes what the run
+// itself would draw.
 (function () {
   'use strict';
 
