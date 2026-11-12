@@ -839,7 +839,7 @@ test('media buttons call the handlers', () => {
 - [ ] **Step 2: Run them to see them fail**
 
 Run: `node --test tests/unit/platform-android.test.js`
-Expected: the three new tests FAIL with `TypeError: Cannot read properties of undefined (reading 'probe')`.
+Expected: the three new tests FAIL with `TypeError: Cannot read properties of undefined`, reading `probe`, `speak` and `setHandlers`.
 
 - [ ] **Step 3: Implement `voice`, `tts` and `media`**
 

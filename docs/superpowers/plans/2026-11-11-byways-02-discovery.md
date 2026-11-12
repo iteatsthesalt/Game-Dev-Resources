@@ -2122,9 +2122,9 @@ test('Newest first sorts the batch by date', async ({ page }) => {
   await expect(page.locator('ul.feed article.card h2')).toHaveText(['Site 2', 'Site 1', 'Site 0']);
 });
 test('Never this site removes the card, and More like this goes to Stumble', async ({ page }) => {
-  await open(page, many(3), '#/feed'); await expect(cards(page)).toHaveCount(3);
+  await open(page, many(40), '#/feed'); await expect(cards(page)).toHaveCount(30);
   await cards(page).first().getByRole('button', { name: 'More actions' }).click();
-  await page.getByRole('menuitem', { name: 'Never this site' }).click(); await expect(cards(page)).toHaveCount(2);
+  await page.getByRole('menuitem', { name: 'Never this site' }).click(); await expect(cards(page)).toHaveCount(29);
   await cards(page).first().getByRole('button', { name: 'More like this' }).click();
   await expect(page.getByRole('heading', { level: 1, name: 'Stumble' })).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'Rabbit Hole' }).locator('li')).toHaveCount(2);
@@ -2158,12 +2158,12 @@ git commit -m "Add the Feed with batches of 30"
 - Test: `tests/e2e/saved-share.spec.js`
 
 **Interfaces:**
-- Consumes: `app.collections` (Task 8), `SHARE_BASE`, `buildShareUrl`, `decodeShare`, `shareItem`, `itemToFind` (Task 9), `toBookmarksHtml`, `fromBookmarksHtml` (Task 10), `renderCard`, `makeActionHandler`, `platform.share`, `platform.files`, `navigate`, `showToast`, `announce`, `makeFind`.
+- Consumes: `app.collections` (Task 8), `SHARE_BASE`, `buildShareUrl`, `decodeShare`, `shareItem`, `itemToFind`, `payloadFromLink` (Task 9), `toBookmarksHtml`, `fromBookmarksHtml` (Task 10), `renderCard`, `makeActionHandler`, `platform.share`, `platform.files`, `navigate`, `showToast`, `announce`, `makeFind`.
 - Produces:
-  - `registerView('saved', {title: 'Saved', render})`: `h1 'Saved'`; one button per collection labelled `'<name> (<count>)'`; a **New collection** text field with a **Create** button; for the chosen collection, an `h2` with its name, its finds as compact cards each with a **Remove** button, and the buttons **Rename** (then a name field and **Save name**), **Delete** (not for Saved; asks `'Delete this collection?'` with **Delete** and **Keep**), **Save new finds here** (`setCurrent`; the current one shows `'New finds are saved here.'`), **Share collection**, **Export bookmarks** and **Import bookmarks**.
+  - `registerView('saved', {title: 'Saved', render})`: one button per collection labelled `'<name> (<count>)'`; a **New collection** text field with a **Create** button; a **Paste a share link** text field with an **Import from link** button, on every platform (§14.3: the extension and Android open links by paste), which calls `navigate('import', {payload: payloadFromLink(text)})`, or shows and assertively announces `'This link is broken or not from Byways.'` when that gives `null`; for the chosen collection, an `h2` with its name, its finds as compact cards (actions through `makeActionHandler` with Task 23's Saved `advance`) each with a **Remove** button, and the buttons **Rename** (then a name field and **Save name**), **Delete** (not for Saved; asks `'Delete this collection?'` with **Delete** and **Keep**), **Save new finds here** (`setCurrent`; the current one shows `'New finds are saved here.'`), **Share collection**, **Export bookmarks** and **Import bookmarks**.
   - **Share collection**: `buildShareUrl(SHARE_BASE, {v: 1, t: 'c', n: name, i: items.map(x => shareItem(x.find))})`. When `tooLong`: `'This collection is too big for a link. Export a backup file in Settings → Data instead.'` Otherwise `platform.share({title: name, url})`, with the toast `'Link copied.'` on `'copied'`.
   - **Export bookmarks**: `platform.files.save('<collection id>.html', new Blob([toBookmarksHtml(col)], {type: 'text/html'}))`. **Import bookmarks**: `platform.files.pick('.html,text/html')`, then each `{url, title}` becomes `makeFind({source: 'import', kind: 'site', url, title, safety: 'mostly', why: ['Imported bookmark']})` in the chosen collection; toast `'Imported <n> bookmark(s).'` (`bookmark` for 1, else `bookmarks`).
-  - `registerView('import', {title: 'Import', render})`: reads the payload from `location.hash` after `#s=`. A failed `decodeShare` shows `'This link is broken or not from Byways.'` (also announced assertively) and a **Go to Stumble** link. Otherwise: `h1 'Shared with you'`, `p.kind` = `'A collection: <n>'` (`t 'c'`), `'A find'` (`'f'`) or `'Daily Fate: <n>'` (`'d'`), a list of titles with domains, and an **Import** button. Import creates a collection named `n` for `'c'`, or uses Saved for `'f'` and `'d'`, adds every `itemToFind` result, toasts `'Imported <k> find(s) into <name>.'` and navigates to `saved`.
+  - `registerView('import', {title: 'Import', render})`: decodes `params.payload` (the router gives it for `#s=<payload>`, and **Import from link** passes it). A failed `decodeShare` shows `'This link is broken or not from Byways.'` (also announced assertively) and a **Go to Stumble** link. Otherwise: `h2 'Shared with you'`, `p.kind` = `'A collection: <n>'` (`t 'c'`), `'A find'` (`'f'`) or `'Daily Fate: <n>'` (`'d'`), a list of titles with domains, and an **Import** button. Import creates a collection named `n` for `'c'`, or uses Saved for `'f'` and `'d'`, adds every `itemToFind` result, toasts `'Imported <k> find(s) into <name>.'` and navigates to `saved`.
 
 - [ ] **Step 1: Write the failing test**
 

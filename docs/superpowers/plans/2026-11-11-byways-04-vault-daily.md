@@ -825,91 +825,95 @@ git commit -m "Add the Vault starter list and GeoCities seeds"
 
 ---
 
-### Task 7: Boot wiring and the Vault shelves
+### Task 9: The card's Archive extras, boot wiring and the Vault shelves
 
 **Files:**
-- Create: `src/ui/views/vault.js`, `tests/fixtures/http/ia/thumb.svg`
-- Modify: `src/ui/boot.js`, `src/ui/views/index.js`, `tests/fixtures/routes.js`
+- Create: `src/ui/views/vault.js`
+- Modify: `src/ui/components/card.js`, `src/ui/boot.js`, `src/ui/views/index.js`, `tests/e2e/axe.spec.js` (only when Plan 03 has created it)
 - Test: `tests/e2e/vault.spec.js`
 
 **Interfaces:**
-- Consumes: `registerView`, `h`, `clear`, `announce`, `showToast`, `renderCard(find, {onAction, compact})`, `createCache`, `getSource`, `app` fields (`store`, `http`, `clock`, `rand`, `platform`, `data`, `engine`, `getSettings`); Tasks 1–5.
-- Produces: `app.ia: IaClient`; `app.data.loadSnapshot(name: 'itch'|'vault-index') → Promise<object|null>`; `app.data.embedBroken: Set<string>` of find ids, persisted in the `health` store under `embed-broken:<find id>`; from `views/vault.js` the plan-internal `handleCardAction(app, find, action, extra, slot)` (Tasks 8–9 use it).
-
-`thumb.svg` is `<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"/>`. Add these entries to `tests/fixtures/routes.js` ahead of any broader archive.org entry, in this order:
-
-| match | file | headers |
-|---|---|---|
-| `/^https:\/\/archive\.org\/advancedsearch\.php\?.*[?&]rows=0(&\|$)/` | `ia/count-250.json` | |
-| `/^https:\/\/archive\.org\/advancedsearch\.php\?/` | `ia/search-gems.json` | |
-| `/^https:\/\/archive\.org\/metadata\/msdos_[^/]+\/metadata$/` | `ia/meta-game.json` | |
-| `/^https:\/\/archive\.org\/metadata\/[^/]+\/metadata$/` | `ia/meta-collection.json` | |
-| `/^https:\/\/archive\.org\/embed\//` | `ia/embed.html` (Task 8) | `content-type: text/html` |
-| `/^https:\/\/(archive\.org\/services\/img\|upload\.wikimedia\.org\|apod\.nasa\.gov\/apod\/image)\//` | `ia/thumb.svg` | `content-type: image/svg+xml` |
+- Consumes: `registerView`, `navigate`, `h`, `clear`, `announce`, `renderCard`, `makeActionHandler(app, {advance, whyLine})`, `createCache`, `getSource`; `readSnapshot` (Task 4); `libraryEntryToFind` (Task 3); the `app` fields `store`, `http`, `clock`, `rand`, `platform`, `data`, `engine`, `secrets`, `getSettings`, `dataUrl`; Tasks 1–7.
+- Produces: `app.ia: IaClient`; `app.data.embedBroken: Set<string>` of find ids, persisted in the `health` store under `embed-broken:<find id>`; `renderCard(find, {onAction, compact, whyLine, headingLevel = 2})`, which also shows, for a find with `embedUrl`, a **Details on archive.org** link and, on a coarse pointer, a **Keyboard needed** badge.
 
 - [ ] **Step 1: Write the failing e2e tests**
 
-Each spec file starts with `mockNet(page)` in `beforeEach`, routes the same-origin snapshots (`page.route('**/data/vault-index.json', r => r.fulfill({path: 'tests/fixtures/http/ia/vault-index.json'}))` and the same for `data/itch.json` with `itch/itch.json`), and asserts `expect(unmocked(page)).toEqual([])` in `afterEach`. `openView(page, hash)` goes to the hash, clicks **Skip** while a Skip button is visible, then goes to the hash again. `shelf = (name) => page.getByRole('region', {name})`.
+Specs import `test` and `expect` from `./helpers/net.js`, `gotoApp` from `./helpers/app.js`, `expectNoSeriousA11y` from `./helpers/axe.js` (Plan 01) and `devices` from `@playwright/test`. `beforeEach` routes the same-origin data files with `page.route(…, (r) => r.fulfill({path}))`: `**/data/vault-index.json` → `tests/fixtures/http/ia/vault-index.json`, `**/data/itch.json` → `tests/fixtures/http/itch/itch.json`, and `**/data/library.json` → Plan 02's `tests/fixtures/http/library/small.json`. `shelf = (name) => page.getByRole('region', {name})`.
 
 ```js
 const LABELS = ['DOS', 'Windows 3.x', 'C64', 'Apple II', 'ZX Spectrum', 'Amiga', 'Mac', 'Consoles', 'Arcade', 'Flash', 'Palm', 'Malware Museum'];
 test('shows a shelf per platform plus Indie web', async ({ page }) => {
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('Vault');
-  await expect(page.getByRole('heading', { level: 2 })).toHaveText([...LABELS, 'Indie web']);
+  await expect(page.locator('main section > h2')).toHaveText([...LABELS, 'Indie web']);
+  await expect(shelf('DOS').getByRole('heading', { level: 3, name: 'Whizz' })).toBeVisible();
 });
 test('gem cards show why chips and a details link, and no frame', async ({ page }) => {
-  await openView(page, '#/vault');
+  await gotoApp(page, '#/vault');
   const item = shelf('DOS').getByRole('listitem').filter({ hasText: 'Whizz' });
-  for (const chip of ['312 downloads', 'MS-DOS Shareware', '1994', '★4.5 (3)']) await expect(item).toContainText(chip);
+  for (const chip of ['Internet Archive: MS-DOS Shareware', '312 downloads', '1994', '★4.5 (3)']) await expect(item).toContainText(chip);
   await expect(item.getByRole('link', { name: 'Details on archive.org' })).toHaveAttribute('href', 'https://archive.org/details/msdos_Whizz_1994');
   await expect(page.locator('iframe')).toHaveCount(0);
 });
 test('More gems loads a shelf live when there is no snapshot', async ({ page }) => {
-  await page.route('**/data/vault-index.json', (r) => r.fulfill({ status: 404, body: '' }));
-  await openView(page, '#/vault');
+  await page.route('**/data/vault-index.json', (r) => r.fulfill({ json: { v: 1 } }));
+  await gotoApp(page, '#/vault');
   await expect(shelf('C64')).toContainText('No gems loaded yet.');
   await shelf('C64').getByRole('button', { name: 'More gems' }).click();
   await expect(shelf('C64')).toContainText('Whizz', { timeout: 10000 });
 });
-test('shows Archive unavailable when a live shelf load fails', async ({ page }) => {   // Review Focus 1
-  await page.route('**/data/vault-index.json', (r) => r.fulfill({ status: 404, body: '' }));
-  await page.route(/archive\.org\/(advancedsearch|metadata)/, (r) => r.fulfill({ status: 503, body: '' }));
-  await openView(page, '#/vault');
-  await shelf('DOS').getByRole('button', { name: 'More gems' }).click();
-  await expect(page.getByRole('heading', { name: 'Archive unavailable' })).toBeVisible({ timeout: 10000 });
-  await expect(page.getByText('The Internet Archive is not answering right now.')).toBeVisible();
-  await expect(page.locator('#live-polite')).toContainText('Archive unavailable');
+test.describe('when the Archive fails', () => {
+  test.use({ ignoreProblems: [/Failed to load resource/] });   // the 503s below are on purpose
+  test('shows Archive unavailable when a live shelf load fails', async ({ page }) => {   // Review Focus 1
+    await page.route('**/data/vault-index.json', (r) => r.fulfill({ json: { v: 1 } }));
+    await page.route(/archive\.org\/(advancedsearch|metadata)/, (r) => r.fulfill({ status: 503, body: '' }));
+    await gotoApp(page, '#/vault');
+    await shelf('DOS').getByRole('button', { name: 'More gems' }).click();
+    await expect(page.getByRole('heading', { name: 'Archive unavailable' })).toBeVisible({ timeout: 10000 });
+    await expect(page.getByText('The Internet Archive is not answering right now.')).toBeVisible();
+    await expect(page.locator('#live-polite')).toContainText('Archive unavailable');
+  });
 });
-test('Indie web shows itch.io games from the snapshot', async ({ page }) => {
-  await openView(page, '#/vault');
-  await expect(shelf('Indie web')).toContainText('Moss & Mirrors');
+test('Indie web shows library and itch.io games, then GitHub and Show HN games', async ({ page }) => {
+  await gotoApp(page, '#/vault');
+  for (const t of ['Pixel Garden', 'Moss & Mirrors']) await expect(shelf('Indie web')).toContainText(t);
+  await shelf('Indie web').getByRole('button', { name: 'More gems' }).click();
+  for (const t of ['tiny-jam', 'I made a tiny game']) await expect(shelf('Indie web')).toContainText(t);
+  await expect(shelf('Indie web')).not.toContainText('Notes app');
 });
-test('desktop shows no Keyboard needed badge', async ({ page }) => {
-  await openView(page, '#/vault');
+test('axe finds no serious issues, and desktop shows no Keyboard needed badge', async ({ page }) => {
+  await gotoApp(page, '#/vault'); await expectNoSeriousA11y(page);
   await expect(page.getByText('Keyboard needed')).toHaveCount(0);
 });
 test.describe('on a touch device', () => {
-  test.use({ ...devices['Pixel 7'] });
+  const { defaultBrowserType, ...pixel7 } = devices['Pixel 7'];   // a worker option, which a describe group may not set
+  test.use(pixel7);
   test('keyboard shelves get a Keyboard needed badge', async ({ page }) => {
-    await openView(page, '#/vault');
+    await gotoApp(page, '#/vault');
     await expect(shelf('DOS').getByText('Keyboard needed')).toHaveCount(3);
   });
 });
 ```
 
+The GitHub and Show HN finds come from Plan 02's `github/search.json` and `hn/search.json` routes.
+
 - [ ] **Step 2: Run the tests to see them fail**
 
 Run: `npm run build && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/vault.spec.js`
-Expected: FAIL (no Vault heading).
+Expected: FAIL: no shelves (Plan 01's placeholder view says "Nothing here yet.").
 
-- [ ] **Step 3: Wire `boot.js` and `views/index.js`**
+- [ ] **Step 3: Wire `boot.js`, `views/index.js` and the axe list**
 
-In `boot.js`: set `app.ia = sharedIaClient({http: app.http, cache: createCache(app.store, app.clock), clock: app.clock})`; call `app.http.register('pages', {perMinute: 30, concurrent: 2})`; set `app.data.loadSnapshot` to fetch `new URL('data/' + name + '.json', document.baseURI).href` with `app.http.getJson(url, {source: 'pages'})`, give `null` on any error, and remember the result per name for the session; set `app.data.embedBroken` from the `health` keys that start with `embed-broken:`. In `views/index.js`, add `import './vault.js';`.
+In `boot.js`, before `createEngine` is called: set `app.ia = sharedIaClient({http: app.http, cache: createCache(app.store, app.clock), clock: app.clock})`, and add `embedBroken` to the existing `app.data` object, filled from the `health` keys that start with `embed-broken:`. Do not replace `app.data`, because the engine's `ctx.data` is the same object. In `views/index.js`, add `import './vault.js';`. If `tests/e2e/axe.spec.js` exists, append `'#/vault'` to its `VIEWS`; the axe test above covers the view either way.
 
-- [ ] **Step 4: Implement the shelves in `src/ui/views/vault.js`**
+- [ ] **Step 4: Add the Archive extras to `renderCard` in `card.js`**
 
-`registerView('vault', {title: 'Vault', render, leave})`. The view renders:
+- `renderCard` takes `headingLevel = 2` and uses `h<headingLevel>` for the title, so cards inside an `h2` section get `h3` titles.
+- For a find with `embedUrl`, it adds a link **Details on archive.org** to `https://archive.org/details/<id>` (the id from `embedUrl`), as §10.4 asks of every Archive card. When `matchMedia('(pointer: coarse)').matches` and `find.meta?.platform` is the label of a `VAULT_COLLECTIONS.shelves` entry with `keyboard: true`, it also adds a badge **Keyboard needed**.
+
+- [ ] **Step 5: Implement the shelves in `src/ui/views/vault.js`**
+
+`registerView('vault', {title: 'Vault', render})`. The view renders:
 
 - `h1` "Vault" and the line "Hidden games from the Internet Archive. They play in the Archive's own player."
 - One `<section aria-labelledby>` per `VAULT_COLLECTIONS.shelves` entry, with an `h2` label and a `<ul>` of `<li>` items. Each item holds `renderCard(find, {compact: true, onAction})`, a link "Details on archive.org" to `find.url`, and an empty player slot `div`. Snapshot gems come from `loadSnapshot('vault-index')` for the shelf's collections. They are mapped with `iaDocToFind(gem, {kind: 'game'})`, sorted by `gemScore` (`currentYear` is the UTC year from `app.clock.now()`) and capped at 12. An empty shelf shows "No gems loaded yet."
