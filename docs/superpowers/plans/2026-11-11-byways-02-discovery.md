@@ -4,7 +4,7 @@
 
 **Goal:** Build everything that finds, picks, remembers and shows a find: the Find model, the never-twice seen-set, Back history, taste and Tuned picking, Fate, Rabbit Hole, collections, share links, backup, the free source adapters with their probe, the engine, and the Stumble, Feed, Saved, Import and Settings (taste, sources, data, privacy) screens, plus the first-run interests step and the starter library.
 
-**Architecture:** Pure core modules in `src/core/` (no DOM) hold the state and the rules. Each source is one adapter file that turns a recorded HTTP response into `Find` objects through `makeFind`. `createEngine` owns the candidate pool, up to 3 prepared finds, the injected queue (search now, AI in Plan 05), the seen-set, history, taste and reactions. The UI calls only the engine and the small stores the engine exposes. Plan 04 adds the Archive sources (`ia`, `vault`, `oldweb`, `itch`) by registering adapters in `sources/index.js`; the engine has no Archive code.
+**Architecture:** Pure core modules in `src/core/` (no DOM) hold the state and the rules. Each source is one adapter file that turns a recorded HTTP response into `Find` objects through `makeFind`. `createEngine` owns the candidate pool, up to 3 prepared finds, the injected queue (search now, AI in Plan 05), the seen-set, history, taste and reactions. The UI calls only the engine and the small stores the engine exposes. Plan 04 adds the `ia`, `vault`, `oldweb`, `itch` and `webring` adapters by registering them in `sources/index.js`; the engine has no Archive code beyond skipping the `SELF_PACED` ids when it registers rates.
 
 **Tech Stack:** JavaScript ES2022 modules, no framework or bundler. `node:test` for unit tests, `@playwright/test@1.63.0` (Chromium) for end-to-end tests. `CompressionStream('deflate-raw')` for share links. Everything from Plan 01: `createHttp`, `openStore`/`memoryBackend`, `createCache`, `fakeClock`, `hash64`, `gumbel`, `mulberry32`, the `util/url.js` and `util/text.js` helpers, `utcDate`, `APP_VERSION`, `h`, `clear`, `announce`, `showToast`, the three UI registries, and the e2e helpers (`test`/`expect`/`mockNet`, `gotoApp`/`skipFirstRun`, `expectNoSeriousA11y`, `installFakeSpeech`).
 
@@ -26,8 +26,10 @@
 - **Family filter:** "on by default and keeps `mixed` sources out of Fate and lean-back"; §8.3 applies it to every pick. Results of a search the user asked for (origins `'search'` and `'ai'`) keep their `mixed` finds outside lean-back (overview, "Family filter at inject").
 - **Headers:** `Api-User-Agent` (Wikimedia) and `AIC-User-Agent` (Art Institute) set to `Byways/<version> (+https://github.com/iteatsthesalt/Game-Dev-Resources)`, never with user details.
 - **Rates (§7.3):** iNaturalist and Open Library 1 request per second; Art Institute 60 per minute; GitHub search 10 per minute; Wikimedia about 10 per minute; Library of Congress 10 per minute ("an HTML/CAPTCHA reply counts as a failure"); APOD by key tier with a local daily counter.
+- **Archive pacing:** nothing in this plan calls `http.register` for `ia` or `vault`, because Plan 04's Archive queue alone paces and backs off those sources (overview, "Archive pacing"). The engine and the test kit skip the `SELF_PACED` ids (Task 5).
 - **Caching (§7.3):** "24 h for searches, 7 days for item details, and a week for the Kagi lists"; GitHub results at least 1 hour.
 - **Network (§15.1):** stumbling contacts "Only the enabled sources (§7.2) and the site you open"; the link check contacts "The find's site, before it is shown", and only when **Check links before showing** is on.
+- **Shared links:** a find whose `source` is `shared` (a link shared into the Android app, Plan 08) has no adapter. The taste ignores its source weight, Rabbit Hole asks Marginalia's `more()` for it, and `generatedImage` shows **Shared** (overview, Plan 08's "Links shared in"). Tasks 3, 7 and 22 handle it.
 - **Keys:** every key is read through `ctx.secrets`, which is `app.secrets` (overview `App` table). The ids are fixed: `src:europeana`, `src:openverse` (JSON `{clientId, clientSecret}`), `src:datagov` (APOD and Smithsonian; `DEMO_KEY` without it), `src:marginalia` and `src:github`. A key never goes into a cache key, a store other than the secrets store, or a log.
 - **Styles:** the CSP is `style-src 'self'`, so UI code sets dynamic styles only through CSSOM (`el.style.setProperty`), never a `style` attribute.
 - **Console:** app code reports recoverable problems with `console.warn`, never `console.error`; the e2e `test` fixture fails on any console error (Plan 01).
@@ -242,7 +244,7 @@ git commit -m "Add the seen-set and the Back history"
 
 **Interfaces:**
 - Consumes: `domainOf(u)`.
-- Produces: `src/data/tags.json` in the overview shape; `DEFAULT_TASTE`; `applyReaction(taste, find, reaction, extra?) → {taste, change}` (pure, never mutates its input); `describeChange(change, labelOf = (id) => id.replace(/-/g, ' ')) → string`, where the engine passes `labelOf` built from `data.tags`. `extra` is `{tag}` for `interest` and `lessTopic` (default `find.tags[0]`), and `{blockDomain: true}` for `broken`.
+- Produces: `src/data/tags.json` in the overview shape; `DEFAULT_TASTE`; `applyReaction(taste, find, reaction, extra?) → {taste, change}` (pure, never mutates its input); `describeChange(change, labelOf = (id) => id.replace(/-/g, ' ')) → string`, where the engine passes `labelOf` built from `data.tags`. `extra` is `{tag}` for `interest` and `lessTopic` (default `find.tags[0]`), and `{blockDomain: true}` for `broken`. A find from the pseudo-source `shared` changes no source weight: `sources` stays as it was and `change.sourceDelta` is 0, whatever the reaction (overview).
 
 `tags.json` holds exactly these 40 tags (id, then label), in this group order:
 
@@ -283,6 +285,11 @@ test('save works like like, and weights cap at +3', () => {
 test('not for me takes 0.5 per tag and 0.25 from the source', () => {
   const { taste } = applyReaction(DEFAULT_TASTE, find, 'dislike');
   assert.deepEqual(taste.tags, { retro: -0.5, indie: -0.5 }); assert.deepEqual(taste.sources, { library: -0.25 });
+});
+test('a shared link moves the tags but no source weight', () => {
+  const shared = { ...find, source: 'shared' }; const { taste, change } = applyReaction(DEFAULT_TASTE, shared, 'like');
+  assert.deepEqual(taste.tags, { retro: 1, indie: 1 }); assert.deepEqual(taste.sources, {}); assert.equal(change.sourceDelta, 0);
+  assert.deepEqual(applyReaction(DEFAULT_TASTE, shared, 'dislike').taste.sources, {});
 });
 test('less of this topic takes 2 and hides the tag at -3', () => {
   const once = applyReaction(DEFAULT_TASTE, find, 'lessTopic', { tag: 'retro' }).taste;
@@ -332,7 +339,7 @@ Expected: FAIL: the group list of Plan 01's empty `tags.json` is wrong, and `ERR
 - [ ] **Step 4: Run them and see them pass**
 
 Run: `node --test tests/unit/tags-data.test.js tests/unit/taste.test.js`
-Expected: PASS, 11 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -434,10 +441,11 @@ git commit -m "Add Tuned branch maths, scoring and filters"
 - Produces:
   - ``IDENT = `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/Game-Dev-Resources)` ``, the value of `Api-User-Agent` and `AIC-User-Agent`. Adapters read it inside functions only (the index imports the adapters, so a top-level read would hit the import cycle).
   - `SOURCES` (id → adapter, in the order of an `ADAPTERS` array that each adapter task extends with one import), `getSource(id) → Adapter|undefined`.
+  - `SELF_PACED = new Set(['ia', 'vault'])`: the source ids that never get an `http.register` call. Plan 04's Archive queue alone paces and backs off those sources, and a registered source would also get `Http`'s 60 s pause after a 429 (overview, "Archive pacing"). The engine (Task 20) and the test kit below skip them.
   - `enabledSources(settings, probe, platformName, all = Object.values(SOURCES)) → Adapter[]`. A source is in when `settings.sources[id]?.enabled` is `true`, or is absent and the adapter's `key` is not `'required'`. A `navigate` tier source is never in, on any platform (it makes no data calls). On `'pwa'` a `probe` tier source also needs `probe[id] === 'ok'`. A `privileged` source stays in everywhere, because in the web app it reads its daily snapshot instead (Plan 04's `itch`).
   - `probeSource(adapter, http) → Promise<'ok'|'fail'>`: no `probeUrl` gives `'ok'`. Otherwise it is `'ok'` when `http.getJson(probeUrl, {source: id, timeoutMs: 8000})` resolves, or when it rejects with a `NetError` of kind `http` and a status from 400 to 499 (the host answered with CORS, so a refused `DEMO_KEY` is not a reachability problem). Anything else is `'fail'`.
   - `runProbes(adapters, http, store, clock, platformName = 'pwa') → Promise<Object<string,'ok'|'fail'>>`: reuses `health['probe:<platformName>'] = {at, results}` while it is under 24 h old and covers every adapter id.
-  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]` on every request (so a test may change `extraRoutes` later), reads `tests/fixtures/http/<file>`, records every request as `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It takes the same route fields as `mockNet` (`file`, `body`, `json`, `status`, `headers`) plus `error: true` (throw `TypeError('Failed to fetch')`) and `hang: true` (never settle until `init.signal` aborts, then reject with an `AbortError`). It registers every `SOURCES` adapter's `rate` with `http.register`. `ctx` has every contract field: `{http, rand: mulberry32(seed), clock: fakeClock(now), cache, settings, secrets, data, platformName: 'pwa', caps, dataUrl: (f) => 'data/' + f}`, where `caps` is the PWA `caps` of Plan 01 (`privilegedFetch: false`), `secrets` is `memorySecrets(secrets)` and `data.tags` is read from `src/data/tags.json`.
+  - Test kit: `adapterCtx({settings?, secrets?, data?, seed = 42, now = Date.UTC(2026, 10, 11, 12), extraRoutes = []}) → Promise<{ctx, calls, store}>`. Its transport matches `[...extraRoutes, ...routes]` on every request (so a test may change `extraRoutes` later), reads `tests/fixtures/http/<file>`, records every request as `{url, method, headers, body}` in `calls` (headers as an object with lower-case names), and throws `TypeError('unmatched <url>')` for anything else. It takes the same route fields as `mockNet` (`file`, `body`, `json`, `status`, `headers`) plus `error: true` (throw `TypeError('Failed to fetch')`) and `hang: true` (never settle until `init.signal` aborts, then reject with an `AbortError`). It registers every `SOURCES` adapter's `rate` with `http.register`, except the `SELF_PACED` ids. `ctx` has every contract field: `{http, rand: mulberry32(seed), clock: fakeClock(now), cache, settings, secrets, data, platformName: 'pwa', caps, dataUrl: (f) => 'data/' + f}`, where `caps` is the PWA `caps` of Plan 01 (`privilegedFetch: false`), `secrets` is `memorySecrets(secrets)` and `data.tags` is read from `src/data/tags.json`.
   - `memorySecrets(seed = {}) → SecretStore` in the same kit file: an in-memory store, `get` giving `null` for a missing id.
 
 **Adapter table.** Every adapter task builds its row exactly. Rate is `{perMinute, concurrent}`. Key ids are `SecretStore` ids.
@@ -478,8 +486,9 @@ test('enabledSources applies settings, keys and the probe', () => {
   assert.deepEqual(ids(enabledSources({ sources: {} }, {}, 'android', all)), ['a', 'p', 'v']);
   assert.deepEqual(ids(enabledSources({ sources: { a: { enabled: false }, k: { enabled: true }, n: { enabled: true } } }, {}, 'pwa', all)), ['k', 'v']);
 });
-test('IDENT names the app version', () => {
+test('IDENT names the app version, and SELF_PACED the Archive ids', () => {
   assert.equal(IDENT, `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/Game-Dev-Resources)`);
+  assert.deepEqual([...SELF_PACED].sort(), ['ia', 'vault']);
 });
 test('every registered adapter has the contract shape', () => {
   for (const [id, a] of Object.entries(SOURCES)) {
@@ -612,7 +621,7 @@ git commit -m "Add the Fate pull with weights and retries"
 - Produces:
   - `similarLocal(find, candidates, k) → Find[]`: score = Jaccard overlap of tags + cosine similarity of TF-IDF vectors over `tokenize(title + ' ' + description)`, with `idf = ln((1 + N) / (1 + df)) + 1` over the candidates plus `find`. It leaves out candidates with the same normalised URL and candidates scoring 0, sorts by score (stable), and returns the top `k`.
   - `createRabbitHole({sources, ctx, seenHas, pool, accept = () => true}) → {start(find), next({ai}?) → Promise<Find|null>, trail() → Find[], climbOut(), useAi(fn|null)}`. `sources` is `Adapter[]` or `() => Adapter[]`; `pool` is an optional `() => Find[]` of cached candidates; `seenHas` is async; `accept(find) → boolean` is the engine's always-on filter, as in Fate. `useAi(fn)` sets or clears the AI hook, `fn(find) → Promise<Find[]>` (overview: Plan 02 defines it, Plan 05 sets it).
-  - `next({ai = true} = {})` tries, in order: the last trail find's own source `more(last, ctx)`; Marginalia `more(last, ctx)` when `last.kind === 'site'`, Marginalia is in `sources` and is not the last find's source; then `similarLocal(last, pool(), 10)`; then, only when a hook is set and `ai` is true, `fn(last)` (lean-back passes `ai: false` through the engine unless **Let AI refill lean-back** is on). The first candidate that is not in the trail (by normalised URL), not seen and accepted is pushed onto the trail and returned. A `more` or `fn` call that throws counts as `[]`. An empty trail gives `null`.
+  - `next({ai = true} = {})` tries, in order: the `more(last, ctx)` of the last trail find's own source, when that source is in `sources` (the pseudo-source `shared` never is); Marginalia `more(last, ctx)` when Marginalia is in `sources`, is not the last find's source, and `last.kind === 'site'` or `last.source === 'shared'` (overview: a link shared into Android goes to Marginalia whatever its kind); then `similarLocal(last, pool(), 10)`; then, only when a hook is set and `ai` is true, `fn(last)` (lean-back passes `ai: false` through the engine unless **Let AI refill lean-back** is on). The first candidate that is not in the trail (by normalised URL), not seen and accepted is pushed onto the trail and returned. A `more` or `fn` call that throws counts as `[]`. An empty trail gives `null`.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -639,6 +648,14 @@ test('next skips trail and seen finds and survives a failing source', async () =
   const start = F('Start');
   const hole = createRabbitHole({ sources: [ad('library', [new Error('down')]), ad('marginalia', [[F('Start'), F('Old'), F('B')]])], ctx: {}, seenHas: async (u) => u.includes('old.') });
   hole.start(start); assert.equal((await hole.next()).title, 'B');
+});
+test('a shared link asks Marginalia whatever its kind, and an article from a source does not', async () => {
+  const asked = []; const marginalia = { id: 'marginalia', more: async (f) => { asked.push(f.source); return [F('Neighbour', [], '', 'marginalia')]; } };
+  const page = (source) => makeFind({ source, kind: 'article', title: 'Page', url: 'https://page.example.com/', safety: 'mostly' });
+  const hole = (source) => { const h = createRabbitHole({ sources: [ad('library', []), marginalia], ctx: {}, seenHas: never, pool: () => [] }); h.start(page(source)); return h; };
+  assert.equal((await hole('shared').next()).title, 'Neighbour');
+  assert.equal(await hole('library').next(), null);
+  assert.deepEqual(asked, ['shared']);
 });
 test('climbOut empties the trail', async () => {
   const hole = createRabbitHole({ sources: [], ctx: {}, seenHas: never });
@@ -671,7 +688,7 @@ Expected: FAIL with `ERR_MODULE_NOT_FOUND`.
 - [ ] **Step 4: Run it and see it pass**
 
 Run: `node --test tests/unit/rabbit.test.js`
-Expected: PASS, 6 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1543,10 +1560,10 @@ git commit -m "Add the starter library adapter and check the registry"
 - Test: `tests/unit/engine.test.js`
 
 **Interfaces:**
-- Consumes: `createSeen`, `createHistory` (Task 2), `DEFAULT_TASTE` (Task 3), `pickNext`, `eligible` (Task 4), `enabledSources`, `SOURCES`, `runProbes`, `adapterCtx`, `memorySecrets` (Task 5), `fatePull` (Task 6), `createCollections` (Task 8), `createCache`, `normalizeUrl`, `hash64`, `domainOf`.
+- Consumes: `createSeen`, `createHistory` (Task 2), `DEFAULT_TASTE` (Task 3), `pickNext`, `eligible` (Task 4), `enabledSources`, `SOURCES`, `SELF_PACED`, `runProbes`, `adapterCtx`, `memorySecrets` (Task 5), `fatePull` (Task 6), `createCollections` (Task 8), `createCache`, `normalizeUrl`, `hash64`, `domainOf`.
 - Produces: `createEngine({store, http, clock, rand, data, platform, settings, seen?, history?, collections?, sources?, secrets?, dataUrl?}) → Promise<Engine>`. `settings` is an object or a getter for the live settings, read on every call. `seen`, `history` and `collections` are created from `store` when not passed. `sources` defaults to `Object.values(SOURCES)`. `secrets` is a `SecretStore` or a getter for the current one (default `platform.secrets`); boot passes `() => app.secrets`, so Plan 05's keyring swap reaches every adapter. `dataUrl` defaults to `(file) => 'data/' + file`.
-  - **Start.** It calls `http.register(a.id, a.rate)` once for every adapter in `sources` (Plan 04's adapters included), loads the `broken:*` keys of `health` into the dead set, and starts `runProbes(<enabled probe-tier adapters>, http, store, clock, platform.name)` in the background; until a result says `'ok'`, the web app leaves those sources out.
-  - **ctx.** One object serves every call: `{http, rand, clock, cache: createCache(store, clock), settings, secrets, data, platformName: platform.name, caps: platform.caps, dataUrl}`, where `settings` is a getter for the current settings object and `secrets` is a `SecretStore` whose four methods call the same method on the current store. `dataUrl` is only for generated snapshot files (Plan 04); the library and the tags reach adapters through `data`, which is `app.data`.
+  - **Start.** It calls `http.register(a.id, a.rate)` once for every adapter in `sources` (Plan 04's included) whose id is not in `SELF_PACED`, so `ia` and `vault` stay with Plan 04's Archive queue. It loads the `broken:*` keys of `health` into the dead set, and starts `runProbes(<enabled probe-tier adapters>, http, store, clock, platform.name)` in the background; until a result says `'ok'`, the web app leaves those sources out.
+  - **ctx.** One object serves every call: `{http, rand, clock, cache: createCache(store, clock), settings, secrets, data, platformName: platform.name, caps: platform.caps, dataUrl}`, where `settings` is a getter for the current settings object and `secrets` is a `SecretStore` whose four methods call the same method on the current store. `dataUrl` is only for generated snapshot files, which Plan 04's adapters read through `readSnapshot(ctx, file)` in `sources/index.js`; the library and the tags reach adapters through `data`, which is `app.data`.
   - **Pool.** Unseen candidates from `random(ctx)` of the enabled sources (`enabledSources(settings, probe, platform.name, sources)`), at most 50, never a find already in the pool, the queue or the prepared finds (Task 21). A *network source* is every adapter except `library` and `tier: 'snapshot'` ones. A refill starts when the pool holds fewer than 20 candidates and none is running. It runs rounds of one `random` call per enabled source, with at most 3 network calls in flight (the others start at once), adding each call's finds as soon as it resolves. It runs another round while the pool is under 20, and stops after a round that adds nothing.
   - `next({mode, ai = true, leanBack = false}) → Promise<{find, branch, why}|{empty: true, reason}>`. Calls are serialised, so two at once never return the same find. With `leanBack: true` and the Family filter on, `mixed` finds are skipped, injected ones included (they stay queued for a later call); `ai` reaches the Rabbit Hole (Task 21). Just before handing out a new find (not a history entry) it checks `await seen.has(find.url)` once more and picks again when another engine on the same store has shown it meanwhile (overview, "Several engines on one store"). It serves, in order: the history forward entry if Back was used (`branch 'history'`, why `'seen before'`); the injected queue (`branch` = its origin, why `'search result'` or `'AI find'`); then by mode: `tuned` uses `pickNext` over the pool; `fate` uses `fatePull` over the enabled `fate: true` sources (minus `safety 'mixed'` ones when `familyFilter` is on) with `settings.sources[id]?.fateWeight ?? 1` and `accept` = `eligible` with no domain cooldown (`branch 'fate'`, why `'pure random'`); `ai` serves the injected queue only. It waits only until the pool holds an eligible candidate or the refill ends; the rest of a refill runs in the background. Each find it hands out is added to `seen` and `history` and emitted as `find` with the payload `{find, branch, why}`.
   - `back() → Find|null` (it emits `find` with `{find, branch: 'history', why: 'seen before'}`) and `current() → Find|null`, both from history.
@@ -1601,10 +1618,12 @@ test('a source that answers with an error is not "unreachable"', async () => {
   assert.equal((await engine.next({ mode: 'tuned' })).find.source, 'library');
   assert.deepEqual(await engine.next({ mode: 'tuned' }), { empty: true, reason: EMPTY_REASONS.exhausted });
 });
-test('createEngine registers every adapter rate and hands adapters the contract ctx', async () => {
+test('createEngine registers every rate but the Archive ones and hands adapters the contract ctx', async () => {
   const { registered } = await engineFor({ entries: [] });
-  for (const a of Object.values(SOURCES)) assert.deepEqual(registered[a.id], a.rate, a.id);
+  for (const a of Object.values(SOURCES)) assert.deepEqual(registered[a.id], SELF_PACED.has(a.id) ? undefined : a.rate, a.id);
   assert.deepEqual(registered.github, { perMinute: 10, concurrent: 1 });
+  const archive = (await engineFor({ adapters: [fake('ia'), fake('vault'), fake('other')] })).registered;
+  assert.deepEqual([archive.ia, archive.vault, archive.other], [undefined, undefined, { perMinute: 600, concurrent: 4 }]);
   let got; let current = memorySecrets({ 'src:github': 'A' });
   const { engine } = await engineFor({ adapters: [fake('spy', { random: async (ctx) => { got = ctx; return []; } })], secrets: () => current });
   await engine.next({ mode: 'tuned' });
@@ -1849,7 +1868,7 @@ git commit -m "Add reactions with undo, Rabbit Hole, link checks and prefetch to
 - Consumes: Plan 01's `App` fields (`dataUrl` among them), `registerView`, `h`, `clear`, `announce`, `mockNet`, `gotoApp`; `createSeen`, `createHistory`, `createCollections`, `createEngine`, `EMPTY_REASONS` (Tasks 2, 8, 20); `getSource`, `domainOf`, `hash64`.
 - Produces:
   - `boot.js` adds, after Plan 01's fields and before `runFirstRun` (the interests step of Task 27 uses `app.engine`): `app.secrets = platform.secrets` (Plan 05 later puts its keyring here), `app.seen = createSeen(store)`, `app.history = createHistory(store, {max: 50})` (awaiting `ready`), `app.collections = createCollections(store, clock)`, `app.engine = await createEngine({store, http, clock, rand, data, platform, settings: () => app.getSettings(), seen, history, collections, secrets: () => app.secrets, dataUrl: app.dataUrl})`, and `app.search = async (text) => { const finds = await app.engine.search(text); return finds.length ? {finds} : {finds, note: 'No new finds for "<text>".'}; }`.
-  - `generatedImage(find) → HTMLElement`: `div.gen-image` with `aria-hidden="true"`, `data-hue` = `parseInt(hash64(domainOf(find.url)).slice(0, 8), 16) % 360` (also set as CSS `--hue` through `el.style.setProperty`), a `span.initial` with the domain's first letter in upper case, and a `span.badge` with `getSource(find.source)?.name ?? find.source`.
+  - `generatedImage(find) → HTMLElement`: `div.gen-image` with `aria-hidden="true"`, `data-hue` = `parseInt(hash64(domainOf(find.url)).slice(0, 8), 16) % 360` (also set as CSS `--hue` through `el.style.setProperty`), a `span.initial` with the domain's first letter in upper case, and a `span.badge` reading `'Shared'` for the pseudo-source `shared` (overview), else `getSource(find.source)?.name ?? find.source`.
   - `renderCard(find, {onAction, compact = false, whyLine = (f) => f.why.join(' · ')}) → HTMLElement`: `article.card` (`.compact` when compact) with an `h2` title, an `<img alt="">` for `imageUrl` (on error it is replaced by `generatedImage(find)`) or `generatedImage(find)`, `p.description` (cut to 160 characters when compact), `p.domain` = `find.meta?.displayDomain ?? domainOf(find.url)` (overview; Plan 05 sets it for redirect links), plus `' · by <author>'` when known, `p.why` = `whyLine(find)`, `p.found-by` = `'Found by <foundBy joined with ", ">'` when `foundBy` is not empty, `span.team-pick` = `'Team pick'` when `teamPick` is set (Plan 05 only fills those two fields), and `p.licence` = licence and attribution joined with `' · '`. All text goes in through `text`/`textContent`. Task 23 adds the actions.
   - `views/stumble.js`: `registerView('stumble', {title: 'Stumble', render})` and the exports `showResult(result)`, `getCurrentFind() → Find|null`, `setMode(mode)` (Task 24 fills in `setMode`). The view has a card slot, `p.empty` for empty reasons, and **Back** and **Next** buttons. Its `whyLine` is `(f) => [MODE_LABEL[mode], result.why, ...f.why].join(' · ')` with `MODE_LABEL = {tuned: 'Tuned', fate: 'Fate', ai: 'AI Search'}`. Showing a find announces `'Now showing: <title>'` politely; an empty result shows and announces its reason. On render it calls `engine.next` when a Rabbit Hole has just been started (its trail holds one find, as after **More like this** in the Feed); otherwise it shows `engine.current()` if there is one, else calls `engine.next`. **Back** with no earlier find announces `'This is the first find.'`
   - `stageLibrary(page, entries)` in `net.js`: call it before `gotoApp` (the `page` fixture of Plan 01's `test` has already called `mockNet`). It calls `mockNet(page, {overrides: [{match: /^https?:\/\/(?!localhost:4321\/)/, status: 200, body: '', headers: {'content-type': 'text/plain'}}]})`, because page routes run before context routes and the newest page route wins; mockNet adds the CORS headers. It answers `**/data/library.json` with `{v: 1, entries}`, and the same non-localhost pattern on `page.context()` with an empty `text/html` page, for popups. Every other source then fails fast without a console error (an empty body is a JSON parse error, a probe fails, a list is empty), so the library is the only source with finds.
@@ -1882,7 +1901,7 @@ test('shows a library find with a generated image and a why line', async ({ page
   await expect(card.locator('.domain')).toHaveText('example.com');
   await expect(card.locator('.why')).toHaveText('Tuned · wildcard · Starter library');
   await expect(card.locator('.gen-image')).toHaveAttribute('data-hue', String(parseInt(hash64('example.com').slice(0, 8), 16) % 360));
-  await expect(card.locator('.gen-image .initial')).toHaveText('E');
+  await expect(card.locator('.gen-image .initial')).toHaveText('E'); await expect(card.locator('.gen-image .badge')).toHaveText('Starter library');
   await expect(page.locator('#live-polite')).toHaveText('Now showing: Tiny Synth');
 });
 test('Next, Back and the end of the pool', async ({ page }) => {
@@ -1902,7 +1921,7 @@ test('card shows markup as plain text', async ({ page }) => {
   await expect(title(page)).toHaveText('<b>Bold</b>');
   await expect(page.locator('article.card b, article.card img[src="x"]')).toHaveCount(0);
 });
-test('card shows the creator, the licence, the AI badges and a display domain', async ({ page }) => {
+test('card shows the creator, the licence, the AI badges, a display domain and the Shared badge', async ({ page }) => {
   await open(page, small);
   await mount(page, { source: 'commons', kind: 'image', title: 'Old map', url: 'https://example.com/map', safety: 'mixed', author: 'Ann',
     licence: 'CC BY 4.0', attribution: 'Wikimedia Commons', foundBy: ['Scout · model-a', 'Digger · model-b'], teamPick: true });
@@ -1913,6 +1932,8 @@ test('card shows the creator, the licence, the AI badges and a display domain', 
   await expect(card.locator('.team-pick')).toHaveText('Team pick');
   await mount(page, { source: 'ai', kind: 'site', title: 'Via redirect', url: 'https://redirect.example.net/r/1', safety: 'mostly', meta: { displayDomain: 'moths.example.org' } });
   await expect(page.locator('article.card').last().locator('.domain')).toHaveText('moths.example.org');
+  await mount(page, { source: 'shared', kind: 'site', title: 'example.org', url: 'https://example.org/', safety: 'mixed' });
+  await expect(page.locator('article.card').last().locator('.gen-image .badge')).toHaveText('Shared');
 });
 ```
 
@@ -2283,7 +2304,7 @@ git commit -m "Add Saved with collections, sharing and bookmarks, and the share-
   - `registerSettingsSection({id: 'taste', label: 'Your taste', order: 10, render})`, which lets every part of the §8.1 profile be edited: a range **Familiar ↔ Strange** (0–1, step 0.05) bound to `strangeness`; one `fieldset` per `tags.json` group (legend = group label) with a range per tag (−3 to 3, step 0.5, label = tag label) bound to `tags[id]`; a `fieldset` **Sources** with a range per `SOURCES` adapter (−3 to 3, step 0.5, label = adapter name) bound to `sources[id]`; a `fieldset` **Interests** with a checkbox per `INTEREST_TAGS` tag (label = tag label), checked when the tag is in `interests` (checking applies `applyReaction(taste, null, 'interest', {tag})`; unchecking only removes it from `interests`); **Hidden topics** listing each hidden tag's label with **Show again** (removes it from `hiddenTags` and sets its weight to −2), or `'No hidden topics.'`; **Blocked sites** listing each domain with **Unblock**, or `'No blocked sites.'`. Every change calls `engine.setTaste`.
   - `INTEREST_TAGS = ['science','programming','diy','hardware','web','space','nature','art','design','photography','music','books','film','comics','history','oldweb','food','travel','education','health','retro','indie','puzzle','toy','adventure']` (25).
   - `registerFirstRunStep({id: 'interests', order: 20, render(container, app, done)})`: an `h1` `'What are you into?'` (first-run steps have no router heading), the text `'Pick a few topics. You can change them later in Settings → Your taste.'`, a checkbox per interest grouped by its `tags.json` group, and **Done**, which applies `applyReaction(taste, null, 'interest', {tag})` for each pick, calls `engine.setTaste` and then `done()`.
-  - Plan 01's specs: in `smoke.spec.js`, and in the first test of `firstrun.spec.js`, call `skipFirstRun(page)` (from `./helpers/app.js`) right after the **Continue** click, because Welcome is now followed by this step. In the second test of `firstrun.spec.js`, give the test step `b` order 25 so that it no longer ties with `interests`; that test's bare `app` has no `data`, so the interests step throws there and is passed over.
+  - Plan 01's specs: in `smoke.spec.js`, and in the first test of `firstrun.spec.js`, call `skipFirstRun(page)` (from `./helpers/app.js`) right after the **Continue** click, because Welcome is now followed by this step. The second test of `firstrun.spec.js` is left as Plan 01 wrote it: its steps (orders 12, 15 and 18) already sort before `interests` (20), and Plan 01 owns how that test gets past the steps after **Finish b**.
 
 - [ ] **Step 1: Write the failing test**
 

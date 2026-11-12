@@ -605,6 +605,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
 - `generatedImage(find)`.
 - `INTEREST_TAGS` (25 ids).
 - Unit helpers in `tests/unit/helpers/fixture-http.js`: `adapterCtx` and `engineFor`.
+- `SELF_PACED` in `sources/index.js`: `new Set(['ia', 'vault'])`, the source ids whose pacing the IA queue owns (see **Archive pacing**).
 - The e2e helper `stageLibrary(page, entries)` in `helpers/net.js`. Its `skipFirstRun` is the one in `helpers/app.js`.
 
 **`ui/components/card.js`**
@@ -709,7 +710,7 @@ Every name below is final. Plans use these exact names and signatures. "→" mar
   - A find with `embedUrl` shows a **Details on archive.org** link, a **Keyboard needed** badge on a coarse pointer, and a `div.player` slot.
   - **Play** calls `onAction('play', find, {slot})`.
   - `card.js` exports `mountPlayer(slot, find, app) → Promise<{unmount()}|null>`. `makeActionHandler`'s `play` calls it, so Archive finds play through the embed in Stumble, Feed and Saved too.
-- **Archive pacing.** No plan calls `http.register` for `ia` or `vault`, because the IA queue owns Archive pacing and backoff. Plan 02's `adapterCtx` skips those two ids.
+- **Archive pacing.** No plan calls `http.register` for `ia` or `vault`, because the IA queue owns Archive pacing and backoff. Plan 02 exports `SELF_PACED = new Set(['ia', 'vault'])` from `sources/index.js`. Both `adapterCtx` and `createEngine`'s Start registration skip every id in it. Later plans (Plan 04's adapters, Plan 07's background page) name `SELF_PACED` rather than repeating the two ids.
 - **Urgent lane.** `IaClient` methods take `{urgent: true}`, which puts a call at the front of the queue, still at 1 per second. User actions such as Play, More gems and opening a shelf use it. First-run collection validation does not.
 - **`gemWhy`.** Its first chip is the pool chip, `'Internet Archive: <collection label>'` (or `'Internet Archive'`).
 - **Placeholder data files.** The PWA build writes `{"v":1}` placeholders for `daily.json`, `itch.json`, `vault-index.json`, `webrings.json` and `neocities.json` into `dist/pwa/data/` when they are missing, so local and e2e runs never 404. The data job overwrites them.

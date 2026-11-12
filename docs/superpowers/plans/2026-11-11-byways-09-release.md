@@ -50,8 +50,8 @@
 | `Apps/Byways/tests/unit/release-workflow.test.js` | Create | Text checks on the workflow, plus a check on Plan 08's Gradle signing block |
 | `Apps/Byways/THIRD_PARTY_NOTICES.md` | Modify | Appends the source-code and bundled-code sections to Plan 06's file |
 | `Apps/Byways/PRIVACY.md` | Create | The §15.1 table and §15.2 rules, plus origin, voice, keys and analytics notes |
-| `Apps/Byways/README.md` | Modify | Replaces Plan 01's stub: what Byways is, install steps per version, one-time setup, cutting a release, local development |
-| `Apps/Byways/CHECKLIST.md` | Modify | Adds the rest of the §20 real-device checklist around Plan 07's Firefox section, with Plan 08's Android list |
+| `Apps/Byways/README.md` | Modify | Replaces Plan 01's stub, keeping the setup lines Plans 01 and 04 added: what Byways is, install steps per version, known limits, one-time setup, cutting a release, the weekly live probe, local development |
+| `Apps/Byways/CHECKLIST.md` | Modify | Adds the rest of the §20 real-device checklist around Plan 07's two extension sections, with Plan 08's Android list and the device checks Plans 05 and 06 hand over |
 | `README.md` (repo root) | Modify | A short **Apps** section that links `Apps/Byways/README.md` |
 | `Apps/Byways/tests/unit/docs.test.js` | Create | Pins the facts in the four documents |
 | `Apps/Byways/tests/e2e/release-smoke.spec.js` | Create | Visits every route and the Lab with mocked network; no page errors |

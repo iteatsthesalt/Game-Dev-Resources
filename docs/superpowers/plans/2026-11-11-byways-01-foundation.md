@@ -25,7 +25,6 @@
 - Store names: `settings, taste, collections, history, seen, cache, aiCache, usage, health, keys` in one IndexedDB database, `byways`.
 - Requests never set `credentials: 'include'`. No test touches the real network: every non-`localhost:4321` request in e2e goes through `mockNet`.
 - The `test` script globs `"tests/unit/**/*.test.js"`, because `node --test tests/unit/` fails on Node 22.23 with "Cannot find module …/tests/unit".
-- **Contract note:** the overview's working conventions place the forbidden-API check in "Plan 01, Task 2". In this plan it is `tools/check.js` (Task 8), run by `--check` (Task 9).
 - "`--check` fails if a build output is stale." Once `dist/` exists, run `npm run build` after a source change and before `npm test`.
 - "The router renders each view's `title` as the page's `<h1>`" (Task 13). A view never renders an `h1` of its own.
 - App code reports recoverable problems with `console.warn`, never `console.error`: the e2e `test` fixture fails a test on any console error or page error (Task 10).
@@ -52,6 +51,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | `src/core/util/hash.js`, `url.js`, `text.js`, `clock.js` | Pure helpers |
 | `src/core/store/db.js`, `store/cache.js` | Store over IndexedDB or memory; TTL cache |
 | `src/core/settings.js` | Defaults, load with repair, save |
+| `src/core/data.js` | The one data loader: the four `src/data` files with empty fallbacks, generated-file URLs, the `pages` Http source |
 | `src/core/net/errors.js`, `ratelimit.js`, `http.js` | `NetError`, limiter, HTTP client with retry and circuit |
 | `src/platform/web-tts.js`, `web-media.js`, `web-voice.js`, `pwa.js` | Web `Platform` pieces and SW registration |
 | `src/ui/dom.js`, `a11y.js`, `theme.js`, `toast.js` | DOM builder, live regions, access attributes, toasts |
@@ -826,7 +826,7 @@ git commit -m "Add the web platform: speech, media, wake lock and the PWA object
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces (`tools/check.js`): `APP_CSP` (the overview string), `LAB_CSP` (`APP_CSP` with `script-src 'self' 'wasm-unsafe-eval' blob:` and `worker-src 'self' blob:`), `expectedCsp(path) → string` (the overview's per-page Lab additions), `findForbidden(file, text) → string[]`, `checkHtml(file, html) → string[]`, `checkRefs(file, text, exists) → string[]`, `checkManifest(file, text) → string[]`, `checkData(name, json, {tagIds}) → string[]`, `checkPrecache(swText, outDir) → string[]`, `runChecks({srcDir, outputs, extraHtml}) → Promise<string[]>`. Every problem string starts with the file path, then `: `.
+- Produces (`tools/check.js`): `APP_CSP` (the overview string), `LAB_CSP` (`APP_CSP` with `script-src 'self' 'wasm-unsafe-eval' blob:`, `connect-src 'self' blob:` and `worker-src 'self' blob:`), `expectedCsp(path) → string` (the exact per-page strings of the overview's "Lab CSP" list; Plan 06's pages and specs import it), `findForbidden(file, text) → string[]`, `checkHtml(file, html) → string[]`, `checkRefs(file, text, exists) → string[]`, `checkManifest(file, text) → string[]`, `checkData(name, json, {tagIds}) → string[]`, `checkPrecache(swText, outDir) → string[]`, `runChecks({srcDir, outputs, extraHtml}) → Promise<string[]>`. Every problem string starts with the file path, then `: `.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -849,11 +849,13 @@ test('checkHtml wants the expected CSP and no inline code', () => {
   assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<script>1</script>'), ['x.html: inline script']);
   assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<div style="color:red"></div><style>p{}</style>'), ['x.html: inline style', 'x.html: inline style']);
 });
-test('expectedCsp adds only the per-page Lab additions', () => {
-  assert.equal(expectedCsp('dist/pwa/index.html'), APP_CSP); assert.equal(expectedCsp('dist/pwa/lab/flash.html'), LAB_CSP);
+test('expectedCsp gives each Lab page its exact CSP', () => {
+  assert.equal(LAB_CSP, "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'");
+  assert.equal(expectedCsp('dist/pwa/index.html'), APP_CSP);
+  for (const f of ['lab/dos.html', 'dist/pwa/lab/pc.html', 'dist/pwa/lab/flash.html']) assert.equal(expectedCsp(f), LAB_CSP, f);
   assert.equal(expectedCsp('lab/index.html'), LAB_CSP.replace('frame-src ', "frame-src 'self' "));
-  for (const f of ['lab/dos.html', 'shells/android/app/src/main/assets/lab/lab/console.html'])
-    assert.equal(expectedCsp(f), LAB_CSP.replace('http://127.0.0.1:*;', 'http://127.0.0.1:* blob:;'), f);
+  assert.equal(expectedCsp('shells/android/app/src/main/assets/lab/lab/console.html'),
+    LAB_CSP.replace("style-src 'self';", "style-src 'self'; style-src-attr 'unsafe-inline';"));
 });
 test('checkRefs reports imports and links that do not resolve', () => {
   const have = new Set(['/out/ui/a.js', '/out/index.html', '/out/ui/styles/app.css']); const exists = p => have.has(p);
@@ -895,7 +897,7 @@ Expected: FAIL with `Cannot find module` for `tools/check.js`.
 
 - [ ] **Step 3: Implement `tools/check.js`**
 
-Forbidden patterns: `/\binnerHTML\b/`, `/\bouterHTML\s*=/`, `/\binsertAdjacentHTML\b/`, `/\bdocument\.write\b/`, `/\beval\(/`, `/\bnew Function\b/`, `/<script[^>]+src=["']https?:/i`, reported as `<file>: forbidden <name>`. `checkHtml` reports `<file>: wrong CSP` when the meta's content is not `expectedCsp(file)`. A page is a Lab page when its parent folder is named `lab` (`dist/pwa/lab/` and Android's `assets/lab/lab/`). `expectedCsp` gives `APP_CSP` for other pages; for Lab pages it gives `LAB_CSP`, except that `index.html` adds `'self'` at the start of `frame-src`, and `dos.html` and `console.html` add `blob:` at the end of `connect-src`. If Plan 06 finds that Ruffle needs `style-src 'unsafe-inline'`, it adds that case for `flash.html` here. A `<script>` with no `src` is inline. A `style=` attribute or a `<style>` tag is inline style. Relative refs are values that do not start with a scheme (`/^[a-z][a-z0-9+.-]*:/i`), `//`, `#` or `/`. Strip `?` and `#` parts, and resolve a value ending in `/` to its `index.html`. JS refs are `from '…'`, bare `import '…'` and `import('…')` string literals starting with `./` or `../`. `checkManifest` checks `start_url` and `scope` equal `./` only for `.webmanifest` files. `checkData` checks `v === 1`, tag ids match `/^[a-z0-9]+(-[a-z0-9]+)*$/` and are unique, library ids match `/^lib-\d{4}$/` with http(s) urls, `kind` in `site|game|toy|tool|article` and `added` as `YYYY-MM-DD`, vault ids start with `ia:` with a numeric `year`, and geocities urls are http(s). `checkPrecache` reads the `BUILD_ID` and `PRECACHE` literals, treats `./` as `./index.html`, and sums the sizes of the listed files against 2 × 1024 × 1024. `runChecks` walks each output folder, skipping any `vendor` segment. It runs `findForbidden` and `checkRefs` on `.js` and `.html`, `checkHtml` on `.html` (and on each `extraHtml` path), `checkManifest` on `*.webmanifest` and `manifest*.json`, `checkPrecache` on each output's `sw.js`, and `checkData` on every `srcDir/data/*.json` (passing `tagIds` from `tags.json`).
+Forbidden patterns: `/\binnerHTML\b/`, `/\bouterHTML\s*=/`, `/\binsertAdjacentHTML\b/`, `/\bdocument\.write\b/`, `/\beval\(/`, `/\bnew Function\b/`, `/<script[^>]+src=["']https?:/i`, reported as `<file>: forbidden <name>`. `checkHtml` reports `<file>: wrong CSP` when the meta's content is not `expectedCsp(file)`. A page is a Lab page when its parent folder is named `lab` (`dist/pwa/lab/` and Android's `assets/lab/lab/`). `expectedCsp` gives `APP_CSP` for other pages; for Lab pages it gives `LAB_CSP`, except that `index.html` adds `'self'` at the start of `frame-src` (it frames its runner pages), and `console.html` adds the directive `style-src-attr 'unsafe-inline'` right after `style-src 'self'` (EmulatorJS 4.2.3 sets style attributes). Every Lab page keeps `LAB_CSP`'s `connect-src 'self' blob:`, with no `https:` and no localhost, so if a vendored file is ever missing, EmulatorJS's CDN fallback fails closed instead of loading remote code. If Plan 06 finds that Ruffle needs `style-src 'unsafe-inline'`, it adds that case for `flash.html` here. A `<script>` with no `src` is inline. A `style=` attribute or a `<style>` tag is inline style. Relative refs are values that do not start with a scheme (`/^[a-z][a-z0-9+.-]*:/i`), `//`, `#` or `/`. Strip `?` and `#` parts, and resolve a value ending in `/` to its `index.html`. JS refs are `from '…'`, bare `import '…'` and `import('…')` string literals starting with `./` or `../`. `checkManifest` checks `start_url` and `scope` equal `./` only for `.webmanifest` files. `checkData` checks `v === 1`, tag ids match `/^[a-z0-9]+(-[a-z0-9]+)*$/` and are unique, library ids match `/^lib-\d{4}$/` with http(s) urls, `kind` in `site|game|toy|tool|article` and `added` as `YYYY-MM-DD`, vault ids start with `ia:` with a numeric `year`, and geocities urls are http(s). `checkPrecache` reads the `BUILD_ID` and `PRECACHE` literals, treats `./` as `./index.html`, and sums the sizes of the listed files against 2 × 1024 × 1024. `runChecks` walks each output folder, skipping any `vendor` segment. It runs `findForbidden` and `checkRefs` on `.js` and `.html`, `checkHtml` on `.html` (and on each `extraHtml` path), `checkManifest` on `*.webmanifest` and `manifest*.json`, `checkPrecache` on each output's `sw.js`, and `checkData` on every `srcDir/data/*.json` (passing `tagIds` from `tags.json`).
 
 - [ ] **Step 4: Run it and see it pass**
 
@@ -1088,7 +1090,7 @@ git commit -m "Add the PWA shell, base styles, icons and the build with its chec
 - Consumes: the built `dist/pwa/` (Task 9); `toPlainText` (Task 2), loaded in the page.
 - Produces:
   - `tools/serve.js`: `createServer({root, base}) → http.Server`, plus a CLI taking `--root`, `--base` and `--port`.
-  - `helpers/net.js`: `mockNet(page, {overrides} = {}) → Promise<void>`, `unmocked(page) → string[]`, and `pageProblems(page, {ignore = []} = {}) → string[]`: `'console: <text>'` for every console error and `'pageerror: <message>'` for every page error, minus those an `ignore` RegExp matches. Also `test` and `expect`: `@playwright/test`'s `test` extended with the option fixture `ignoreProblems: RegExp[]` (default `[]`, set with `test.use({ignoreProblems: [...]})`) and a `page` fixture that calls `mockNet(page)` first and, after the test, expects `unmocked(page)` and `pageProblems(page, {ignore: ignoreProblems})` to be `[]`. Later specs import `test` and `expect` from here. A route or override entry is `{match: RegExp, file?: string, body?: string, json?: any, status?: number, headers?: object}`, where `file` is relative to `tests/fixtures/http/`.
+  - `helpers/net.js`: `mockNet(page, {overrides} = {}) → Promise<void>`, `unmocked(page) → string[]`, and `pageProblems(page, {ignore = []} = {}) → string[]`: `'console: <text> (<url>)'` for every console error, where `<url>` is the message's source URL and ` (<url>)` is left out when it has none, and `'pageerror: <message>'` for every page error, minus those an `ignore` RegExp matches. The URL lets an ignore pattern name a file, for example a vendored file whose 404 is harmless. Plan 07 adds the `BrowserContext` form. Also `test` and `expect`: `@playwright/test`'s `test` extended with the option fixture `ignoreProblems: RegExp[]` (default `[]`, set with `test.use({ignoreProblems: [...]})`) and a `page` fixture that calls `mockNet(page)` first and, after the test, expects `unmocked(page)` and `pageProblems(page, {ignore: ignoreProblems})` to be `[]`. Later specs import `test` and `expect` from here. A route or override entry is `{match: RegExp, file?: string, body?: string, json?: any, status?: number, headers?: object}`, where `file` is relative to `tests/fixtures/http/`.
   - `helpers/fakes.js`: `installFakeSpeech(page) → Promise<void>`, with these window hooks for specs: `__say(text, final = true)`, `__voiceError(code)`, `__recognizers`, `__spoken` and `__wake = {requests, releases}`. Plan 03 adds options and hooks to this function and renames none of these.
   - `helpers/axe.js`: `expectNoSeriousA11y(page, {exclude = []} = {}) → Promise<void>`.
   - Service workers are blocked in every spec unless it sets `test.use({ serviceWorkers: 'allow' })`. While blocked, `navigator.serviceWorker.register` resolves to `undefined` and `navigator.serviceWorker.ready` never settles. While allowed, `page.route` does not see the requests a worker makes.
@@ -1163,6 +1165,10 @@ base('overrides win over routes.js', async ({ page }) => {
   await page.goto('./');
   expect(await page.evaluate(() => fetch('https://example.test/ping').then(r => r.json()))).toEqual({ pong: 'override' });
 });
+base('mockNet lets a request that sends a key through CORS', async ({ page }) => {
+  await mockNet(page); await page.goto('./');
+  expect(await page.evaluate(() => fetch('https://example.test/ping', { headers: { Authorization: 'Bearer x' } }).then(r => r.json()))).toEqual({ pong: true });
+});
 base('pageProblems catches CSP violations', async ({ page }) => {
   await mockNet(page); await page.goto('./');
   await page.evaluate(() => document.body.setAttribute('style', 'color: red'));
@@ -1173,6 +1179,13 @@ base('pageProblems lists console errors and page errors unless ignored', async (
   await page.evaluate(() => { console.error('boom'); setTimeout(() => { throw new Error('bang'); }); });
   await expect.poll(() => pageProblems(page)).toEqual(['console: boom', 'pageerror: bang']);
   expect(pageProblems(page, { ignore: [/boom/, /bang/] })).toEqual([]);
+});
+base('pageProblems gives the source URL, so an ignore pattern can name a file', async ({ page }) => {
+  await mockNet(page); await page.goto('./');
+  expect(await page.evaluate(() => fetch('no-such-file.json').then(r => r.status))).toBe(404);
+  await expect.poll(() => pageProblems(page)).toEqual([
+    expect.stringMatching(/^console: Failed to load resource: .+ \(http:\/\/localhost:4321\/Game-Dev-Resources\/byways\/no-such-file\.json\)$/)]);
+  expect(pageProblems(page, { ignore: [/no-such-file\.json/] })).toEqual([]);
 });
 base('installFakeSpeech drives recognition, records speech and fakes the wake lock', async ({ page }) => {
   await mockNet(page); await installFakeSpeech(page); await page.goto('./');
@@ -1246,7 +1259,7 @@ Expected: FAIL with `Cannot find module` for `./helpers/net.js`.
 
 - [ ] **Step 8: Implement the helpers**
 
-`net.js`: per page, keep `{unmocked: [], problems: []}` in a `WeakMap`. The first `mockNet` call adds a `console` listener (push `console: <text>` for every message of type `error`; Chromium reports CSP violations and failed loads this way) and a `pageerror` listener (push `pageerror: <message>`). It also adds a `page.route` for every http(s) URL whose host is not `localhost:4321`: fulfil from the first matching `tests/fixtures/routes.js` entry, or else record the URL and `route.abort('blockedbyclient')`. A call with `overrides` adds another route that fulfils a matching override or calls `route.fallback()`. Playwright runs the newest route first. Fulfil `OPTIONS` with 204. Every fulfilled response gets `access-control-allow-origin: *`, `access-control-allow-headers: *` and `access-control-allow-methods: *`, because the browser still applies CORS to mocked cross-origin responses. The content type comes from the file extension (`.json` `application/json`, `.xml` `application/xml`, `.html` `text/html`, `.txt` `text/plain`, otherwise `application/octet-stream`) or `application/json` for `json`. Entry `headers` override all of these. `pageProblems` filters the page's list through `ignore`. `test` is `base.extend({ ignoreProblems: [[], { option: true }], page })`, where the `page` fixture runs `mockNet(page)`, hands the page to the test, then expects `unmocked(page)` and `pageProblems(page, {ignore: ignoreProblems})` to equal `[]`.
+`net.js`: per page, keep `{unmocked: [], problems: []}` in a `WeakMap`. The first `mockNet` call adds a `console` listener (for every message of type `error`, push `console: <msg.text()> (<msg.location().url>)`, leaving out ` (<url>)` when the URL is empty; Chromium reports CSP violations and failed loads this way, and a failed load's URL is the file that failed) and a `pageerror` listener (push `pageerror: <message>`). Code run through `page.evaluate` has no source URL, so the harness's `console.error('boom')` gives plain `console: boom`. It also adds a `page.route` for every http(s) URL whose host is not `localhost:4321`: fulfil from the first matching `tests/fixtures/routes.js` entry, or else record the URL and `route.abort('blockedbyclient')`. A call with `overrides` adds another route that fulfils a matching override or calls `route.fallback()`. Playwright runs the newest route first. Every fulfilled response gets `access-control-allow-origin: *`, because the browser still applies CORS to mocked cross-origin responses. An `OPTIONS` request is fulfilled with 204, `access-control-allow-methods: *`, and `access-control-allow-headers` set to the request's `access-control-request-headers` (or `*` when it sends none), because `*` does not cover `Authorization` and Plan 05's tests send keys. In Chromium, Playwright 1.63.0 answers intercepted CORS preflights itself and echoes the same header, so this branch covers any `OPTIONS` that still reaches the route; the harness test "mockNet lets a request that sends a key through CORS" pins the outcome. The content type comes from the file extension (`.json` `application/json`, `.xml` `application/xml`, `.html` `text/html`, `.txt` `text/plain`, otherwise `application/octet-stream`) or `application/json` for `json`. Entry `headers` override all of these. `pageProblems` filters the page's list through `ignore`. `test` is `base.extend({ ignoreProblems: [[], { option: true }], page })`, where the `page` fixture runs `mockNet(page)`, hands the page to the test, then expects `unmocked(page)` and `pageProblems(page, {ignore: ignoreProblems})` to equal `[]`.
 
 `routes.js`: `export default [{ match: /^https:\/\/example\.test\/ping$/, file: 'ping.json' }];`. Later plans append entries.
 
@@ -1263,7 +1276,7 @@ Plan 03 adds its options (such as the on-device availability methods) to this sa
 - [ ] **Step 9: Run them and see them pass**
 
 Run: `npx playwright test -c tests/e2e/playwright.config.js tests/e2e/harness.spec.js tests/e2e/basics.spec.js`
-Expected: PASS, 12 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 10: Commit**
 

@@ -14,6 +14,7 @@
 
 - Everything in the overview's "Global constraints (every plan)" and "Working conventions" applies. Commands run in `Apps/Byways/`.
 - Archive queue: "plain anonymous GETs, with no custom headers and `credentials: 'omit'`; 1 request per second and 2 at a time; `Retry-After` honoured; after two 429s in a row, a 5-minute pause." Searches are cached for 24 h and metadata for 7 days.
+- Urgent lane (contract): user actions (**Play**, **More gems**) call the Archive with `{urgent: true}`, which puts the call at the front of the queue, still at 1 per second. Background calls (Stumble and Fate pulls, first-run collection validation, the data job) do not.
 - Archive search uses `advancedsearch.php` only. Random offsets stay below `min(numFound, 10000)`.
 - "Ratings only add a bonus. They never filter a game out."
 - The only frame is `<iframe src="https://archive.org/embed/<id>" allow="fullscreen; autoplay; gamepad" allowfullscreen>`, mounted only after **Play**. "A game only starts after **Play**, never automatically. Lean-back pauses while it runs."
@@ -22,13 +23,14 @@
 - Archive thumbnails load only through `<img src="https://archive.org/services/img/<id>">`, never through `fetch` or canvas.
 - `feature_films` is `mixed`, so while the Family filter is on the `ia` adapter leaves it out of every call (Fate and lean-back included).
 - Daily Fate: "The day rolls over at UTC midnight. The view shows the next rollover in local time." The backup is labelled **Daily Fate (backup pick)**. "**Share today's Fate** gives spoiler-free text with a link to `#/daily/YYYY-MM-DD`. Streaks are gentle and never nag."
-- Data job: "it sends a descriptive User-Agent with no personal data, and makes light, low-volume requests." "If a data step fails, it keeps the last good file from the live site." Schedule: 00:07 UTC (`'7 0 * * *'`).
+- Data job: "it sends a descriptive User-Agent with no personal data, and makes light, low-volume requests." "If a data step fails, it keeps the last good file from the live site." With no live copy, it writes that file's valid empty shape: the job ALWAYS writes every generated file (daily, itch, vault-index, linkcheck, webrings, neocities), so the app never requests a missing file (contract). Schedule: 00:07 UTC (`'7 0 * * *'`).
 - Link check: "A link that fails two days in a row is left out of the next build, and its entry is flagged for review."
 - Old web: "Each is opened through `archive.org/wayback/available?url=…&timestamp=2009`, and an empty result counts as a miss."
 - Every test mocks the network. Live checks run only in `byways-probe.yml`.
-- Generated data files (`daily.json`, `itch.json`, `vault-index.json`, `webrings.json`, `neocities.json`) are read only at `app.dataUrl(<file>)`: `data/<file>` in the web app, `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>` in the extension and Android (contract).
+- Generated data files resolve through Plan 01's `dataUrlFor(platformName, file)` in `src/core/data.js`: `data/<file>` in the web app, `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/<file>` in the extension and Android. The snapshots (`itch.json`, `vault-index.json`, `webrings.json`, `neocities.json`) are read only through `readSnapshot(ctx, file)` (Task 4), which uses `ctx.dataUrl`, and `daily.json` only through `app.dataUrl` (contract). This plan defines no second `dataUrlFor` and registers no `pages` source; Plan 01's `loadAppData` does that.
 - Sub-collections (§10.1) are not discovered at runtime. The Vault queries its explicit list, and the weekly probe (Task 15) reports each parent's sub-collections so they can be added to `VAULT_COLLECTIONS` by hand.
 - Views and `card.js` touch `document`, `window` and `matchMedia` only inside functions, because Node unit tests import `boot.js`, which imports every view.
+- Views render no `h1` of their own: the router's `h1` shows the view's `title`. Daily Fate changes that heading's text in place through `container.closest('.view').querySelector('h1').textContent` (contract UI conventions).
 
 ## Review Focus
 

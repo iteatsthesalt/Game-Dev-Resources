@@ -29,7 +29,8 @@
 - "Every view is checked with axe-core in end-to-end tests. Any serious or critical issue fails the build." (§6.7)
 - `src/core/**` never touches `window`, `document` or `chrome`; timers come from the injected clock.
 - "Android browsers default to tap-to-talk" (§4). "Hold **V** (or the headset button) to talk in push-to-talk mode." (§6.3)
-- Overview values this plan uses as they are: `theme` `system|light|dark|high-contrast`, `font` `system|atkinson`, `motion` `system|reduced|full`; voice mode "'auto' = always on for on-device/native-13+, push elsewhere"; a cloud-only recogniser before opt-in reports `{kind:'none', vendor, reason:'cloud-only'}`, and "the UI shows the vendor-named opt-in for exactly this case".
+- Overview values this plan uses as they are: `theme` `system|light|dark|high-contrast`, `font` `system|atkinson`, `motion` `system|reduced|full`; voice mode `'auto'` resolves to "'always' for web-local, for web-cloud after opt-in on browsers that are not Android, and for native continuous (Android 13+); 'push' for Android browsers (each restart beeps) and for native Android 24–32" (§6.2); a cloud-only recogniser before opt-in reports `{kind:'none', vendor, reason:'cloud-only'}`, and "the UI shows the vendor-named opt-in for exactly this case".
+- Lean-back's own pulls call `engine.next({mode, ai: settings.leanBackAI, leanBack: true})`. "With `ai: false`, `rabbit.next` skips the `useAi` hook", and "with `leanBack: true` and the Family filter on, `mixed` finds are skipped, including injected ones" (overview, "Engine switches for lean-back"; §7.4).
 - "**Recap.** It appears when a session ends (Stop, or the session length runs out), and only if something was saved in that session." (overview)
 
 ## Review Focus
@@ -58,7 +59,7 @@
 | `src/ui/handsfree-ui.js` | `installHandsFreeUi`: the one `app.handsFree`, the bar in `#hf-bar`, the command dispatcher, help card, search dialog, recap, captions, the first-run step, `describeEngine` |
 | `src/ui/views/settings/voice.js` | The Voice settings section, including the cloud opt-in screen |
 | `src/ui/views/settings/access.js` | The Accessibility settings section |
-| `src/ui/views/stumble.js` | Modify: tell hands-free when a find is shown, opened or read |
+| `src/ui/views/stumble.js` | Modify: tell hands-free when a find is shown or opened |
 | `src/ui/boot.js`, `src/ui/views/index.js` | Modify: call `installHandsFreeUi(app)` before first run; import the two settings sections |
 | `src/ui/styles/app.css` | Modify: bar styles and `@font-face` |
 | `src/assets/fonts/` | Vendored Atkinson Hyperlegible woff2 (400, 700) and `OFL.txt` |
@@ -487,14 +488,14 @@ git commit -m "Add read-aloud with sentence-level pause"
 - Test: `tests/unit/handsfree.test.js`
 
 **Interfaces:**
-- Consumes: `cardScript(find, why)` (Task 3); the `createListener` and `createReader` objects (Tasks 2–3); `Engine.next({mode})`, `Engine.back()`, `Engine.current()`, `Engine.rabbit.trail()` (Plan 02); `fakeClock`.
+- Consumes: `cardScript(find, why)` (Task 3); the `createListener` and `createReader` objects (Tasks 2–3); `Engine.next({mode, ai = true, leanBack = false}) → Promise<{find, branch, why}|{empty:true, reason}>`, `Engine.back() → Find|null` and `Engine.current() → Find|null` (Plan 02); `fakeClock`.
 - Produces:
   - `createHandsFree({engine, listener = null, reader, clock, getSettings, ui, leanBack = true, getListenMode = () => 'always', prepare, dispatch}) → HandsFree`:
     - `leanBack: false` (the extension side panel, §6.5) gives voice commands and read-aloud but nothing that advances by itself (Task 5);
     - `getListenMode() → 'always'|'push'|'off'`;
     - `prepare() → Promise<listener|null>` (a `createListener` object), optional: `start()` awaits it first and uses the listener it returns in place of the current one, stopping the old one and removing its handlers. A rejected `prepare()` counts as `null`;
-    - `dispatch(id, arg)`, optional: the listener's `command` events go to it instead of to `command(id, arg)`, so the UI has one dispatch point.
-  - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find, why = null), hold(reason), release(reason), talk(on), setMuted(on), get muted, get state}`, with states `'idle'|'active'|'paused'|'suspended'`.
+    - `dispatch(id, arg, {source})`, optional: the listener's `command` events go to `dispatch(id, arg, {source: 'voice'})` instead of to `command(id, arg)`, so the UI has one dispatch point. The overview's sources are `'voice' | 'key' | 'button' | 'media' | 'dialog'`; Task 9 passes the other four.
+  - `HandsFree = {start() → Promise<void>, pause(), resume(), stop(), suspend(), wake() → Promise<boolean>, input(), command(id, arg?) → Promise<void>, showing(find, why = null), hold(reason), release(reason), talk(on), setMuted(on), get muted, get listening → boolean, setListening(on) → Promise<boolean>, get state}`, with states `'idle'|'active'|'paused'|'suspended'`. `arg` is the search text for `search` and a `Find` for `read` (a card's **Read it** passes its own find). Plan 07's Alt+Shift+V uses `listening` and `setListening`.
   - `ui` is the contract's `{show(result), announce(text, opts), setState(state), countdown(secondsLeft|null), openHelp(), navigate(route), search(text)}` plus `act(id) → Promise<void>` (press the visible card button for that command) and `recap(shown: Find[])`.
   - `effectiveListenMode(voiceMode, status: VoiceStatus) → 'always'|'push'|'off'`.
   - `clampDwell(value) → number`: `Number(value)` for a number or a non-empty string, rounded to an integer in 5–300; anything else, or a non-finite result, gives 20.

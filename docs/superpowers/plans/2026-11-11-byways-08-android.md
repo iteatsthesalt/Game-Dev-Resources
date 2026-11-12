@@ -4,7 +4,7 @@
 
 **Goal:** Wrap the Byways web app in a sideloadable Android app with native voice, speech, media keys, networking, share-in, an in-app site view and the Lab on its own origin.
 
-**Architecture:** One Kotlin Activity hosts a main WebView that serves the web build from APK assets through `WebViewAssetLoader`, plus a second bridge-less WebView for sites. The web layer talks to Kotlin only through `addWebMessageListener` with a small JSON codec, and `src/platform/android.js` turns that bridge into the contract's `Platform` object. Logic that can be tested without a device (URL policy, HTTP executor, codec, error map, voice probe table, TTS voice choice, link policy, update compare) lives in plain Kotlin classes with JVM tests that run in GitHub Actions.
+**Architecture:** One Kotlin Activity hosts a main WebView that serves the web build from APK assets through `WebViewAssetLoader`, plus a second bridge-less WebView for sites. The web layer talks to Kotlin only through `addWebMessageListener` with a small JSON codec, and `src/platform/android.js` turns that bridge into the contract's `Platform` object. Logic that can be tested without a device (URL policy, HTTP executor, codec, error map, voice probe table, TTS voice choice, headset press length, link policy, update compare) lives in plain Kotlin classes with JVM tests that run in GitHub Actions.
 
 **Tech Stack:** Kotlin (AGP 9.3.2 built-in Kotlin), Gradle 9.7.1 (no wrapper), `androidx.webkit:webkit:1.18.0`, `androidx.activity:activity-ktx:1.11.0`, JUnit 4.13.2, `org.json:json:20240303` (tests only), JavaScript ES2022 modules, `node:test`, `@playwright/test@1.63.0`.
 
@@ -58,9 +58,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 |---|---|
 | `tools/build.js` (modify) | `--target android`: copy the app into `shells/android/app/src/main/assets/www/` and write its `index.html` and `android-boot.js`. Plan 06's `labOutputs('android')` already fills `…/assets/lab/` |
 | `src/platform/android.js` (create) | `createBridgeClient`, `createAndroidPlatform` (with `requestOrigins`, `identity`, `app`, `attach`), `extractSharedLink` |
-| `src/ui/boot.js` (modify) | call `platform.attach?.(app)` once the app is built |
-| `src/ui/components/card.js` (modify) | **Open** announces the site view on Android; the **⋯** menu closes on `byways:back` |
-| `src/ui/handsfree-ui.js` (modify) | its dialogs close on `byways:back` |
+| `src/ui/components/card.js` (modify) | **Open** announces the site view on Android |
 | `src/ui/views/settings/about.js` (modify) | **Check for updates** and **Download update** when `platform.app` exists |
 | `src/ui/views/settings/access.js` (modify) | the **Go straight to the site** checkbox in its `Lean-back` fieldset when `platform.caps.inAppSiteView` is true |
 | `src/ui/views/settings/voice.js` (modify) | the Android line that says why voice is limited |
@@ -82,7 +80,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | `…/byways/FetchPolicy.kt` | pure: URL policy |
 | `…/byways/NativeFetch.kt` | pure JVM: HTTP executor over `HttpURLConnection` |
 | `…/byways/LinkPolicy.kt` | pure: what each WebView does with a URL |
-| `…/byways/SpeechErrors.kt`, `VoiceProbe.kt`, `TtsChoice.kt` | pure: native error code → `VoiceErrorCode`; the voice probe table; which TTS voice to use |
+| `…/byways/SpeechErrors.kt`, `VoiceProbe.kt`, `TtsChoice.kt`, `HoldToTalk.kt` | pure: native error code → `VoiceErrorCode`; the voice probe table; which TTS voice to use; a short headset press versus a hold |
 | `…/byways/SpeechBridge.kt`, `TtsBridge.kt`, `MediaBridge.kt`, `ShareBridge.kt`, `FilesBridge.kt` | native channel handlers |
 | `…/byways/UpdateCheck.kt` | pure: release parsing and version compare |
 | `app/src/test/kotlin/io/github/iteatsthesalt/byways/*Test.kt` | JVM tests |
@@ -99,7 +97,7 @@ Web → native request: `{"id":"<string>","ch":"<channel>","op":"<op>","args":{�
 | `fetch` | `request` {url, method, headers, body, redirect} → `{status, statusText, headers, body, url}` (`redirect` is `'follow'` or `'error'`); `abort` {fetchId} → `true`; `approve` {host} → `boolean` (host without IPv6 brackets) | — |
 | `voice` | `probe` {allowCloud} → `VoiceStatus`; `install` {} → `boolean`; `start` {lang, phrases, allowCloud} → `true`; `stop` {} → `true` | `result` {text, final}; `state` {listening}; `error` {code} |
 | `tts` | `speak` {text, voiceURI, rate, volume, lang} → `true` at the end of the utterance; `cancel` {} → `true`; `voices` {} → `[{uri, name, lang, local}]` | — |
-| `media` | `setActive` {on} → `true` | `next`, `previous`, `playPause` (data `{}`) |
+| `media` | `setActive` {on} → `true`; `holdToTalk` {on} → `true` | `next`, `previous`, `playPause` (data `{}`); `talk` {on} |
 | `share` | `send` {title, text, url} → `'shared'` | — |
 | `files` | `save` {name, mime, base64} or {name, mime, saveId} → `'saved'\|'cancelled'`; `append` {saveId, base64} → `true` | — |
 | `back` | `state` {canHandle} → `true`; `result` {token, handled} → `true` | `request` {token} |
