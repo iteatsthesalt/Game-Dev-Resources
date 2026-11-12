@@ -72,7 +72,7 @@ All paths are under `Apps/Byways/` unless they start with `.github/`.
 | File | Responsibility |
 |---|---|
 | `settings.gradle.kts`, `build.gradle.kts`, `gradle.properties`, `app/build.gradle.kts`, `app/proguard-rules.pro` | build setup, versions, signing |
-| `app/src/main/AndroidManifest.xml`, `app/src/main/res/xml/network_security_config.xml`, `app/src/main/res/values/strings.xml`, `app/src/main/res/values/themes.xml`, `app/src/main/res/drawable/ic_launcher.xml` | manifest and resources |
+| `app/src/main/AndroidManifest.xml`, `app/src/main/res/xml/network_security_config.xml`, `app/src/main/res/values/strings.xml`, `app/src/main/res/values/themes.xml`, `app/src/main/res/values-night/themes.xml`, `app/src/main/res/drawable/ic_launcher.xml` | manifest and resources |
 | `…/byways/MainActivity.kt` | WebView setup, asset loaders, system behaviour, consent, share-in, lifecycle |
 | `…/byways/SiteView.kt` | the second WebView and its toolbar |
 | `…/byways/Bridge.kt` | `Bridge` (main listener and channel routing) and `LabBridge` |
@@ -167,7 +167,7 @@ git commit -m "Add the Android build target"
 
 **Files:**
 - Create: `shells/android/settings.gradle.kts`, `shells/android/build.gradle.kts`, `shells/android/gradle.properties`, `shells/android/app/build.gradle.kts`, `shells/android/app/proguard-rules.pro`
-- Create: `shells/android/app/src/main/AndroidManifest.xml`, `…/res/xml/network_security_config.xml`, `…/res/values/strings.xml`, `…/res/values/themes.xml`, `…/res/drawable/ic_launcher.xml`
+- Create: `shells/android/app/src/main/AndroidManifest.xml`, `…/res/xml/network_security_config.xml`, `…/res/values/strings.xml`, `…/res/values/themes.xml`, `…/res/values-night/themes.xml`, `…/res/drawable/ic_launcher.xml`
 - Create: `…/byways/MainActivity.kt`
 - Modify: `.gitignore`, `.github/workflows/byways.yml`
 - Test: `tests/unit/android-shell.test.js`
@@ -225,6 +225,12 @@ test('the main WebView settings follow §13.4', () => {
 test('network config allows cleartext', () => {
   assert.match(R(`${S}/app/src/main/res/xml/network_security_config.xml`), /cleartextTrafficPermitted="true"/);
 });
+test('the theme is a day/night pair, so the WebView follows the phone', () => {
+  const day = R(`${S}/app/src/main/res/values/themes.xml`), night = R(`${S}/app/src/main/res/values-night/themes.xml`);
+  assert.match(day, /name="Theme\.Byways" parent="android:Theme\.DeviceDefault\.Light\.NoActionBar"/);
+  assert.match(night, /name="Theme\.Byways" parent="android:Theme\.DeviceDefault\.NoActionBar"/);
+  assert.doesNotMatch(day, /DayNight/); assert.doesNotMatch(night, /Light/);
+});
 test('CI builds and tests the Android app', () => {
   const y = R('../../.github/workflows/byways.yml');
   for (const s of ['node tools/build.js --target android', "java-version: '21'", 'gradle-version: 9.7.1',
@@ -254,7 +260,7 @@ Expected: FAIL with `ENOENT` on `shells/android/app/build.gradle.kts`.
 
 - Manifest: `<uses-permission>` for `INTERNET` and `RECORD_AUDIO`; `<queries>` with one `<intent>` for action `android.speech.RecognitionService` and one for `android.intent.action.TTS_SERVICE`; `<application android:label="@string/app_name" android:icon="@drawable/ic_launcher" android:theme="@style/Theme.Byways" android:networkSecurityConfig="@xml/network_security_config" android:allowBackup="false">`; one `<activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTask" android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|fontScale|locale|layoutDirection|uiMode">` with a `MAIN`/`LAUNCHER` filter and a `SEND` filter (`DEFAULT` category, `android:mimeType="text/plain"`).
 - `network_security_config.xml`: `<network-security-config><base-config cleartextTrafficPermitted="true" /></network-security-config>`.
-- `strings.xml`: `app_name` = `Byways`. `themes.xml`: `Theme.Byways` with parent `android:Theme.DeviceDefault.NoActionBar` (a day/night theme, so the WebView's `prefers-color-scheme` follows the phone's dark mode and Theme **Match my device** works; Plan 09's checklist confirms it on a device). `ic_launcher.xml`: a 108 dp vector, a single path on a solid background.
+- `strings.xml`: `app_name` = `Byways`. `values/themes.xml`: `Theme.Byways` with parent `android:Theme.DeviceDefault.Light.NoActionBar`; `values-night/themes.xml`: `Theme.Byways` with parent `android:Theme.DeviceDefault.NoActionBar`. Together they are a day/night theme on every API level from 24 (`Theme.DeviceDefault.NoActionBar` alone is a dark theme, and the framework's `DayNight` has no `NoActionBar` form), so with targetSdk 36 the WebView's `prefers-color-scheme` follows the phone's dark mode and Theme **Match my device** works; Plan 09's checklist confirms it on a device. `ic_launcher.xml`: a 108 dp vector, a single path on a solid background.
 
 - [ ] **Step 5: Write the first `MainActivity`**
 
@@ -273,7 +279,7 @@ Expected: FAIL with `ENOENT` on `shells/android/app/build.gradle.kts`.
 - [ ] **Step 7: Run the tests**
 
 Run: `node --test tests/unit/android-shell.test.js`
-Expected: PASS (9 tests).
+Expected: PASS (10 tests).
 
 - [ ] **Step 8: Commit, then check CI**
 
@@ -1090,7 +1096,7 @@ Run: the Step 2 commands (Gradle: or the green half of **CI checks** after Step 
 - [ ] **Step 7: Commit**
 
 ```bash
-git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt tests/unit/android-shell.test.js
+git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/TtsChoiceTest.kt shells/android/app/src/test/kotlin/io/github/iteatsthesalt/byways/HoldToTalkTest.kt tests/unit/android-shell.test.js
 git commit -m "Add native read-aloud, media buttons, share and file save"
 ```
 
