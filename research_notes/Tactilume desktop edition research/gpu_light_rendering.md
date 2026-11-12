@@ -9,15 +9,18 @@ How claims are marked:
 ### Takeaway
 For particles whose screen footprint is about 2 px or less, compute rasterization wins clearly:
 - Each thread splats one particle with 32-bit integer `atomicAdd` into fixed-point R/G/B storage buffers, and a resolve pass converts the result.
-- Reported speedups are about 5x over WebGPU's built-in point rasterization (across 30+ GPUs), and 5x to 100x over GL_POINTS in native code (for example about 1 billion opaque points in about 8 ms on an RTX 3090).
-- It is also more accurate for additive light, because integer sums are exact where fp16 blending silently drops faint contributions.
+- Reported speedups are about 5x over WebGPU's built-in point rasterization (across 30+ GPUs; a search summary ties the 5x to the dense case of 4M points in a 5x5 px area) [Unverified]. In native code they are 10x to 100x over GL_POINTS per the authors' README (5.3x to 10x in their 2019 paper), for example about 1 billion opaque points in about 8 ms on an RTX 3090 [Verified: https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md].
+- It is also more accurate for additive light, because integer sums are exact where fp16 blending silently drops faint contributions. [Verified: recomputed in this session with numpy float16; 10,000 additions of 0.001 stall at exactly 4.0]
 
 Hardware instanced quads remain the right tool for large, soft or defocused sprites, since WebGPU has no point size. The best design is a hybrid chosen per particle by footprint. At 100M particles, especially at 240 Hz, the limit is memory bandwidth rather than rasterization.
 
 ### Cited Findings
-- **WGSL rules (primary source).** Atomic built-in functions "must not be used in a vertex shader stage". The address space of `atomic_ptr` "must be either storage or workgroup", and "Unless otherwise specified, T must be either u32 or i32", so there are no float atomics in core. Compute and fragment stages can therefore accumulate into storage-buffer atomics — [WGSL spec source, gpuweb/gpuweb wgsl/index.bs](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs)
-- **WebGPU spec (primary source).** `"point-list"` is defined only as "Each vertex defines a point primitive", with no point-size control in the topology. The default `maxComputeWorkgroupStorageSize` limit is 16384 bytes, which bounds tile-binning accumulators and FFT rows — [WebGPU spec source, gpuweb/gpuweb spec/index.bs](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs)
-- **Schütz compute rasterizer README** — [GitHub m-schuetz/compute_rasterizer](https://github.com/m-schuetz/compute_rasterizer):
+- **WGSL rules (primary source).** Atomic built-in functions "must not be used in a vertex shader stage". The address space of `atomic_ptr` "must be either storage or workgroup", and "Unless otherwise specified, T must be either u32 or i32", so there are no float atomics in core. Compute and fragment stages can therefore accumulate into storage-buffer atomics — [WGSL spec source, gpuweb/gpuweb wgsl/index.bs](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs) [Verified: https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs]
+  - The spec now also defines an optional `atomic_vec2u_min_max` extension (feature `"atomic-vec2u-min-max"`). It gives 64-bit `atomicStoreMin` and `atomicStoreMax` on `atomic<vec2<u32>>` in storage buffers only, with no 64-bit or float add, so it helps opaque depth+colour packing but not additive light. Electron 45 (Chromium 156) exposes it only at the experimental or unsafe safety level, and the measured Chromium 153 adapter did not list it. [Verified: https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs; https://github.com/chromium/chromium/blob/156.0.8078.96/gpu/command_buffer/service/webgpu_decoder_impl.cc]
+- **WebGPU spec (primary source).** `"point-list"` is defined only as "Each vertex defines a point primitive", with no point-size control in the topology. The default `maxComputeWorkgroupStorageSize` limit is 16384 bytes, which bounds tile-binning accumulators and FFT rows — [WebGPU spec source, gpuweb/gpuweb spec/index.bs](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs) [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]
+  - Point rasterization selects "a single FragmentDestination ... within the pixel containing" the point, so a WebGPU point is exactly one pixel. [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]
+  - The 16,384 bytes is only what a device gets without `requiredLimits`. Dawn reports 32,768 bytes on D3D12, and on Metal it reports `maxTotalThreadgroupMemory`, which is 32 KB on Apple4 to Apple11 GPUs (every Apple-silicon Mac). The measured SwiftShader adapter also reports 32,768. A device that requests 32 KiB therefore has twice the budget the notes assume below. [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://github.com/google/dawn/blob/main/src/dawn/native/metal/PhysicalDeviceMTL.mm; https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf; measured in this container]
+- **Schütz compute rasterizer README** (all points below re-read) — [GitHub m-schuetz/compute_rasterizer](https://github.com/m-schuetz/compute_rasterizer) [Verified: https://github.com/m-schuetz/compute_rasterizer/blob/master/README.md; https://github.com/m-schuetz/compute_rasterizer/blob/master/LICENSE.md]:
   - It "can be 10 to 100 times faster than GL_POINTS" and "renders up to one billion points in about 8 milliseconds" on an RTX 3090. These are the authors' own benchmarks.
   - Memory is about 1.6 GB per 100M points plus 1 to 2 GB overhead.
   - Depth and colour are packed into one 64-bit integer and resolved per pixel with 64-bit `atomicMin`.
@@ -30,15 +33,15 @@ Hardware instanced quads remain the right tool for large, soft or defocused spri
 - **Schütz and Wimmer 2019** measured, on an RTX 2080 Ti, the Retz dataset 5.3x faster and Morro Bay 10x faster than GL_POINTS. The approach is "ideal for point sizes of 1 pixel, but less suited for sizes larger than 2 pixels" — [arXiv 1908.02681](https://arxiv.org/pdf/1908.02681) (search summary, not verified). A later paper reports compute approaches up to an order of magnitude faster than the hardware pipeline — [arXiv 2104.07526](https://arxiv.org/pdf/2104.07526.pdf) (search summary, not verified)
 - **Aras Pranckevičius, August 2025, WebGPU test** — [blog](https://aras-p.info/blog/2025/08/24/This-many-points-is-surely-out-of-scope/); [test page](https://aras-p.info/files/temp/webgpu/20250823_webgpu-point-raster.html) (search summary, not verified: host blocked):
   - Setup: millions of 1-px, alpha-blended points in regions from about 500x500 px down to 5x5 px. Built-in point rasterization is compared with compute atomic writes into screen-sized R, G, B buffers "using fixed point colors", followed by a resolve pass.
-  - Result: across 30+ GPU models, compute was about 5x faster "across the board", including the dense 5x5 case.
+  - Result: across 30+ GPU models, compute was about 5x faster "across the board". A 2026-11-12 search summary attributes the 5x specifically to the case of 4M points in a 5x5 px area, and says the compute version deliberately used no subgroup tricks. So treat 5x as the dense-case figure, not a general speedup. [Unverified: aras-p.info is unreachable; search summary only]
   - Hypothesis: "contended atomics are not great, they perhaps are still better than contended blending units".
   - Caveat: Firefox reported incorrect GPU timings for some users.
 - **Blender's GPU scopes work:** drawing many points at one location is "very very slow" on some GPUs, and the compute rasterizer is several times faster on desktop GPUs too — [Blender PR #144867](https://projects.blender.org/blender/blender/pulls/144867) (search summary, not verified)
-- **WebGPU contended-atomics benchmark** (MIT, "Copyright (c) 2024 Peter Whidden"). All threads `atomicAdd` one global address (32 adds per thread, 15M threads): 20B ops/s on an M1 Max and 62B ops/s on an RTX 4090. Aggregation of contended atomics evidently works through WebGPU on non-NVIDIA hardware too — [GitHub PWhiddy/webgpu-atomics-benchmark](https://github.com/PWhiddy/webgpu-atomics-benchmark)
+- **WebGPU contended-atomics benchmark** (MIT, "Copyright (c) 2024 Peter Whidden"). All threads `atomicAdd` one global address (32 adds per thread, 15M threads): 20B ops/s on an M1 Max and 62B ops/s on an RTX 4090. Aggregation of contended atomics evidently works through WebGPU on non-NVIDIA hardware too — [GitHub PWhiddy/webgpu-atomics-benchmark](https://github.com/PWhiddy/webgpu-atomics-benchmark) [Verified: https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/README.md; https://github.com/PWhiddy/webgpu-atomics-benchmark/blob/main/LICENSE]
 - **WebGPU compute-rasterizer tutorial** (MIT, "Copyright (c) 2021 Omar Shehata"). It uses a storage buffer of `atomic<u32>` per channel as the framebuffer, writes with `atomicMin`, and displays via a fullscreen pass. It cites Schütz's roughly 10x speedup — [GitHub OmarShehata/webgpu-compute-rasterizer](https://github.com/OmarShehata/webgpu-compute-rasterizer/blob/main/how-to-build-a-compute-rasterizer.md)
 - **Schütz's early WebGPU demo** draws about 4M points as 1-px `point-list` primitives, with no timings and no licence stated — [GitHub m-schuetz/webgpu_pointcloud](https://github.com/m-schuetz/webgpu_pointcloud)
 - **Float-add emulation is not portable.** A wgpu crate notes naga's MSL backend, at that version, did not emit `atomicCompareExchangeWeak`, so it fell back to serial accumulation — [rlx-wgpu scatter_add.wgsl](https://docs.rs/crate/rlx-wgpu/0.2.3/source/src/kernels/scatter_add.wgsl) (search summary, not verified). Integer `atomicAdd` accumulation is used in WebGPU demos such as a 3D Physarum — [Observable](https://observablehq.com/@miketahani/webgpu-3d-physarum) (search summary, not verified)
-- **Points are 1 px in practice.** WebGPU points are always 1 px, because point size is not supported by D3D12, Vulkan or Metal, so sprites need instanced quads (three.js added InstancedPoints) — [three.js forum](https://discourse.threejs.org/t/working-around-the-low-aliased-pointsize-on-the-new-m1-macbook-pros/26819); [Babylon.js forum](https://forum.babylonjs.com/t/webgpu-and-point-size/45212/2) (search summary, not verified; consistent with the spec definition above)
+- **Points are 1 px in practice.** WebGPU points are always 1 px, because point size is not supported by D3D12, Vulkan or Metal, so sprites need instanced quads (three.js added InstancedPoints) — [three.js forum](https://discourse.threejs.org/t/working-around-the-low-aliased-pointsize-on-the-new-m1-macbook-pros/26819); [Babylon.js forum](https://forum.babylonjs.com/t/webgpu-and-point-size/45212/2) (search summary, not verified; consistent with the spec definition above). The 1-px behaviour itself is verified by the spec's point-rasterization rule; the stated D3D12, Vulkan and Metal reasons are not. [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]
 - **AMD's MIT-licensed GPUParticles11 DirectX 11 sample** ("Copyright (c) 2016 Advanced Micro Devices") shows a GPU particle system with depth-buffer collisions and GPU sorting "for correct blending of rasterized billboards" — [GitHub GPUOpen-LibrariesAndSDKs/GPUParticles11](https://github.com/GPUOpen-LibrariesAndSDKs/GPUParticles11)
 - **AMD tiled particle rendering in compute.** AMD's 2014 deck "Holy Smoke! Faster Particle Rendering using DirectCompute" (Gareth Thomas) describes tiled particle rendering in compute, inspired by Forward+, which bins particles into screen tiles instead of lights. It notes the system "cannot sort global list of particles" — [SlideShare](https://www.slideshare.net/slideshow/holy-smoke-faster-particle-rendering-using-direct-compute-by-gareth-thomas/35656271); [GDC 2014 session](https://gdcvault.com/play/1020002/Advanced-Visual-Effects-with-DirectX) (search summary, not verified). A practitioner found 32x32 tiles faster than 16x16 — [GameDev.net](https://gamedev.net/forums/topic/692435-tile-based-particle-rendering/?page=1) (search summary, not verified)
 - **Prefix sums on WebGPU.**
@@ -53,12 +56,13 @@ Hardware instanced quads remain the right tool for large, soft or defocused spri
   - RTX 5090: 1,792 GB/s — [gpu-monkey](https://www.gpu-monkey.com/en/compare_gpu-gigabyte_geforce_rtx_5090_windforce_oc-vs-amd_radeon_rx_9070_xt) (search summary, not verified)
   - RTX 5070: 672 GB/s — [gpu-monkey](https://www.gpu-monkey.com/en/compare_gpu-gigabyte_geforce_rtx_5070_gaming-vs-amd_radeon_rx_9070) (search summary, not verified)
   - RX 9070 XT: about 640 to 644.6 GB/s — [technical.city](https://technical.city/en/video/GeForce-RTX-5090-vs-Radeon-RX-9070-XT) (search summary, not verified)
+  - The RTX 5090, RTX 5070 and RX 9070 XT figures remain unverified at vendor level, because NVIDIA and AMD pages are unreachable. A 2026-11-12 search found spec aggregators agreeing on 1,792, 672 and 640 GB/s (644.6 GB/s in one), and 512-bit x 28 Gbps / 8 = 1,792 GB/s. [Unverified]
 
 ### Inferences
 - **Quality: fp16 blending versus fixed point (arithmetic).** RGBA16F blending rounds every result to fp16, which has an 11-bit significand.
   - At 4.0 or above, adding 0.001 rounds to no change, because half an ulp is about 0.00195.
   - Between 2 and 4, the same addition rounds up to a full ulp.
-  - So 10,000 particles of 0.001 settle near 4.0 instead of 10.0.
+  - So 10,000 particles of 0.001 settle near 4.0 instead of 10.0. [Verified: recomputed in this session with numpy float16, rounding after every add; the sum stops at exactly 4.0, and 3.0 + 0.001 gives 3.00195]
   - u32 fixed-point sums are exact, order-independent and deterministic. That is a quality argument for compute accumulation, and the current WebGL2 edition may already lose energy in dense regions.
 - **Fixed-point design.**
   - Scale: choose S counts per unit of scene-linear radiance, for example 2^12 to 2^16.
@@ -69,15 +73,20 @@ Hardware instanced quads remain the right tool for large, soft or defocused spri
   - Cost per particle: 3 atomics for a nearest-pixel RGB splat, 12 for a bilinear 2x2 splat.
   - Scale: 100M particles means 300M atomics per frame. The 62B ops/s figure is a single-address, aggregated best case, so expect several milliseconds: too slow for 240 Hz and borderline at 120 Hz.
   - Mitigations:
-    - Per-tile workgroup accumulation, flushed once per pixel. A 32x32 tile with 3 u32 channels is 12,288 bytes, inside the verified 16,384-byte default limit; 4 channels would hit the limit exactly.
+    - Per-tile workgroup accumulation, flushed once per pixel. A 32x32 tile with 3 u32 channels is 12,288 bytes, inside the verified 16,384-byte default limit. 4 channels would hit the default exactly, but on a device that requests the 32 KiB that D3D12, Apple-silicon Metal and the measured adapter expose, they fit with 16 KiB to spare. 3 channels plus 3 carry words (24 KiB) also fit. [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf; measured in this container]
     - Morton-ordered particles for cache coherence.
     - Fewer channels, for example a luminance value plus a palette index.
     - Stochastic one-of-four bilinear splats.
-    - Subgroup aggregation where the optional feature exists (feature support is out of scope).
+    - Subgroup aggregation where the optional `subgroups` feature exists. It is in Chrome 134 and later on Windows, macOS and ChromeOS, on Linux from 144, and not in Firefox. The measured Chromium 153 SwiftShader adapter has it, with a subgroup size of 4. [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; measured in this container]
 - **Speculative throughput range.** Schütz's figures are for opaque, depth-tested points that mostly skip their atomic. Additive splats must issue atomics for every particle, so plan on roughly 1B to 10B additive splats per second on high-end GPUs until benchmarked.
 - **Bandwidth.**
   - 100M particles at 16 B each is 1.6 GB per frame to read, or 192 GB/s at 120 Hz and 384 GB/s at 240 Hz.
   - With full-precision simulation (about 64 B per particle per frame), 100M at 240 Hz needs about 1.92 TB/s, which exceeds an RTX 5090.
+  - Buffer and dispatch limits also apply, not only bandwidth:
+    - The spec defaults are 256 MiB per buffer and 128 MiB per storage binding. Dawn exposes 2 GiB on D3D12, and the measured adapter exposes 1 GiB. So 1.6 GB of state must be requested through `requiredLimits` and, for portability, split across at least two buffers or bindings.
+    - One dispatch dimension is capped at 65,535 workgroups. 100M particles at 256 threads per workgroup need 390,625 workgroups, so dispatch in 2D or loop inside each thread.
+
+    [Verified correction: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://github.com/google/dawn/blob/main/src/dawn/common/Constants.h; measured in this container]
   - Rough ceilings:
 
 | GPU class | 240 Hz | 120 Hz |
@@ -85,7 +94,7 @@ Hardware instanced quads remain the right tool for large, soft or defocused spri
 | RTX 5070 / RX 9070 XT | about 10M to 30M particles | not estimated |
 | RTX 5090 | about 50M or more | 100M, only with quantized state or with simulation and splatting fused in one kernel |
 
-- **Hardware quads.** Quads of 1 to 2 px waste raster and shading work: two triangles and 2x2 shading quads per particle (background knowledge). Quads still suit sprites of about 3 to 4 px radius or more. They can accumulate into the same fixed-point buffer through fragment-shader storage atomics, which WGSL allows outside the vertex stage, to avoid fp16 swamping.
+- **Hardware quads.** Quads of 1 to 2 px waste raster and shading work: two triangles and 2x2 shading quads per particle (background knowledge). Quads still suit sprites of about 3 to 4 px radius or more. They can accumulate into the same fixed-point buffer through fragment-shader storage atomics, which WGSL allows outside the vertex stage, to avoid fp16 swamping. [Verified: https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs]
 - **Architecture.** This is a hybrid, chosen per particle by footprint:
   1. Classify each particle by its projected footprint, including circle of confusion and motion stretch.
   2. Send tiny particles to the compute splat.
@@ -149,7 +158,15 @@ Feedback trails at 120 to 240 Hz need a frame-rate-independent fade and at least
     - **fp16:** stalls once the decrement falls below half an ulp (2^-12 to 2^-11 of the value), so fades are reliable up to tau of about 8 s.
     - **rg11b10ufloat:** red and green stall beyond tau of about 0.5 s and blue beyond about 0.27 s, so fading trails also shift hue.
     - **rgba8unorm:** stalls almost immediately, leaving frozen ghosts.
+    - [Verified: recomputed in this session; at 240 Hz a stall becomes possible above tau of about 8.5 s for fp16, 0.53 s for the 6-bit-mantissa R11/G11 and 0.27 s for the 5-bit-mantissa B10 channel]
   - Use rgba16float with a blue-noise dither on the decay, or rgba32float for very long persistence. Fade in scene-linear, and consider storing persistence at reduced resolution.
+  - rgba32float and rg11b10ufloat both need optional features:
+    - Blending into rgba32float needs `float32-blendable` (Chrome 132 and later), and filtering it needs `float32-filterable`.
+    - Rendering to rg11b10ufloat needs `rg11b10ufloat-renderable`.
+    - A compute or full-screen fade pass that reads the previous frame and writes the next needs no blending.
+    - All three features are present on the measured SwiftShader adapter.
+
+    [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs; https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; measured in this container]
 - **Temporal accumulation.** At 240 Hz the display already shows 4 sub-frames per 60 Hz frame, so keep per-frame blur at or below the frame interval. Accumulate sub-frames only for offline capture (section 10).
 
 ### Gaps
@@ -191,7 +208,7 @@ For a light toy, pair the pyramid with starbursts drawn only for the brightest s
   - Traffic: forward FFT, pointwise multiply and inverse FFT come to 6 to 8 passes. Packing RGB into two complex FFTs gives 300 to 450 MB in total.
   - Theoretical time: 0.2 to 0.3 ms at 1.79 TB/s, or 0.5 to 0.7 ms at 672 GB/s.
   - Realistic budget: 1 to 3 ms on mid-range GPUs, because hand-written WGSL FFTs rarely reach peak bandwidth.
-  - Workgroup memory: the verified 16 KiB default `maxComputeWorkgroupStorageSize` holds a 1024-point complex fp32 row (8 KiB), but a 2048-point fp32 row (16 KiB) leaves no headroom. Larger rows need multi-pass or fp16 transforms.
+  - Workgroup memory: the verified 16 KiB default `maxComputeWorkgroupStorageSize` holds a 1024-point complex fp32 row (8 KiB), but a 2048-point fp32 row (16 KiB) leaves no headroom at the default. A device that requests the 32 KiB exposed by D3D12, Apple-silicon Metal and the measured adapter holds a 2048-point fp32 row with 16 KiB to spare. Only rows beyond that need multi-pass transforms. fp16 transforms need the optional `shader-f16` feature (Chrome 120 and later, adapter-dependent), which the measured SwiftShader adapter lacks. [Verified correction: https://github.com/google/dawn/blob/main/src/dawn/native/d3d12/PhysicalDeviceD3D12.cpp; https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf; https://github.com/mdn/browser-compat-data/blob/main/api/GPUSupportedFeatures.json; measured in this container]
   - Limits: full-resolution 4K FFT is not viable at 240 Hz.
 - **Hybrid.**
   - Pyramid bloom for the broad glow.
@@ -253,7 +270,7 @@ Ray-traced looks for abstract additive light are feasible in WebGPU compute. The
   - Pixel-projected reflections for planar reflectors — [SIGGRAPH 2017 PDF](https://www.advances.realtimerendering.com/s2017/PixelProjectedReflectionsAC_v_1.92.pdf) (content not retrieved)
 - **WebGPU constraints relevant to voxelization (primary source):**
   - Atomics only in the storage and workgroup address spaces, with u32 and i32 only — [WGSL spec source](https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs)
-  - The workgroup storage default is 16,384 bytes — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs)
+  - The workgroup storage default is 16,384 bytes — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs) [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]. Desktop backends expose 32 KiB on request (see section 1).
 
 ### Inferences
 - **Key insight.** Additive emitters do not occlude, so GI and volumetrics become convolutions. The costs below are estimates.
@@ -266,7 +283,7 @@ Ray-traced looks for abstract additive light are feasible in WebGPU compute. The
     - Blur by distance to the plane for gloss, and apply Fresnel. For water, perturb the lookup with ripples.
     - This is exact, and emitters off screen still reflect.
   - **Volumetric glow.**
-    - Voxelize emission and density into a grid of about 160x90x64 cells (about 15 MB with four u32 channels). Voxelization must go to storage buffers, because WGSL has no texture atomics; then copy to a 3D texture for filtering.
+    - Voxelize emission and density into a grid of about 160x90x64 cells (about 15 MB with four u32 channels). Voxelization must go to storage buffers, because WGSL has no texture atomics; then copy to a 3D texture for filtering. [Verified: WGSL defines atomics only on atomic types in storage buffers and workgroup memory, https://github.com/gpuweb/gpuweb/blob/main/wgsl/index.bs]
     - Blur the emission in 3D, multiply by density, and integrate front to back along view rays.
     - Dense clouds of particles cast shafts.
     - Estimated cost is about 0.5 to 1.5 ms.
@@ -291,17 +308,19 @@ Accumulate in scene-linear, and apply one display transform parameterised by pap
 - **AgX** has a path to white that suits hot cores.
 - **Khronos PBR Neutral** (Apache-2.0) preserves hue but outputs sRGB only, with no gamut mapping.
 
-WebGPU's spec-defined `"extended"` canvas tone-mapping mode leaves values above 1 unchanged up to what the screen can show. Even in `"standard"` mode, an `'srgb'` canvas can carry wider-gamut colours as negative values, which are converted for P3 screens.
+WebGPU's spec-defined `"extended"` canvas tone-mapping mode leaves values above 1 unchanged up to what the screen can show. Even in `"standard"` mode, an `'srgb'` canvas can carry wider-gamut colours as negative values, which are converted for P3 screens. [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]
+
+`toneMapping` is in Chrome 129 and later (Linux from 144), and in neither Firefox nor Safari. The spec says to feature-detect it through `getConfiguration()`. The measured Chromium 153 accepts `rgba16float` with `{mode: "extended"}` and reports it back there. [Verified: https://github.com/mdn/browser-compat-data/blob/main/api/GPUCanvasContext.json; measured in this container]
 
 Take peak and paper white from an in-app calibration in the style of HGIG. Use OKLab/OKLCH only for authoring, never for accumulation.
 
 ### Cited Findings
-- **WebGPU spec, primary source** — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs):
-  - `GPUCanvasToneMappingMode` is `"standard"` or `"extended"`, and the default is `"standard"`.
+- **WebGPU spec, primary source** (all points below re-read) — [WebGPU spec source](https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs) [Verified: https://github.com/gpuweb/gpuweb/blob/main/spec/index.bs]:
+  - `GPUCanvasToneMappingMode` is `"standard"` or `"extended"`, and the default is `"standard"`. The default `colorSpace` is `"srgb"`.
   - `"standard"`: values within the screen's standard range are unchanged and others are projected, often by clamping to [0, 1].
   - `"extended"`: "Color values in the extended dynamic range of the screen are unchanged", and others are projected to the screen's extended range, "which may include values greater than 1". The spec's example is a screen showing [0, 4] in sRGB space.
   - Example in the `"standard"` section: writing (1.035, -0.175, -0.140) to an `'srgb'` canvas presented on a Display P3 screen gives P3 (0.948, 0.106, 0.01) with no clamping.
-- **three.js WebGPU backend:** when `outputType === HalfFloatType`, it configures the canvas with `toneMapping.mode = 'extended'`, otherwise `'standard'` — [three.js WebGPUBackend.js](https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/WebGPUBackend.js). three.js is MIT ("Copyright © 2010-2026 three.js authors").
+- **three.js WebGPU backend:** when `outputType === HalfFloatType`, it configures the canvas with `toneMapping.mode = 'extended'`, otherwise `'standard'` — [three.js WebGPUBackend.js](https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/WebGPUBackend.js). three.js is MIT ("Copyright © 2010-2026 three.js authors"). [Verified: https://github.com/mrdoob/three.js/blob/dev/src/renderers/webgpu/WebGPUBackend.js; https://github.com/mrdoob/three.js/blob/dev/LICENSE]
 - **webgpu-samples "particles" sample:** it uses `presentationFormat = 'rgba16float'`, a selectable `toneMapping: { mode }` (`'standard'` or `'extended'`), a `brightnessFactor` of 0 to 4, and `matchMedia('(dynamic-range: high)')` — [webgpu-samples sample/particles/main.ts](https://github.com/webgpu/webgpu-samples/blob/main/sample/particles/main.ts). The repository licence is BSD 3-clause ("Copyright 2019 WebGPU Samples Contributors").
 - **Chrome 129** introduced canvas tone mapping, with `rgba16float` plus `"extended"` displaying values above SDR white — [Chrome blog](https://developer.chrome.com/blog/new-in-webgpu-129); [luma.gl guide](https://luma.gl/next/docs/api-guide/gpu/gpu-rendering) (search summary, not verified)
 - **Khronos PBR Neutral** — [GitHub KhronosGroup/ToneMapping](https://github.com/KhronosGroup/ToneMapping/tree/main/PBR_Neutral). LICENSE.md is Apache-2.0.
