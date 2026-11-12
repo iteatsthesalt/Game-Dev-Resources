@@ -2194,12 +2194,21 @@ test('a shared collection link previews and imports', async ({ page, context }) 
   await expect(page.locator('p.kind')).toHaveText('A collection: Saved');
   await page.getByRole('button', { name: 'Import' }).click(); await expect(page.getByText('Imported 1 find into Saved.')).toBeVisible();
 });
+test('Import from link opens a pasted Byways link and refuses others', async ({ page }) => {
+  const { url } = await buildShareUrl(SHARE_BASE, { v: 1, t: 'f', n: '', i: [['library', 'https://example.org/', 'Moth Atlas']] });
+  await open(page, [small[0]], '#/saved'); const field = page.getByRole('textbox', { name: 'Paste a share link' });
+  await field.fill('https://example.com/#s=abc'); await page.getByRole('button', { name: 'Import from link' }).click();
+  await expect(page.getByText('This link is broken or not from Byways.')).toBeVisible();
+  await field.fill(url); await page.getByRole('button', { name: 'Import from link' }).click();
+  await expect(page.getByRole('heading', { name: 'Shared with you' })).toBeVisible(); await expect(page.locator('p.kind')).toHaveText('A find');
+});
 test('axe finds no serious issues on Saved and Import', async ({ page }) => {
   await open(page, [small[0]]); await page.goto('./#/saved'); await expectNoSeriousA11y(page);
   await page.goto('./#s=notreal'); await expectNoSeriousA11y(page);
 });
 test('a broken share link shows a message', async ({ page }) => {
-  await page.goto('./#s=notreal');
+  await open(page, small, '#s=notreal');
+  await expect(page.getByRole('heading', { level: 1, name: 'Import' })).toBeVisible();
   await expect(page.getByText('This link is broken or not from Byways.')).toBeVisible();
 });
 test('bookmarks export and import', async ({ page }) => {
@@ -2219,10 +2228,10 @@ Expected: FAIL: no button named `Saved (1)`.
 
 - [ ] **Step 3: Implement `saved.js` and `import.js`**
 
-- [ ] **Step 4: Run it and see it pass**
+- [ ] **Step 4: Run it and see it pass, then run the whole suite**
 
-Run: `npm run e2e -- tests/e2e/saved-share.spec.js`
-Expected: PASS, 6 tests.
+Run: `npm run e2e -- tests/e2e/saved-share.spec.js`, then `npm run e2e`
+Expected: PASS, 7 tests, then the whole suite passes.
 
 - [ ] **Step 5: Commit**
 
