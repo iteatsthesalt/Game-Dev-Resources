@@ -575,4 +575,220 @@ git add shells/android/app/src/main/kotlin/io/github/iteatsthesalt/byways shells
 git commit -m "Add the native bridge with an origin gate and the fetch channel"
 ```
 
+### Task 6: The Android platform: bridge client, transport, share, files and links
+
+**Files:**
+- Create: `src/platform/android.js`
+- Test: `tests/unit/platform-android.test.js`
+
+**Interfaces:**
+- Consumes: the `Platform` typedef (overview); a `base` PWA platform from `createPwaPlatform` (Plan 01), whose `secrets`, `files.pick` and `persistStorage` are reused; the bridge protocol table above.
+- Produces:
+
+```js
+export function createBridgeClient(port, { hello = true } = {})
+  // → {call(ch, op, args = {}) → Promise<any> (the promise carries the request id as .id),
+  //    on(ch, event, fn) → () => void, hello: Promise<{versionName, versionCode, sdk, micConsent}>|null}
+export function createAndroidPlatform({ bridge, base, win = globalThis })
+  // → Platform plus app: {version() → Promise<{versionName, versionCode, sdk, micConsent}>,
+  //    checkUpdate() → Promise<{available:boolean, latest:string|null, url:string|null}>, openExternal(url) → Promise<void>}
+  //    and attach(app) → Promise<void> (Task 13)
+export function extractSharedLink(text) // → {kind:'share', hash:string} | {kind:'url', url:string} | null
+export function labSaveFile(name, blob, win = globalThis) // → Promise<'saved'|'cancelled'> | null
+```
+
+- [ ] **Step 1: Write the failing tests**
+
+`tests/unit/platform-android.test.js` uses a fake port:
+
+```js
+function fakePort() {
+  const port = { sent: [], onmessage: null, postMessage(s) { port.sent.push(JSON.parse(s)); },
+    last() { return port.sent.at(-1); },
+    reply(id, result) { port.onmessage({ data: JSON.stringify({ id, ok: true, result }) }); },
+    fail(id, code) { port.onmessage({ data: JSON.stringify({ id, ok: false, error: { code, message: code } }) }); },
+    emit(ch, event, data = {}) { port.onmessage({ data: JSON.stringify({ ch, event, data }) }); } };
+  return port;
+}
+const win = { location: new URL('https://appassets.androidplatform.net/assets/www/index.html'),
+  fetch: async () => new Response('{"v":1}') };
+const tick = () => new Promise(r => setTimeout(r, 0));
+```
+
+Tests and their assertions:
+
+```js
+test('hello is sent first', () => {
+  const port = fakePort(); createBridgeClient(port);
+  assert.deepEqual(port.sent[0], { id: '1', ch: 'app', op: 'hello', args: {} });
+});
+test('calls resolve, reject with a code, and ignore junk', async () => {
+  const port = fakePort(); const c = createBridgeClient(port, { hello: false });
+  const p = c.call('tts', 'voices'); assert.equal(p.id, '1');
+  port.onmessage({ data: 'not json' }); port.onmessage({ data: '{"id":"99","ok":true}' });
+  port.reply('1', [{ uri: 'en-us-x-sfg', name: 'en-us-x-sfg', lang: 'en-US', local: true }]);
+  assert.deepEqual(await p, [{ uri: 'en-us-x-sfg', name: 'en-us-x-sfg', lang: 'en-US', local: true }]);
+  const q = c.call('fetch', 'approve', { host: 'x' }); port.fail(q.id, 'not-approved');
+  await assert.rejects(q, e => e.code === 'not-approved');
+});
+test('events reach listeners until they unsubscribe', () => {
+  const port = fakePort(); const c = createBridgeClient(port, { hello: false }); const got = [];
+  const off = c.on('voice', 'result', d => got.push(d));
+  port.emit('voice', 'result', { text: 'next', final: true }); off(); port.emit('voice', 'result', { text: 'back', final: true });
+  assert.deepEqual(got, [{ text: 'next', final: true }]);
+});
+test('caps are fixed', () => {
+  const p = createAndroidPlatform({ bridge: fakePort(), base: fakeBase(), win });
+  assert.equal(p.name, 'android');
+  assert.deepEqual(p.caps, { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: true,
+    labHref: 'https://lab.appassets.androidplatform.net/assets/lab/index.html', framesArchive: true });
+});
+test('API calls go through nativeFetch', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const r = p.transport.fetch('https://api.mistral.ai/v1/models', { headers: { Authorization: 'Bearer k' }, privileged: true });
+  await tick();
+  assert.deepEqual(port.last().args, { url: 'https://api.mistral.ai/v1/models', method: 'GET', headers: { authorization: 'Bearer k' }, body: null });
+  port.reply(port.last().id, { status: 200, statusText: 'OK', headers: { 'content-type': 'application/json' }, body: '{"data":[]}', url: 'https://api.mistral.ai/v1/models' });
+  const res = await r; assert.equal(res.status, 200); assert.deepEqual(await res.json(), { data: [] });
+});
+test('same-origin paths use the page fetch', async () => {
+  const port = fakePort(); const calls = [];
+  const w = { ...win, fetch: async u => { calls.push(u); return new Response('{"v":1}'); } };
+  await createAndroidPlatform({ bridge: port, base: fakeBase(), win: w }).transport.fetch('data/tags.json');
+  assert.deepEqual(calls, ['data/tags.json']); assert.equal(port.sent.filter(m => m.ch === 'fetch').length, 0);
+});
+test('transport passes 429 and 204 through, maps failures and aborts', async () => {
+  // 429 {retry-after:'3'} → res.status 429, res.headers.get('retry-after') === '3'
+  // 204 → res.status 204, res.body === null
+  // port.fail(id, 'network') → rejects TypeError with e.code === 'network'
+  // AbortController: ctl.abort() after the request is sent → rejects e.name === 'AbortError',
+  //   and port.sent contains { ch: 'fetch', op: 'abort', args: { fetchId: <that request id> } }
+  // a pre-aborted signal → rejects AbortError and sends no fetch message
+  // body: new Blob(['x']) → rejects TypeError, message 'nativeFetch supports string bodies only'
+});
+test('http to a LAN host asks for approval first', async () => {
+  // fetch('http://192.168.1.20:11434/api/tags'): first message { ch:'fetch', op:'approve', args:{ host:'192.168.1.20' } };
+  // reply true → next message is fetch.request; reply false → rejects TypeError 'Local network host not approved: 192.168.1.20'
+});
+test('share, open, files and screen go over the bridge', async () => {
+  // share({title:'Ada', url:'https://example.org'}) → args {title:'Ada', text:null, url:'https://example.org'}; reply 'shared' → 'shared'
+  // openFind({url:'https://example.org', title:'Ex'}) → {ch:'app', op:'openSite', args:{url:'https://example.org', title:'Ex'}}
+  // openFind(find, 'tab') → {ch:'app', op:'openExternal', args:{url:'https://example.org'}}
+  // files.save('b.json', new Blob(['{"a":1}'], {type:'application/json'})) → args {name:'b.json', mime:'application/json', base64:'eyJhIjoxfQ=='}
+  // wakeLock.on() → {ch:'screen', op:'keepOn', args:{on:true}}; wakeLock.off() → {on:false}
+  // checkUpdate() → {ch:'app', op:'checkUpdate', args:{}}; version() resolves to the hello reply
+});
+test('extractSharedLink handles real share text', () => {
+  const S = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/';
+  assert.deepEqual(extractSharedLink('Look at this https://example.org/a?b=1 so good'), { kind: 'url', url: 'https://example.org/a?b=1' });
+  assert.deepEqual(extractSharedLink(`${S}#s=AbC-_9).`), { kind: 'share', hash: '#s=AbC-_9' });
+  assert.deepEqual(extractSharedLink(`see https://a.example/x and ${S}#s=Q1`), { kind: 'share', hash: '#s=Q1' });
+  assert.deepEqual(extractSharedLink('two https://a.example/x and https://b.example/y'), { kind: 'url', url: 'https://a.example/x' });
+  assert.deepEqual(extractSharedLink('end https://example.org/page.'), { kind: 'url', url: 'https://example.org/page' });
+  assert.deepEqual(extractSharedLink('https://en.wikipedia.org/wiki/Mercury_(planet)'), { kind: 'url', url: 'https://en.wikipedia.org/wiki/Mercury_(planet)' });
+  assert.deepEqual(extractSharedLink('(see https://example.org/a)'), { kind: 'url', url: 'https://example.org/a' });
+  assert.deepEqual(extractSharedLink('http://example.org'), { kind: 'url', url: 'http://example.org' });
+  assert.equal(extractSharedLink('no link here'), null);
+  assert.equal(extractSharedLink('javascript:alert(1)'), null);
+  assert.equal(extractSharedLink(''), null);
+});
+test('labSaveFile uses BywaysLabNative only when present', async () => {
+  assert.equal(labSaveFile('s.sav', new Blob(['x']), {}), null);
+  const port = fakePort(); const p = labSaveFile('s.sav', new Blob(['x']), { BywaysLabNative: port });
+  await tick(); assert.deepEqual(port.last(), { id: '1', ch: 'files', op: 'save', args: { name: 's.sav', mime: 'application/octet-stream', base64: 'eA==' } });
+  port.reply('1', 'saved'); assert.equal(await p, 'saved');
+});
+```
+
+Write each commented test as `assert` calls with exactly those values. `fakeBase()` returns `{ secrets: {}, files: { pick: async () => [] }, persistStorage: async () => true }`.
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/platform-android.test.js`
+Expected: FAIL with `Cannot find module '…/src/platform/android.js'`.
+
+- [ ] **Step 3: Implement `src/platform/android.js` (bridge client, transport, share, files, links)**
+
+- Client: ids are a counter from `"1"`. `port.onmessage = e => …` parses `e.data`, ignores anything that does not parse or has an unknown id, resolves `{id, ok:true}`, rejects `{id, ok:false}` with `Object.assign(new Error(error.message), { code: error.code })`, and fans `{ch, event, data}` out to listeners.
+- `transport.fetch(url, init = {})`: resolve `url` against `win.location.href`; same origin → `win.fetch(url, init)` with `privileged` removed. Otherwise headers become a plain object with lower-case names (through `Headers`), `method` is upper-cased (default `GET`), `body` is a string or `null`. An `http:` URL first awaits `fetch.approve {host}`. Statuses 204, 205 and 304 build `new Response(null, …)`. A native error code `aborted`, or the signal firing, gives `new DOMException('The operation was aborted.', 'AbortError')`; the signal firing also sends `fetch.abort {fetchId}`. Any other native error gives `Object.assign(new TypeError(\`Network request failed (${code})\`), { code })`.
+- `share`, `openFind(find, how = 'inapp')`, `files.save` (base64 of `blob.arrayBuffer()`, mime `blob.type || 'application/octet-stream'`), `wakeLock`, `app` as in the bridge table. `files.pick`, `secrets` and `persistStorage` come from `base`.
+- `extractSharedLink`: take every `https?://` run up to whitespace, `<`, `>` or a quote. Trim trailing `.,;:!?'"]}` and a trailing `)` when the run has no `(`. A run whose `origin + pathname` is `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/` and whose hash starts with `#s=` wins, as `{kind:'share', hash}`. Otherwise the first run is `{kind:'url', url}`.
+- `labSaveFile`: `null` when `win.BywaysLabNative` is missing; otherwise one cached `createBridgeClient(win.BywaysLabNative, { hello: false })` and `call('files', 'save', …)`.
+
+- [ ] **Step 4: Run them to see them pass**
+
+Run: `node --test tests/unit/platform-android.test.js`
+Expected: PASS (11 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/android.js tests/unit/platform-android.test.js
+git commit -m "Add the Android platform bridge client and native transport"
+```
+
+### Task 7: Android platform voice, speech and media
+
+**Files:**
+- Modify: `src/platform/android.js`
+- Test: `tests/unit/platform-android.test.js`
+
+**Interfaces:**
+- Consumes: `createBridgeClient` (Task 6); the `VoiceEngine`, `Tts` and `media` shapes (overview).
+- Produces: `platform.voice`, `platform.tts` and `platform.media` over the `voice`, `tts` and `media` channels.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test('voice goes over the bridge', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  const st = p.voice.probe({ allowCloud: false });
+  assert.deepEqual(port.last(), { id: '2', ch: 'voice', op: 'probe', args: { allowCloud: false } });
+  const status = { kind: 'native', vendor: 'android', needsDownload: false, continuous: true, reason: null };
+  port.reply('2', status); assert.deepEqual(await st, status);
+  p.voice.start({ lang: 'en-US', phrases: ['next', 'go back'], allowCloud: false });
+  assert.deepEqual(port.last().args, { lang: 'en-US', phrases: ['next', 'go back'], allowCloud: false });
+  const got = []; p.voice.on('result', d => got.push(d)); p.voice.on('error', d => got.push(d));
+  port.emit('voice', 'result', { text: 'next one', final: true }); port.emit('voice', 'error', { code: 'no-speech' });
+  assert.deepEqual(got, [{ text: 'next one', final: true }, { code: 'no-speech' }]);
+  p.voice.stop(); assert.equal(port.last().op, 'stop');
+});
+test('speak resolves only when native finishes', async () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win });
+  let done = false; const s = p.tts.speak('Hello.', { rate: 1.2 }).then(() => { done = true; });
+  assert.deepEqual(port.last().args, { text: 'Hello.', voiceURI: null, rate: 1.2, volume: 1 });
+  await tick(); assert.equal(done, false);
+  port.reply(port.last().id, true); await s; assert.equal(done, true);
+  p.tts.cancel(); assert.deepEqual(port.last(), { id: String(Number(port.last().id)), ch: 'tts', op: 'cancel', args: {} });
+});
+test('media buttons call the handlers', () => {
+  const port = fakePort(); const p = createAndroidPlatform({ bridge: port, base: fakeBase(), win }); const calls = [];
+  p.media.setHandlers({ next: () => calls.push('next'), previous: () => calls.push('previous'), playPause: () => calls.push('playPause') });
+  port.emit('media', 'next'); port.emit('media', 'previous'); port.emit('media', 'playPause');
+  assert.deepEqual(calls, ['next', 'previous', 'playPause']);
+  p.media.setActive(true); assert.deepEqual(port.last().args, { on: true });
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+Run: `node --test tests/unit/platform-android.test.js`
+Expected: the three new tests FAIL with `TypeError: Cannot read properties of undefined (reading 'probe')`.
+
+- [ ] **Step 3: Implement `voice`, `tts` and `media`**
+
+`voice.stop`, `tts.cancel` and `media.setActive` send and swallow rejections. `speak` sends `voiceURI ?? null`, `rate ?? 1` and `volume ?? 1` and resolves `undefined` on the reply. `media.setHandlers` replaces the stored handlers; events call `next`, `previous` or `playPause` when set.
+
+- [ ] **Step 4: Run them to see them pass**
+
+Run: `node --test tests/unit/platform-android.test.js`
+Expected: PASS (14 tests).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/android.js tests/unit/platform-android.test.js
+git commit -m "Add native voice, speech and media to the Android platform"
+```
+
 <!-- PLAN CONTINUES -->

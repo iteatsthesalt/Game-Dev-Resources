@@ -840,4 +840,141 @@ git add tools/check.js tools/serve.js tests/unit/check.test.js tests/unit/serve.
 git commit -m "Add the build check rules and the static test server"
 ```
 
+### Task 9: PWA shell, styles and the build
+
+**Files:**
+- Create: `shells/pwa/index.html`, `shells/pwa/manifest.webmanifest`, `shells/pwa/sw.js` (constants only; Task 14 adds the handlers), `shells/pwa/landing/index.html`
+- Create: `src/ui/styles/app.css`, `src/ui/styles/themes.css`, `src/assets/icons/icon.svg`, `src/ui/boot.js` (stub: `export async function bootFromShell() {}`; Task 12 fills it)
+- Create: `src/data/tags.json` `{"v":1,"groups":[]}`, `src/data/library.json` `{"v":1,"entries":[]}`, `src/data/vault-starter.json` `{"v":1,"entries":[]}`, `src/data/geocities-seeds.json` `{"v":1,"urls":[]}` (Plans 02 and 04 fill them)
+- Create: `tools/build.js`
+- Test: `tests/unit/build.test.js`
+
+**Interfaces:**
+- Consumes: `runChecks`, `APP_CSP` (Task 8).
+- Produces: `build({target, outRoot = APP_ROOT, id = process.env.GITHUB_SHA || 'dev', now = new Date()}) → Promise<{outputs: string[]}>`, `OUTPUTS = {pwa: ['dist/pwa'], extension: ['dist/chrome', 'dist/firefox'], android: ['shells/android/app/src/main/assets/www', 'shells/android/app/src/main/assets/lab']}`, `findStale(freshRoot, liveRoot, dirs) → string[]`; the CLI `--target pwa|extension|android|all` and `--check`. The page ids `#app`, `#main`, `#live-polite`, `#live-assertive`, `#hf-bar`, `#toasts`; the attribute values `data-theme` `system|light|dark|high-contrast`, `data-motion` `system|reduced|full`, `data-font` `system|atkinson`.
+
+- [ ] **Step 1: Write the failing test** in `tests/unit/build.test.js`
+
+```js
+test('pwa target copies src and the shell and stamps the build', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'bw-')); const dir = join(out, 'dist/pwa');
+  await build({ target: 'pwa', outRoot: out, id: 'abc123', now: new Date('2026-11-11T00:00:00Z') });
+  for (const f of ['index.html', 'manifest.webmanifest', 'sw.js', 'build.json', 'core/util/hash.js', 'ui/boot.js', 'platform/pwa.js', 'data/tags.json', 'assets/icons/icon.svg', 'ui/styles/app.css'])
+    assert.ok(existsSync(join(dir, f)), f);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'build.json'), 'utf8')), { id: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' });
+  const sw = readFileSync(join(dir, 'sw.js'), 'utf8');
+  assert.match(sw, /const BUILD_ID = "abc123";/);
+  const list = JSON.parse(sw.match(/const PRECACHE = (\[[^\]]*\]);/)[1]);
+  for (const f of ['./', './index.html', './manifest.webmanifest', './ui/boot.js', './data/tags.json']) assert.ok(list.includes(f), f);
+  for (const f of ['./sw.js', './build.json']) assert.ok(!list.includes(f), f);
+  assert.equal(existsSync(join(dir, 'landing')), false);
+});
+test('extension and android targets write only build.json until Plans 07 and 08', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'bw-')); await build({ target: 'all', outRoot: out, id: 'dev' });
+  for (const d of [...OUTPUTS.extension, ...OUTPUTS.android]) assert.deepEqual(readdirSync(join(out, d)), ['build.json'], d);
+});
+test('a rebuild removes files that left src', async () => {
+  /* build pwa; write dist/pwa/stale.txt; build pwa again */ assert.equal(existsSync(join(dir, 'stale.txt')), false);
+});
+test('findStale reports changed files and ignores build.json and missing outputs', async () => {
+  /* build pwa into A and B with different ids; change B/dist/pwa/index.html */
+  assert.deepEqual(findStale(a, b, ['dist/pwa', 'dist/chrome']), ['dist/pwa/index.html: stale; run npm run build']);
+  assert.deepEqual(findStale(a, join(b, 'none'), ['dist/pwa']), []);
+});
+test('the real tree passes every check', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'bw-')); await build({ target: 'all', outRoot: out, id: 'dev' });
+  const outputs = Object.values(OUTPUTS).flat().map(d => join(out, d));
+  assert.deepEqual(await runChecks({ srcDir: 'src', outputs, extraHtml: ['shells/pwa/landing/index.html'] }), []);
+});
+```
+
+`findStale` compares every file except `build.json`. It treats an output that is missing from `liveRoot` as not stale, and it compares `sw.js` with the `BUILD_ID` line removed.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/build.test.js`
+Expected: FAIL with `Cannot find module` for `tools/build.js`.
+
+- [ ] **Step 3: Write the shell files**
+
+`shells/pwa/index.html` is exactly this (the CSP is `APP_CSP`):
+
+```html
+<!doctype html>
+<html lang="en" data-shell="pwa" data-theme="system" data-motion="system" data-font="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http://localhost:* http://127.0.0.1:*; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'">
+<title>Byways</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="assets/icons/icon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="ui/styles/themes.css">
+<link rel="stylesheet" href="ui/styles/app.css">
+<script type="module" src="ui/boot.js"></script>
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="topbar">
+  <nav aria-label="Main">
+    <a href="#/stumble">Stumble</a> <a href="#/feed">Feed</a> <a href="#/daily">Daily Fate</a>
+    <a href="#/vault">Vault</a> <a href="#/saved">Saved</a> <a href="#/settings">Settings</a>
+  </nav>
+</header>
+<div id="hf-bar" hidden></div>
+<main id="main" tabindex="-1"><div id="app"></div></main>
+<div id="toasts"></div>
+<div id="live-polite" class="visually-hidden" role="status" aria-live="polite"></div>
+<div id="live-assertive" class="visually-hidden" aria-live="assertive" aria-atomic="true"></div>
+<noscript>Byways needs JavaScript.</noscript>
+</body>
+</html>
+```
+
+`shells/pwa/manifest.webmanifest`:
+
+```json
+{ "id": "./", "name": "Byways", "short_name": "Byways",
+  "description": "A free discovery app. Press one button and go somewhere you would not have found on your own.",
+  "start_url": "./", "scope": "./", "display": "standalone",
+  "background_color": "#ffffff", "theme_color": "#1d4ed8",
+  "icons": [ { "src": "assets/icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" } ] }
+```
+
+`shells/pwa/sw.js` holds only `const BUILD_ID = '__BUILD_ID__';`, `const CACHE = 'byways-' + BUILD_ID;` and `const PRECACHE = ["__PRECACHE__"];`.
+
+`shells/pwa/landing/index.html`: doctype, `lang="en"`, the same CSP meta, `<title>Game-Dev-Resources</title>`, an `<h1>Game-Dev-Resources</h1>`, and a list with one item: `<a href="byways/">Byways</a>` followed by " — a free discovery app with no account." It has no scripts and no styles.
+
+`src/assets/icons/icon.svg`: a `viewBox="0 0 512 512"` rounded square filled `#1d4ed8`, with a white winding path stroke. No text and no external references.
+
+- [ ] **Step 4: Write the styles**
+
+`themes.css` sets the tokens `--bg --fg --muted --surface --border --accent --focus` on `[data-theme="light"]` and on `:root` (light: `#ffffff #1a1a1a #555555 #f3f3f0 #8a8a8a #1d4ed8 #b45309`). The same tokens go on `[data-theme="dark"]` and inside `@media (prefers-color-scheme: dark) { [data-theme="system"] { … } }` (dark: `#121212 #f2f2f2 #bbbbbb #1e1e1e #777777 #93b4ff #fbbf24`), and on `[data-theme="high-contrast"]` (`#000000 #ffffff #ffffff #000000 #ffffff #ffff00 #00ffff`). It also has `[data-font="system"] body { font-family: system-ui, sans-serif; }`.
+
+`app.css` holds:
+- `html { font-size: calc(100% * var(--text-scale, 1)); }` and `body` colours from the tokens;
+- `button, .btn, nav a { min-height: 56px; min-width: 56px; display: inline-flex; align-items: center; justify-content: center; padding: 0 16px; }`;
+- `:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }`;
+- `.visually-hidden` (the clip-rect pattern), a `.skip-link` that shows on focus, `[hidden] { display: none !important; }`, and `#toasts` fixed at the bottom centre;
+- `@media (prefers-reduced-motion: reduce) { [data-motion="system"] *, [data-motion="system"] *::before, [data-motion="system"] *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; } }`, plus the same rule for `[data-motion="reduced"]` outside the media query.
+
+- [ ] **Step 5: Implement `tools/build.js`**
+
+`build` empties each output folder of the chosen target and writes `build.json` = `{id, builtAt: now.toISOString()}`. For `pwa`, it copies `src/core`, `src/ui`, `src/platform`, `src/data`, `src/assets`, and `src/versions.json` and `src/lab` when they exist, to the same paths under `dist/pwa/`. It copies `index.html`, `manifest.webmanifest` and `sw.js` from `shells/pwa/`. In `sw.js` it replaces `'__BUILD_ID__'` with `JSON.stringify(id)` and `["__PRECACHE__"]` with the JSON list: `'./'` plus every output file as `./<path>`, sorted, leaving out `sw.js`, `build.json` and anything under `lab/` or `vendor/`. `extension` and `android` write an empty output folder and `build.json` until Plan 07/08 adds files. `all` runs the three. The CLI `--check` builds `all` into `fs.mkdtemp(join(os.tmpdir(), 'byways-check-'))`. It then runs `runChecks({srcDir: 'src', outputs, extraHtml: ['shells/pwa/landing/index.html']})` and `findStale(tmp, APP_ROOT, all output dirs)`, prints each problem, and exits 1 when there are any. Otherwise it prints `check passed`. `APP_ROOT` is the folder above `tools/`.
+
+- [ ] **Step 6: Run it and see it pass**
+
+Run: `node --test tests/unit/build.test.js`
+Expected: PASS, 5 tests.
+
+Run: `npm test`
+Expected: `check passed`, then every unit test passes.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add shells/pwa src/ui/styles src/assets/icons/icon.svg src/ui/boot.js src/data tools/build.js tests/unit/build.test.js
+git commit -m "Add the PWA shell, base styles and the build with its check"
+```
+
 <!-- PLAN CONTINUES -->

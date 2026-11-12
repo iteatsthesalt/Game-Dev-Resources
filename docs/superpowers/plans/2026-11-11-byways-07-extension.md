@@ -73,6 +73,7 @@
 | `stumble` | page → bg | `{tabId}` | Runs the toolbar Stumble on that tab. Reply `{ok:true, find}` or `{ok:false, reason}` |
 | `tabFind` | bg → pages | `{tabId, windowId, find, branch, why}` | Panel in that window shows the card |
 | `stateChanged` | page → bg | `{}` | bg drops its cached engine (taste changed) |
+| `checkAccess` | page → bg | `{}` | bg re-runs `checkAccess()`. Reply `{needsAccess}` |
 | `toggleListening` | bg → pages | `{}` | Panel or tab toggles the mic |
 | `rabbit` | bg → pages | `{}` | Panel reads `pendingRabbit` from `storage.session` |
 | `openPermission` | page → bg | `{}` | bg opens or focuses `permission.html`. Reply `{tabId}` |
@@ -298,7 +299,7 @@ The `--check` run builds both browsers into its temporary folder and adds `check
 - [ ] **Step 5: Run the tests and see them pass**
 
 Run: `node --test tests/unit/ext-check.test.js`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 6: Run the whole check**
 
@@ -326,7 +327,7 @@ git commit -m "Build the Chrome and Firefox extensions and check their manifests
   - `createExtSecrets(ext) → SecretStore`
 
 The tests use two fakes, written at the top of the test file:
-- `fakeExt()` returns `{calls, messages, local, session, storage, tabs, runtime}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`.
+- `fakeExt()` returns `{calls, messages, local, session, storage, tabs, runtime}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`, and `tabs.create` resolves `{id: 99, ...props}`. Storage calls are not recorded in `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`.
 - `fakeWin({mic = 'granted'})` returns `{calls, fetch, navigator, speechSynthesis}`. `fetch(url, init)` pushes `[url, init]` to `calls` and resolves `new Response('ok')`. `navigator.permissions.query({name})` resolves `{state: mic}`, or rejects when `mic === 'throws'`. `navigator.clipboard.writeText(t)` pushes `['copy', t]`. It has no `share` and no `document`.
 - `fakeVoice()` is a `VoiceEngine` whose `start` sets `started = true`, and whose `emit(event, data)` calls the `on` listeners.
 
@@ -472,7 +473,7 @@ git commit -m "Add the extension platform with storage.local secrets and a mic g
 The tests import `createBackground` from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
 
 Test fakes, written at the top of the test file:
-- `fakeExt({granted = true, sidebar = false})` is Task 3's fake plus: `tabs.get(id)` (resolves `tabsById[id]` or rejects `'No tab'`), `action.setBadgeText(o)` → `['badge', o]`, `action.setTitle(o)` → `['title', o]`, `sidePanel.open(o)` → `['sidePanel.open', o]` (or, with `sidebar: true`, no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`), `permissions.contains(q)` → `['contains', q]` and resolves `granted`, `contextMenus.removeAll()` → `['menus.removeAll']`, `contextMenus.create(o)` → `['menus.create', o]`, `runtime.getManifest()` → `{host_permissions: ['https://archive.org/*']}`. Every recorder pushes synchronously, before any `await`.
+- `fakeExt({granted = true, sidebar = false})` is Task 3's fake plus: `ext.tabsById = {}` and `tabs.get(id)` (resolves `tabsById[id]` or rejects `'No tab'`, not recorded), `ext.granted` (starts as the option), `action.setBadgeText(o)` → `['badge', o]`, `action.setTitle(o)` → `['title', o]`, `sidePanel.open(o)` → `['sidePanel.open', o]` (or, with `sidebar: true`, no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`), `permissions.contains(q)` → `['contains', q]` and resolves `ext.granted`, `contextMenus.removeAll()` → `['menus.removeAll']`, `contextMenus.create(o)` → `['menus.create', o]`, `runtime.getManifest()` → `{host_permissions: ['https://archive.org/*']}`. Every recorder pushes synchronously, before any `await`.
 - `fakeEngine(results)`: `next({mode})` records `mode` in `modes`, waits one macrotask, then returns `results.shift()` (throwing it if it is an `Error`). It tracks `maxInFlight`.
 - `bgWith(results, {settings = {mode: 'tuned'}, ...extOpts} = {})` returns `{bg, ext, engine, resets}`.
 

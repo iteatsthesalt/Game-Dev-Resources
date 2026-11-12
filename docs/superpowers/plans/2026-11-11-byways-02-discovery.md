@@ -60,7 +60,7 @@ All paths are under `Apps/Byways/`.
 | `src/core/liveness.js` | `checkLive` |
 | `src/core/sources/index.js` | `SOURCES`, `getSource`, `enabledSources`, `IDENT` |
 | `src/core/sources/probe.js` | `probeSource`, `runProbes` |
-| `src/core/sources/<id>.js` | 21 adapters: wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian, europeana, openverse, kagi, kagirandom, wiby, library |
+| `src/core/sources/<id>.js` | 20 adapters: wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian, europeana, openverse, kagi, kagirandom, wiby, library |
 | `src/core/engine.js` | `createEngine`: pool, queue, modes, reactions, Rabbit Hole, feed, search |
 | `src/data/library.json` | About 300 curated starter finds |
 | `src/ui/components/card.js` | `renderCard` with every action |
@@ -586,7 +586,7 @@ git commit -m "Add the Fate pull with weights and retries"
 - [ ] **Step 1: Write the failing test**
 
 ```js
-const F = (t, tags = [], d = '', source = 'library') => makeFind({ source, kind: 'site', title: t, description: d, tags, safety: 'curated', url: `https://${t.replace(/\W/g, '')}.example.com/` });
+const F = (t, tags = [], d = '', source = 'library') => makeFind({ source, kind: 'site', title: t, description: d, tags, safety: 'curated', url: `https://${t.replace(/\W/g, '').toLowerCase()}.example.com/` });
 const ad = (id, outs) => ({ id, more: async () => { const o = outs.shift() ?? []; if (o instanceof Error) throw o; return o; } });
 const never = async () => false;
 test('similarLocal ranks by shared tags and words', () => {
@@ -597,7 +597,7 @@ test('similarLocal ranks by shared tags and words', () => {
 });
 test('next uses the source first, then Marginalia, then the local pool', async () => {
   const start = F('Start', ['retro']);
-  const hole = createRabbitHole({ sources: [ad('library', [[F('A')], [], []]), ad('marginalia', [[F('M', [], '', 'marginalia')], []])], ctx: {}, seenHas: never, pool: () => [F('Local', ['retro'])] });
+  const hole = createRabbitHole({ sources: [ad('library', [[F('A')], [], []]), ad('marginalia', [[F('M', ['retro'], '', 'marginalia')], []])], ctx: {}, seenHas: never, pool: () => [F('Local', ['retro'])] });
   hole.start(start);
   assert.equal((await hole.next()).title, 'A');
   assert.equal((await hole.next()).title, 'M');
