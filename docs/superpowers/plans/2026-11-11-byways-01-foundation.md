@@ -1421,9 +1421,72 @@ test('buildHash writes the hash forms', () => {
   assert.equal(buildHash('import', { payload: 'xyz' }), '#s=xyz');
   assert.throws(() => buildHash('nope'), /unknown route: nope/);
 });
+test('registerView replaces an earlier view and refuses unknown routes', () => {
+  const a = { title: 'A', render() {} }, b = { title: 'B', render() {} };
+  registerView('vault', a); registerView('vault', b); assert.equal(getView('vault'), b);
+  assert.throws(() => registerView('nope', a), /unknown route: nope/); assert.equal(getView('nope'), undefined);
+});
+test('startRouter renders now and on hashchange; navigate re-renders an unchanged hash', () => {
+  const win = fakeWin('#/feed'); const seen = []; startRouter((route, params) => seen.push([route, params]), win);
+  win.location.hash = '#/daily/2026-11-11'; win.dispatchEvent(new Event('hashchange'));
+  navigate('daily', { id: '2026-11-11' }); navigate('vault');
+  assert.deepEqual(seen, [['feed', {}], ['daily', { id: '2026-11-11' }], ['daily', { id: '2026-11-11' }]]);
+  assert.equal(win.location.hash, '#/vault');
+});
+test('byways:back goes back unless a listener cancels it or the view is home', async () => {
+  const win = fakeWin('#/feed'); startRouter(() => {}, win);
+  const back = () => win.dispatchEvent(new CustomEvent('byways:back', { cancelable: true }));
+  back(); await flush(); assert.equal(win.history.backs, 1);
+  const cancel = e => e.preventDefault(); win.addEventListener('byways:back', cancel);
+  back(); await flush(); assert.equal(win.history.backs, 1);
+  win.removeEventListener('byways:back', cancel); win.location.hash = '#/stumble';
+  back(); await flush(); assert.equal(win.history.backs, 1);
+});
 ```
 
-`tests/unit/boot-data.test.js`:
+The fake `location` fires no `hashchange` of its own, so `navigate('vault')` only changes the hash here.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/router.test.js`
+Expected: FAIL with `Cannot find module` for `src/ui/router.js`.
+
+- [ ] **Step 3: Implement `src/ui/router.js`**
+
+`parseHash`: `#s=<payload>` with a non-empty payload gives `import`. Otherwise it splits `#/route/id`, lower-cases `route` and keeps it only when `ROUTES.includes(route)`; anything else gives `stumble` with no params. It decodes `id` with `decodeURIComponent` inside try/catch, drops the id when decoding fails, and ignores later segments. `buildHash` encodes `id` with `encodeURIComponent`. `startRouter(render, win)` keeps `win` for `navigate`, calls `render(route, params)` for `parseHash(win.location.hash)` at once and on each `hashchange`, and listens for `byways:back`. That listener reads `event.defaultPrevented` on a microtask (`queueMicrotask`), after every listener has run, because panels add their listeners after the router. `navigate` sets `win.location.hash`, and calls `render` directly when the hash is unchanged. The module touches no global at import.
+
+- [ ] **Step 4: Run it and see it pass**
+
+Run: `node --test tests/unit/router.test.js`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/ui/router.js tests/unit/router.test.js
+git commit -m "Add the hash router"
+```
+
+### Task 13: Boot, views and the About section
+
+**Files:**
+- Create: `src/ui/views/index.js`, `src/ui/views/settings/index.js`, `src/ui/views/settings/about.js`, `tests/e2e/helpers/app.js`
+- Modify: `src/ui/boot.js` (replace the Task 9 stub)
+- Test: `tests/unit/boot-data.test.js`, `tests/e2e/shell.spec.js`
+
+**Interfaces:**
+- Consumes: `mulberry32(seed)`, `APP_VERSION` (Task 1); `realClock` (Task 3); `createHttp({transport, clock})` (Task 4); `openStore(backend)`, `idbBackend()`, `memoryBackend()` (Task 5); `loadSettings(store)`, `saveSettings(store, patch)` (Task 6); `createPwaPlatform({secretsStore})`, `registerServiceWorker(win, onUpdate)` (Task 7); `test`, `expect` (Task 10); `h(tag, props, ...children)`, `clear(el)`, `announce(text, opts)`, `focusMain()`, `applyAccessSettings(settings, root)` (Task 11); `registerView`, `getView(route)`, `startRouter(render)` (Task 12).
+- Produces:
+  - `views/settings/index.js`: `registerSettingsSection({id, label, order, render(container, app)})` (a later registration with the same id replaces the earlier one) and `listSettingsSections() → Array`, sorted by `order`. It registers the `settings` view.
+  - `views/settings/about.js`: the `about` section (`order: 90`, label `About`) with the version, the build id and links. Plan 08 adds its update check to this file.
+  - `views/index.js`: imports `./settings/index.js` and `./settings/about.js`, then registers a placeholder for each of `stumble feed daily vault saved import` that has no view yet. Later plans add their import lines above the placeholders.
+  - `boot.js`: `DATA_FILES = {tags: 'tags.json', library: 'library.json', vaultStarter: 'vault-starter.json', geocities: 'geocities-seeds.json'}`, `EMPTY_DATA` (the empty shapes from Task 9), `loadData(fetchFn, baseUrl) → Promise<object>`, `dataUrlFor(platformName, file) → string`, `STORAGE_OFF_MESSAGE = 'Storage is blocked in this browser. Nothing you save will be kept.'`, `VIEW_FAILED_MESSAGE = 'This view failed to load.'`, `boot(platform) → Promise<App>` with the Plan 01 `App` fields (`store, settings, getSettings, saveSettings, http, clock, rand, platform, data, dataUrl`), and `bootFromShell()`. Plans 07 and 08 add their shells' branches to `bootFromShell`.
+  - The routed page: `#app` holds one `div.view`, with the view's `title` as its `h1` and then `div.view-body`, the container passed to `render`. A view never renders an `h1`; one that must change its heading text sets `container.closest('.view').querySelector('h1').textContent`.
+  - `tests/e2e/helpers/app.js`: `skipFirstRun(page) → Promise<void>` and `gotoApp(page, hash = '#/stumble') → Promise<void>`.
+
+View titles: `stumble` "Stumble", `feed` "Feed", `daily` "Daily Fate", `vault` "Vault", `saved` "Saved", `settings` "Settings", `import` "Import". A placeholder renders the paragraph "Nothing here yet.".
+
+- [ ] **Step 1: Write the failing unit test** `tests/unit/boot-data.test.js`
 
 ```js
 test('loadData falls back to empty shapes for missing or broken files', async () => {

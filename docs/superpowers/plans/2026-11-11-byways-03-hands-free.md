@@ -1331,35 +1331,46 @@ Wiring rules:
 - [ ] **Step 1: Write the failing e2e tests**
 
 ```js
-import { test, expect } from '@playwright/test';
-import { mockNet } from './helpers/net.js';
+// tests/e2e/handsfree.spec.js
+import { readFileSync } from 'node:fs';
+import { test, expect, stageLibrary } from './helpers/net.js';
+import { gotoApp } from './helpers/app.js';
 import { installFakeSpeech } from './helpers/fakes.js';
 
-const title = (page) => page.getByRole('main').getByRole('heading', { level: 2 }).first();
+const small = JSON.parse(readFileSync(new URL('../fixtures/http/library/small.json', import.meta.url))).entries;
+const title = (page) => page.locator('article.card h2');
 const announced = (page, region, text) => page.evaluate(([r, t]) =>
   window.__announcements.filter(([id, x]) => id === r && x === t).length, [region, text]);
-async function skipFirstRun(page) {
-  const skip = page.getByRole('button', { name: 'Skip' });
-  while (await skip.isVisible()) await skip.click();
+async function open(page, opts) {
+  await installFakeSpeech(page, opts); await stageLibrary(page, small); await gotoApp(page, '#/stumble');
 }
 async function start(page, opts) {
-  await mockNet(page); await installFakeSpeech(page, opts);
-  await page.goto('./#/stumble'); await skipFirstRun(page);
+  await open(page, opts);
   await page.getByRole('button', { name: 'Start' }).click();
   await expect(page.locator('#hf-listening')).toHaveText('Listening');
 }
+// Reading is over and the 400 ms half-duplex tail has passed, so voice commands count.
+async function settle(page) {
+  await expect(page.locator('#hf-countdown')).not.toBeEmpty();
+  await page.waitForTimeout(450);
+}
+const setVis = (page, v) => page.evaluate((v) => {
+  Object.defineProperty(document, 'visibilityState', { value: v, configurable: true });
+  document.dispatchEvent(new Event('visibilitychange'));
+}, v);
 
-test('voice "next" shows a new find and captions it', async ({ page }) => {
-  await start(page);
+test('voice "next" shows a new find, captions it and plays the tone', async ({ page }) => {
+  await start(page); await settle(page);
   const t1 = await title(page).textContent();
   await page.evaluate(() => window.__say('next'));
   await expect(title(page)).not.toHaveText(t1);
   await expect(page.locator('#hf-caption')).toHaveText('Heard: Next');
+  expect(await page.evaluate(() => window.__tones)).toBe(1);
 });
 
 test('"search for pixel art" reaches app.search', async ({ page }) => {
   const urls = []; page.on('request', (r) => urls.push(r.url()));
-  await start(page);
+  await start(page); await settle(page);
   await page.evaluate(() => window.__say('search for pixel art'));
   await expect.poll(() => announced(page, 'live-polite', 'Searching for pixel art')).toBe(1);
   await expect.poll(() => urls.some((u) => /pixel(%20|\+| )art/.test(u))).toBe(true);
