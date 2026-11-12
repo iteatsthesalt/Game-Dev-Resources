@@ -1,10 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
-  APP_CSP, LAB_CSP, expectedCsp, findForbidden, checkHtml, checkRefs, checkManifest, checkData, checkPrecache,
+  APP_CSP, LAB_CSP, expectedCsp, findForbidden, checkHtml, checkRefs, checkManifest, checkData, checkPrecache, runChecks,
 } from '../../tools/check.js';
 
 const page = csp => `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><script type="module" src="ui/boot.js"></script>`;
@@ -12,6 +12,27 @@ test('findForbidden flags each banned API once', () => {
   for (const s of ['el.innerHTML = x', 'el.outerHTML = x', 'el.insertAdjacentHTML("a", b)', 'document.write(1)', 'eval(x)', 'new Function("x")', '<script src="https://cdn.x/y.js"></script>'])
     assert.equal(findForbidden('a.js', s).length, 1, s);
   assert.deepEqual(findForbidden('a.js', 'const evaluate = 1; medieval(2); x.innerHTMLish = 3;'), []);
+});
+test('findForbidden fences every HTML sink and the spellings that slipped past it', () => {
+  for (const s of ['el.setHTMLUnsafe(x)', 'Document.parseHTMLUnsafe(x)', 'range.createContextualFragment(x)', 'frame.srcdoc = x',
+    '<iframe srcdoc="<b>x</b>"></iframe>', 'el.setAttribute("SRCDOC", x)', 'document.writeln(1)', 'el.outerHTML += x', 'eval (x)'])
+    assert.equal(findForbidden('dist/pwa/ui/a.js', s).length, 1, s);
+});
+test('findForbidden allows setHTMLUnsafe only in core/util/text.js and srcdoc only in ui/dom.js', () => {
+  assert.deepEqual(findForbidden('/tmp/out/dist/pwa/core/util/text.js', 'template.setHTMLUnsafe(x)'), []);
+  assert.deepEqual(findForbidden('C:\\out\\core\\util\\text.js', 'template.setHTMLUnsafe(x)'), []);
+  assert.deepEqual(findForbidden('dist/pwa/ui/dom.js', "if (key === 'srcdoc') throw x"), []);
+  for (const file of ['dist/pwa/core/util/mytext.js', 'dist/pwa/ui/text.js', 'dist/pwa/core/util/text.js.bak'])
+    assert.equal(findForbidden(file, 'template.setHTMLUnsafe(x)').length, 1, file);
+  assert.equal(findForbidden('dist/pwa/core/util/text.js', 'el.srcdoc = x; range.createContextualFragment(x)').length, 2);
+  assert.equal(findForbidden('dist/pwa/ui/dom.js', 'el.setHTMLUnsafe(x)').length, 1);
+});
+test('runChecks scans .mjs files and every vendor folder but the output root one', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'out-'));
+  for (const d of ['vendor', 'lab/vendor']) mkdirSync(join(dir, d), { recursive: true });
+  for (const f of ['vendor/v.js', 'lab/vendor/v.js', 'm.mjs']) writeFileSync(join(dir, f), 'eval(x)');
+  assert.deepEqual(await runChecks({ srcDir: join(dir, 'no-src'), outputs: [dir] }),
+    [join(dir, 'lab/vendor/v.js'), join(dir, 'm.mjs')].map(f => `${f}: forbidden eval`));
 });
 test('checkHtml wants the expected CSP and no inline code', () => {
   assert.deepEqual(checkHtml('x.html', page(APP_CSP)), []);
@@ -22,6 +43,12 @@ test('checkHtml wants the expected CSP and no inline code', () => {
   assert.deepEqual(checkHtml('dist/pwa/lab/x.html', page(expectedCsp('lab/index.html'))), ['dist/pwa/lab/x.html: wrong CSP']);
   assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<script>1</script>'), ['x.html: inline script']);
   assert.deepEqual(checkHtml('x.html', page(APP_CSP) + '<div style="color:red"></div><style>p{}</style>'), ['x.html: inline style', 'x.html: inline style']);
+});
+test('checkHtml wants the CSP meta before the first script and link', () => {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${APP_CSP}">`;
+  assert.deepEqual(checkHtml('x.html', `<link rel="stylesheet" href="a.css">${meta}`), ['x.html: CSP meta after a script or link']);
+  assert.deepEqual(checkHtml('x.html', `<script type="module" src="a.js"></script>${meta}`), ['x.html: CSP meta after a script or link']);
+  assert.deepEqual(checkHtml('x.html', `${meta}<link rel="stylesheet" href="a.css"><script type="module" src="a.js"></script>`), []);
 });
 test('expectedCsp gives each Lab page its exact CSP', () => {
   assert.equal(LAB_CSP, "default-src 'self'; script-src 'self' 'wasm-unsafe-eval' blob:; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' blob:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'none'");

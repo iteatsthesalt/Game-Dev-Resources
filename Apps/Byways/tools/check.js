@@ -23,18 +23,29 @@ export function expectedCsp(path) {
   return LAB_CSP;
 }
 
+// [name, pattern, files allowed to use it (path suffixes)]. Every HTML sink is here: core/util/text.js parses
+// untrusted HTML into one inert, detached <template> only to read its text, and ui/dom.js names srcdoc to refuse it.
 const FORBIDDEN = [
   ['innerHTML', /\binnerHTML\b/],
-  ['outerHTML', /\bouterHTML\s*=/],
+  ['outerHTML', /\bouterHTML\s*\+?=/],
   ['insertAdjacentHTML', /\binsertAdjacentHTML\b/],
-  ['document.write', /\bdocument\.write\b/],
-  ['eval', /\beval\(/],
+  ['setHTMLUnsafe', /\bsetHTMLUnsafe\b/, ['core/util/text.js']],
+  ['parseHTMLUnsafe', /\bparseHTMLUnsafe\b/],
+  ['createContextualFragment', /\bcreateContextualFragment\b/],
+  ['srcdoc', /\bsrcdoc\b/i, ['ui/dom.js']],
+  ['document.write', /\bdocument\.write(?:ln)?\b/],
+  ['eval', /\beval\s*\(/],
   ['new Function', /\bnew Function\b/],
   ['remote script', /<script[^>]+src=["']https?:/i],
 ];
 
+const isAllowed = (file, suffixes = []) => {
+  const path = '/' + file.split('\\').join('/');
+  return suffixes.some(suffix => path.endsWith('/' + suffix));
+};
+
 export function findForbidden(file, text) {
-  return FORBIDDEN.filter(([, re]) => re.test(text)).map(([name]) => `${file}: forbidden ${name}`);
+  return FORBIDDEN.filter(([, re, allow]) => re.test(text) && !isAllowed(file, allow)).map(([name]) => `${file}: forbidden ${name}`);
 }
 
 export function checkHtml(file, html) {
@@ -43,6 +54,9 @@ export function checkHtml(file, html) {
   const content = meta && meta[0].match(/\bcontent="([^"]*)"/i);
   if (!content) problems.push(`${file}: missing CSP meta`);
   else if (content[1] !== expectedCsp(file)) problems.push(`${file}: wrong CSP`);
+  // A meta CSP covers only what the parser meets after it.
+  const firstLoad = Math.min(...[/<script\b/i, /<link\b/i].map(re => html.search(re)).filter(i => i >= 0));
+  if (meta && meta.index > firstLoad) problems.push(`${file}: CSP meta after a script or link`);
   for (const _ of html.matchAll(/<script\b(?![^>]*\bsrc\s*=)[^>]*>/gi)) problems.push(`${file}: inline script`);
   for (const _ of html.matchAll(/<style\b|<[a-z][^>]*\sstyle\s*=/gi)) problems.push(`${file}: inline style`);
   return problems;
@@ -149,12 +163,13 @@ export function checkPrecache(swText, outDir) {
   return problems;
 }
 
-function walk(dir) {
+// Third-party files live only in the output root's vendor/; a vendor folder anywhere else is scanned.
+function walk(dir, root = dir) {
   const files = [];
   for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
-    if (entry.name === 'vendor') continue;
+    if (entry.name === 'vendor' && dir === root) continue;
     const path = join(dir, entry.name);
-    if (entry.isDirectory()) files.push(...walk(path));
+    if (entry.isDirectory()) files.push(...walk(path, root));
     else files.push(path);
   }
   return files;
@@ -166,7 +181,7 @@ function checkOutput(outDir) {
   const problems = [];
   for (const file of walk(outDir)) {
     const ext = extname(file);
-    if (ext === '.js' || ext === '.html') {
+    if (ext === '.js' || ext === '.mjs' || ext === '.html') {
       const text = readFileSync(file, 'utf8');
       problems.push(...findForbidden(file, text), ...checkRefs(file, text, existsSync));
       if (ext === '.html') problems.push(...checkHtml(file, text));
