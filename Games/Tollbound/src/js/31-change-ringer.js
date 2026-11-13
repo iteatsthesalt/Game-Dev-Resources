@@ -31,7 +31,7 @@
     perLevel: { hand: 2, knee: 1 },
     base: [],
     voices: ['tenor-stroke', 'tellers', 'plumb'],
-    startGear: [],
+    startGear: ['base.bell-rope', 'base.ringers-jerkin'],
     trade: { name: 'Set', text: 'Set the bell mouth-up at once, wherever you are: your next pull speaks twice.', icon: 'set', recharge: 8 },
     callings: ['stander', 'backward-ringer'],
     unlock: null,

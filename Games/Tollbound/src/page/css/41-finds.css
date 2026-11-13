@@ -1,0 +1,212 @@
+/* 41-finds.css: the Lantern's room of finds (75-finds.js). A column that fits a phone: the worn places and the chest
+   as rows of finds, a find's lines as the clauses they are, and the controls that change it. Every find looks the
+   same as every other: a find is worth its notches, and no colour on it is a tier. The chosen line and the struck word
+   are the only marks. Colours are the tokens of 00-base.css; sizes are rem, so "Text and controls" scales them; no
+   control is lower than 44px. */
+
+.fnd {
+  width: min(100%, 36rem);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  text-align: left;
+}
+
+.fnd > .ui-note,
+.fnd > .ui-heading { text-align: center; }
+
+.fnd > .ui-sub { text-align: center; }
+
+.fnd-purse {
+  margin: 0;
+  color: var(--second-bright);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.03em;
+  text-align: center;
+}
+
+.fnd-head {
+  margin: 0.4rem 0 0;
+  color: var(--ink-dim);
+  font: 400 0.9rem/1.2 var(--font-display);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.fnd-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+/* a find in a list: its glyph, its name over a note, and its notches cut on the right */
+.ui-btn.fnd-item {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.02em;
+  font: 400 1rem/1.25 var(--font-ui);
+}
+
+.ui-btn.fnd-item.is-chosen,
+.ui-btn.fnd-line.is-chosen {
+  border-color: var(--accent-bright);
+  background: var(--surface-hover);
+}
+
+.fnd-icon {
+  width: 2.25rem;
+  height: 2.25rem;
+  flex: none;
+}
+
+.fnd-item-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.fnd-item-name { overflow-wrap: anywhere; }
+
+.fnd-item-note {
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+.fnd-cuts {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+
+.fnd-cut {
+  width: 3px;
+  height: 1.1rem;
+  background: var(--accent);
+}
+
+.fnd-empty {
+  padding: 0.55rem 0.75rem;
+  border: 1px dashed var(--line);
+  color: var(--ink-faint);
+  font-size: 0.9rem;
+}
+
+.fnd-none { text-align: center; }
+
+.fnd-said {
+  min-height: 1.4em;
+  margin: 0;
+  color: var(--warn);
+  font-size: 0.9rem;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.fnd-said.is-done { color: var(--good); }
+
+/* ---- one find ---- */
+
+.ui-btn.fnd-up { align-self: flex-start; }
+
+.fnd-title {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.fnd-name {
+  margin: 0;
+  color: var(--ink);
+  font: 400 1.35rem/1.2 var(--font-display);
+  letter-spacing: 0.06em;
+}
+
+.fnd-meta-line,
+.fnd-wants,
+.fnd-note {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.9rem;
+}
+
+.fnd-wants { color: var(--second-bright); }
+
+.fnd-text { font-size: 0.95rem; }
+
+.fnd-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.fnd-place {
+  color: var(--ink-faint);
+  font-size: 0.9rem;
+}
+
+.fnd-bare {
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--line);
+}
+
+.fnd-place.is-gone { border-style: dashed; }
+
+.fnd-place.is-walk { border-color: var(--second-dim); color: var(--second-bright); }
+
+.fnd-fixed { color: var(--ink); }
+
+.fnd-n {
+  color: var(--accent-bright);
+  font: 400 0.8rem/1.2 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+/* a written line: its number, then its three words, then what wrote it */
+.ui-btn.fnd-line {
+  display: block;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.01em;
+  font: 400 0.95rem/1.4 var(--font-ui);
+}
+
+.fnd-verb { color: var(--ink); }
+
+.fnd-object,
+.fnd-cond { color: var(--ink-dim); }
+
+.is-struck {
+  color: var(--ink-faint);
+  text-decoration: line-through;
+  text-decoration-thickness: 2px;
+}
+
+.fnd-meta {
+  display: block;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+}
+
+.fnd-acts { justify-content: stretch; }
+
+.fnd-acts > .ui-btn {
+  flex: 1 1 12rem;
+  text-transform: none;
+  letter-spacing: 0.03em;
+  font-size: 0.9rem;
+}
+
+.fnd-change-note { text-align: center; }
