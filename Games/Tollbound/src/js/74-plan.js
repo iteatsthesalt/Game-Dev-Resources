@@ -8,8 +8,8 @@
 //            tower, the eight walls and twelve streets as roads between dark blocks tinted by the quarter of each
 //            class, the alleys through the blocks, the river with its four bridges and its banks (Flood south, Ebb
 //            north), the open marsh beyond the last wall; the route lit in gold, the head as a lantern, the nodes it
-//            may step to next ringed, the loops it closed (the ones that grant shaded), straight runs along streets,
-//            and the way from the head to the chosen node dotted. Pan with one finger or the mouse, zoom with two
+//            may step to next ringed, the loops it closed (the ones that grant shaded), the straight run of each held
+//            milestone as a broad band along its street, and the way from the head to the chosen node dotted. Pan with one finger or the mouse, zoom with two
 //            fingers, the wheel or the - and + controls; tap a node to choose it. The panel tells the chosen node:
 //            its name, kind and place, whether the route holds it, doubled it or fences it, what it gives at the
 //            numbers its ring, bank and straight run make, from which toll it works, and the way to it; and offers
@@ -18,9 +18,9 @@
 //            save is written (Game.write). "What the route gives" lists the whole Plan's modifiers, summed. The
 //            controls are 44 px or more; text is in rem; it reads Char.points and the coin in its header.
 //            Keys and a pad: focus starts on the map, where the arrows (the d-pad) move the choice to the next node
-//            that way, along a link where there is one, and Enter (the pad's lower face button) steps onto it, or
-//            moves focus into the panel to choose an attribute, to take back the head, or else; - and + zoom; Escape
-//            (the pad's back) closes it. Nothing is changed while a vigil is under way (save.away), and only through
+//            that way, along a link where there is one, and Enter (the pad's lower face button) steps onto it when one
+//            point does that, and else moves focus into the panel (to choose a lane's attribute, to take back the head,
+//            or to anything else there); - and + zoom; Escape (the pad's back) closes it. Nothing is changed while a vigil is under way (save.away), and only through
 //            Char, so the Lantern, which tells itself again when a room closes, shows what was done.
 //   For tests, the map's canvas carries data-cx, data-cy and data-scale: the point of the plan at its middle and the
 //   CSS pixels a unit of the plan takes, so that a scenario can find where a node is drawn; the panel carries
@@ -128,6 +128,7 @@
       route: get('--accent', '#c79a45'), lamp: get('--pl-lamp', 'rgba(239,201,119,0.35)'), granted: get('--second', '#6fb3a6'),
       loop: get('--pl-loop', 'rgba(111,179,166,0.2)'), tooBig: get('--bad', '#e8776b'), step: get('--ink', '#ece7da'), chosen: get('--focus', '#9fd0ff'),
       way: get('--pl-way', 'rgba(159,208,255,0.75)'), label: get('--pl-label', 'rgba(236,231,218,0.55)'), ebb: get('--pl-ebb', '#c9b58a'),
+      mile: get('--pl-mile', 'rgba(239,201,119,0.16)'),
       font: get('--font-ui', 'sans-serif'),
     };
   }
@@ -169,11 +170,33 @@
 
   let open = null;   // the screen that is open: its state (one at a time)
 
-  function stateOf(char) {
+  // the held nodes of a held milestone's straight run, end to end along its street
+  function runOf(g, held, mile) {
+    const run = [mile], seen = Object.create(null);
+    seen[mile.id] = true;
+    for (let side = 0; side < 2; side++) {
+      for (let at = mile, more = true; more;) {
+        more = false;
+        for (const l of at.links) {
+          const n = g.byId[l];
+          if (!n || seen[l] || !(held[l] > 0) || n.street !== mile.street) continue;
+          seen[l] = true;
+          if (side === 0) run.unshift(n); else run.push(n);
+          at = n;
+          more = true;
+          break;
+        }
+      }
+    }
+    return run;
+  }
+
+  function stateOf(char, g) {
     const walk = char.plan.walk, held = Tree.held(walk), loops = Tree.loops(walk);
-    const granted = Object.create(null);
+    const granted = Object.create(null), miles = [];
     for (const id of Tree.granted(walk)) granted[id] = true;
-    return { walk, held, loops, granted, steps: Tree.steps(walk), head: walk.length ? walk[walk.length - 1] : null };
+    for (const id in held) if (g.byId[id] && g.byId[id].kind === 'milestone') miles.push(runOf(g, held, g.byId[id]));
+    return { walk, held, loops, granted, miles, steps: Tree.steps(walk), head: walk.length ? walk[walk.length - 1] : null };
   }
 
   // the way from one node to another over the plan's links, fewest steps first: [id] from the first to the last
@@ -222,7 +245,7 @@
     const st = {
       g, save, char, root, canvas, map, panel, points, colours: palette(),
       cx: 0, cy: 0, scale: 8, w: 0, ht: 0, dpr: 1, fitted: false,
-      chosen: null, totals: false, state: stateOf(char), way: [], frame: 0,
+      chosen: null, totals: false, state: stateOf(char, g), way: [], frame: 0,
       pointers: new Map(), drag: null, pinch: null, offResize: null, observer: null,
     };
     const readOnly = () => save.away !== null;
@@ -300,7 +323,7 @@
 
     // after a change: the state is worked out again and the save written
     function changed() {
-      st.state = stateOf(char);
+      st.state = stateOf(char, g);
       Game.write();
     }
 
@@ -737,6 +760,15 @@
       ctx.closePath();
       if (loop.grants) { ctx.fillStyle = c.loop; ctx.fill('evenodd'); }
       else { ctx.setLineDash([4, 4]); ctx.strokeStyle = c.tooBig; ctx.lineWidth = 1.5; ctx.stroke(); ctx.setLineDash([]); }
+    }
+    // the straight run of each held milestone: a broad band along its street, under the route
+    ctx.strokeStyle = c.mile;
+    ctx.lineWidth = Math.max(10, 2.8 * k);
+    for (const run of s.miles) {
+      if (run.length < 2) continue;
+      ctx.beginPath();
+      run.forEach(function (n, i) { if (i === 0) ctx.moveTo(X(n.x), Y(n.y)); else ctx.lineTo(X(n.x), Y(n.y)); });
+      ctx.stroke();
     }
     // the route: a lamplit line, its glow under it
     if (s.walk.length > 1) {

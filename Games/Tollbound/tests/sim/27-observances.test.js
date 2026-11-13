@@ -204,6 +204,19 @@ test('alms: the first find of each toll period is left lying as a cairn, 5% more
   });
   assert.ok(thrown.alive && thrown.state === 0);
   assert.equal(heave.S.observances.cairns, 0);
+  // a cairn taken back while the haul is full is held by the haul's own limit (27-notches.js), never put in it
+  const full = vigil(['alms']);
+  steps(full.S, 1);
+  const cairn = dropped(full.S, 4, 8);
+  Items.FULL = -30; Items.HAUL_MOST = 2;
+  full.S.haul.push({}, {});
+  at(full.S, 9, 8);
+  steps(full.S, 1);
+  at(full.S, 4.2, 8);
+  steps(full.S, 2);
+  delete Items.FULL; delete Items.HAUL_MOST;
+  assert.ok(cairn.alive && cairn.state === -30 && full.S.haul.length === 2);
+  assert.equal(full.S.observances.broken.alms, true);
 });
 
 test('telling the bees: a hive fetches within 10 m; a death of the great told by standing still drives the five nearest back', () => {

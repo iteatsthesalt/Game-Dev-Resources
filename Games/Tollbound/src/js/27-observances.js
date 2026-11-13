@@ -46,6 +46,9 @@
 // observance) when Hand on the Bell scars.
 // Heed needs no system: Dmg.warning works free Heed from heed-max and the observances kept, and Char.heed says the
 // same at the Lantern.
+// The finds this file holds back are the finds' package's pickups: it holds one only from state 0 or Items.FULL (the
+// haul's own limit), lays none itself, and lets one go to Items.FULL while the haul holds Items.HAUL_MOST, so that
+// 27-notches.js lets it go as room comes: no promise, and no wider reach (the bees'), takes the haul past its limit.
 //
 // The promises. An observance's params are its numbers; the rest are this file's.
 //   stability        the player stays within reach metres of where it stood when the last toll rang (where the vigil
@@ -223,13 +226,19 @@
     return false;
   }
 
+  // a find this file held back is let go: free to be picked up, or held by the haul's own limit while the haul is full
+  // (27-notches.js lets a find held so go as room comes), so that nothing here takes the haul past Items.HAUL_MOST
+  function release(S, o) {
+    o.state = typeof Items.FULL === 'number' && typeof Items.HAUL_MOST === 'number' && S.haul.length >= Items.HAUL_MOST ? Items.FULL : 0;
+  }
+
   // a pickup held back (state from, or from's LEFT_ twin) as the player leaves it and walks back onto it: true when
-  // it was walked back onto (taken: its state 0)
-  function claimed(p, o, from, left, leave) {
+  // it was walked back onto (taken: let go, release)
+  function claimed(S, p, o, from, left, leave) {
     const d = edge(p, o);
     if (o.state === from) { if (d > leave) o.state = left; return false; }
     if (o.state !== left || d > TOUCH) return false;
-    o.state = 0;
+    release(S, o);
     return true;
   }
 
@@ -291,7 +300,7 @@
         const o = items[i];
         if (!o.alive || o.kind !== FIND) continue;
         if (o.state === CAIRN || o.state === LEFT_CAIRN) {
-          if (claimed(p, o, CAIRN, LEFT_CAIRN, leave)) kept = false;      // taken back
+          if (claimed(S, p, o, CAIRN, LEFT_CAIRN, leave)) kept = false;      // taken back
           else cairns++;
         } else if (take && !r.flag && o.uid > r.seen && lying(o)) {
           o.state = CAIRN;
@@ -358,9 +367,9 @@
         const o = items[i];
         if (!o.alive || o.kind !== FIND) continue;
         const held = o.state === MOURNED || o.state === LEFT_MOURNED;
-        if (broken) { if (held) o.state = 0; continue; }
+        if (broken) { if (held) release(S, o); continue; }
         if (!held) { if (lying(o)) o.state = MOURNED; continue; }
-        if (claimed(p, o, MOURNED, LEFT_MOURNED, leave)) kept = false;
+        if (claimed(S, p, o, MOURNED, LEFT_MOURNED, leave)) kept = false;
       }
       return kept;
     },

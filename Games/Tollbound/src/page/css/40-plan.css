@@ -18,6 +18,7 @@
   --pl-node-edge: #07090d;
   --pl-lamp: rgba(239, 201, 119, 0.32);    /* the light along the route */
   --pl-loop: rgba(111, 179, 166, 0.24);    /* a loop that grants */
+  --pl-mile: rgba(239, 201, 119, 0.16);    /* a held milestone's straight run */
   --pl-way: rgba(159, 208, 255, 0.8);      /* the way to the chosen node */
   --pl-label: rgba(236, 231, 218, 0.6);
   --pl-ebb: #c7b386;            /* the Ebb bank's nodes: the dry quays */
