@@ -1,0 +1,312 @@
+/* 10-ui.css: what 70-ui-core.js and 90-game.js put on the page: the stack of screens, panels, buttons, the
+   confirm dialog, toasts, the stand-in screens (the title, the Household, the Lantern, the save as text and the
+   results), and the frame-time readout.
+   Later screens are built from these classes:
+     .ui-screen     one open screen, made by UI.open: it covers the game area and centres what it holds
+     .ui-scrim      on a screen: dims what is behind it
+     .ui-panel      a framed plate for content       .ui-stack   children in a column with even gaps
+     .ui-row        controls side by side, wrapping onto more lines when they must
+     .ui-title  .ui-heading  .ui-sub  .ui-note       text, from the game's name down to the small print
+     .ui-rule       a thin gold line with a lozenge, under a title
+     .ui-btn        a control: add .primary for the one main action of a screen, .second for a quieter choice
+   The look: square corners and thin lines, bone text on blue-black, gold for the one thing that matters,
+   verdigris for what is secondary. A control is never lower than 44px, the least a thumb needs.
+   Colours are the tokens of 00-base.css. */
+
+/* ---- screens ---- */
+
+.ui-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  padding: var(--edge-top) var(--edge-right) var(--edge-bottom) var(--edge-left);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  outline: none;   /* it takes focus only when it holds no control */
+  overflow-wrap: anywhere;   /* a name of 24 letters with no space breaks rather than run past a phone's edge */
+}
+
+/* Centred while it fits; when it is taller than the screen the auto margins give way and it scrolls from its top. */
+.ui-screen > * {
+  flex: none;
+  margin: auto;
+}
+
+.ui-scrim { background: var(--scrim); }
+
+/* ---- the focus ring ----
+   Focus is moved by code (arrow keys, a gamepad), which the browser's own :focus-visible cannot follow.
+   So inside a screen the ring obeys .ui-keys alone: UI.nav and the Tab key set it, a pointer press clears it. */
+
+.ui-screen :focus-visible { outline: none; }
+
+.ui-keys .ui-screen :focus {
+  outline: 2px solid var(--focus);
+  outline-offset: 3px;
+}
+
+/* ---- panels and text ---- */
+
+.ui-panel {
+  width: min(100%, 34rem);
+  padding: 1.5rem 1.5rem 1.25rem;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--accent);
+  background: var(--surface);
+  /* a second, outer line: the plate sits in a frame */
+  box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px var(--line), 0 24px 60px var(--shadow);
+}
+
+.ui-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  text-align: center;
+}
+
+.ui-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+}
+
+.ui-row > .ui-btn { flex: 1 1 8rem; }
+
+.ui-title {
+  margin: 0;
+  /* the tracking also follows the last letter: the padding puts the word back in the middle */
+  padding-left: 0.16em;
+  color: var(--ink);
+  font: 400 clamp(2.2rem, 10.5vmin, 5.5rem)/1 var(--font-display);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  text-shadow: 0 2px 0 var(--shadow), 0 0 2.5rem var(--accent-dim);
+}
+
+.ui-heading {
+  margin: 0;
+  color: var(--ink);
+  font: 400 1.6rem/1.2 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.ui-sub {
+  margin: 0;
+  color: var(--ink-dim);
+  font: italic 1.05rem/1.45 var(--font-display);
+}
+
+.ui-note {
+  margin: 0;
+  color: var(--ink-faint);
+  font-size: 0.8rem;
+  letter-spacing: 0.04em;
+}
+
+.ui-rule {
+  position: relative;
+  width: min(100%, 20rem);
+  height: 1px;
+  margin: 0.4rem 0;
+  border: 0;
+  background: linear-gradient(90deg, var(--clear), var(--accent) 25%, var(--accent) 75%, var(--clear));
+}
+
+.ui-rule::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--accent);
+  background: var(--bg);
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+/* ---- controls ---- */
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5em;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.55em 1.5em;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 400 0.95rem/1.2 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: background-color 120ms, border-color 120ms, color 120ms;
+}
+
+.ui-btn:active { transform: translateY(1px); }
+
+.ui-btn.primary {
+  border-color: var(--accent-bright);
+  background: var(--accent);
+  color: var(--ink-on-accent);
+  font-weight: 700;
+}
+
+.ui-btn.second {
+  border-color: var(--second-dim);
+  background: var(--clear);
+  color: var(--second-bright);
+}
+
+/* Only where a pointer can hover: on a touch screen the look would stick to the last control pressed. */
+@media (hover: hover) {
+  .ui-btn:hover {
+    border-color: var(--accent);
+    background: var(--surface-hover);
+  }
+
+  .ui-btn.primary:hover { background: var(--accent-bright); }
+
+  .ui-btn.second:hover {
+    border-color: var(--second);
+    background: var(--surface-raised);
+  }
+}
+
+.ui-btn:disabled {
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--ink-faint);
+  cursor: default;
+  transform: none;
+}
+
+/* ---- the confirm dialog ---- */
+
+.ui-dialog {
+  width: min(100%, 26rem);
+  text-align: center;
+}
+
+.ui-dialog-text {
+  margin: 0 0 1.25rem;
+  font-size: 1.05rem;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+/* ---- toasts (the layer and its defaults are in 00-base.css) ---- */
+
+.ui-toast {
+  border-color: var(--line-strong);
+  border-left: 3px solid var(--accent);
+  border-radius: 0;
+  animation: ui-toast-in 160ms ease-out;
+  transition: opacity 240ms;
+}
+
+.ui-toast.out { opacity: 0; }
+
+@keyframes ui-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(-6px);
+  }
+}
+
+/* ---- the title and the results (90-game.js) ---- */
+
+.game-title { gap: 1.1rem; }
+
+.game-title .ui-btn {
+  min-width: min(100%, 16rem);
+  margin-top: 0.9rem;
+}
+
+.game-results { width: min(100%, 28rem); }
+
+.game-tally {
+  margin: 0;
+  color: var(--second-bright);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.04em;
+}
+
+/* ---- the Household, the Lantern and the save as text (stand-ins of 90-game.js until their screens come) ---- */
+
+.game-household,
+.game-lantern,
+.game-save-text { width: min(100%, 30rem); }
+
+.game-list,
+.game-make {
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+/* a standing character: its name and class on one control, in the case it was written in */
+.game-pick {
+  width: 100%;
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+
+.game-field,
+.game-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55em 0.75em;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1rem/1.35 var(--font-ui);
+}
+
+.game-text {
+  min-height: 6.5rem;
+  resize: vertical;
+  font: 0.75rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.game-register {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.game-dead {
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ---- frame times, with ?fps=1 (90-game.js puts it in #hud) ---- */
+
+.game-fps {
+  position: absolute;
+  top: var(--edge-top);
+  left: var(--edge-left);
+  max-width: calc(100% - var(--edge-left) - var(--edge-right));
+  padding: 2px 6px;
+  background: var(--scrim);
+  color: var(--second-bright);
+  font: 12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+  pointer-events: none;
+}

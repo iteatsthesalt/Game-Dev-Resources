@@ -1,0 +1,915 @@
+{
+ "inventor": "water",
+ "method": "Every rule is a real behaviour of tidal water, silt, salvage gear, wax or candle flame turned straight into a game rule, so that where the water stands and what state a flame is in decide what happens.",
+ "ideas": [
+  {
+   "id": "water-01",
+   "area": "combat-model",
+   "name": "Press, Scour, Salt",
+   "idea": "Three harms, each sized by the water at the victim's feet. Press is multiplied by depth: x0.5 dry, x1 in shallows, x2 in deep water. Scour is multiplied by the speed of water past the victim (its velocity minus the current's): x0 drifting with the flow, up to x2 standing against a race. Salt is stored on a wet victim and lands all at once when it steps onto dry ground. Wax is the one protection: a waxed body takes no Salt but 50% more Press, because wax traps air.",
+   "source": "Pressure doubles with depth in a diving bell, silt is scoured only where water runs past an obstacle, and salt bursts stone only as it dries.",
+   "nearest": "Weather and terrain boosting move types in Pokemon. Here the multiplier is the water under the victim, which the player controls by where the thumb leads the crowd, and Salt waits for a change of ground.",
+   "cost": "large"
+  },
+  {
+   "id": "water-02",
+   "area": "combat-model",
+   "name": "Candles of Grave Wax",
+   "idea": "Every risen body is grave wax with a lit wick whose flame wastes 1% of its life each second. Break removes life at once. Draught makes a body waste four times faster for 4 seconds. Snuff puts it out: it stands inert and harmless until a lit body passes within 1 metre and relights it. Every hit is multiplied by wick length, which grows 10% per second unhit (to x3) and is trimmed to nothing by any hit. A horn lantern blocks Draught and Snuff until Break shatters it.",
+   "source": "Bodies in wet airless ground turn to adipocere, a firm wax; an untrimmed wick grows long, and a draught makes a candle gutter and run away.",
+   "nearest": "Enemies that get up again unless finished, as in the Dark Souls catacombs. Here only another walking flame relights the fallen, every body is on its own clock, and slow heavy hits are paid for their patience by the wick rule.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-03",
+   "area": "attribute",
+   "name": "Girth, Wick, Bands",
+   "idea": "Three measures of the character's vigil candle. Girth: 6 life per point. Wick: +1% casting rate and +4 cm of light per point. Bands: +1% duration of everything the character applies and +1 pool per point. Nothing is locked: a skill or item names the Wick or Girth it wants and works at yours divided by wanted, capped at 100%. Wick more than 25% above Girth gutters: each cast costs 1 life. Wick more than 25% below Girth tunnels: light radius is halved.",
+   "source": "A candle's wick must be matched to its width: too thick a wick gutters and smokes, too thin a wick drowns in its own pool.",
+   "nearest": "Attribute requirements on gear in Diablo II and Path of Exile. Here nothing is gated, a shortfall only scales the thing down, and two of the attributes are tied by a mismatch penalty in both directions.",
+   "cost": "small"
+  },
+  {
+   "id": "water-04",
+   "area": "attribute",
+   "name": "Ballast, Freeboard, Line",
+   "idea": "Three attributes read off the character like marks on a hull. Ballast: 1% less distance moved by any push or current per point. Freeboard: the depth of water that counts as deep for this character rises 1 cm per point, from 1 metre. Line: +3 cm reach and pickup radius per point. Gear and skills have Lading in place of requirements: total Lading above Ballast is subtracted point for point from Freeboard, so an overloaded character works in full but is in deep water sooner.",
+   "source": "A hull's load line shows how much freeboard is left as cargo is added, and it rides lower still in fresh water than in salt.",
+   "nearest": "Equip load in Dark Souls. Here overload never slows or forbids; it lowers the depth at which the water turns against the character, so the price is paid in where the player may stand.",
+   "cost": "small"
+  },
+  {
+   "id": "water-05",
+   "area": "condition",
+   "name": "Dead Water",
+   "idea": "Applied to any body that crosses a seam where fresh water lies over salt, or by skills. For 9 seconds its speed runs on a 3-second beat: 2 seconds at 30%, then 1 second at 160%. All bodies marked by the same cast share one beat, so a crowd closes up into ranks that surge together. Anything moored, or walking the bottom in deep water, is immune. It ends early on dry ground.",
+   "source": "In dead water a boat on fresh water lying over salt is held nearly still and then surges, because its push goes into waves on the hidden boundary between the layers.",
+   "nearest": "Slowing effects in any action game. This one alternates held and surging on a shared beat, so its use is bunching a crowd into ranks for one blow, not escaping it.",
+   "cost": "small"
+  },
+  {
+   "id": "water-06",
+   "area": "condition",
+   "name": "Brined",
+   "idea": "Each brine hit adds 1 stack to a wet victim, to a maximum of 20; a dry victim cannot be brined. Stacks do nothing in water. The moment the victim stands on dry ground every stack lands at once, 4% of the victim's full life each (1% on keepers, 2% on the player), and it is Crusted for 3 seconds, unable to take new stacks. Standing 1 second in fresh water (a font, a cistern, a rain pool) rinses every stack off harmlessly.",
+   "source": "Salt does stone no harm while it stays wet and bursts it from inside as it dries; fresh water washes salt out.",
+   "nearest": "Marks that a second skill detonates. Here nothing sets it off but the victim's own step out of the water, or the ebb leaving it dry, so the trigger is ground and tide.",
+   "cost": "small"
+  },
+  {
+   "id": "water-07",
+   "area": "condition",
+   "name": "Smoking",
+   "idea": "Anything lit that is put out by a blow or a splash (a votive, a lantern, a lit body, the player's own flame) trails smoke for 2 seconds. In that time any flame within 1.5 metres relights it at once, from a distance, at no cost. After 2 seconds it is Cold, and relighting needs 1 second of touch. A snuffer, or water over the wick, skips Smoking and leaves it Cold immediately.",
+   "source": "A candle just blown out can be relit through its trail of smoke without touching the wick; a snuffer leaves no smoke to light.",
+   "nearest": "Revive windows on downed allies in cooperative shooters. This applies to every flame on both sides, works at range through the smoke, and how a flame is put out decides whether the window exists at all.",
+   "cost": "small"
+  },
+  {
+   "id": "water-08",
+   "area": "condition",
+   "name": "Silted",
+   "idea": "In silty water any body moving slower than 1 metre per second gains 1 stack per second, to 10; each stack takes 5% off its speed, so slow things grow slower. No hit applies it. Moving faster than 3 metres per second for 1 second, or entering a current faster than 2 metres per second, scours every stack off at once. At 10 stacks the body is Mired: currents, pushes and hauls no longer move it at all.",
+   "source": "Silt drops wherever the flow slows and is scoured away wherever it speeds up.",
+   "nearest": "Chill that stacks toward a freeze. This is laid by the victim's own slowness and stripped by its own speed, no attack applies it, and its end state stops displacement, not action.",
+   "cost": "small"
+  },
+  {
+   "id": "water-09",
+   "area": "condition",
+   "name": "Under Seal",
+   "idea": "A wax seal is pressed on a body. While it holds, every timer on that body stops: no condition on it expires, no cooldown advances, and nothing new can be added. The seal breaks on the first single hit worth 8% or more of the body's full life, or after 15 seconds; smaller hits leave it whole. On an enemy it keeps stacks in place under many small hits. On the player it holds every timed upgrade until the first hard blow.",
+   "source": "A wax seal keeps a thing exactly as it was closed and shows the first tampering by breaking.",
+   "nearest": "Buffs that last until you are next hit. This stops good and bad timers alike, works on enemies as well as the player, and ignores hits below a threshold.",
+   "cost": "small"
+  },
+  {
+   "id": "water-10",
+   "area": "condition",
+   "name": "Listing",
+   "idea": "A blow that lands on a moving body from the side (more than 50 degrees off its heading) makes it list: for 5 seconds its heading is turned 25 degrees toward the side it was struck from, so it curves past its target. A second blow from the same side doubles the lean to 50 degrees. A blow from the opposite side rights it at once. Bodies walking the bottom in deep water cannot list.",
+   "source": "A hull whose ballast shifts to one side lists and will not hold a straight course until the load is trimmed back.",
+   "nearest": "Confusion effects that scramble enemy movement. This is a fixed lean, set and cancelled by which side the blow comes from, so the player bends a crowd's path by choosing a flank.",
+   "cost": "small"
+  },
+  {
+   "id": "water-11",
+   "area": "condition",
+   "name": "Thief",
+   "idea": "A stray spark lodged in the victim. On the player: one in three pickups collected falls out 1 metre behind and must be gathered again; it never ends by itself and is pinched out only by standing still for 1 second. On an enemy: for 8 seconds it drops 10% of its eventual loot each second while it lives, so a tough body can be emptied without being killed, and one that survives the 8 seconds has nothing left to drop.",
+   "source": "Chandlers called a stray bit of wick in the flame a thief, because it made the candle gutter and waste its wax down the side.",
+   "nearest": "Dropping rings when hit in Sonic. This is a steady leak not caused by hits, and its cure is the one thing a horde game punishes, standing still.",
+   "cost": "small"
+  },
+  {
+   "id": "water-12",
+   "area": "class",
+   "name": "Mudlark",
+   "idea": "A foreshore scavenger on mud boards. Silt never slows or silts a Mudlark. Lifting the thumb is a verb: after 0.4 seconds still the Mudlark stoops, drawing in every pickup within 5 metres and turning up one buried find if any lies within 2 metres. Moving off again takes 0.3 seconds. Starting skill, Grubbing Hook: every 2 seconds it rakes a 2-metre arc on the side with more enemies; raked enemies that die on mud drop one extra pickup.",
+   "source": "Mudlarks worked the Thames foreshore at low tide, stooping for coal, rope and copper, and crossed soft mud on boards strapped to their feet.",
+   "nearest": "Pickup magnets in every horde survival game. Here gathering is bought with stillness, a deliberate stop inside the crowd, and not with a radius number.",
+   "cost": "small"
+  },
+  {
+   "id": "water-13",
+   "area": "class",
+   "name": "Chandler",
+   "idea": "The city's candle-maker, carrying a rod of hanging wicks. A wax vat stands where the vigil starts; a button moves it to the Chandler's feet (20-second cooldown). Each time the Chandler comes back within 2 metres of the vat after going at least 12 metres from it, they take a Dip: one coat, to a maximum of 8. Each coat adds 6% to all harm dealt and is lost in place of life when hit. Starting skill, Broach: five wicks lash 3 metres ahead every 1.5 seconds.",
+   "source": "A dipped candle is built one coat at a time, each cooled away from the bath before the next dip.",
+   "nearest": "Stacking buffs that fall off when you are hit. Here a stack is earned only by running a lap out from and back to a point the player places, so the thumb draws loops through the crowd.",
+   "cost": "small"
+  },
+  {
+   "id": "water-14",
+   "area": "class",
+   "name": "Warper",
+   "idea": "One who moves hulks through the flooded streets with anchor and line. A Warper does not walk. Every 0.9 seconds a kedge is thrown 4.5 metres the way the thumb points and the Warper is hauled to it in 0.35 seconds; nothing can push or hold them during a haul, and the taut line harms whatever it crosses. Between hauls the Warper stands. Starting skill, Kedge: the anchor's landing harms everything within 1.2 metres of it.",
+   "source": "Warping or kedging moves a ship by carrying an anchor ahead, dropping it and hauling the vessel up to it.",
+   "nearest": "Dash moves and grappling hooks. Here there is no walking at all: throw-and-haul is the only way to move, its rhythm is fixed, and the thumb's job is to choose a new bearing every beat.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-15",
+   "area": "class",
+   "name": "Dredgerman",
+   "idea": "A dragger of the river bed, paid for what he brings up. A 5-metre drag-chain trails behind him along the path he has walked. Enemies the chain passes over take harm in proportion to the chain's speed at that point, so a wide fast turn whips the tail through a crowd and a straight walk barely scratches. Standing still, the chain sinks and does nothing. Starting skill, Creeper: a grapnel on the chain's end hooks in one pickup per second from the ground it crosses.",
+   "source": "Thames dredgermen dragged the bed with chains and grapnels called creepers, for coal, metal and the drowned.",
+   "nearest": "Damaging trails left behind the player in horde games. This is one rope with a tail that lags and whips, harmless in a straight line and strongest on a turn.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-16",
+   "area": "class",
+   "name": "Lanternman",
+   "idea": "A night watchman with a dark lantern. His light, and every skill, reaches only into a 70-degree cone ahead of his direction of travel, at double reach; behind him is black. A button closes the shutter: skills stop, and every enemy farther than 3 metres loses him and walks to where the light was last seen. Opening it takes 0.5 seconds. Starting skill, Glare: every 3 seconds the cone flashes and lit enemies cannot change heading for 1.5 seconds.",
+   "source": "A dark lantern throws its light one way only and has a slide that hides the flame without putting it out.",
+   "nearest": "Stealth toggles and weapons that fire the way you face. Here one shutter trades all offence for being lost by the crowd, and aim is simply the direction of flight, so fleeing and fighting cannot be done at once.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-17",
+   "area": "class",
+   "name": "Bell Diver",
+   "idea": "A diver who works under a lowered bell. In water at least waist deep a button takes the Diver under: unseen and untouched by surface enemies, walking the bottom at 80% speed, moved by the undertow and not the surface current. Skills do not cast under water. Air lasts 8 seconds, 4 in deep water, and refills in 2 seconds at the surface. Starting skill, Pull-down: every enemy the Diver walks beneath (within 1 metre) is dragged under and harmed, double in deep water.",
+   "source": "A diving bell's trapped air is squeezed to half its volume at ten metres, so the deeper the dive the less it gives.",
+   "nearest": "Burrow moves, as Rek'Sai's in League of Legends. Here nothing bursts on surfacing: the harm is done by walking beneath the crowd, the air is halved by depth, and a different current from the surface steers the hidden walk.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-18",
+   "area": "class",
+   "name": "Lamplighter",
+   "idea": "The city's lamplighter, with a pole. Every district has lamp posts about 15 metres apart. Passing within 1.5 metres lights one for 40 seconds. Every lit lamp within 12 metres of the Lamplighter casts their skills as well, at 35% strength, at enemies inside its own 4-metre pool of light. Each enemy that walks through a pool takes 1 second off that lamp. The thumb walks a round. Starting skill, Taper: a 3-metre thrust every 1.5 seconds that lights whatever it touches.",
+   "source": "A lamplighter walked a fixed round at dusk, lighting each street lamp in turn with a pole.",
+   "nearest": "Captured towers that then fire for you. Here the towers copy the player's own skills, are worn down by the crowd, and stay alive only while the player keeps walking the round.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-19",
+   "area": "calling",
+   "name": "Strandliner",
+   "idea": "For a Mudlark. After every ebb the last high-water line stays drawn across the district as a strip of wrack 1.5 metres wide. Pickups gathered on the strip are worth double, enemies killed on it drop one extra, and a stoop made on it turns up a find without one being buried there (once per 10 metres of strip each tide). The strip is erased when water next covers it, so its place is new with every tide.",
+   "source": "The strandline, the band of wrack left by the last high water, is where foreshore searchers look first.",
+   "nearest": "Bonus zones marked on an arena floor. This is a thin line that the tide itself draws and redraws, so the best route is different every toll.",
+   "cost": "small"
+  },
+  {
+   "id": "water-20",
+   "area": "calling",
+   "name": "Founder",
+   "idea": "For a Chandler. At 8 coats, a return to the vat with the button held is a Pour and not a Dip: all 8 coats are melted out and one Bronze takes their place for the rest of the vigil. A Bronze is a coat that cannot be knocked off and counts double. Coats then start again from nothing, leaving the Founder bare until re-dipped. The number of Bronzes is limited only by how many times the player dares to stand bare.",
+   "source": "In lost-wax casting the wax model is melted out of the mould and metal takes its exact place.",
+   "nearest": "Cashing a stack in for a permanent bonus, as with kill stacks in League of Legends. Here the trade is made at a place, on purpose, and its price is going unprotected until eight more laps are run.",
+   "cost": "small"
+  },
+  {
+   "id": "water-21",
+   "area": "calling",
+   "name": "Body-finder",
+   "idea": "For a Dredgerman. Enemies killed by the drag-chain stay hooked to it, up to 8. Each hooked body adds 12% to the chain's harm and takes 3% off walking speed. Hauling them to any river stair pays for them in the legacy currency: one unit a body, three at the stair on the far bank from where the vigil began. A keeper's blow shakes every body off. Stairs are marked on the ground from the start.",
+   "source": "Thames dredgermen were paid a reward and inquest money for each drowned body they brought ashore.",
+   "nearest": "Carrying a flag or a delivery in capture modes. Here the cargo is the player's own kills, it is weapon and burden at once, and the better payer is always across the district.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-22",
+   "area": "calling",
+   "name": "Wrecker",
+   "idea": "For a Lanternman. The button no longer shutters the lantern; it sets it down. Every skill casts from the lantern and every enemy walks to the lantern, not the player. The Wrecker walks dark, harmless and unseen beyond 2 metres, free to gather. The lantern has a quarter of the Wrecker's life; knocked over, it smokes for 2 seconds and must be reached in that time, or else relit by a 1-second touch. Picking it up is instant.",
+   "source": "Wreckers were said to set false lights ashore so that ships would steer for them.",
+   "nearest": "Totem builds in Path of Exile, where a placed object casts for you. Here it is all or nothing: every skill and every enemy's attention goes with the one light, and the player becomes a blind looter in the dark.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-23",
+   "area": "calling",
+   "name": "Tenebrist",
+   "idea": "For any class. At every toll the Tenebrist must put out one of their own lights: the player picks one skill, reserved effect or in-run upgrade to go dark until the vigil ends. Every light still burning gains 12%, compounding. Once per vigil a light may be hidden and not put out: it comes back at the toll after next, at double strength for one toll. A Tenebrist down to one light pays nothing more.",
+   "source": "At Tenebrae fifteen candles on a triangular hearse are put out one by one, and the last is hidden and then shown again.",
+   "nearest": "Banishing options or removing cards to thin a deck. Here the loss is forced on a clock, it takes what is already in use, and everything left grows with each loss.",
+   "cost": "small"
+  },
+  {
+   "id": "water-24",
+   "area": "calling",
+   "name": "Air-carrier",
+   "idea": "For a Bell Diver. The Diver's air is no longer a private timer but a place: a dry circle 3 metres wide carried overhead like a bell. Inside it there is no water for anyone: currents do not push, wet conditions stop building, and brine bursts. The circle shrinks to 2 metres in waist-deep water and 1.5 in deep, and widens by 1 metre for 5 seconds each time the Diver touches a pocket of air trapped under a vault.",
+   "source": "A diving bell carries a room of dry air down with it, smaller the deeper it goes, and Halley topped his up from sunk barrels of air.",
+   "nearest": "Aura circles around the player. This one changes which rules the ground obeys inside it, and its size is set by the depth the player chooses to stand in.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-25",
+   "area": "calling",
+   "name": "Snubber",
+   "idea": "For a Warper. When a haul's line bends round a pillar, post or mooring ring, the Warper swings round it at the line's length and does not travel straight, sweeping everything the line crosses, and lands on the far side. One full turn of line round a post snubs it: for 3 seconds nothing, not a bore and not a keeper, can move the Warper, and whatever pushes them is shoved back as hard as it pushed.",
+   "source": "One turn of rope round a bollard lets a single person hold a ship, because the friction multiplies with every turn.",
+   "nearest": "Swinging on a grapple line in platform games. Here it is flat, the swing is the attack, and wrapping the post turns movement into being immovable.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-26",
+   "area": "calling",
+   "name": "Panner",
+   "idea": "For any class. Standing still for 1 second boils the water off a pan 2.5 metres wide round the character; it stays dry for 6 seconds. A pan is dry ground for everything: brine bursts on enemies that enter, silt cannot settle, and floating bodies ground and must walk. Up to 3 pans exist at once. A pan made in deep water lasts 3 seconds and leaves a ring of salt crust that slows whatever crosses it for 5 seconds.",
+   "source": "Salters boiled and dried sea water in shallow pans until only a crust of salt was left.",
+   "nearest": "Ground areas laid down by skills. These do no harm themselves; they change which rules the ground obeys, and they are placed by choosing where to stop.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-27",
+   "area": "skill",
+   "name": "Sounding Lead",
+   "idea": "Every 4 seconds a lead on a line drops on the nearest enemy within 6 metres: one heavy hit, +50% for each band of water depth over the victim. The tallow in its base brings up a sample: for 8 seconds all of the character's skills deal 30% more to that enemy's kind. The lead holds one sample; each cast replaces it. The player chooses the sample by which kind they are passing closest to as the cast comes due.",
+   "source": "A sounding lead's hollow base was armed with tallow to bring up a sample of the bottom, so the pilot knew what lay beneath.",
+   "nearest": "Marking a quarry type for bonus damage. Here the mark is taken by the strike itself, is always the nearest body, and is overwritten every 4 seconds, so it is steered and not chosen from a menu.",
+   "cost": "small"
+  },
+  {
+   "id": "water-28",
+   "area": "skill",
+   "name": "Lee Eddy",
+   "idea": "Whenever the character passes within 1.5 metres of a pillar, post or grounded hulk at walking speed or faster, an eddy 2.5 metres wide forms on its far side for 5 seconds (one per obstacle). An eddy does not pull. Any enemy that walks into it is carried once round and let go heading back the way it came for 1.5 seconds, into those behind; each collision harms both. Open ground gives nothing; a colonnade gives a chain of eddies.",
+   "source": "Eddies turn behind piers and pillars, and inside an eddy the water runs upstream.",
+   "nearest": "Whirlpool skills that suck enemies in. This pulls nothing: it turns pursuers round into their own crowd, and it exists only where the player brushes past an obstacle.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-29",
+   "area": "skill",
+   "name": "Sweep-wire",
+   "idea": "Every 10 seconds a buoy is thrown 7 metres to the side with more enemies and a wire runs from it to the character for 6 seconds. The buoy drifts with the current; the wire follows the character. Each enemy the wire passes over is harmed once per half-second, in proportion to the wire's speed at that point, and not at all where it is still. Circling the buoy sweeps the wire like a clock hand; running straight away from it does nothing.",
+   "source": "Salvors found sunk wrecks by towing a wire between two boats and sweeping the bed with it.",
+   "nearest": "Beams linking the player to a drone or pylon. Here the far end drifts on the tide, the line is harmless when still, and its harm is exactly the speed the player gives it.",
+   "cost": "small"
+  },
+  {
+   "id": "water-30",
+   "area": "skill",
+   "name": "Stylus",
+   "idea": "The path walked in the last 3 seconds is written on the ground as a faint groove. The groove does nothing until the character crosses it. Crossing wipes it: every enemy within 0.7 metres of any part of the groove is struck at once, harder for each metre of groove up to 12. A new groove starts from the crossing point. Walking in a straight line never fires it.",
+   "source": "A wax tablet is written with a stylus and rubbed out with its flat end, or wiped clean by warmth.",
+   "nearest": "Fire trails left behind the player. This trail is inert until the player cuts back across their own line, so it pays for loops and figure-eights and gives nothing to a straight retreat.",
+   "cost": "small"
+  },
+  {
+   "id": "water-31",
+   "area": "skill",
+   "name": "Undertow",
+   "idea": "Every 7 seconds, for 2 seconds, a strip 4 metres wide and 10 long ahead of the character runs two ways at once. Light bodies (the swarm) ride the surface 4 metres away from the character. Heavy bodies (elites, anything ballasted or mired) are dragged along the bottom 4 metres toward the character. Both are harmed for the distance moved. The strip points where the thumb points at the moment it starts.",
+   "source": "Undertow pulls along the bottom against the flow at the surface.",
+   "nearest": "Knockback skills and pull skills. This does both in one cast and sorts a mixed crowd by weight, bringing the dangerous few close and sending the many away.",
+   "cost": "small"
+  },
+  {
+   "id": "water-32",
+   "area": "skill",
+   "name": "High-water Mark",
+   "idea": "The skill remembers the largest single hit the character has dealt since the last toll: the mark, shown as a line on its icon. Every 9 seconds it strikes the enemy with the most life within 8 metres for exactly the mark, with no multiplier applied. Each toll wipes the mark to nothing. The skill is as good as the one best blow the player can arrange early in each tide.",
+   "source": "Flood heights were cut into church walls as high-water marks, each a record that stood until a greater flood.",
+   "nearest": "Abilities that return a share of recent damage, like Zed's Death Mark in League of Legends. Here the store is a single best hit per toll, the player's to engineer, and it is replayed whole without scaling.",
+   "cost": "small"
+  },
+  {
+   "id": "water-33",
+   "area": "skill",
+   "name": "Loose Pew",
+   "idea": "At the first toll after the skill is taken, a pew 3 metres long floats up beside the character and stays for the vigil. It drifts with the current, turning as it goes, and whatever it strikes is harmed and shoved in proportion to its speed. The character moves it by walking into it: it takes the character's velocity for 2 seconds. On dry floor it grounds and lies still until water returns. Raising the skill adds a second pew.",
+   "source": "In a flooded church the pews float off their fixings and knock about with the water.",
+   "nearest": "The bouncing football weapon in Survivor.io. This one is not automatic: it goes where the tide and the player's shoulder send it, and it stops dead when the water leaves.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-34",
+   "area": "skill",
+   "name": "Sluice",
+   "idea": "Every 12 seconds the skill finds the deepest and the shallowest water within 9 metres of the character and joins them with a channel 1.5 metres wide for 3 seconds. Water runs from deep to shallow at 6 metres per second, carrying enemies and pickups (not the character) and harming what it carries. Afterwards both ends stand at the middle depth for 8 seconds. With level water all round, it does nothing.",
+   "source": "Water in two flooded rooms stands at different heights until an opening joins them, then rushes from the higher to the lower until level.",
+   "nearest": "Line-shaped push skills. This one is aimed by the ground and not by the caster, exists only between unequal water, and leaves the depths changed afterwards.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-35",
+   "area": "skill",
+   "name": "Starling",
+   "idea": "While the character stands still, enemies pressing within 3 metres build a head: 1 point each half-second for every 5 enemies, to 20. When the character steps away the head is let go through the spot they left: a race 2 metres wide and up to 10 long, running from the side where the crowd was densest out through the other, harming and sweeping everything in it by the head stored. Moving before any head has built releases nothing.",
+   "source": "The starlings of Old London Bridge held the tide back until the river stood six feet higher on one side and ran through the arches as a rapid.",
+   "nearest": "Attacks charged by standing still. Here the charge is the crowd itself leaning on the player, and the release is aimed by which side the player lets them through.",
+   "cost": "small"
+  },
+  {
+   "id": "water-36",
+   "area": "skill",
+   "name": "Pier-scour",
+   "idea": "Always on. Any enemy that passes within 1.2 metres of the character without touching them is harmed once, by the closing speed between the two: 1 metre per second is a scratch, 8 or more is full harm. Running with the crowd alongside does nothing; running head-on through a gap in it rakes both sides. Each enemy can be raked once per second. Touching an enemy cancels the harm to it.",
+   "source": "A river scours its bed deepest where the water speeds past the sides of a pier.",
+   "nearest": "Graze scoring for near misses in bullet-hell shooters. Here the near miss is the attack itself, against bodies and not bullets, sized by how fast the two pass each other.",
+   "cost": "small"
+  },
+  {
+   "id": "water-37",
+   "area": "skill",
+   "name": "Bell-buoy",
+   "idea": "Every 14 seconds a buoy with a bell is dropped at the character's feet and drifts with the current for 12 seconds. It rings only when jostled: each enemy that bumps it, and each metre it drifts, makes one ring, at most 4 a second. Each ring harms everything within 3 metres. In an empty lane it is silent; in a packed one it never stops. Dropped upstream of a crowd, the tide carries it through them.",
+   "source": "A bell-buoy has no ringer: the swell rocks it and the bell sounds by itself.",
+   "nearest": "Proximity mines and placed turrets. This has no trigger and no aim of its own: it answers crowding ring for ring and goes wherever the water goes.",
+   "cost": "small"
+  },
+  {
+   "id": "water-38",
+   "area": "skill",
+   "name": "Snuffer",
+   "idea": "Every 5 seconds a bell-mouthed snuffer on a pole comes down, 1.2 metres wide, on the enemy within 5 metres that carries the most dangerous death effect, or failing that the weakest. Everything under it that is below 25% life goes out: removed with no death effect, no burst, no split and no smoke, so nothing can relight it. Enemies above 25% are untouched. It rewards wounding a crowd without finishing it.",
+   "source": "A snuffer puts a flame out without smoke, and a church snuffer is a small bell on a pole.",
+   "nearest": "Culling strikes that finish low-life enemies. The point of this one is what does not happen afterwards: a death that sets nothing off.",
+   "cost": "small"
+  },
+  {
+   "id": "water-39",
+   "area": "skill",
+   "name": "Votive Round",
+   "idea": "Every 8 seconds a votive is set at the character's feet and burns 16 seconds. It does nothing while the character is away. When the character comes back inside its 2-metre light it flares and is spent: harm to everything within 3 metres, greater for every second it has burned. A votive that burns out unvisited gives nothing, and each enemy that walks over one takes 2 seconds off it. The best round returns to each light just before it dies.",
+   "source": "A votive candle is lit and left to burn while its giver goes away.",
+   "nearest": "Delayed mines. These are set off only by the player's own return, ripen with time and are eaten by the crowd, so the skill is a circuit walked against a clock.",
+   "cost": "small"
+  },
+  {
+   "id": "water-40",
+   "area": "modifier",
+   "name": "Reflected",
+   "idea": "The bound skill casts a second time, mirrored to the opposite side of the character, whenever the character stands in still water (current under 0.5 metres per second) at least ankle deep. In moving water or on dry ground there is no second cast. Cost: the skill is 20% weaker everywhere. Slack water at each toll, eddies and standing pools are the places where it pays.",
+   "source": "Still water doubles every flame with a reflection; moving water breaks the image.",
+   "nearest": "Multi-cast supports that repeat a skill. This repeat belongs to the ground, so the modifier is really an instruction about where to stand.",
+   "cost": "small"
+  },
+  {
+   "id": "water-41",
+   "area": "modifier",
+   "name": "Twelfths",
+   "idea": "The bound skill repeats by the state of the tide. The 75 seconds between tolls are six parts of 12.5 seconds, and the skill casts 0, 1, 2, 2, 1, 0 extra times in them. Cost: its cooldown is 30% longer. It is strongest at mid-tide and plainest in the seconds around each toll, exactly when new danger arrives.",
+   "source": "The rule of twelfths: a tide moves one, two, three, three, two and one twelfths of its range in its six hours.",
+   "nearest": "Buffs on a repeating timer. This follows the run's own clock in a curve the player can learn, so fights are planned for mid-tide and caution for the toll.",
+   "cost": "small"
+  },
+  {
+   "id": "water-42",
+   "area": "modifier",
+   "name": "Lagan",
+   "idea": "The bound skill no longer acts when it casts. Each cast is sunk under a small buoy at the place it would have struck, to a maximum of 12 buoys (the oldest is lost). At every toll all buoys release together, each at double strength. Cost: the skill does nothing between tolls, and enemies must be standing over the buoys when the bell sounds.",
+   "source": "Lagan is cargo sunk on purpose and marked with a buoy so that its owner can find it again.",
+   "nearest": "Trap and mine supports in Path of Exile, which store a skill until something triggers it. Here neither enemy nor player triggers it; the toll does, turning the most dangerous moment of each tide into the player's own.",
+   "cost": "small"
+  },
+  {
+   "id": "water-43",
+   "area": "modifier",
+   "name": "Armed",
+   "idea": "The bound skill takes on the ground under its first victim. On silt it lays 3 stacks of Silted on everything it hits. In deep water its victims take the blow a second time as weight. In a current it carries them 3 metres downstream. On dry stone it throws up salt crust that slows crossing bodies for 3 seconds. Cost: the skill's own harm is 25% lower, and the rider is whatever the ground happens to give.",
+   "source": "The tallow on a sounding lead comes up carrying whatever the bottom is made of.",
+   "nearest": "Skills that take an element from the weapon equipped. This reads the floor under the victim, so one socket gives four effects depending on where the fight is led.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-44",
+   "area": "modifier",
+   "name": "Thief in the Wick",
+   "idea": "The bound skill casts 50% faster. Cost: every cast spills one experience pickup the character had already gathered this level, dropped 1.5 metres behind, and the level bar falls with it. Spilled pickups can be collected again. The skill therefore lays a trail of the player's own gains through the crowd that follows them.",
+   "source": "A thief in the candle makes it burn bright and fast and wastes the wax down its side.",
+   "nearest": "Supports that trade a resource cost for speed. Here the cost is not spent but dropped on the floor behind, recoverable only by turning back into the pursuit.",
+   "cost": "small"
+  },
+  {
+   "id": "water-45",
+   "area": "modifier",
+   "name": "Shuttered",
+   "idea": "The bound skill acts one way only: within 45 degrees of the direction the character is moving, at double reach. Targets outside that cone are ignored and area shapes are cut to it. Standing still, it points where the character last moved. Cost: the skill does nothing to what chases from behind, which in flight is everything.",
+   "source": "A shielded lantern throws its light one way and leaves the rest in the dark.",
+   "nearest": "Narrow-cone and facing weapons. As a socket it turns any automatic skill into one that works only while the player is advancing on the enemy.",
+   "cost": "small"
+  },
+  {
+   "id": "water-46",
+   "area": "modifier",
+   "name": "Resist",
+   "idea": "The first time the bound skill touches an enemy it bites three times as hard and leaves a film of wax on it. The skill can never harm a waxed enemy again; the film lasts until the next toll. Cost: against a keeper or any long-lived enemy it lands one blow per tide. It makes a skill a harvester of fresh arrivals and useless as a finisher.",
+   "source": "In wax-resist work acid or dye bites only where there is no wax; whatever has been waxed is spared.",
+   "nearest": "First-hit bonuses. Here the bonus is paid for with total immunity afterwards, which changes what the skill is for.",
+   "cost": "small"
+  },
+  {
+   "id": "water-47",
+   "area": "reserved",
+   "name": "Leading Lights",
+   "idea": "Holds 20% of the pool. Two lights are kept burning: one on the district's bell tower, one on the gate that opened most recently. The straight line through them is the channel, drawn faintly on the water. While the character is within 1 metre of that line their skills reach 50% farther, and pickups lying within 3 metres of the line slide along it to them. When a new gate opens the channel swings round to it.",
+   "source": "Leading lights are two beacons a pilot keeps in line, one above the other, to hold the safe channel.",
+   "nearest": "Aura buffs kept up by reserving a pool. This one works only on a line across the map, so holding it is a commitment to fight along a bearing.",
+   "cost": "small"
+  },
+  {
+   "id": "water-48",
+   "area": "reserved",
+   "name": "Flotsam Line",
+   "idea": "Holds 15% of the pool. Pickups that fall on water float: they drift with the current, never expire, and collect in eddies behind pillars and in still corners, where they raft together into one pickup worth the sum plus 10% per item, up to 20 items. Pickups on dry ground are unchanged. The character stops chasing drops and harvests the lee of pillars.",
+   "source": "Flotsam drifts with the tide and gathers in the eddies behind piers.",
+   "nearest": "Pickup magnets and auto-collect. This sends loot away from the player to known places and pays a premium for going to fetch it.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-49",
+   "area": "reserved",
+   "name": "Votive for Another",
+   "idea": "Holds 30% of this character's pool, in and out of vigils, for as long as it is kept. The player names one other standing character. That character gains one extra option at every level-up and a light 1 metre wider. If the holder dies the votive goes out and the named character is Unlit for its next vigil: one option fewer at every level-up. A character can hold one votive and be named by one.",
+   "source": "A votive candle is lit and left to burn for someone else.",
+   "nearest": "Link skills in MapleStory, where one character lends a bonus to another. Here the gift is paid from the holder's pool at every moment, and the holder's death turns it into a debt.",
+   "cost": "small"
+  },
+  {
+   "id": "water-50",
+   "area": "reserved",
+   "name": "Cerecloth",
+   "idea": "Holds 25% of the pool. The character is wound in waxed cloth and water cannot mark them: no wet condition (Brined, Silted, Dead Water) can be put on them, and currents move them half as far. Being sealed, they also cannot be rinsed, healed or refilled by any water: fonts, rain and air pockets do nothing. Heavy blows count 25% more, the wrap holding air to be squeezed.",
+   "source": "The dead were wound in cerecloth, linen soaked in wax to keep water and air out.",
+   "nearest": "Immunity auras with a drawback attached. This is one physical fact with both of its faces, sealed out and sealed in.",
+   "cost": "data"
+  },
+  {
+   "id": "water-51",
+   "area": "pick",
+   "name": "The Pour",
+   "idea": "Offered as a blank. On taking it, wax is poured into the water under the character and sets in a shape the water decides. In a current: Long, every skill +25% reach. In still water: Round, +25% area. In deep water: Heavy, +25% harm and -10% casting rate. On dry ground it does not set and the pick is wasted. The offer names all four outcomes, so the choice is made by where the character is standing as the level arrives.",
+   "source": "In wax divination molten wax is poured into cold water and sets at once into a shape that is then read.",
+   "nearest": "Mystery upgrades with a random result. This result is not random; it is read from the ground, so the choice is made with the thumb before the menu opens.",
+   "cost": "small"
+  },
+  {
+   "id": "water-52",
+   "area": "pick",
+   "name": "Low-water Find",
+   "idea": "For the rest of the vigil, pickups gathered within 2 metres of the waterline (the moving edge between wet and dry ground) count double, and one buried find surfaces somewhere on the waterline at each ebb. The waterline moves all through every tide. A second copy widens the band to 3 metres. Away from the edge it gives nothing.",
+   "source": "Mudlarks follow the water's edge down the foreshore as the tide falls, because that is where things are newly bared.",
+   "nearest": "Bonus-experience zones. This is a line that travels across the map on a schedule the player can read.",
+   "cost": "small"
+  },
+  {
+   "id": "water-53",
+   "area": "pick",
+   "name": "Shoot the Bridge",
+   "idea": "Each time the character passes through a gap narrower than 3 metres (between pillars, piers or hulks) with at least 4 enemies within 2 metres, they gain a stack: +3% harm and +1% speed for the vigil, to 25 stacks. Passing the same gap again within 10 seconds gives nothing. Being hit inside a gap loses 3 stacks.",
+   "source": "Watermen shot the arches of Old London Bridge on a running tide for the fare and the dare, while the cautious got out and walked round.",
+   "nearest": "Stacking bonuses for kills or near misses. These are earned only by threading the map's narrow places with the crowd at the player's shoulder.",
+   "cost": "small"
+  },
+  {
+   "id": "water-54",
+   "area": "pick",
+   "name": "Nail in the Candle",
+   "idea": "Take no upgrade now. A nail is pressed into the candle at the second toll from this one. When that toll sounds the nail drops: the player receives two picks at once, each showing one extra option, and the first of them is doubled in effect for one toll. Nails already set are shown on the candle and several may wait on one toll. Dying before a nail drops loses it.",
+   "source": "A nail pushed into a candle clock falls onto a plate when the wax burns down to it: a set alarm.",
+   "nearest": "Skipping an upgrade for a later reward. Here the payment falls at a known toll, just when danger steps up, and the player can load one toll with several nails.",
+   "cost": "small"
+  },
+  {
+   "id": "water-55",
+   "area": "pick",
+   "name": "Jetsam",
+   "idea": "The offer shows the most valuable find the character is carrying unbanked. Taking the pick throws that find overboard for good. In return the character takes two upgrades now, and every later offer in this vigil shows one extra option. It is not offered when nothing is carried. A character who banks often will rarely see it; one who hoards will see it often.",
+   "source": "Jetsam is cargo thrown over the side on purpose to save the ship.",
+   "nearest": "Paying gold or health for power in roguelike shops. The price here is the single best thing the player was trying to carry out alive.",
+   "cost": "data"
+  },
+  {
+   "id": "water-56",
+   "area": "pick",
+   "name": "Turn of the Tide",
+   "idea": "The next toll's tide is reversed: a flood becomes an ebb or an ebb a flood, and it holds for two tolls before the pattern resumes. The offer shows which tide was coming. It lets a character who needs dry ground, or deep water, keep it for 150 seconds through the next rise in danger. It cannot be taken twice in a row.",
+   "source": "Between spring and neap the same shore is bared wide or hardly at all, and the tide table decides what work can be done.",
+   "nearest": "Arena or weather modifiers chosen between rounds. This is taken mid-run in place of an upgrade and changes the map's water, not the character.",
+   "cost": "small"
+  },
+  {
+   "id": "water-57",
+   "area": "pick",
+   "name": "Tide-marked",
+   "idea": "At each toll the deepest water the character stood in for 3 seconds during the tide just ended is marked on them: no mark gives nothing, ankle +6%, waist +12%, deep +20% to harm and casting rate, until the next toll. The mark is drawn as a line across the figure. Each tide the player decides how deep to wade, once, for the sake of the next 75 seconds.",
+   "source": "Flood water leaves a tide mark on every wall at the height it reached.",
+   "nearest": "Buffs refreshed each wave for taking a risk. Here the risk is a depth the player wades to once per tide, and the result is worn as a visible line on the figure.",
+   "cost": "small"
+  },
+  {
+   "id": "water-58",
+   "area": "enemy",
+   "name": "Drifter",
+   "idea": "A swollen body afloat, face down. It does not chase. It moves with the current at the current's speed plus a paddle of 0.5 metres per second toward the nearest living thing, so it arrives from upstream, stalls at slack water and comes back the other way when the tide turns. In eddies it circles. Each Drifter touching the player takes 15% off their speed and presses each second. Read: pale spheres bobbing in lanes. Answer: cross the stream, never stand down-current.",
+   "source": "A drowned body sinks, then rises days later and travels with the tide.",
+   "nearest": "Hazards riding conveyor belts or river currents. These are the horde itself, and their only legs are a tide the player can read.",
+   "cost": "small"
+  },
+  {
+   "id": "water-59",
+   "area": "enemy",
+   "name": "Wick-walker",
+   "idea": "A grave-wax body with a lit wick, wasting 2% of its life each second. Any hit above 5% of its life, or water over its head, puts it out: it stands as an unlit stub, harmless, and worth double tallow if it is left whole. A lit Wick-walker passing within 1 metre relights a stub. Read: a walking flame that casts real light. Answer: put them out far apart, keep the lit away from the stubs, or simply outlast them.",
+   "source": "Adipocere, grave wax, forms on bodies in wet airless places and keeps their shape; one candle is lit from another.",
+   "nearest": "Enemies that rise again unless dealt with, like the Crimson Heads of Resident Evil. Here revival is contact with a living flame, and every one of them is dying on its own clock.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-60",
+   "area": "enemy",
+   "name": "Belled",
+   "idea": "A drowned diver still walking inside a diving bell: a cone on two legs. On dry ground and in shallows the bell covers it and no harm reaches it. In water waist deep or more the air inside is squeezed, water rises in the bell, and it takes full harm, double in deep water. It walks straight at the player at 1.2 metres per second and brings the rim down on a 1.5-metre circle shown 1 second ahead. Answer: lead it into the deep.",
+   "source": "A diving bell's air is squeezed smaller the deeper it goes, until the water inside reaches the diver.",
+   "nearest": "Shielded enemies that must be flanked or stripped. This shield is ended by the ground, and the cure is taking the fight into the water the player would rather avoid.",
+   "cost": "small"
+  },
+  {
+   "id": "water-61",
+   "area": "enemy",
+   "name": "Cered",
+   "idea": "A body wound in waxed cloth. Wax floats: on water of any depth it runs on the surface at 5 metres per second, faster than the player; on dry ground it shuffles at 1. No wet condition stays on it. It harms by ramming, in proportion to its speed at contact, so on water it hits hard and on stone hardly at all. Read: a white cylinder riding high with no wake. Answer: meet it ashore, where it is the slowest thing in the district.",
+   "source": "The dead were wrapped in cerecloth, waxed linen, and wax and tallow float.",
+   "nearest": "Fast flanking enemies. Its speed and its harm are both properties of the surface under it, so one step onto stone turns the hunter into the easiest kill.",
+   "cost": "small"
+  },
+  {
+   "id": "water-62",
+   "area": "enemy",
+   "name": "Salter",
+   "idea": "A body crusted white with salt, walking in water only. Its touch, and the brine it flings in a 2-metre splash shown 0.8 seconds ahead, put Brine stacks on the player (to 10). Brine does nothing while the player stays in water. Stepping onto dry ground costs 2% of full life per stack at once. One second in a fresh-water font rinses it all. Read: white cubes that stop at the water's edge. Answer: know where the font is before going ashore.",
+   "source": "Salt dries into crust and does its damage only as its host dries out.",
+   "nearest": "Enemies that apply a stacking damage-over-time. These deal nothing themselves; they turn the safe ground into the thing that hurts.",
+   "cost": "small"
+  },
+  {
+   "id": "water-63",
+   "area": "enemy",
+   "name": "Bedded",
+   "idea": "The dead under the silt. At ebb the bared foreshore shows them as low cone mounds among the finds. A mound wakes if anything living steps within 1 metre, and every mound still asleep wakes together when the returning water covers it. Woken, they are slow, heavy and hard to move. Read: cones ringed with dry cracks; a woken one has lost its cone. Answer: thread the mounds to take the finds at low water, and be gone before the flood.",
+   "source": "Mudlarks searched the foreshore at low tide, and silt buries and keeps whatever lies still in it.",
+   "nearest": "Sleeping enemies woken by coming near. These are a field the tide arms on a timer, laid across the richest ground in the district.",
+   "cost": "small"
+  },
+  {
+   "id": "water-64",
+   "area": "enemy",
+   "name": "Stone-belly",
+   "idea": "A body sunk with ballast stones and tied to a buoy so it could be found again. In deep water it walks the bottom unseen and can be harmed only by weight from above; just its buoy shows, a red sphere gliding on the surface over it. It comes up to strike in the shallows, slowly, with a wide swing shown 1.2 seconds ahead. Hitting the buoy 3 times cuts the line: it loses the player and wanders. Answer: fight it in the shallows or cut its buoy.",
+   "source": "Lagan is goods sunk on purpose and buoyed for recovery, and weighted things walk the bottom.",
+   "nearest": "Burrowing enemies that surface to attack. This one is tracked by a float the player can strike to blind it.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-65",
+   "area": "enemy",
+   "name": "Jibber",
+   "idea": "A false light. In fog or dark it shows the same lamp as an open gate, or the glow of a rich find, 12 to 20 metres off. Coming within 2 metres puts it out and wakes the 12 dead standing dark around it. The tells: a true gate lamp is steady and has a reflection on the water beneath it; a Jibber's bobs on a slow uneven beat and throws no reflection. Destroying it from beyond 4 metres pays as a find.",
+   "source": "Wreckers were said to hang a lantern on a hobbled horse so that its bobbing looked like a ship riding at anchor; still water doubles a real flame.",
+   "nearest": "Mimic chests. This one counterfeits the exit, and the game gives two honest tells built from how light behaves on water.",
+   "cost": "small"
+  },
+  {
+   "id": "water-66",
+   "area": "enemy",
+   "name": "Kiddle",
+   "idea": "A fish weir: two fences of stakes 6 metres long meeting in a V, a wicker cone at the point, facing the current. While water moves, anything drifting or walking down-current between the arms is funnelled into the cone, where it is pressed each second and can leave only against the current at quarter speed. Enemies and pickups are caught as well as the player. At slack water it holds nothing and gives up every pickup it has caught. It cannot be destroyed.",
+   "source": "Fish weirs and eel bucks are funnels that a fish swims into with the tide and cannot find its way out of.",
+   "nearest": "Static trap hazards. This one is also the district's loot collector, dangerous for most of each tide and a prize at the turn.",
+   "cost": "small"
+  },
+  {
+   "id": "water-67",
+   "area": "enemy",
+   "name": "Bucket-chain",
+   "idea": "A dredger still turning. Along a fixed line 30 metres long a chain of buckets passes every 20 seconds, the line darkening for 2 seconds first. Everything on the line (enemies, pickups, the player) is scooped, carried to the spoil heap at its end in 3 seconds and dumped, taking a modest hit. A player may ride it on purpose to cross the district or to dump a crowd, and the spoil heap is where its scooped pickups lie.",
+   "source": "A bucket dredger lifts the bed in an endless chain of scoops and drops it on a spoil heap.",
+   "nearest": "Trains or carts that cross an arena on rails. This one moves what it hits to a known place, so it is transport, crowd disposal and loot collector by turns.",
+   "cost": "small"
+  },
+  {
+   "id": "water-68",
+   "area": "enemy",
+   "name": "Ex-voto",
+   "idea": "A heap of wax limbs left at a shrine, walking. Every 5 seconds it raises one limb for 1 second and lobs it 6 metres. A wax leg takes 30% of the struck player's speed for 6 seconds; a wax hand shrinks their pickup radius to nothing; a wax eye halves their light. Each limb thrown is gone from the heap: after three it is a bare frame that falls to one hit. Read: the raised shape, cylinder, box or sphere, names what is about to be taken.",
+   "source": "Wax models of legs, hands and eyes were hung at shrines as offerings for the healing of that part.",
+   "nearest": "Casters that throw a random debuff. Here the shape in the air tells which faculty is at stake, and the enemy spends its own body to do it.",
+   "cost": "small"
+  },
+  {
+   "id": "water-69",
+   "area": "boss",
+   "name": "Keeper of the Hearse",
+   "idea": "The keeper bears a triangular frame of 15 candles, each lighting one 24-degree sector. Phase one: a candle flares 1.2 seconds, its sector is swept with harm, the candle dies and the sector goes dark. Touching the frame within 2 seconds relights it through its smoke and wounds the keeper. Phase two, at 5 candles: two flare together. Last: the final candle is hidden for 5 seconds of dark and three rings of noise, each a clap 0.8 seconds ahead; shown again, the keeper takes triple harm for 6 seconds.",
+   "source": "At Tenebrae fifteen candles on a hearse are put out one by one, the last is hidden, a great noise is made in the dark, and the candle is shown again.",
+   "nearest": "Boss fights that black out the arena. Here the dark arrives sector by sector, the player can win each sector back through the smoke, and the last phase is dodged by ear.",
+   "cost": "large"
+  },
+  {
+   "id": "water-70",
+   "area": "boss",
+   "name": "Keeper of the Unpoured Bell",
+   "idea": "Phase one: the keeper is a wax model with eight faces, each recording the harm done to it. It drips molten wax in shadowed circles (1 second warning) that set into pillars. Phase two, at half life: the wax is run out and bronze takes its exact place. Faces most harmed in wax are thin and take double; untouched faces take a fifth. The bronze turns its thin faces away at 30 degrees a second and swings a 4-metre arc shown 1 second ahead. Sculpt the flaw, then reach it.",
+   "source": "In lost-wax casting every mark made on the wax model is reproduced exactly in the metal that replaces it.",
+   "nearest": "Bosses with a weak point on the back. Here the player makes the weak point in the first phase, and the second phase is cast from that work.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-71",
+   "area": "boss",
+   "name": "The Lock-keeper",
+   "idea": "Fought in a lock chamber 24 metres long. Phase one, filling: the water rises one band every 15 seconds while the keeper heaves ballast stones, each a shadow circle 1 second ahead. Phase two, in deep water: paddles open and a race runs down one of three lanes, its water streaking 1.5 seconds first; anything in it is swept to the far gate and pressed there. Phase three: the gates open and a bore crosses the chamber every 12 seconds. The only lee is within 3 metres behind the keeper.",
+   "source": "A lock's gates are held shut by the water and its paddles let the levels equalise in a rush; the lee of a pier is the one still place in a race.",
+   "nearest": "Arena bosses with lane attacks. Here the room's water level is the phase counter, and the final shelter is the boss's own lee, inside his reach.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-72",
+   "area": "boss",
+   "name": "Keeper of the Sunk Bell",
+   "idea": "The keeper waits inside a great bell hung over deep water and cannot be harmed outside it. Every 20 seconds the bell's shadow falls on the player for 1.5 seconds, then it drops: everything in its 5-metre circle is sealed in with the keeper for 10 seconds, in air. A candle inside is the only light and the measure of the air; when it dies, all inside take harm each second. The player may snuff it early to save air and fight blind. Phase two: two candles, half the air.",
+   "source": "A candle lowered into a vault or carried in a diving bell shows the state of the air: it dims and dies before a person does.",
+   "nearest": "Arena bosses that trap the player in a dome. Here being trapped is the only way to hurt it, and the fight's clock is a flame the player may choose to put out.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-73",
+   "area": "district",
+   "name": "The Nave",
+   "idea": "A flooded nave 60 metres long between two rows of cylinder pillars, box pews adrift. Five colours: drowned green water, slate stone, candle gold, lichen-white tide marks, soot. The water sloshes end to end on a 24-second beat: the west end is deep while the east is ankle deep, then the reverse. The crossing in the middle never changes depth but has the fastest flow. Tide-mark bands on each pillar show how high the water will come there. Pews ride the slosh and knock down what they meet.",
+   "source": "Water in a closed basin rocks end to end as a seiche, rising and falling at the ends and running fastest through the level middle.",
+   "nearest": "Arenas with rising and falling hazards. This depth is a standing wave the player can ride, always shallow somewhere for a player who keeps time.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-74",
+   "area": "district",
+   "name": "The Bridge of Starlings",
+   "idea": "A bridge of nine arches on boat-shaped piers (tapered boxes) cuts the district in two. Five colours: pewter water, rust, pale ashlar, tar black, one signal red. The water stands one depth band higher on the side the tide comes from, and each arch is a race 3 metres wide running to the low side, reversing at every toll and still for 6 seconds at the turn. Crossing means shooting an arch: 9 metres per second through, harmed on the way. Enemies cross the same way, in bursts.",
+   "source": "Old London Bridge's starlings dammed the tide until the river stood six feet higher on one side and its arches ran like weirs.",
+   "nearest": "Maps split by chokepoints. These chokepoints run one way for 70 seconds and then turn round, so the two halves take turns at being the trap.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-75",
+   "area": "district",
+   "name": "The Strand",
+   "idea": "Mudflats under a wall of river stairs (stepped boxes), with mooring posts and three stranded hulks (tapered boxes). Five colours: mud brown, tin-grey water, bone, weed green, one buoy red. At each ebb the water draws 30 metres back, baring silt that slows everyone not on boards and showing buried finds as glints. At each flood the hulks float and ground again somewhere new, so the walls of the map change every second toll. The stairs are always dry.",
+   "source": "A grounded hull lifts on the flood and settles wherever the ebb leaves it, and the foreshore exists only at low water.",
+   "nearest": "Day and night map states. Here the two states alternate every 75 seconds and the water reshuffles the obstacles each time.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-76",
+   "area": "tree",
+   "name": "The Wick",
+   "idea": "On the shared tree each character marks one unbroken path of 8 of its allocated nodes as its wick, in order. During a vigil the wick burns one node per toll: at the first toll node one counts triple until the second toll, then node two, and so on. At the eighth toll, when the keeper arrives, node eight is the one alight. Past eight the wick starts again. Re-marking the wick is free between vigils.",
+   "source": "A candle marked in bands is a clock: each band's turn to burn comes at a known hour.",
+   "nearest": "Keystone nodes in a passive tree. Here the player schedules which ordinary node is tripled at which toll, so a path through the tree is also a timeline through the run.",
+   "cost": "small"
+  },
+  {
+   "id": "water-77",
+   "area": "tree",
+   "name": "Wax and Bronze",
+   "idea": "Every node is first taken in wax: it works at half strength and can be wiped and moved at will, for nothing. A character may pour a cluster: every wax node in it turns to bronze, working at full strength and never refundable, and every node of that cluster left untaken is closed to that character for good. The tree is drafted in wax, tried in a vigil, and committed one cluster at a time.",
+   "source": "A wax tablet is wiped clean by warmth, but a lost-wax casting can never be altered once the metal is poured.",
+   "nearest": "Respec points in passive trees. Here trial is free and unlimited but only half real, and commitment is the act that gives full value and removes options.",
+   "cost": "small"
+  },
+  {
+   "id": "water-78",
+   "area": "tree",
+   "name": "Confluence",
+   "idea": "Each node's strength depends on the flow reaching it. Flow is 100% at the tree's source and loses 4% for each node travelled along the character's allocated path, so a long thin line ends weak. A node fed by two separate allocated paths is a confluence: flow there is restored to 100% and the node itself counts 25% more. Good trees are braided, not strung.",
+   "source": "Silt drops where a channel's flow slackens and is scoured clear where two streams join and the water speeds up.",
+   "nearest": "Travel nodes in the Path of Exile tree. Here distance itself weakens whatever lies at the end of it, and closing a loop is what pays.",
+   "cost": "small"
+  },
+  {
+   "id": "water-79",
+   "area": "tree",
+   "name": "Ebb and Flood Banks",
+   "idea": "The tree is drawn as a river with two banks. Nodes on the flood bank work only during flood tolls and nodes on the ebb bank only during ebb tolls, each at 180% strength; nodes in the channel between always work at 100%. A character built on one bank is formidable for 75 seconds and plain for the next 75. A character built on both is two builds that take turns.",
+   "source": "A tidal shore is two places, the one the flood covers and the one the ebb bares, taking turns twice a day.",
+   "nearest": "Stance builds and day-and-night builds. Here the switch is not chosen in play; it is the run's clock, and the planning is how much of each tide to be strong in.",
+   "cost": "small"
+  },
+  {
+   "id": "water-80",
+   "area": "gear",
+   "name": "Dips",
+   "idea": "An item is a core with up to 7 dips of wax laid one over another, each holding one property. Only the outer 3 dips work; the rest lie dormant beneath. To change an item the player either adds a dip at a district's vat (a new random property of that district's kind goes on top, pushing the fourth one under), or pares the outer dip off, destroying it and bringing a dormant one back up. Nothing in the middle can be touched.",
+   "source": "A dipped candle is built in coats, one over another, and can only be pared from the outside in.",
+   "nearest": "Adding and removing random affixes with crafting orbs in Path of Exile. Here the properties are a strict stack, last on first off, and an item carries a buried history that can be dug back to.",
+   "cost": "small"
+  },
+  {
+   "id": "water-81",
+   "area": "gear",
+   "name": "High-water Grade",
+   "idea": "No item has a rarity. Every item has a mark: the highest toll it has been worn through and then banked at a gate. All of its properties are scaled by the mark, 6% per toll. A new find has mark 0 whatever it is. The mark rises only by wearing the item deeper into a vigil than it has been before and getting out; it is cut into the item and shown as lines. Dying loses the item and its mark together.",
+   "source": "A flood's high-water mark is cut into the wall and stands until a higher flood.",
+   "nearest": "Legendary gems levelled in Diablo III rifts. Here the mark is the item's only grade, it replaces rarity outright, and it is earned by carrying the thing itself into danger and out again.",
+   "cost": "data"
+  },
+  {
+   "id": "water-82",
+   "area": "gear",
+   "name": "Tablet Lines",
+   "idea": "Each item has 3 lines written in wax. Warming an item between vigils wipes one chosen line blank. A blank line is written by the next vigil: the game counts twelve deeds (kills in deep water, kills on dry ground, metres hauled by current, seconds stood still, tolls outlasted, and so on) and the deed the character led in, against its own average, writes the line as that deed's property, stronger the wider the lead.",
+   "source": "A wax tablet is written with a stylus and wiped clean by warmth to be written again.",
+   "nearest": "Rerolling one affix at the enchanter in Diablo III. Here nothing is rolled: the player writes the line by how they play the next run.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-83",
+   "area": "gear",
+   "name": "Sealed Lots",
+   "idea": "Finds come up sealed with wax. A sealed item can be worn as it is: the seal's device names its kind and it gives a fixed, modest, known effect. Breaking the seal shows what is really inside: three properties that may be better or worse, and it can never be sealed again. Sealed items bank at double worth toward the legacy currency, broken ones at single. A keeper's blow breaks one worn seal at random.",
+   "source": "A wax seal proves a thing unopened and cannot be remade once it is broken.",
+   "nearest": "Unidentified items in Diablo. Here the unopened state is a usable, bankable item in its own right, so identifying is a gamble the player may decline.",
+   "cost": "data"
+  },
+  {
+   "id": "water-84",
+   "area": "event",
+   "name": "The Bore",
+   "idea": "At a spring toll the water draws back for 4 seconds with a rising roar, then one wave crosses the whole district along its main channel at 9 metres per second. Everything it meets, enemies, pickups and the player, is carried 15 metres and harmed, except in the lee of a pillar or wall: a strip 2 metres wide and 4 long behind each. Three whelps follow at 1-second gaps, each carrying 3 metres. For 12 seconds after, the current runs upstream.",
+   "source": "A tidal bore arrives as a single wave followed by a train of smaller ones called whelps, and the river runs backwards behind it.",
+   "nearest": "Hazard waves that cross the screen. This one moves the loot and the horde as well as the player, and the map's pillars become the only places to stand.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-85",
+   "area": "event",
+   "name": "Sale by Candle",
+   "idea": "A niche lights with an inch of candle, a pin stuck in it, and a find on show. The lot goes to the player if they are standing in the niche's 2-metre light, with no enemy in it, at the instant the pin drops. The pin drops between 10 and 16 seconds after lighting; the wax round it visibly softens in the last 3. Each second spent in the light stakes 4% of carried coin, lost if the lot is not won.",
+   "source": "At an auction by candle the lot went to whoever had bid last when a pin stuck in the candle fell.",
+   "nearest": "Stand-in-the-circle shrines. Here presence costs money by the second, the deciding instant is uncertain, and one enemy in the light at that instant voids the sale.",
+   "cost": "small"
+  },
+  {
+   "id": "water-86",
+   "area": "event",
+   "name": "Votive of the Fallen",
+   "idea": "In a district where one of the player's earlier characters died, an unlit votive stands at the spot. If the living character lights it (1 second of touch) it must burn through one full toll: every enemy passing within 0.5 metres takes 3 seconds off it, and it can be relit through its smoke within 2 seconds of going out. If it lasts, it returns one item the dead character was wearing, with its marks.",
+   "source": "A votive candle is lit for the dead and must be left to burn itself out.",
+   "nearest": "Corpse runs to recover lost goods in Dark Souls. Here recovery is a 75-second defence of a small flame by a different character, not a touch.",
+   "cost": "small"
+  },
+  {
+   "id": "water-87",
+   "area": "event",
+   "name": "A Hulk Refloats",
+   "idea": "On a flood toll a grounded hull 9 metres by 3 lifts and drifts across the district on the current for 20 seconds, pushing everything before it. Its deck is dry ground with two finds on it, reached from either side amidships, and nothing that swims can climb it. When the tide slackens it grounds wherever it is and stays there as a wall until the next flood lifts it.",
+   "source": "A stranded vessel floats off on the next high tide and goes wherever the stream takes it.",
+   "nearest": "Moving platforms. This one is also a plough through the horde, a refuge, and afterwards a lasting change to the map.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-88",
+   "area": "event",
+   "name": "Squall",
+   "idea": "Rain falls for 25 seconds. Fresh water lies over the salt: every body in water, the player included, is in Dead Water, moving on one shared 3-second beat of held and surge. The rain rinses all brine from everyone and wets all dry ground ankle deep, so nothing counts as dry until 10 seconds after it stops. Flames outside a lantern go out and may be relit.",
+   "source": "A layer of fresh water over salt makes dead water, which holds a vessel as if by a hand.",
+   "nearest": "Weather events that slow everyone. This puts player and horde on the same pulse, so the skill is acting in the surge.",
+   "cost": "small"
+  },
+  {
+   "id": "water-89",
+   "area": "event",
+   "name": "Fog-bank",
+   "idea": "A bank of fog 20 metres across crosses the district in 40 seconds. Inside it light reaches 1.5 metres, skills reach half as far, gate lamps cannot be seen beyond 6 metres, and enemies are drawn only as shapes within 2. Sound is unchanged. False lights appear only in fog. A lantern with its shutter narrowed cuts through to 5 metres one way.",
+   "source": "Fog swallows a flame's light within a few steps, and a shielded lantern throws what is left one way.",
+   "nearest": "Fog of war and darkness modifiers. This is a moving weather front that the player can walk out of or wait out.",
+   "cost": "small"
+  },
+  {
+   "id": "water-90",
+   "area": "legacy",
+   "name": "Strata",
+   "idea": "The permanent tree's currency is not a number but layers. Every vigil, fatal or not, lays one layer of silt on the shared tree, as thick as the tolls that character outlasted. A node of cost N can only be planted in a single layer at least N thick, and each layer holds one node. Long vigils make deep layers for great nodes; a death at the second toll still lays a thin layer that holds a small one. The tree's side view is the record of every run.",
+   "source": "Every tide leaves a film of silt, and a flood plain is built layer by layer, each one the record of one flood.",
+   "nearest": "Meta-currencies banked after each run in roguelites. Here runs are not summed into one purse: each run is its own slot of its own size.",
+   "cost": "small"
+  },
+  {
+   "id": "water-91",
+   "area": "legacy",
+   "name": "The Mask Wall",
+   "idea": "When a character dies a wax death mask is cast, holding one line: the stat in which that character stood furthest above the average of all the player's characters. The mask becomes a new node on the permanent tree, placed on the branch of the district where it died. Any later character whose path passes through it gains that line at half strength. The permanent tree is therefore grown from the dead themselves, one node per death.",
+   "source": "Wax death masks and funeral effigies were made of the dead and kept in the church.",
+   "nearest": "The graveyard in Darkest Dungeon and the lineage in Rogue Legacy, which only record the dead. Here each death adds a working node, shaped by how that character differed from the rest.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-92",
+   "area": "legacy",
+   "name": "Enter on the Tide",
+   "idea": "Each district's wall keeps the player's high-water mark: the deepest toll any character, living or dead, has reached there. Legacy currency is paid mostly for raising a mark: a toll beyond the old mark pays ten times a toll below it. The permanent tree sells tide tables: with one, a new character may enter that district at any toll up to half its mark, with the levels and picks it would have earned, chosen in a row.",
+   "source": "Flood heights were cut into walls as records, and a tide table lets a pilot arrive at the hour he wants.",
+   "nearest": "Starting at a later wave in arcade games. Here the right is earned by the dead characters' record, and the skipped upgrades are still chosen by the player.",
+   "cost": "small"
+  },
+  {
+   "id": "water-93",
+   "area": "frame-twist",
+   "name": "The Toll is the Turn",
+   "idea": "Each toll is the turn of the tide. Odd tolls begin a flood, even tolls an ebb, and the water moves by the rule of twelfths through the 75 seconds: slow, faster, fastest, fastest, slower, slow. Three seconds either side of each toll the water is slack and nothing drifts. Every fourth toll is a spring tide with double the range; the eighth, the keeper's, is the highest water of the vigil.",
+   "source": "A tide moves by the rule of twelfths, stands slack at each turn, and runs highest at springs.",
+   "nearest": "Wave timers in horde games. Here the timer is also a physical thing the player stands in, with a readable curve inside every interval.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-94",
+   "area": "frame-twist",
+   "name": "Sea-locks",
+   "idea": "A gate is a lock, held shut by the water against it. It can open only when the level is the same on both sides, which is at slack water: for 6 seconds around a toll, and only at the one gate on the side the tide is leaving. So the question is put once per toll, at a known place, at the moment danger rises: stand in the lock as the bell sounds and bank, or let it close and owe another 75 seconds.",
+   "source": "A lock's mitre gates are pressed shut by the higher water and cannot be moved until the levels are equal.",
+   "nearest": "Timed extraction points in extraction shooters. Here the window is welded to the danger step, so leaving and escalating are the same instant.",
+   "cost": "small"
+  },
+  {
+   "id": "water-95",
+   "area": "frame-twist",
+   "name": "The Banded Candle",
+   "idea": "Each in-run upgrade is written on one band of the character's candle, newest at the foot. The candle burns one band per toll from the top, and an upgrade taken at toll N burns out at toll N plus 8. So for the first eight tolls power only grows; after the keeper, the oldest upgrades start to go while danger keeps rising. Every fifth level offers a Dip: one chosen band is re-coated for eight more tolls.",
+   "source": "A candle marked in bands burns them away in order, and a dipped candle can always be given another coat.",
+   "nearest": "Boons that last a set number of rooms in Hades. Here every upgrade expires on the same clock, in the order taken, which gives an endless run its shape.",
+   "cost": "small"
+  },
+  {
+   "id": "water-96",
+   "area": "frame-twist",
+   "name": "Lagan for the Next",
+   "idea": "A character may sink any carried find under a buoy where it stands (2 seconds, still). A buoyed find is no longer carried: it weighs nothing and cannot be lost. It also cannot be banked. It stays in that district, on that spot, through every later vigil, showing only at ebb, until any of the player's characters hauls it up (2 seconds) and carries it to a gate. A dying character's last act can be to buoy its best item for its successor.",
+   "source": "Lagan is goods sunk on purpose with a buoy, and the law leaves it the property of whoever sank it.",
+   "nearest": "Shared stashes, and bloodstains in Dark Souls. This cache is made on purpose before death, lies in the hostile map itself, and must be raised under tide and horde by another character.",
+   "cost": "small"
+  },
+  {
+   "id": "water-97",
+   "area": "frame-twist",
+   "name": "Poured from the Run",
+   "idea": "The one-sitting run builds a wax model. If it clears all five districts alive, the player may pour it: the character becomes a standing character. Its in-run upgrades are melted out and lost; its levels, tree path and worn items take their exact place as the standing character's start. A run that dies leaves only its legacy currency. One pour per completed run, and a poured character can never re-enter the one-sitting mode.",
+   "source": "In lost-wax casting the wax model is destroyed and a lasting metal copy stands where it was.",
+   "nearest": "Promoting a run's character into a persistent roster. Here the temporary layer is exactly what is lost, and only a completed run can be cast.",
+   "cost": "small"
+  },
+  {
+   "id": "water-98",
+   "area": "frame-twist",
+   "name": "Ballast of Finds",
+   "idea": "Every unbanked find carried is ballast. Each one takes 1.5% off walking speed and 4% off the distance any current, bore or blow moves the character. A button jettisons the heaviest: it is thrown 5 metres ahead as a strike worth its value, floats, and drifts with the current as flotsam that can be caught again downstream. A heavily laden character is slow, immovable and one button from being light.",
+   "source": "Ships carried ballast stones to stand steady, and threw cargo overboard to float free in danger.",
+   "nearest": "Carry weight in extraction games. Here weight is also the character's steadiness against the water, and shedding it is an attack that leaves the goods adrift, not gone.",
+   "cost": "small"
+  },
+  {
+   "id": "water-99",
+   "area": "frame-twist",
+   "name": "Tallow or Beeswax",
+   "idea": "Every in-run upgrade can be taken in tallow, free, or in beeswax, for 15% of the coin the character carries. A tallow upgrade smokes: each one held takes 25 cm off the character's light. A beeswax upgrade does not. With light under 2 metres, pickups and gate lamps beyond it are not drawn. A character who never pays ends the vigil strong and nearly blind; one who always pays stays bright and banks little.",
+   "source": "Tallow candles were cheap, smoky and stinking, while beeswax burned clean and cost many times more.",
+   "nearest": "Boons that come with a curse, as from Chaos in Hades. Here every upgrade has the same two prices, and the cheap price is one shared thing that shrinks: the circle the player can see.",
+   "cost": "small"
+  },
+  {
+   "id": "water-100",
+   "area": "district",
+   "name": "The Undercroft",
+   "idea": "A grid of vaulted rooms 10 metres square joined by wooden doors, each room holding water at its own height. Five colours: wet black, tallow yellow, verdigris, chalk, ember. A door swells shut while its sill is under water and stands open while it is dry, so at flood the district is sealed cells and at ebb every door opens at once. When a door opens between unequal rooms the higher drains into the lower in a 3-second rush. Crowds heap against shut doors and pour through at the turn.",
+   "source": "In a flooded building timber doors swell shut, and water stands at different heights in different rooms until something joins them.",
+   "nearest": "Arenas whose gates open and close on a timer. Here the tide works every door at once through one physical rule, and each opening also levels the water of two rooms.",
+   "cost": "medium"
+  },
+  {
+   "id": "water-101",
+   "area": "reserved",
+   "name": "Float-light",
+   "idea": "Holds 20% of the pool. The character rides like a nail-weighted candle, higher as it burns down: for each quarter of life missing, water counts as one band shallower for them and currents carry them 25% farther. At full life nothing changes. A wounded character is therefore lifted out of the deep and swept along: harder to press, harder to pin down, and harder to steer.",
+   "source": "A candle weighted with a nail floats upright and rides higher in the water as it burns away.",
+   "nearest": "Low-life bonuses. Here missing life changes how the water treats the character, a shift in physics with a gain and a loss in it, not a damage bonus.",
+   "cost": "small"
+  }
+ ]
+}

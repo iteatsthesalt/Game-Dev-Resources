@@ -1,0 +1,404 @@
+/* 20-touch.css: what 52-input.js puts in #touch (the stick, the buttons A and B, the pause button) and what
+   51-settings.js puts in #ui (the settings screen).
+   52-input.js sets the place and size of every touch control from the window, the safe-area insets (the
+   padding of #touch) and the setting ui.scale; this file only gives them their look. The controls stay light
+   and see-through: the fight goes on under them.
+   --ui-scale is set on the root by 51-settings.js (0.85 to 1.4); 00-base.css scales the root font size by it,
+   so text sized in rem (the settings screen's too) follows it without multiplying again.
+   Colours are custom properties on :root: the tokens of 00-base.css, and the see-through ones below. */
+
+:root {
+  --ui-scale: 1;
+
+  --tc-fill: rgba(10, 12, 17, 0.34);         /* the body of a control: the ground shows through */
+  --tc-fill-held: rgba(27, 32, 44, 0.62);
+  --tc-ring: rgba(236, 231, 218, 0.5);        /* bone lines */
+  --tc-ring-faint: rgba(236, 231, 218, 0.24);
+  --tc-knob: rgba(236, 231, 218, 0.26);
+  --tc-knob-held: rgba(236, 231, 218, 0.52);
+  --tc-shade: rgba(236, 231, 218, 0.32);      /* the part of a cooldown still to run */
+  --tc-a: rgba(199, 154, 69, 0.9);            /* bell bronze */
+  --tc-a-held: rgba(199, 154, 69, 0.4);
+  --tc-b: rgba(111, 179, 166, 0.9);           /* verdigris */
+  --tc-b-held: rgba(111, 179, 166, 0.36);
+  --tc-ink: rgba(236, 231, 218, 0.86);
+}
+
+/* ---- the touch controls (52-input.js) ---- */
+
+/* The whole set covers the window but takes no input itself: only the buttons do. A touch on the game
+   reaches the view below, which 52-input.js turns into the stick. */
+.tc {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.tc-svg {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.tc-base {
+  fill: var(--tc-fill);
+  stroke: var(--tc-ring-faint);
+  stroke-width: 1.5;
+}
+
+.tc-knob {
+  fill: var(--tc-knob);
+  stroke: var(--tc-ring-faint);
+  stroke-width: 1.5;
+}
+
+.tc.is-held .tc-base { stroke: var(--tc-ring); }
+
+.tc.is-held .tc-knob {
+  fill: var(--tc-knob-held);
+  stroke: var(--tc-ring);
+}
+
+.tc-btn {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 2px solid var(--tc-a);
+  border-radius: 50%;
+  background: var(--tc-fill);
+  color: var(--tc-ink);
+  font-family: var(--font-display);
+  line-height: 1;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: var(--clear);
+  transition: transform 60ms, background-color 60ms;
+}
+
+.tc-b { border-color: var(--tc-b); }
+
+.tc-btn.is-down {
+  background: var(--tc-a-held);
+  transform: scale(0.93);
+}
+
+.tc-b.is-down { background: var(--tc-b-held); }
+
+.tc-btn.is-cooling { border-color: var(--tc-ring-faint); }
+
+/* the part of the cooldown still to run, a pale wedge from the top, clockwise */
+.tc-sweep {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(var(--tc-shade) calc(var(--tc-cd, 0) * 1turn), var(--clear) 0);
+  pointer-events: none;
+}
+
+.tc-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 62%;
+  height: 62%;
+  pointer-events: none;
+}
+
+.tc-icon > * {
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.tc-charges {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+  color: var(--ink);
+  font: 600 13px/20px var(--font-ui);
+  text-align: center;
+  pointer-events: none;
+}
+
+.tc-pause {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--tc-ring-faint);
+  background: var(--tc-fill);
+  pointer-events: auto;
+  touch-action: manipulation;
+  cursor: pointer;
+  -webkit-tap-highlight-color: var(--clear);
+}
+
+.tc-pause:active { background: var(--tc-fill-held); }
+
+/* two upright bars */
+.tc-pause-mark {
+  width: 14px;
+  height: 16px;
+  border-left: 4px solid var(--tc-ink);
+  border-right: 4px solid var(--tc-ink);
+}
+
+/* ---- the settings screen (51-settings.js) ---- */
+
+/* The panel is never taller than the screen: its title and its way out stay put, and the rows between them
+   scroll. */
+.set-panel {
+  display: flex;
+  flex-direction: column;
+  width: min(100%, 38rem);
+  max-height: 100%;
+  padding: 0;
+  font-size: 1rem;
+  text-align: left;
+}
+
+.set-title {
+  flex: none;
+  padding: 1rem 1.25rem 0.2rem;
+  font-size: 1.5em;
+  text-align: center;
+}
+
+.set-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 0 1.25rem 0.75rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) var(--clear);
+}
+
+.set-group { margin-top: 1.1em; }
+
+.set-group-name {
+  margin: 0;
+  padding-bottom: 0.45em;
+  border-bottom: 1px solid var(--accent-dim);
+  color: var(--accent-bright);
+  font: 600 0.78em/1.2 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* A row: its name and, for a slider, the value on one line, the control under them. On a wide screen the
+   control stands beside the name. */
+.set-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "label value" "control control";
+  align-items: center;
+  column-gap: 1em;
+  row-gap: 0.3em;
+  min-height: 44px;
+  padding: 0.6em 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.set-switch-row { grid-template-areas: "label control"; }
+
+.set-own { display: block; }
+
+.set-label {
+  grid-area: label;
+  color: var(--ink);
+  font-size: 1em;
+  line-height: 1.3;
+}
+
+.set-value {
+  grid-area: value;
+  min-width: 3.2em;
+  color: var(--second-bright);
+  font-size: 0.95em;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+@media (min-width: 600px) {
+  .set-row {
+    grid-template-columns: minmax(8em, 0.8fr) minmax(0, 1.5fr) 3.4em;
+    grid-template-areas: "label control value";
+  }
+
+  .set-choice-row, .set-switch-row { grid-template-areas: "label control control"; }
+}
+
+/* the slider: a thin line with a lozenge, filled in as far as its value */
+.set-range {
+  grid-area: control;
+  width: 100%;
+  height: 44px;
+  margin: 0;
+  background: var(--clear);
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: pointer;
+  touch-action: pan-y;
+}
+
+.set-range::-webkit-slider-runnable-track {
+  height: 4px;
+  background: linear-gradient(90deg, var(--second) var(--set-fill, 0%), var(--line-strong) 0);
+}
+
+.set-range::-webkit-slider-thumb {
+  width: 20px;
+  height: 20px;
+  margin-top: -8px;
+  border: 2px solid var(--second-bright);
+  background: var(--second-dim);
+  transform: rotate(45deg);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.set-range::-moz-range-track {
+  height: 4px;
+  background: var(--line-strong);
+}
+
+.set-range::-moz-range-progress {
+  height: 4px;
+  background: var(--second);
+}
+
+.set-range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--second-bright);
+  border-radius: 0;
+  background: var(--second-dim);
+  transform: rotate(45deg);
+}
+
+/* a set of choices: one stop for focus, the chosen one lit. Equal columns; when the text is large they wrap
+   into a second line of the same columns. */
+.set-choices {
+  grid-area: control;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(4.6em, 1fr));
+  gap: 0.4em;
+}
+
+.set-choice {
+  min-width: 0;
+  min-height: 44px;
+  margin: 0;
+  padding: 0.4em 0.7em;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--surface-raised);
+  color: var(--ink-dim);
+  font: 400 0.92em/1.2 var(--font-ui);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.set-choice.is-on {
+  border-color: var(--second-bright);
+  background: var(--second-dim);
+  color: var(--ink);
+}
+
+@media (hover: hover) {
+  .set-choice:hover { border-color: var(--second); }
+}
+
+/* a switch: a square track with a square knob, and the word for its state */
+.set-switch {
+  grid-area: control;
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6em;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 0;
+  padding: 0 0.2em;
+  border: 0;
+  background: var(--clear);
+  color: var(--ink-dim);
+  font: 400 0.92em/1.2 var(--font-ui);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.set-switch-track {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  border: 1px solid var(--line-strong);
+  background: var(--surface-raised);
+}
+
+.set-switch-knob {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  width: 16px;
+  height: 16px;
+  background: var(--ink-faint);
+  transition: transform 120ms;
+}
+
+.set-switch.is-on { color: var(--ink); }
+
+.set-switch.is-on .set-switch-track {
+  border-color: var(--second-bright);
+  background: var(--second-dim);
+}
+
+.set-switch.is-on .set-switch-knob {
+  background: var(--second-bright);
+  transform: translateX(22px);
+}
+
+.set-switch-word { min-width: 2em; }
+
+.set-foot {
+  flex: none;
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.85rem 1.25rem;
+  border-top: 1px solid var(--line);
+}
+
+.set-foot .ui-btn { flex: 0 1 9rem; }
+
+/* A phone on its side: less room for the title and the footer, more for the rows. */
+@media (max-height: 500px) {
+  .set-title {
+    padding-top: 0.55rem;
+    font-size: 1.2em;
+  }
+
+  .set-group { margin-top: 0.6em; }
+
+  .set-row { padding: 0.3em 0; }
+
+  .set-foot { padding: 0.45rem 1.25rem; }
+}

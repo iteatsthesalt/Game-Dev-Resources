@@ -1,0 +1,232 @@
+/* 40-plan.css: the screen of the Plan (74-plan.js): the street plan of Tollbound as the map of a drowned city, and the
+   panel that tells the chosen node and what can be done with it. Phone first: upright the map is over the panel;
+   on its side and on a desktop the panel stands beside the map. The canvas reads its colours from the tokens below
+   (and the accent, second and focus colours of 00-base.css), so the map follows them too. Every control is 44 px
+   or more; text is in rem, so "Text and controls" scales it. */
+
+:root {
+  --pl-marsh: #0b1319;          /* the water and marsh beyond the last wall */
+  --pl-road: #3d3b3a;           /* the walls' roads and the streets */
+  --pl-block: #15161c;          /* the blocks between them */
+  --pl-alley: #34333a;          /* the alleys and lanes through the blocks */
+  --pl-water: #1b3544;          /* the river */
+  --pl-shore: #4d7b8a;          /* its shores, and the Flood bank's nodes */
+  --pl-flood: rgba(58, 118, 148, 0.18);   /* the drowned south beyond the river */
+  --pl-close: #26231e;          /* the cathedral close */
+  --pl-minster: #5c5446;        /* the cathedral's plan in it */
+  --pl-node: #8f8a7c;           /* a node the route has not reached */
+  --pl-node-edge: #07090d;
+  --pl-lamp: rgba(239, 201, 119, 0.32);    /* the light along the route */
+  --pl-loop: rgba(111, 179, 166, 0.24);    /* a loop that grants */
+  --pl-mile: rgba(239, 201, 119, 0.16);    /* a held milestone's straight run */
+  --pl-way: rgba(159, 208, 255, 0.8);      /* the way to the chosen node */
+  --pl-label: rgba(236, 231, 218, 0.6);
+  --pl-ebb: #c7b386;            /* the Ebb bank's nodes: the dry quays */
+}
+
+/* the plan covers the Lantern under it */
+.ui-screen[data-screen="plan"] { background: var(--bg); }
+
+.ui-screen > .pl-screen {
+  flex: 1 1 auto;
+  margin: 0;
+}
+
+.pl-screen {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+
+.pl-head {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.pl-titles { min-width: 0; }
+
+.pl-title {
+  margin: 0;
+  color: var(--ink);
+  font: 400 1.25rem/1.2 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.pl-points {
+  margin: 0.15rem 0 0;
+  color: var(--second-bright);
+  font-size: 0.8rem;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+}
+
+.pl-back { flex: none; }
+
+.pl-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.pl-map {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 55%;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--pl-marsh);
+}
+
+.pl-canvas {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+  touch-action: none;
+}
+
+.pl-canvas:active { cursor: grabbing; }
+
+.pl-tools {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.pl-tool {
+  min-width: 44px;
+  padding: 0 0.6rem;
+  border-color: var(--line-strong);
+  background: var(--surface);
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.pl-tool-head {
+  font-size: 0.75rem;
+  letter-spacing: 0.06em;
+}
+
+.pl-panel {
+  flex: 0 1 auto;
+  max-height: 45%;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 0.75rem 1rem 0.9rem;
+  border: 1px solid var(--line);
+  border-top: 2px solid var(--accent);
+  background: var(--surface);
+  text-align: left;
+  touch-action: pan-y;
+}
+
+.pl-name {
+  margin: 0;
+  padding-left: 0.5rem;
+  border-left: 4px solid var(--pl-quarter, var(--accent));
+  color: var(--ink);
+  font: 400 1.15rem/1.25 var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.pl-where,
+.pl-text,
+.pl-state,
+.pl-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+
+.pl-where { color: var(--ink-faint); }
+.pl-text { color: var(--ink-dim); font-style: italic; font-family: var(--font-display); }
+.pl-state { color: var(--ink); }
+.pl-state.is-held { color: var(--accent-bright); }
+.pl-state.is-granted { color: var(--second-bright); }
+.pl-state.is-step { color: var(--ink); font-weight: 600; }
+.pl-note { color: var(--ink-faint); }
+.pl-flood { color: var(--pl-shore); }
+.pl-ebb { color: var(--pl-ebb); }
+
+.pl-gives {
+  margin: 0.45rem 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--second-bright);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.pl-gives li {
+  padding: 0.15rem 0 0.15rem 0.9rem;
+  text-indent: -0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.pl-gives li::before {
+  content: "\2022";
+  display: inline-block;
+  width: 0.9rem;
+  text-indent: 0;
+  color: var(--accent);
+}
+
+.pl-actions,
+.pl-steps,
+.pl-more {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.7rem;
+}
+
+.pl-actions > .ui-btn { flex: 1 1 8rem; }
+
+.pl-steps > .pl-note {
+  flex-basis: 100%;
+  margin: 0;
+}
+
+.pl-chip {
+  padding: 0.4em 0.8em;
+  font-size: 0.8rem;
+  letter-spacing: 0.03em;
+  text-transform: none;
+}
+
+.pl-chip.is-chosen {
+  border-color: var(--focus);
+  color: var(--ink);
+}
+
+/* On its side and on a desktop, the panel stands beside the map. */
+@media (min-aspect-ratio: 5/4) {
+  .pl-body { flex-direction: row; }
+
+  .pl-map {
+    min-height: 0;
+    min-width: 50%;
+  }
+
+  .pl-panel {
+    flex: 0 0 auto;
+    width: min(24rem, 42%);
+    max-height: none;
+  }
+}

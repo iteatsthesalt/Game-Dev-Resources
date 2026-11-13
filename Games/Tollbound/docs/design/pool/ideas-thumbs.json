@@ -1,0 +1,825 @@
+{
+ "inventor": "thumbs",
+ "method": "Start from what the player physically does and decides (stop, walk straight, circle, thread, lead and cut back, hug, hold a distance, keep a deadline), write the rule with numbers that rewards it, and only then find what in the drowned bell-city it is.",
+ "ideas": [
+  {
+   "id": "thumbs-01",
+   "area": "combat-model",
+   "name": "Posture harm: Blow, Drag, Knell",
+   "idea": "Three kinds of harm, each blunted by a posture. Blows (single hits) are cut by Brace, in full only after 0.4 s standing still. Drag (harm per second inside a crowd or zone) is cut by Stride, in full only above 70% of top speed. Knells (announced area strikes) ignore stats; only an obstacle between source and target stops them. Enemies obey the same rules: runners are open to Blows, standers to Drag. Anything that turned over 90 degrees in the last 0.5 s is Wrong-footed and takes 50% more.",
+   "source": "One thumb has three clean states in a crowd (stopped, walking, hidden behind something), so each kind of harm asks for a different one.",
+   "nearest": "Stance systems in duelling games (Nioh, For Honor) swap stats by chosen stance; here there is no stance button, protection follows what the feet are already doing, and it applies to enemies too.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-02",
+   "area": "combat-model",
+   "name": "Depth of harm: Graze, Strike, Knell",
+   "idea": "Harm has three depths, set by how long the attack was shown first. Graze (no warning) is cut by a flat Thickness per hit and returns at 8% of life per second after 3 s untouched. Strike (shown 0.4 to 1.5 s) is stopped only by Guards, charges that each swallow one Strike; Strike life and Guards return at the toll. Knell (shown over 1.5 s) meets no protection and mends only at a gate. If unreturned Graze exceeds 30% of life, further Grazes land as Strikes.",
+   "source": "A one-life player wants to say exactly why they died, so the harm that lasts is always the harm that was shown longest.",
+   "nearest": "Regenerating shield over health in shooters, and recoverable grey health in fighting games; here depth is set by warning time and the healers are the game's own toll and gate.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-03",
+   "area": "condition",
+   "name": "In Procession",
+   "idea": "An enemy that has chased the player for 5 s unbroken, staying within 2.5 m of the player's wake (the path of the last 4 s), is In Procession. It moves 15% faster, takes 30% more harm and drops 25% more experience. It ends when the enemy touches the player, is pushed, or strays more than 3 m off the wake. The count of processing enemies (cap 40) is a stat other effects can read.",
+   "source": "A thumb leading a crowd in a train is the central act of the genre, and the train's length is cheap to count against a short list of past positions.",
+   "nearest": "Aggro or threat stacks in online games; this one is earned only by being followed along a path and makes the follower both riper and faster.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-04",
+   "area": "condition",
+   "name": "Sounded",
+   "idea": "Keep one warden, keeper or other large enemy between 4 m and 6 m away for 2 s without a break and it becomes Sounded for 6 s. Every range of harm against a Sounded enemy rolls its top value, and its attacks are shown 0.3 s earlier. Leaving the band for more than 0.5 s ends it; holding the band refreshes it. The band is drawn as two thin rings around the enemy.",
+   "source": "Holding an exact distance from one enemy is a hard thing for a thumb, and a leadsman sounds depth by holding a marked line taut.",
+   "nearest": "Sweet-spot spacing such as the tip of a sword in Smash Bros; here the spacing is held over time and pays in earlier warnings, not in one bigger hit.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-05",
+   "area": "condition",
+   "name": "Wound",
+   "idea": "The game sums the signed angle the player travels around each warden, keeper or rooted enemy within 6 m. Each full sunwise circuit adds one Turn (max 3): the enemy's attacks come 12% slower per Turn. One full widdershins circuit spends all Turns at once; each deals a hit equal to 150% of the player's strongest sigil hit. Turns lapse 10 s after the last circuit. Turns show as coils around the enemy's base.",
+   "source": "A thumb circles naturally and can circle either way, a free two-way choice; walking sunwise to bind and widdershins to undo is an old real custom.",
+   "nearest": "Build-and-spend combo points (rogue classes in online games); here the building and the spending are the two directions of walking a circle round the target.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-06",
+   "area": "condition",
+   "name": "Clung",
+   "idea": "Applied by small clingers that leap from 1.5 m. Each one riding the player adds a stack (max 5): 8% slower and 2 Drag harm per second per stack. Stacks never time out. Passing within 0.8 m of any obstacle at over 70% speed scrapes every clinger off and kills them; standing still lets one more climb on every 2 s. Clingers show as small boxes stuck to the figure.",
+   "source": "Hugging an obstacle is something one thumb can do with precision, and things that cling are scraped off against stone.",
+   "nearest": "Grab enemies shaken off by waggling the stick (Zelda's ReDeads); here the cure is a place and a pace, not a waggle.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-07",
+   "area": "condition",
+   "name": "Knotted",
+   "idea": "When the player's path crosses their own wake laid in the last 5 s, every enemy within 2.5 m of the crossing point (up to 12) is Knotted for 3 s. Knotted enemies move 70% slower and each passes 20% of any harm it takes to every other member of the same knot. A knot ends early if fewer than two members remain. A knot is drawn as a loop on the ground.",
+   "source": "Cutting back across the train you lead is a crisp thumb act, and a line crossed over itself is a knot.",
+   "nearest": "Light-cycle trails in Tron, where crossing a trail kills; here crossing your own trail ties up whatever was following it.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-08",
+   "area": "condition",
+   "name": "Unheard",
+   "idea": "After 1 s with no movement and no sigil cast, the player is Unheard. Common dead more than 2 m away stop steering at the player and walk to the loudest recent point within 15 m: the latest sigil impact, or the spot where the player last moved. Wardens and keepers are not fooled. It ends on the first step or cast and cannot begin again for 2 s. Shown by the figure's outline dimming.",
+   "source": "Lifting the thumb is the one input that is always available, and the choice to go toward the noise or away needs noise to be a place.",
+   "nearest": "Feign Death in World of Warcraft and thrown-bottle distractions in stealth games; here it is free, has no button, and needs the nerve to stand still while the crowd closes.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-09",
+   "area": "attribute",
+   "name": "Knee, Heel, Hand, Ear",
+   "idea": "Four attributes, each tied to one thing the body does. Knee governs standing still: +1% to effects tagged Still per point, and life. Heel governs moving: +1% to effects tagged Moving, and less speed lost in a sharp turn. Hand governs nearness: +1% to effects on targets within 3 m, and pickup reach. Ear governs timing: +1% to effects tagged Timed, and every 10 points shows enemy warnings 0.05 s sooner. Sigils and gear each name one attribute and a number needed to use them.",
+   "source": "The thumb can only stop, go, close in or wait for a moment, so the character sheet measures those four acts.",
+   "nearest": "Strength, dexterity and intelligence triads; these are not kinds of person but kinds of moment, and each is switched on by what the player is doing.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-10",
+   "area": "class",
+   "name": "Ropewalker",
+   "idea": "A maker of bell-ropes. Walking within 10 degrees of one heading pays out rope from where the straight began. Turning more than 35 degrees, or reaching 14 m, pegs it as a taut line for 5 s (three lines at most). Starting sigil, Standing Line: enemies crossing a line take harm multiplied by its length over 4 m and are slowed 40% for 1 s. The thumb draws long straights and sharp corners.",
+   "source": "Ropemakers really walked backwards down a long straight ropewalk paying out fibre, and a straight line is the plainest thing a thumb can hold.",
+   "nearest": "Trail weapons such as the Tron light-cycle wall; here only a straight walk makes a line, its length is its strength, and the turn is what sets it.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-11",
+   "area": "class",
+   "name": "Mute",
+   "idea": "A hired mourner who stands silent at doors. Class rule: the Mute becomes Unheard after 0.6 s still instead of 1 s, even with enemies as near as 1 m. Starting sigil, Last Word: on the first step out of stillness, everything within 4 m that is facing away from the Mute is hit, harm growing 50% per second held still (cap 3 s). The thumb freezes in the crowd's path, lets it pass, then moves.",
+   "source": "Victorian funerals hired mutes to stand motionless at the door, and standing still as the crowd arrives is the hardest thing to ask of a player's nerves.",
+   "nearest": "Stand-still damage bonuses in survivor games; here stillness is the dodge itself and the hit lands only on backs that have walked past.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-12",
+   "area": "class",
+   "name": "Lamplighter",
+   "idea": "Walks a round of lamps. Six lamp posts stand in each district. Passing within 2 m lights one for 45 s; every toll puts all out. Each lit lamp raises sigil cast rate 10% and shows warnings inside its 5 m light 0.4 s sooner. Starting sigil, Taper: every 2 s each lit lamp throws a spark at the enemy nearest to it. The thumb plans a circuit and keeps it against the clock.",
+   "source": "Lamplighters walked a fixed round to light every lamp before dark, which is reaching places before a deadline, over and over.",
+   "nearest": "Totem or turret upkeep classes; here the posts are fixed places in the district, so the class is a route and a timetable, not a placement.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-13",
+   "area": "class",
+   "name": "Bierman",
+   "idea": "Carries the plank a coffin rides on, held in front. Blows arriving within the 120-degree arc ahead of the heading are cut 60%; blows from behind land 40% harder. Starting sigil, Shoulder: every 1.2 s strikes a box 3 m long and 2 m wide straight ahead and shoves what it hits 1.5 m. The thumb walks toward what it wants hurt and chooses which crowd gets its back.",
+   "source": "With one thumb, facing and heading are the same thing, so choosing which of two crowds to face is a real decision only if the back is weak.",
+   "nearest": "Shield-bearing enemies and directional blocking in action games; here the player carries it in a horde, with no block button, and pays for it behind.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-14",
+   "area": "class",
+   "name": "Leadsman",
+   "idea": "Sounds the flooded streets with a weighted line. Starting sigil, Lead Line: a weight circles at 5 m and hits only enemies between 4.3 m and 5.7 m from the player; anything nearer is untouched. Class rule: the Sounded condition needs 1 s in the band instead of 2 s. The thumb keeps the crowd at exactly arm's length and steps back whenever it closes inside the swing.",
+   "source": "A leadsman swings a weighted line to a known mark, and holding an exact distance is a distinct skill of the steering thumb.",
+   "nearest": "Orbiting weapons in survivor games, which protect the body; this one leaves the body bare and works only at one distance.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-15",
+   "area": "class",
+   "name": "Verger",
+   "idea": "Walks ahead of processions with a rod. Starting sigil, Turn About: fires only when the heading reverses by 150 degrees or more within 0.3 s; a wave runs 12 m back along the wake, hitting each enemy for base harm plus 3% per enemy In Procession (cap 40). It recharges in 2 s. The thumb leads a long tidy train, growing greedier, then flicks back through it.",
+   "source": "A verger really walks at the head of a procession to clear its way, and a thumb's reversal is a sharper event than any turn.",
+   "nearest": "Kiting a pack and turning to strike it, done in every action game; here the reversal itself is the trigger and the train's length is the multiplier.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-16",
+   "area": "class",
+   "name": "Mudlark",
+   "idea": "Scavenges the drowned foreshore. Starting sigil, Pocketful: every pickup collected throws one stone at the nearest enemy; five pickups within 1 s throw a sixth that pierces. Class rule: each unbanked item carried adds 3% harm. The thumb steers through fields of dropped shards while they still lie among enemies, instead of circling and sweeping up afterwards.",
+   "source": "Mudlarks picked a living out of river mud, and fear grows with what is carried, so this class is strongest when it has most to lose.",
+   "nearest": "On-pickup effects in survivor games (heal on gem); here collecting is the only way the class attacks at all.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-17",
+   "area": "class",
+   "name": "Winder",
+   "idea": "Winds the tower clocks. The game sums how far the heading rotates. Each full sunwise circle walked stores one Turn (max 3). Starting sigil, Mainspring: a full widdershins circle releases a ring from the centre of that circle, radius 3 m plus 2 m per Turn, harm doubled per Turn. Turns lapse 12 s after the last circle. The thumb draws loops around a clump one way, then once the other way.",
+   "source": "A thumb draws circles without thought and can tell the two directions apart perfectly, and tower clocks were wound by turning a crank.",
+   "nearest": "Full-circle stick motions for command grabs in fighting games; here the circle is walked on the ground, its centre is where the release lands, and direction carries the meaning.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-18",
+   "area": "calling",
+   "name": "Rigger (Ropewalker)",
+   "idea": "New rule: three pegged lines that close a triangle make a Fold. For 4 s the lines are walls to the enemies inside, who cannot leave, and every sigil hit landing inside the Fold strikes twice. The lines forming a Fold expire together. Folds larger than 60 square metres do not form. The thumb now walks three straights to pen a crowd rather than one to trip it.",
+   "source": "Tracing a shape is within a thumb's reach if the shape is three straight walks and two corners.",
+   "nearest": "Area-claiming by closed loops in Qix; here the shape is made of at most three straight segments, each of which had to be walked through the crowd.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-19",
+   "area": "calling",
+   "name": "Chief Mourner (Mute)",
+   "idea": "New rule: every enemy that passes within 1.5 m of the Mute while the Mute is Unheard is Passed for 5 s, shown by a bowed head. A Passed enemy takes 60% more from the Mute's next hit on it and, if that hit kills it, falls without noise, so the crowd does not turn. The reward is for standing exactly where the stream is thickest.",
+   "source": "Threading a gap can be done by not moving at all, if the player has the nerve to let the gap come to them.",
+   "nearest": "Graze scoring in bullet-hell shooters, which pays for near misses while dodging; this pays for near misses while standing still.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-20",
+   "area": "calling",
+   "name": "Snuffer (Lamplighter)",
+   "idea": "New rule: passing a lit lamp a second time snuffs it. Snuffing hits everything in its 5 m light for harm equal to the seconds it burned times a base value, and enemies caught lose the player for 3 s, holding their last heading. The Lamplighter now chooses at every post between keeping the upkeep bonus and cashing it in.",
+   "source": "A round of fixed posts gives a decision at each one only if returning to a post can mean two different things.",
+   "nearest": "Detonating your own placed traps or mines; here the thing spent is a standing bonus on a clock, and its age is its payout.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-21",
+   "area": "calling",
+   "name": "Lychwarden (Bierman)",
+   "idea": "New rule: enemies killed inside the front arc while walking forward are laid on the bier, up to 6. Standing still for 1 s sets the bier down as an obstacle 3 m wide for 6 s plus 1 s per body. It blocks enemies and counts as shelter from Knells. Walking into it picks it up again. The Bierman builds a wall where one is wanted.",
+   "source": "A bier was set down at the lychgate while the bearers waited, and a thumb that can hug an obstacle would like to bring one along.",
+   "nearest": "Deployable cover in shooters; here the cover is paid for in kills made while advancing and is placed by the act of stopping.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-22",
+   "area": "calling",
+   "name": "Deep-caller (Leadsman)",
+   "idea": "New rule: standing still for 1 s resets the swing radius of every Leadsman sigil to the distance of the nearest enemy at that moment, anywhere between 2 m and 8 m, drawn as a chalk ring. The band stays that size until the next deliberate stop. The player tunes reach to the fight by choosing how close to let something come before stopping.",
+   "source": "Stopping for a set time and holding a distance are two thumb acts that can be joined: the stop measures, the walk keeps.",
+   "nearest": "none known; range is normally a stat on the weapon, not something the player measures off by letting an enemy approach.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-23",
+   "area": "calling",
+   "name": "Marshal (Verger)",
+   "idea": "New rule: when the Verger stands still, enemies In Procession halt where they are for as long as the Verger stays still, up to 4 s, and cannot be halted again for 6 s. Enemies not In Procession keep coming. A halted train counts as standing for every rule that asks, so the Verger chooses when followers are runners and when they are standers.",
+   "source": "A real procession stops when the one leading it stops, and it gives the lifted thumb a second meaning.",
+   "nearest": "Crowd-freeze skills on a cooldown; this one stops only those the player has been leading and leaves the flanks alive.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-24",
+   "area": "calling",
+   "name": "Jackdaw (Mudlark)",
+   "idea": "New rule: one extra button throws the newest unbanked item 6 m ahead. It bursts in 3 m for harm equal to 200% of the strongest sigil hit for each notch on the item, and the item is destroyed. Banked items cannot be thrown. Every find becomes a question: carry it to a gate, or spend it now to live.",
+   "source": "Whether to spend something that does not come back is one of the few weighty decisions a run offers.",
+   "nearest": "Coin-firing weapons such as Terraria's Coin Gun; here the ammunition is the unbanked reward of this very run, one piece at a time.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-25",
+   "area": "calling",
+   "name": "Regulator (Winder)",
+   "idea": "New rule: sunwise circles walked around an open gate or the district's bell-post wind that object instead of the Winder. Each Turn holds a gate open 4 s longer (max 12 s) or delays the next toll by 3 s (max 9 s). Each widdershins circle around the bell-post brings the toll 3 s nearer. The Winder edits the public clock by walking.",
+   "source": "The toll is a public clock the player plans around, and a class that winds clocks should be able to move its hands a little.",
+   "nearest": "Time-extension pickups in arcade racers; here the clock is moved both ways, by a walked gesture, around a place that has to be reached and held.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-26",
+   "area": "skill",
+   "name": "Plumb",
+   "idea": "Marks the last spot where the player stood still for 0.5 s or more; the mark moves only at the next such stop. Every 3 s a weight drops on the mark, radius 2.5 m. Harm rises 10% for each second the mark has stayed put (cap 100%). The player stops once in a well-chosen place, then leads the crowd back across it.",
+   "source": "Returning to where you were is a thumb act that needs the game to remember one place, and a stop is the cheapest way to name it.",
+   "nearest": "Placed turrets and traps; this has no placing action or count, only the memory of the last deliberate stop.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-27",
+   "area": "skill",
+   "name": "Hitch",
+   "idea": "Casts whenever the player's path crosses their own wake laid in the last 5 s; recharge 1.5 s. At the crossing point every enemy within 2.5 m takes base harm multiplied by the number of enemies caught (cap 12) and becomes Knotted. It works better with a long train and a tight cut back across it; a figure of eight ties two knots per lap.",
+   "source": "Leading a crowd in a train and cutting back across it is the most skilful thing a thumb does in this genre and no game pays for the crossing itself.",
+   "nearest": "Loop-closing captures in Pokemon Ranger; here no loop need close, only the path must cross itself, and the crossing point is the whole effect.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-28",
+   "area": "skill",
+   "name": "Long Draw",
+   "idea": "Every 1 s fires one shot straight ahead and one straight behind. The rear shot gains 10% harm and 0.5 m width for each second the heading has stayed within 15 degrees (cap 10 s); any sharper turn resets it. It picks no target: it acts along the line of travel. The player holds a straight line through danger for as long as nerve allows.",
+   "source": "Walking a straight line is easy for a thumb and frightening in a crowd, which makes it worth paying for by the second.",
+   "nearest": "Forward-and-back firing weapons in survivor games; here the rear shot is a meter of how long the player refused to turn.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-29",
+   "area": "skill",
+   "name": "Needle's Eye",
+   "idea": "Casts when the player passes between two enemies that are less than 2.5 m apart and on opposite sides (bearings over 120 degrees apart) without being hit in that half second; recharge 0.8 s. A stitch runs through both enemies and 6 m beyond each, piercing everything on the line. The player hunts gaps in the crowd instead of avoiding the crowd.",
+   "source": "Threading a gap is a precise, repeatable thumb act and the two enemies that made the gap give the shot its line for free.",
+   "nearest": "Graze bonuses in bullet-hell shooters; here the near miss must be between a pair, and the pair defines where the attack goes.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-30",
+   "area": "skill",
+   "name": "Held Breath",
+   "idea": "Charges while the player stands still, up to 3 s, shown as a ring closing on the feet. On the first step it fires a cone in the direction of that step: 4 m long plus 2 m per second held, 60 degrees wide. Waiting past 3 s loses nothing. The first movement after a stop is the aim, so the escape route is also the shot.",
+   "source": "With no hover and one thumb, the first step after a stop is the only pure pointing gesture the player has.",
+   "nearest": "Charge shots released by letting go of a button; here the charge is stillness and the release is a direction walked.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-31",
+   "area": "skill",
+   "name": "Quarters",
+   "idea": "Strikes around the player at each quarter of the toll interval: at 18.75 s, 37.5 s, 56.25 s and on the toll itself. Radius is 3, 4, 5 and 6 m; harm doubles each time (1, 2, 4 and 8 times base). A shrinking ring shows the last 2 s before each. The player arranges to be inside the thickest crowd exactly as the bell rings, when the new surge also arrives.",
+   "source": "The toll is a clock everyone can see, and old tower clocks had jack figures that struck the quarters before the hour.",
+   "nearest": "Periodic pulse weapons in survivor games; this one keeps the district's public time, so its biggest stroke always coincides with the moment danger rises.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-32",
+   "area": "skill",
+   "name": "Counterweight",
+   "idea": "Every 1.5 s counts the enemies within 6 m on the left and on the right of the heading. It strikes the side with fewer, hitting each enemy there for base harm times the ratio of the larger count to the smaller (cap 4). With one side empty it does nothing. The player walks the seam between a big crowd and a small one and keeps both alive.",
+   "source": "Choosing which of two crowds to face becomes richer if the crowd you spare is doing work for you.",
+   "nearest": "none known; skills that grow with nearby enemy count exist, but not one that spends one crowd's size on the other.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-33",
+   "area": "skill",
+   "name": "Knock-up",
+   "idea": "Every 2 s raps the nearest obstacle within 2 m of the player. A ring leaves the obstacle, radius 5 m. Enemies on the far side of the obstacle from the player take double harm. With no obstacle in reach it does not cast. The player fights from behind pillars and posts, keeping stone between body and crowd, and moves from one to the next.",
+   "source": "Knockers-up were paid to rap on windows with a pole, and hugging an obstacle is a thumb act that deserves a sigil of its own.",
+   "nearest": "Ricochet shots off walls; here the obstacle is the origin of the attack and the player's side of it is the weak side.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-34",
+   "area": "skill",
+   "name": "Bell-rope",
+   "idea": "Every 8 s pins a rope's end where the player stands; for 5 s a taut rope joins that pin to the player. Enemies touching the rope take harm four times a second. Past 9 m the rope snaps and the cast ends. It picks no target: the player sweeps the rope like a clock hand by walking an arc around the pin.",
+   "source": "Circling a point is natural to a thumb, and a line from a fixed point to a moving body turns that circle into a sweep.",
+   "nearest": "Tether beams between two co-op players; here one end is where you stood, and the single player swings the other.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-35",
+   "area": "skill",
+   "name": "Appointment",
+   "idea": "Every 12 s marks a spot 9 m ahead along the current heading with a ring that closes over 4 s. If the player is within 2 m of the spot when it closes, a strike of 5 m radius lands there and spares the player; if not, a strike of 2 m radius lands at a third of the harm. The heading at marking time chooses the place.",
+   "source": "Reaching a place before a deadline is a complete small drama for one thumb, repeatable every few seconds.",
+   "nearest": "Stand-in-the-circle buffs in action role-playing games; here the player's arrival is the key that turns a weak strike into a strong one.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-36",
+   "area": "skill",
+   "name": "Bounds",
+   "idea": "Tracks the most northerly, southerly, easterly and westerly points the player has reached since its last cast. Every 15 s it strikes every enemy inside that rectangle, drawn beforehand as four corner stakes. Harm is base times 100 divided by the rectangle's area in square metres (cap 4 times). Small tight bounds hit hard; a wide walk hits many lightly.",
+   "source": "Parishes really walked their boundary once a year to fix it in memory, and the extent of a walk is four numbers.",
+   "nearest": "none known; territory games fill enclosed loops, but this takes only the extremes of where the feet have been.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-37",
+   "area": "skill",
+   "name": "Dead Stop",
+   "idea": "Casts at the instant the player stops after moving for at least 2 s; recharge 1.5 s. A stamp hits around the feet, radius 3 m plus 1 m per 2 s of unbroken movement before the stop (cap 6 m), and pushes enemies 1 m out. Lifting the thumb is the trigger, so the player chooses the moment and the place of every cast.",
+   "source": "Lifting the thumb off the glass is a distinct physical event with exact timing, and no game treats it as a trigger.",
+   "nearest": "Ground-pound on landing in platformers; here the trigger is the end of a walk, in a game where everything else fires by itself.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-38",
+   "area": "modifier",
+   "name": "Slip-knot",
+   "idea": "The bound sigil no longer casts on its timer. It stores up to 3 casts and lets all of them go at the instant the player stops moving. Cost: casts beyond the third are lost, and the sigil's recharge runs 20% slower. The player decides when and where every cast happens by choosing when to lift the thumb.",
+   "source": "The release of the thumb is an exact event the player controls, so it can stand in for a fire button without adding one.",
+   "nearest": "Trigger supports in Path of Exile that cast on a condition; this condition is the player's own stop, not a hit or a kill.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-39",
+   "area": "modifier",
+   "name": "Back-splice",
+   "idea": "The bound sigil acts from the point where the player stood 2 s ago, drawn as a faint standing figure, and chooses its targets from there. Cost: 15% slower casting, and the sigil cannot see enemies nearer than 2 m to the player's present position. A led train is always on top of the place the player just left.",
+   "source": "The common dead arrive where the player was, not where the player is, so the past position is the best-placed caster on the field.",
+   "nearest": "Afterimage or echo casters such as Mirage Archer in Path of Exile; here the origin is strictly the player's own position two seconds back.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-40",
+   "area": "modifier",
+   "name": "Running Line",
+   "idea": "While the heading has changed less than 15 degrees over the last second, the bound sigil casts 60% faster. Cost: any sharper turn stops the sigil entirely for 0.7 s. It makes any sigil a straight-line sigil and makes each corner a small silence that the player must place with care.",
+   "source": "A straight heading is the easiest thing for a thumb to hold and the first thing fear makes it give up.",
+   "nearest": "Bonuses while moving in survivor games; this pays only for not turning, and charges for the turn.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-41",
+   "area": "modifier",
+   "name": "Stone's Answer",
+   "idea": "Each cast of the bound sigil is repeated 0.3 s later from the nearest obstacle within 6 m of the player, aimed from the obstacle's position. Cost: the repeat deals 60% harm, and with no obstacle in reach the sigil's own cast is 20% weaker. Ground with pillars doubles the sigil; open ground weakens it.",
+   "source": "Hugging an obstacle should change what a build can do, so that where to fight is a choice made before the fight.",
+   "nearest": "Repeat-cast supports such as Spell Echo; here the second cast comes from a fixed thing in the world that the player must stay near.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-42",
+   "area": "modifier",
+   "name": "Pawned",
+   "idea": "Each cast of the bound sigil spends 1 unbanked coin carried and deals 50% more harm. Cost: the coin is gone; with none carried, the sigil casts at half harm. The count on the pack falls visibly with every cast, so staying to fight eats what the gate would have banked.",
+   "source": "Fear grows with what is carried, and a sigil that burns the carried sum turns that fear into a running meter.",
+   "nearest": "Money-as-ammunition items in The Binding of Isaac; here the money is the unbanked take of a one-life vigil, lost for good.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-43",
+   "area": "modifier",
+   "name": "Hair's Breadth",
+   "idea": "The bound sigil gains one free cast each time an enemy attack that was shown beforehand lands within 0.7 m of the player without hitting (up to 4 stored; they fire 0.2 s apart). Cost: its ordinary recharge is 30% slower. Standing just outside a marked strike becomes a way to load the sigil.",
+   "source": "Every dangerous attack in this game is shown before it lands, so the edge of the shown shape is a place the player can choose to stand.",
+   "nearest": "Graze meters in bullet-hell shooters and perfect-dodge rewards; here no dodge input exists, only the choice of how near the edge to wait.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-44",
+   "area": "modifier",
+   "name": "Quartered",
+   "idea": "The bound sigil stops casting by itself. Every cast it would have made is saved (cap 20) and all are released together at each quarter of the toll interval, every 18.75 s, 0.1 s apart, from wherever the player then stands. Cost: nothing between quarters. The player lives through each quiet stretch and chooses a place for the release.",
+   "source": "The toll gives a certain moment to count toward, and a sigil bound to it makes the counting matter between tolls as well.",
+   "nearest": "Damage-storing detonation skills; here the detonator is the district's public clock, which the player cannot hurry.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-45",
+   "area": "reserved",
+   "name": "Heed, and the Vow of Stability",
+   "idea": "Vows reserve Heed, a pool spent on nothing else: unreserved Heed shows every enemy attack up to 1.0 s earlier than its base warning. Vow of Stability holds 30% of Heed. Promise: stay within 12 m of the spot stood on at the last toll, drawn as a ring. Kept: 25% more harm and one extra Guard. Stepping out breaks it; it returns at the next toll.",
+   "source": "What a one-life player wants most is to see danger early, so that is the only currency worth reserving; stability is a real monastic vow to stay in one place.",
+   "nearest": "Auras that reserve mana in Path of Exile; here the pool is warning time, and each vow is also a promise the thumb can break.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-46",
+   "area": "reserved",
+   "name": "Vow of Poverty",
+   "idea": "Holds 25% of Heed. Promise: carry no more than 3 unbanked items; a fourth cannot be picked up while the vow stands and lies where it fell. Kept: experience from kills is 20% higher and gates need 1 s less standing. The vow can be dropped at any moment by standing on an item for 2 s, and returns at the next toll.",
+   "source": "Fear grows with what is carried, so a vow that caps the load buys calm and sells greed, and the moment of breaking it is a decision.",
+   "nearest": "Voluntary conducts in NetHack; this is a kept-or-broken state inside each vigil with a visible price lying on the ground.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-47",
+   "area": "reserved",
+   "name": "Vow of the Unbroken Round",
+   "idea": "Holds 35% of Heed. Promise: touch the district's bell-post at least once between every pair of tolls. Each toll period in which the promise is kept adds 5% to all harm and 2% to speed, stacking to 8 periods. A missed period empties the stack. The post is the middle of the district, where the surge is thickest.",
+   "source": "Returning to one place before a recurring deadline is a habit the thumb can keep or lose, and losing it should cost everything saved.",
+   "nearest": "Streak bonuses that reset on a miss in rhythm games; here the beat is 75 s long and each beat is a journey to a place.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-48",
+   "area": "pick",
+   "name": "Tithe",
+   "idea": "At every toll, 10% of the coin carried drops in one heap where the player stands. If the player comes back and picks the heap up between 6 s and 12 s after the toll, it is doubled; earlier it is merely returned, later it has sunk. The surge arrives 4 s after the toll, on that spot or elsewhere.",
+   "source": "Returning to where you were is only a decision if something of yours is waiting there and something dangerous is too.",
+   "nearest": "Corpse runs to recover dropped currency in Dark Souls; here the drop is voluntary, small, timed to the bell, and pays double for good timing.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-49",
+   "area": "pick",
+   "name": "Standing Offer",
+   "idea": "After each toll a ring 3 m wide appears at the place where the next toll's surge will enter. Standing inside it for 3 s without leaving grants one free chime; the ring then moves on. It shows where danger will come from a minute ahead, and pays the player for standing in exactly that place.",
+   "source": "The player wants to see danger coming early and is also asked whether to stand in a dangerous place for a reward; one object can do both.",
+   "nearest": "Shrines charged by standing in a circle; this circle is also a forecast of the next surge's door.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-50",
+   "area": "pick",
+   "name": "Rest Beat",
+   "idea": "A ring closes on the player's feet over 1 s whenever they stand still. Stepping off between 0.9 s and 1.3 s after stopping doubles the next cast of every sigil. Leaving early does nothing; staying longer wastes it, and the ring reopens only after 2 s of movement. The reward is for a pause of exactly one breath amid the crowd.",
+   "source": "Stopping for a set time is something a thumb can learn to do by feel, and a closing ring shows it without sound or text.",
+   "nearest": "Active reload in Gears of War; the input here is the length of a stillness, not a button press.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-51",
+   "area": "pick",
+   "name": "Pass the Gate",
+   "idea": "Each time a gate opens and closes without the player leaving through it, experience gained rises 8% and enemy speed rises 4% for the rest of the vigil. The stacks show as notches on every later gate's arch. Taken early, this chime makes each later gate a sharper offer: the refusal is paid, and so is the price.",
+   "source": "When to leave through a gate is the weightiest rare decision, and it gains weight if saying no is recorded.",
+   "nearest": "Cash-out-or-continue in push-your-luck board games; here each refusal changes the run mechanically and visibly.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-52",
+   "area": "pick",
+   "name": "Kept Ground",
+   "idea": "The spot where the player stands at each later level-up becomes Kept Ground: a 4 m circle lasting until the vigil ends (the oldest of 6 fades). Inside any Kept Ground, lost Graze life returns twice as fast and warnings show 0.2 s sooner. The player builds a private map of shelters out of the places where they chose to level.",
+   "source": "Level-ups come often, so tying each one to the ground underfoot turns a menu event into a choice of place.",
+   "nearest": "Consecrated-ground skills in action role-playing games; these are not cast but left behind by levelling, and they accumulate into a map.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-53",
+   "area": "pick",
+   "name": "Hurry",
+   "idea": "The outer third of the steering thumb's travel becomes a hurry: 30% more speed, but no sigil casts while hurrying or for 0.5 s after. The inner two thirds work as before. One thumb now holds two paces, and the player decides moment by moment between fighting and getting away.",
+   "source": "How far the thumb is pushed is a second signal that these games throw away.",
+   "nearest": "Sprint buttons that lower your weapon in shooters; here it lives on the same thumb, with no button, in a game where attacks are automatic.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-54",
+   "area": "pick",
+   "name": "Countermarch",
+   "idea": "After reversing the heading by 150 degrees or more, the player passes through common dead without contact for 0.6 s, and each one passed through is turned to face the wrong way for 1 s. It works once per 4 s. Cutting back across the train stops being a gamble and becomes the plan.",
+   "source": "A reversal is the sharpest gesture a thumb makes and the most dangerous one in a crowd.",
+   "nearest": "Dash moves with invulnerable frames; here there is no dash and no button, only the U-turn, and it turns the crowd as well.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-55",
+   "area": "enemy",
+   "name": "Wake-walkers",
+   "idea": "The common dead do not steer at the player but at the place the player stood 1.2 s ago. They are the bulk of every surge: a slumped tapered box, slow, harming by contact. Because they follow the wake, a moving player draws them into a train on the exact path walked, a cut back meets them side-on, and a player who stops is found in 1.2 s.",
+   "source": "Leading a train and cutting across it only works reliably if the crowd follows the path and not the body.",
+   "nearest": "Pac-Man's ghosts, which each aim at an offset from the player; these aim at the player's own past position, which makes the thumb's path the thing they obey.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-56",
+   "area": "enemy",
+   "name": "Hark",
+   "idea": "A tall figure with a tilted sphere head and no eyes. Every 8 s a ring of small cones lifts around its head for 2.5 s: it is listening. Each half second the player moves during that time adds a pip above it (max 5); when the cones drop it throws one fast shot per pip. Standing still earns none. It listens while the common dead keep coming.",
+   "source": "Standing still is the cheapest input and the dearest decision, so one enemy should demand it at the worst moment.",
+   "nearest": "Red light, green light, and sound-hunting monsters in stealth games; here the penalty is counted per half second moved and the crowd makes stillness costly.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-57",
+   "area": "enemy",
+   "name": "Wake-hound",
+   "idea": "A low wedge that runs the player's actual path, point by point, at 1.3 times the player's speed, ignoring where the player now is. Contact is a Strike. Where the path crosses itself it loses the trail and casts about on the spot for 3 s, taking double harm. It is read by its nose-down run along the trail and must be shaken by doubling back.",
+   "source": "Hares really break a scent trail by doubling back across their own track, which is a thing a thumb can do.",
+   "nearest": "Pursuers that replay your route, like the shadow clones in Mario Galaxy; this one can be thrown off, and the way to do it is a crossing.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-58",
+   "area": "enemy",
+   "name": "Left-turner",
+   "idea": "A planted figure with one long arm, built lopsided: arm on the left or on the right. It can turn to face the player only toward its arm side, at 60 degrees per second, and strikes a 4 m wedge in front every 2 s. Circling it against its turning keeps the player behind it for good; circling with it keeps the player in front.",
+   "source": "A thumb circling a point picks a direction without thinking; this enemy makes the direction the whole question and shows the answer in its shape.",
+   "nearest": "Shielded enemies that must be struck from behind; here which way you walk round matters, and each one is built left- or right-handed.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-59",
+   "area": "enemy",
+   "name": "Linkmen",
+   "idea": "A marching row of 6 to 9 figures 2.5 m apart, alternate pairs joined by a held chain drawn as a thin box. Chains are Strikes to touch; unjoined gaps are safe. The row advances at walking pace across the whole fight and does not turn. Killing a figure drops both of its chains. The player threads an open gap or makes one.",
+   "source": "Threading a gap needs an enemy that is a row of gaps and non-gaps readable at a glance.",
+   "nearest": "Beam-linked enemy pairs in action role-playing games; here the links form one advancing line and the fight is about the holes in it.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-60",
+   "area": "enemy",
+   "name": "Poleman",
+   "idea": "Carries a pole 7 m long, held level, so its reach is drawn at true length. Every 3 s it sweeps a full circle, shown 0.8 s ahead, that hits everything between 2 m and 7 m from it. Inside 2 m nothing is touched. It walks slowly at the player. The answer is to stay beyond the pole's tip or to step in close and stay close.",
+   "source": "Holding an exact distance from one enemy is hardest when the safe distance is right beside it.",
+   "nearest": "Artillery with a minimum range in strategy games; here it is a walking melee threat and the safe zone moves with it.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-61",
+   "area": "enemy",
+   "name": "Early Ringer",
+   "idea": "A broad slow figure dragging a rope. It ignores the player and walks from the district's edge to the bell-post, taking about 30 s. If it arrives, the next toll rings 15 s early. It has the life of forty common dead. A thin line on the ground shows its route. The player leaves the safe circuit to stop it or accepts the lost time.",
+   "source": "The toll is the one thing the player counts on, so the sharpest threat is one that moves the count.",
+   "nearest": "Runners that leak past in tower defence; here the thing it reaches is the run's public clock.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-62",
+   "area": "enemy",
+   "name": "Spotter",
+   "idea": "A thin figure on a post-like cylinder that stands 15 m off and points at the player with one long arm. While it stands, common dead within 20 m of it steer at the player's present position, not the place 1.2 s behind: trains break up and cut corners. It never attacks. The player reads the pointing arm and goes out to it.",
+   "source": "Going toward the noise or away from it is a real choice when the noisy thing changes how the whole crowd answers the thumb.",
+   "nearest": "Buffing shaman enemies in action role-playing games; this one changes no numbers, only how well the crowd is aimed.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-63",
+   "area": "enemy",
+   "name": "Jacks",
+   "idea": "Squat hammer-figures that walk slowly and strike the ground around them (3 m) on a fixed beat of 2.5 s: arm up for 1.5 s, down, up again. Every Jack in the district strikes at the same instant, so the whole field pulses together. The raised arms are the warning. The player crosses Jack ground in the off-beat and stands clear on the stroke.",
+   "source": "Moving in time with a beat must be readable with the sound off, and a field of arms rising and falling together is a beat for the eyes.",
+   "nearest": "Timed crushers in platform games, each on its own cycle; these share one phase across the district, so the player learns one pulse.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-64",
+   "area": "enemy",
+   "name": "Tidewaiter",
+   "idea": "Rises inside any gate that opens while the player carries 4 or more unbanked items, and never leaves the gate ring. Its life is that of ten common dead per item carried. Every 2.5 s it sweeps one half of the ring, left then right, each shown 1 s ahead. A laden player who wants to leave must stay in the ring, stepping from half to half.",
+   "source": "Tide waiters were real customs officers who met ships on the tide, and fear at the gate should grow with the cargo.",
+   "nearest": "Guards at extraction points in extraction shooters; this one exists only because of what you carry and is as strong as your load.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-65",
+   "area": "boss",
+   "name": "The Perambulator",
+   "idea": "Keeper who walks the bounds. Phase 1: it walks a square circuit of 16 m sides around the player, dragging a visible line; when the loop closes, everything inside takes a Knell. Crossing the line is a Strike except at four corner stakes, which can be broken to open it. Phase 2: two nested loops walked in opposite directions. Phase 3: the line spirals inward and the keeper can be harmed only at its leading end.",
+   "source": "Tracing a shape is something the thumb does to enemies elsewhere in this game; here a keeper does it to the player, and the drawn line is its own warning.",
+   "nearest": "Qix turned inside out, with the boss as the line-drawer; the player's job is to be outside, or at a broken corner, when the shape closes.",
+   "cost": "large"
+  },
+  {
+   "id": "thumbs-66",
+   "area": "boss",
+   "name": "The Conductor",
+   "idea": "Keeper with eight shapes hung in a row above it, one per attack. It performs them left to right, each shape lifting 1 s before its attack. After every full row two neighbouring shapes swap places, hopping visibly. Phase 2: it reads the row from both ends at once, two attacks together. Phase 3: 1.5 times faster, and each toll reverses the row. The player learns the row, not the reflex.",
+   "source": "Knowing a keeper's attacks matters more than power, so this keeper publishes its order and changes it by one small visible step at a time, as ringers change the order of bells.",
+   "nearest": "Enemy intent icons in Slay the Spire; here the whole queue is public, in real time, and its changes follow a rule the player can run ahead of.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-67",
+   "area": "boss",
+   "name": "The Ferry-keeper",
+   "idea": "Keeper carrying a lantern. Beyond 6 m from it the whole district deals Drag; its pole sweeps everything within 2.5 m every 3 s, shown 0.8 s ahead. Phase 1: hold the band between. Phase 2: the band narrows to between 3 m and 5 m and it dashes along a line shown 1 s before. Phase 3: it throws the lantern in a shown arc; the old light dies in 2.5 s and the player must reach the new one.",
+   "source": "Holding a distance from a moving enemy is the thumb's hardest sustained act, so one keeper is made of nothing else.",
+   "nearest": "Safe-bubble phases in raid bosses; here the bubble is the boss for the whole fight and has a deadly middle.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-68",
+   "area": "district",
+   "name": "The Ropewalk",
+   "idea": "Parallel lanes 6 m wide and 60 m long between long box sheds, joined by cross-alleys every 20 m, with rope-rack posts down each lane. Colours: tar black, hemp tan, wet slate, rust red, lamp yellow. Crowds can arrive only from the two ends of a lane, so every moment is a choice of which end to face, and at each toll two cross-alleys shut and two open.",
+   "source": "Choosing which of two crowds to face is clearest in a place where there are only ever two directions.",
+   "nearest": "Corridor levels in arena shooters; here the corridors are the whole district and the bell rearranges their joints.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-69",
+   "area": "district",
+   "name": "The Dial",
+   "idea": "A round plaza 70 m across with the bell-post at the centre and eight radial stones. A 90-degree wedge of shadow sweeps sunwise once per toll interval; the toll rings as its edge crosses the north stone, so the clock is read from the ground. In shadow, enemies move 40% faster and warnings show 0.3 s later. Colours: chalk, noon gold, slate violet, bronze, moss. A whole vigil is one slow circling.",
+   "source": "On a small screen with the sound off, the public clock should be a moving shape on the ground that the thumb can walk with.",
+   "nearest": "Day and night cycles that strengthen enemies; here day and night are places a few metres apart and the boundary is the clock's hand.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-70",
+   "area": "district",
+   "name": "The Undercroft",
+   "idea": "A flooded hall of round pillars on a 5 m grid under a roof drawn as darkness. Colours: bone white, verdigris, black water, candle amber, lead grey. Shelter from Knells is everywhere and sight lines are short. A pillar struck by any sigil rings for 2 s, and common dead within 8 m of it steer at the pillar instead of the player. The player pulls crowds by choosing which stone to strike.",
+   "source": "Hugging an obstacle and going toward or away from noise are both thumb decisions that need a place dense with obstacles.",
+   "nearest": "Noise lures in stealth games; here the lure is whichever pillar your automatic attacks happen to hit, so positioning aims it.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-71",
+   "area": "tree",
+   "name": "One Route",
+   "idea": "The tree is a street plan, and a character's points lay one unbranching walk through it from the class's door. A point may only extend the head of the walk to a neighbouring node. Points are taken back only from the head, in reverse order. The route may step onto a node it already holds: that costs a point and doubles the node, once.",
+   "source": "A thumb traces one line, never a branching one, so the character's growth is one line with a head that must choose its next street.",
+   "nearest": "The Sphere Grid in Final Fantasy X, where a token travels a board; here the whole build is a single path with no side branches, and crossing itself is a deliberate purchase.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-72",
+   "area": "tree",
+   "name": "Beaten Bounds",
+   "idea": "When the route returns to a node it already holds, closing a loop, every node lying inside the loop is granted at half strength without costing a point. A loop may enclose at most 12 nodes. Planning becomes a question of which cluster is worth fencing and how few steps the fence can take.",
+   "source": "Returning to where you were closes a shape, and the pleasure of a shape is what it holds.",
+   "nearest": "Radius jewels in Path of Exile that affect nodes in a circle; here the player draws the fence node by node with the route itself.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-73",
+   "area": "tree",
+   "name": "Toll Rings",
+   "idea": "The tree is drawn as eight rings around the centre. A node on ring N has no effect until the Nth toll of a vigil has rung, and counts in full from then to the vigil's end. Outer rings hold the strongest nodes. A route kept near the centre is strong from the first toll; a route driven outward is weak early and pays only those who stay.",
+   "source": "The vigil has no fixed end and the player stays as long as they dare, so a build should say how long its owner means to stay.",
+   "nearest": "Late-scaling items in action role-playing games; here the lateness is a stated toll number on the map, shared with the run's public clock.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-74",
+   "area": "tree",
+   "name": "Straight Mile",
+   "idea": "A special node. It counts the unbroken run of held nodes lying in one straight street through it, and its effect grows 25% for each node in that run beyond the fourth (cap 10 nodes). Streets on the plan are long and few of them cross the best clusters, so a straight route gives up variety for one strong line.",
+   "source": "Walking a straight line is the thumb's simplest discipline, and the tree can ask for the same discipline in planning.",
+   "nearest": "Adjacency bonuses in city-building games; this one counts only a straight unbroken line through one node.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-75",
+   "area": "gear",
+   "name": "Notched gear",
+   "idea": "An item is found blank. Each toll the character survives while carrying it unbanked cuts one notch in it and writes one line of properties (max 8). Leaving by a gate fixes it; death loses it. There are no tiers: an item's worth is the count of tolls someone dared to carry it through, and its shape shows the notches.",
+   "source": "Fear grows with what is carried, so the item's quality is made to be exactly how long its carrier withstood that fear.",
+   "nearest": "Unidentified items that resolve when you leave the dungeon; these are not hidden but unwritten, and staying longer writes more.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-76",
+   "area": "gear",
+   "name": "Written by posture",
+   "idea": "The line written at each toll comes from what the carrier did most in that toll period: standing still, moving straight, turning, staying within 3 m of enemies, staying beside obstacles, or carrying a heavy load. Each has its own table of lines; the amount rolls in a band that rises with the toll number. A line works only while the body is in the posture that wrote it.",
+   "source": "The game can measure what the thumb did for 75 s cheaply, and a player who is asked how they played will start playing on purpose.",
+   "nearest": "Skills that grow with use in The Elder Scrolls; here use writes a property onto one object, one toll at a time, and the property is conditional on the same act.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-77",
+   "area": "gear",
+   "name": "Re-walking",
+   "idea": "To change a banked item, carry it into a vigil in the Open Hand slot with one of its lines struck out. The first toll survived writes a new line there by the posture rule; leaving by a gate keeps it. Dying loses the whole item. Alternatively a line may be cut away for good, raising every remaining line 10%. Nothing else alters an item.",
+   "source": "Whether to spend or risk something that does not come back is the right price for changing a precious thing.",
+   "nearest": "Re-rolling one affix at a crafting bench; here the bench is a vigil, the cost is the risk of the whole item, and the result is steered by how you walk.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-78",
+   "area": "event",
+   "name": "The Silence",
+   "idea": "Announced 3 s ahead by the screen edge dimming. For 8 s every enemy halts. If the player also stands still for the whole 8 s, the silence is kept and the next toll raises rewards without raising danger. Moving or casting breaks it for that purpose, though the enemies stay halted and may be killed freely. Restraint and harvest cannot both be had.",
+   "source": "Stopping for a set time is hard for the nerves precisely when everything else has stopped and could be killed.",
+   "nearest": "Freeze-all pickups in survivor games; here the freeze is free and the real choice is whether to use it or honour it.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-79",
+   "area": "event",
+   "name": "The Cortege",
+   "idea": "A line of twelve bearers 30 m long crosses the district in a straight line at half the player's speed, harming nothing. Enemies will not pass through it; the player can, between bearers. Walking inside the line, matching its heading within 15 degrees and its pace within 10% for 6 s, grants a notch on one carried item. Half-speed walking is done with the thumb held halfway.",
+   "source": "A thumb can hold a half push as well as a full one, and nothing in these games ever asks it to.",
+   "nearest": "Escort and follow missions that fail if you stray; this is optional, brief, and the skill tested is matching a pace with the thumb.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-80",
+   "area": "event",
+   "name": "The Narrow Gate",
+   "idea": "When a gate opens there is a one in three chance that a second, narrow gate opens at the same moment at least 25 m away on the far side of the thickest crowd. Its ring is 1 m wide instead of 2 m and it shuts 5 s sooner. Leaving through it banks everything carried plus half again in Echoes.",
+   "source": "When to leave is the weightiest decision, and it is heavier still if there are two ways out and the better one is through the crowd.",
+   "nearest": "Risky bonus exits in roguelikes; here both doors are open at once on the same short clock and differ only in what the thumb must get through.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-81",
+   "area": "event",
+   "name": "The Lych Arch",
+   "idea": "Two posts 4 m apart with a beam across rise somewhere in the district for 30 s. After the player walks between them, every enemy that passes under the beam within the next 4 s is laid to rest at once and yields 150% experience. The arch then falls. The reward is the size of the train the player dares to gather first.",
+   "source": "Leading a train and threading a gap can be one act if the gap is fixed and the train must follow through it.",
+   "nearest": "Luring enemies into an environmental trap; here the trap fires once, only behind the player, and pays by the length of what follows.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-82",
+   "area": "event",
+   "name": "The Knocker",
+   "idea": "After a toll, a ring-shaped knocker shows on a wall at least 20 m away for 20 s. Reaching it and standing against it for 2 s grants sanctuary for 37 s: no enemy can touch the player and the player's sigils do not cast. Pickups can still be gathered. The toll clock keeps running, and sanctuary ends early if a gate is entered.",
+   "source": "Durham's cathedral knocker really gave fugitives 37 days of sanctuary, and reaching a place before a deadline is a full drama for one thumb.",
+   "nearest": "Invulnerability power-ups; this one must be reached and held, silences the player too, and spends half a toll period.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-83",
+   "area": "legacy",
+   "name": "Bills of Mortality",
+   "idea": "Each death writes a Bill: the enemy and attack that killed, the depth of harm, the toll number. A cause not yet on the account's Bills pays 40 Echoes times the toll number; a repeated cause pays a tenth. Each attack that has killed one of the player's characters is shown 0.15 s earlier to all later characters, up to three deaths per attack.",
+   "source": "The player wants to say exactly why they died, and London once paid searchers to record every cause of death in weekly bills.",
+   "nearest": "Bestiary entries unlocked by encounters; here the entry is written by dying, pays once, and permanently lengthens the warning of the very attack that did it.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-84",
+   "area": "legacy",
+   "name": "The dead are hung as bells",
+   "idea": "Every dead character becomes a bell in the Carillon, sized by the tolls it heard in its last vigil. Each bell holds one boon drawn from the posture that character used most. A new character rings up to 8 bells of the player's choosing. Echoes are spent to open ringing places and to recast a bell's boon. The tree is built of the player's own dead.",
+   "source": "A long-lived character is precious, so its loss should leave an object the player keeps choosing to use.",
+   "nearest": "Ancestor traits in Rogue Legacy and memorial halls in Darkest Dungeon; here each dead character is itself a selectable node whose boon records how it was played.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-85",
+   "area": "legacy",
+   "name": "Echoes are tolls heard",
+   "idea": "Echoes are paid at the instant a toll rings, not at the end of a vigil: the Nth toll of a vigil pays N Echoes, doubled at the eighth. Nothing can remove them, so a death, a closed app or an incoming call costs no Echoes. Banking through a gate adds a share for the notches carried out.",
+   "source": "Phone sessions are short and often cut off, so the permanent currency should be safe the moment it is earned.",
+   "nearest": "Meta-currency awarded on the results screen of roguelites; this is awarded on the public clock, mid-run, and cannot be lost.",
+   "cost": "data"
+  },
+  {
+   "id": "thumbs-86",
+   "area": "frame-twist",
+   "name": "Level-ups are walked into",
+   "idea": "Levelling does not pause the game. The three chimes rise from the ground 4 m from the player, 120 degrees apart, each a distinct solid shape, and the player takes one by walking into it. They sink after 8 s; an untaken level waits and adds a fourth shape to the next offer. Where a chime stands among the enemies is part of its price.",
+   "source": "A phone has no hover and one thumb, so the plainest way to choose among three things is to walk to one.",
+   "nearest": "Choose-one item pedestals in The Binding of Isaac; here it replaces the pause menu of every level-up, runs on a timer, and happens inside the horde.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-87",
+   "area": "frame-twist",
+   "name": "The gate asks you to stand",
+   "idea": "Leaving through a gate needs the player to stay inside its 2 m ring for 1 s plus 0.5 s for every unbanked item carried, up to 8 s, drawn as an arch filling stone by stone. Stepping out empties it. Enemies do not stop. The more a character carries, the longer it must hold its ground in the open to keep it.",
+   "source": "Fear grows with what is carried, and the exit is where that fear should be collected in full.",
+   "nearest": "Extraction timers in extraction shooters; here the timer is the size of your own load.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-88",
+   "area": "frame-twist",
+   "name": "Keeping the stroke",
+   "idea": "A ring closes on the whole screen over the 3 s before each toll. If the player is standing still at the instant it closes, the toll is kept: the reward rise applies and lost Strike life returns. If moving, only the danger rises. The one certain event of the clock asks for stillness at the moment the surge is announced.",
+   "source": "The toll is a public clock the player counts toward, and the cheapest way to make the count matter is to ask for one exact act on the stroke.",
+   "nearest": "Musical statues; here the music stops on a known 75 s schedule and the prize is the whole reward step of the run.",
+   "cost": "small"
+  },
+  {
+   "id": "thumbs-89",
+   "area": "frame-twist",
+   "name": "Tolled-for",
+   "idea": "At zero life the character does not die at once. It is Tolled-for: sigils stop, speed rises 20%, and it dies when the next toll rings unless it leaves through a gate first; one gate opens at the farthest edge. A character saved this way keeps its life and loses everything carried. A fall just after a toll leaves over a minute; a fall just before leaves none.",
+   "source": "One life makes the last seconds the most felt of the run, and the public clock can decide how many of them there are.",
+   "nearest": "Fight For Your Life in Borderlands; here the reprieve is a run to a place, its length is whatever the bell has left, and the price is the whole haul.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-90",
+   "area": "frame-twist",
+   "name": "Buttons take away",
+   "idea": "Both extra buttons give something up. Cast Away throws the newest unbanked item 6 m ahead; common dead within 10 m crowd it for 5 s and it is destroyed. Hush is held for up to 3 s: the player's sigils fall silent and store up to 3 casts each, the player counts as Unheard while walking at half speed, and release fires the stored casts.",
+   "source": "The second thumb is free only some of the time, so its buttons should be rare, weighty and about giving something up.",
+   "nearest": "Bombs in shoot-em-ups as the panic button; these cost the player's own loot or the player's own attacks, never a stocked charge.",
+   "cost": "medium"
+  },
+  {
+   "id": "thumbs-91",
+   "area": "frame-twist",
+   "name": "The class finds you",
+   "idea": "In the one-sitting run the character starts with no class. Over the first two tolls the game totals seconds spent standing still, walking straight, circling, staying within 3 m of enemies and staying beside obstacles. At the second toll it offers the two classes whose act the player did most. The subclass is offered the same way in the second district, from that district's totals.",
+   "source": "Classes here differ by what the thumb does, so the thumb's own habits are the fairest way to pick one.",
+   "nearest": "The class suggestion at the end of Oblivion's tutorial; here it is measured, not judged by a character, and is the only way a class is given in this mode.",
+   "cost": "medium"
+  }
+ ]
+}

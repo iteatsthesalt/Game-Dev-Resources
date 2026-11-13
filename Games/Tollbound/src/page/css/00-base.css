@@ -1,0 +1,181 @@
+/* 00-base.css: the page frame. Tokens, the fixed game area and the six layers of body.html.
+   Later css files (NN-owner.css, joined in name order) style what their module puts inside a layer.
+   Rules: every colour is a custom property on :root and is used through var(); sizes come from height: 100%,
+   never from viewport units; fonts are the device's own; nothing is loaded from outside the page. */
+
+:root {
+  color-scheme: dark;
+
+  /* surfaces, from the back of the page to the front */
+  --bg: #0a0c11;
+  --surface: #12151d;
+  --surface-raised: #1b202c;
+  --surface-hover: #262d3d;
+  --line: #343c50;
+  --line-strong: #6b7694;
+  --scrim: rgba(5, 6, 10, 0.74);
+  --shadow: rgba(0, 0, 0, 0.6);
+  --clear: transparent;
+
+  /* text */
+  --ink: #ece7da;
+  --ink-dim: #b1ac9d;
+  --ink-faint: #8a867a;
+  --ink-on-accent: #1a1408;
+
+  /* the accent, bell bronze: the one thing that matters on a screen */
+  --accent: #c79a45;
+  --accent-bright: #efc977;
+  --accent-dim: #7d6230;
+
+  /* the second colour, verdigris: the quieter of two choices, and notes that only inform */
+  --second: #6fb3a6;
+  --second-bright: #a9ddd1;
+  --second-dim: #2f5a53;
+
+  /* states */
+  --good: #7fc48a;
+  --warn: #e3b653;
+  --bad: #e8776b;
+  --focus: #9fd0ff;
+
+  /* type: system fonts only */
+  --font-ui: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+
+  /* the edge of the usable screen, for anything placed by hand inside a layer */
+  --edge-top: max(12px, env(safe-area-inset-top, 0px));
+  --edge-right: max(16px, env(safe-area-inset-right, 0px));
+  --edge-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  --edge-left: max(16px, env(safe-area-inset-left, 0px));
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+/* The setting "Text and controls" (ui.scale, which 51-settings.js sets as --ui-scale on the root) scales the
+   root font size, so every size given in rem follows it: the title, the menus, the dialogs and the toasts. */
+html { font-size: calc(100% * var(--ui-scale, 1)); }
+
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1rem/1.4 var(--font-ui);
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+button, input, select, textarea {
+  font: inherit;
+  color: inherit;
+}
+
+[hidden] { display: none !important; }
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 2px;
+}
+
+/* The game area covers the window. The browser gets no gestures here and no text selection:
+   input belongs to the game. A list that scrolls sets its own touch-action. */
+.app {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: var(--clear);
+}
+
+/* Text a player types can be selected. */
+:where(.app) input, :where(.app) textarea {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* Six layers, back to front in the order of body.html. Each is its own stacking context,
+   so a z-index inside one layer never lifts anything above the next layer. */
+#view, #overlay, #hud, #touch, #ui, #toast {
+  position: absolute;
+  inset: 0;
+}
+
+#view { z-index: 0; }
+#overlay { z-index: 1; }
+#hud { z-index: 2; }
+#touch { z-index: 3; }
+#ui { z-index: 4; }
+#toast { z-index: 5; }
+
+/* The two canvases fill the game area; the renderer sets their pixel size. */
+#view, #overlay {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+#overlay { pointer-events: none; }
+
+/* Layers that hold text or controls keep clear of notches and rounded corners, with at least 16px at the sides.
+   The padding moves what flows inside a layer. Something placed with position: absolute starts from the
+   layer's outer edge (a backdrop can so reach the screen edge) and uses the --edge-* tokens to stay clear.
+   A layer takes no pointer input itself; what is put inside opts in with pointer-events: auto. */
+#hud, #touch, #ui, #toast {
+  padding-top: max(12px, env(safe-area-inset-top, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  pointer-events: none;
+}
+
+/* The defaults from here on are written with :where(), which gives a rule no weight:
+   any class rule in a later file wins over them without a fight. */
+
+/* A screen put into #ui takes input unless its own rule says otherwise. */
+:where(#ui) > * { pointer-events: auto; }
+
+/* Short messages, stacked from the top centre. 99-boot.js reports a failed start here. */
+:where(#toast) {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+:where(#toast) > * {
+  max-width: min(36rem, 100%);
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: 0 6px 24px var(--shadow);
+  overflow-wrap: anywhere;
+}
+
+/* An error can be selected, so a player can copy it into a report. */
+:where(#toast) > .toast-error {
+  border-color: var(--bad);
+  pointer-events: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -1,0 +1,280 @@
+/* 42-voices.css: the Lantern's room of voices (76-voices.js): the loadout's places, each voice's rope with its knots,
+   the voices and knots held and in the chest, and Heed with the observances that hold it.
+   The look is the menus' own (css/10-ui.css): square corners, thin lines, bone on blue-black. A rope is drawn as a
+   hemp line that its knot places sit on; each observance has a colour of the districts, which its part of the Heed bar
+   wears. Every control is at least 44 px; sizes are in rem, so "Text and controls" scales them. */
+
+:root {
+  --vc-hemp: #c7a86f;            /* the Ropewalk's hemp: a rope */
+  --vc-hemp-dark: #5e4d2f;
+  --vc-obs-0: #8d84a8;           /* the observances' colours: slate violet, bronze, chalk, gold, wool blue, lead */
+  --vc-obs-1: #b07a48;
+  --vc-obs-2: #e4dfd1;
+  --vc-obs-3: #d6a23e;
+  --vc-obs-4: #5a7cc2;
+  --vc-obs-5: #9aa0a5;
+}
+
+.vc-room {
+  width: min(100%, 34rem);
+  padding: 1.1rem 0.9rem 1rem;
+  align-items: stretch;
+  gap: 0.9rem;
+  text-align: left;
+}
+
+.vc-room > .ui-heading,
+.vc-room > .ui-sub,
+.vc-room > .ui-note { text-align: center; }
+
+.vc-said {
+  min-height: 1.2em;
+  margin: 0;
+  color: var(--accent-bright);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+.vc-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.vc-title {
+  margin: 0.3rem 0 0;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--accent-bright);
+  font: 400 1rem/1.2 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.vc-note { text-align: left; }
+
+/* ---- a place of the loadout ---- */
+
+.vc-place {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+.vc-place-head {
+  display: flex;
+  align-items: stretch;
+  gap: 0.5rem;
+}
+
+.vc-num {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.75rem;
+  min-height: 44px;
+  border: 1px solid var(--accent-dim);
+  color: var(--accent);
+  font: 400 1.3rem/1 var(--font-display);
+}
+
+.vc-voice {
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.15rem;
+  min-width: 0;
+  padding: 0.45em 0.8em;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.vc-voice b { font-weight: 400; font-size: 1.02rem; }
+
+.vc-voice small,
+.vc-row-text small,
+.vc-obs-head small {
+  color: var(--ink-dim);
+  font: 0.76rem/1.3 var(--font-ui);
+  letter-spacing: 0.02em;
+}
+
+.vc-voice.vc-empty,
+.vc-knot.vc-empty {
+  border-style: dashed;
+  color: var(--ink-faint);
+}
+
+.vc-locked {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+  border-style: dashed;
+  background: var(--surface);
+  color: var(--ink-faint);
+}
+
+.vc-locked .vc-num {
+  border-color: var(--line);
+  color: var(--ink-faint);
+}
+
+.vc-lock { margin: 0; font-size: 0.85rem; }
+
+/* the rope: a line of hemp through its knot places, which never wrap, so the line runs through every one */
+.vc-rope {
+  position: relative;
+  display: flex;
+  gap: 0.35rem;
+}
+
+.vc-rope::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 4px;
+  margin-top: -2px;
+  background: repeating-linear-gradient(115deg, var(--vc-hemp) 0 5px, var(--vc-hemp-dark) 5px 7px);
+}
+
+/* the rope's end: it runs on past its last knot place and is whipped there */
+.vc-rope::after {
+  content: "";
+  position: absolute;
+  right: 0;
+  top: 50%;
+  width: 0.5rem;
+  height: 0.75rem;
+  margin-top: -0.375rem;
+  background: var(--vc-hemp-dark);
+}
+
+.vc-knot {
+  position: relative;
+  flex: 0 1 6.5rem;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0.3em 0.35em;
+  border-color: var(--vc-hemp);
+  background: var(--surface);
+  color: var(--ink);
+  font: 0.72rem/1.15 var(--font-ui);
+  letter-spacing: 0.01em;
+  text-transform: none;
+  overflow-wrap: anywhere;
+}
+
+/* ---- rows and choices ---- */
+
+.vc-row,
+.vc-choice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.6rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.vc-row:first-of-type { border-top: 0; }
+
+.vc-row-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.1rem;
+  min-width: 0;
+}
+
+.vc-row-text b { font-weight: 400; }
+
+.vc-row .ui-btn,
+.vc-choice .ui-btn {
+  flex: none;
+  padding: 0.5em 0.9em;
+  font-size: 0.8rem;
+}
+
+.vc-here { border-left: 3px solid var(--accent); padding-left: 0.5rem; }
+.vc-unfit { color: var(--ink-faint); }
+
+.vc-wide { width: 100%; }
+
+/* ---- Heed and the observances ---- */
+
+.vc-heed {
+  display: flex;
+  height: 0.9rem;
+  border: 1px solid var(--line-strong);
+  background: var(--bg);
+}
+
+.vc-heed > span {
+  display: block;
+  flex-basis: 0;
+  min-width: 3px;
+}
+
+.vc-free { background: var(--second-bright); }
+
+.vc-heed-text {
+  margin: 0;
+  color: var(--second-bright);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.vc-obs {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.4rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+}
+
+.vc-obs.vc-kept { border-color: var(--accent-dim); }
+
+.vc-obs-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.vc-obs-head b {
+  flex: 1 1 auto;
+  font: 400 1rem/1.2 var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.vc-swatch {
+  flex: none;
+  width: 0.8rem;
+  height: 0.8rem;
+  border: 1px solid var(--line-strong);
+}
+
+.vc-obs-text {
+  margin: 0;
+  color: var(--ink-dim);
+  font-size: 0.84rem;
+  line-height: 1.4;
+}
+
+.vc-obs .ui-btn { align-self: flex-end; min-width: 8rem; }
+
+.vc-tone-0 { background: var(--vc-obs-0); }
+.vc-tone-1 { background: var(--vc-obs-1); }
+.vc-tone-2 { background: var(--vc-obs-2); }
+.vc-tone-3 { background: var(--vc-obs-3); }
+.vc-tone-4 { background: var(--vc-obs-4); }
+.vc-tone-5 { background: var(--vc-obs-5); }

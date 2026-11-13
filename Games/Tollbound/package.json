@@ -1,0 +1,23 @@
+{
+  "name": "tollbound",
+  "private": true,
+  "description": "Tollbound, a horde-survival action RPG in one HTML file, built from src/",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node tools/build.js",
+    "build:dev": "node tools/build.js --out .build",
+    "check": "node tools/build.js --check",
+    "lint": "node tools/lint.js",
+    "test:sim": "node --test --test-reporter=spec \"tests/sim/**/*.test.js\"",
+    "test:e2e": "node tests/run.js",
+    "test:artifact": "TARGET=artifact node tests/run.js",
+    "bench": "node tests/bench.js",
+    "test": "npm run lint && npm run build:dev && npm run test:sim && npm run test:e2e",
+    "test:full": "npm test && npm run test:artifact && node tests/bench.js"
+  },
+  "devDependencies": {
+    "playwright": "1.63.0"
+  }
+}

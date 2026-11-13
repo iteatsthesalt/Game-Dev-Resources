@@ -1,0 +1,142 @@
+path of exile
+diablo
+vampire survivors
+halls of torment
+brotato
+archero
+survivor.io
+soulstone survivors
+death must die
+hades
+zagreus
+risk of rain
+slay the spire
+binding of isaac
+balatro
+noita
+dead cells
+darkest dungeon
+hollow knight
+dark souls
+estus
+bloodborne
+blood echoes
+elden ring
+sekiro
+last epoch
+grim dawn
+torchlight
+wraeclast
+vaal
+tristram
+horadric
+dota
+league of legends
+world of warcraft
+warcraft
+starcraft
+hearthstone
+overwatch
+final fantasy
+kingdom hearts
+pokemon
+zelda
+castlevania
+metroid
+monster hunter
+warframe
+maplestory
+runescape
+everquest
+guild wars
+lost ark
+undertale
+terraria
+minecraft
+spelunky
+skyrim
+borderlands
+left 4 dead
+killing floor
+call of duty
+escape from tarkov
+deep rock galactic
+rogue legacy
+wildermyth
+inscryption
+loop hero
+sunless sea
+fallen london
+death stranding
+bioshock
+dead by daylight
+necrodancer
+gungeon
+nuclear throne
+magicka
+keeper's toll
+lamplighters league
+dungeons and dragons
+warhammer
+magic: the gathering
+witcher
+mana
+ascendancy
+keystone
+skill gem
+support gem
+energy shield
+life leech
+spell echo
+spell totem
+magic find
+treasure goblin
+loot goblin
+hit points
+health potion
+roguelike
+roguelite
+metroidvania
+soulslike
+aggro
+critical strike
+evasion rating
+elemental damage
+paragon board
+runeword
+greater rift
+nemesis system
+passive skill tree
+experience gem
+waystone
+exalted orb
+chaos orb
+orb of alchemy
+mirror of kalandra
+arctic armour
+searing bond
+chaos inoculation
+petrified blood
+mirage archer
+king bible
+runetracer
+clock lancet
+orologion
+oath of the unseen
+pact of punishment
+sin eater
+remembrancer
+fireball
+chain lightning
+frost nova
+ice shard
+poison cloud
+healing aura
+necromancer
+paladin
+gain as extra
+item rarity
+item quantity
+crit chance
+crit multi
+dex
