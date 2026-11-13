@@ -38,9 +38,9 @@
 //   Core.seal(list)                   freezes each namespace object in the list. 99-boot.js seals every namespace:
 //                                     after that a namespace cannot gain or change a property, so state that
 //                                     changes lives in a closure or inside an object the namespace holds.
-const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = {}, Progress = {}, Legacy = {},
+const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = {}, Progress = {}, Bellframe = {},
   SaveData = {}, Sim = {}, Player = {}, Buffs = {}, AI = {}, Enemies = {}, Skills = {}, Boss = {}, Director = {},
-  Offers = {}, Favours = {}, Bot = {}, World = {};
+  Offers = {}, Favours = {}, Observances = {}, Bot = {}, World = {};
 
 (function () {
   'use strict';

@@ -1,6 +1,6 @@
 # Tollbound engine notes
 
-These are the contracts every module is written against: how files are shaped, what the simulation state looks like, the data shapes content is authored in, the rules of stats and harm, and, in "Stage 1 systems", what each file of the first vigil exports. The game itself is in `docs/design/`: the words, the districts and the art in `01-world.md`, the combat model and the engine's tables in `02-combat.md`, the classes in `03-classes.md` and progression in `04-progression.md`. `docs/plan.md` is the approved plan and is a snapshot; where it differs from this file, this file wins. Once a module exists, its code and its header comment win over this file, and whoever changes an interface updates this file in the same change.
+These are the contracts every module is written against: how files are shaped, what the simulation state looks like, the data shapes content is authored in, the rules of stats and harm, in "Stage 1 systems" what each file of the first vigil exports, and in "Stage 2 systems" the contracts of the Household: the four packages that build it, their files, and what each reads of the others. The game itself is in `docs/design/`: the words, the districts and the art in `01-world.md`, the combat model and the engine's tables in `02-combat.md`, the classes in `03-classes.md` and progression in `04-progression.md`. `docs/plan.md` is the approved plan and is a snapshot; where it differs from this file, this file wins. Once a module exists, its code and its header comment win over this file, and whoever changes an interface updates this file in the same change.
 
 ## What is fixed and what is provisional
 
@@ -18,10 +18,11 @@ Fixed, because the owner asked for it or approved it:
 - The kinds of harm, the families, the attributes, what a `per` modifier counts, the conditions a body carries, the tags, the modifier conditions and the full list of stats are the rows of section 15 of `02-combat.md`, and they are the rows of `src/js/10-stats.js`.
 - The steps of a hit on the dead, of a hit on the player and of the Drag ticks are sections 15.10 to 15.12 of `02-combat.md`; "Rules" below gives their formulas.
 - The words of the game are those of `01-world.md` (the table under "Conventions"); the kinds of definition `voice`, `knot`, `observance`, `favour`, `bequest` and `cause`, the modes `household` and `watch-night`, the zone kinds and the input's `trade` and `heave` are named after them.
+- The shapes of Stage 2 are those of `04-progression.md`: the Plan (the kinds `plan` and `node`), finds (`base`, `posture`, and a find's written lines), knots, observances with the Heed they hold, the Bellframe (`bellframe`, `pit`, `gift`), bequests, callings and peals are kinds of definition under "Data shapes"; what a game keeps (a character, a find, a voice in its place, a bell, a death, the save) is under "The Household's shapes", kept by `14-character.js` and checked by `16-savedata.js`. The first plan's placeholders (`treeSkeleton`, `cluster`, `legacyNode`, `affix`, `unique`, `currency` and their `Save` and `Char`) are gone; a save of that shape is version 1, which `SaveData.migrate` brings up.
 
 Still provisional, to be replaced as the later stages arrive:
 
-- The shapes of the Plan, finds, the Bellframe and saves (Stage 2): until then the kinds `treeSkeleton`, `cluster`, `legacyNode`, `base`, `affix`, `unique` and `currency`, and `Save` and `Char` below, keep the first plan's shapes. `04-progression.md` gives what replaces them.
+- The numbers of the Plan (the plan `main`), of the Bellframe (the bellframe `main`), of mourning and of the Register: the design's, to be tuned once characters live through many vigils. Where the design is silent `14-character.js` chose, and says so in its header and under "Stage 2 systems".
 - The finer fields of a mode, and every number in the curves: to be tuned with the first vigil.
 - Content lists (voices, knots, the dead, favours, observances), which come from the pool in `docs/design/pool/` in the forms its notes allow.
 
@@ -46,10 +47,10 @@ The ids the rules themselves name, and nothing else: in `10-stats.js` the stats 
 ```
 
 - Namespaces are the only top-level names. `00-core.js` declares the simulation ones, `50-platform.js` the presentation ones. No other file declares anything at top level.
-  - Simulation: `Core Defs Stats Dmg Items Tree Char Progress Legacy SaveData Sim Player Buffs AI Enemies Skills Boss Director Offers Favours Bot World`
+  - Simulation: `Core Defs Stats Dmg Items Tree Char Progress Bellframe SaveData Sim Player Buffs AI Enemies Skills Boss Director Offers Favours Observances Bot World`
   - Presentation: `Plat Store Settings Input Sound Music Mesh Rigs Glyphs Ground Gfx Scene Vfx UI Hud Game`
 - Nothing runs when a file loads except definitions and registrations. `99-boot.js` starts the game.
-- No file reassigns a function another file defined. Modules extend each other through registries and through the per-step event queue. The registries that exist: `Defs.add`, `Defs.allow` and `Defs.extend` (content, word lists and fields of the schema), `Sim.field`, `Sim.state` and `Sim.source` (entity fields, a system's slot in the run state, modifiers for every sheet), `Gfx.register` (views), `UI.screen` (menus), `Plat.on` (the notices `90-game.js` and others post), `Settings.define` and `Settings.row` (settings and rows of the settings screen), `Sound.define` (sound effects as code recipes), `Music.define` (pieces of music) and `Rigs.register` (rigs). Planned for Stage 1, with their signatures under "Stage 1 systems": `Skills.archetype`, `AI.register`, `Player.rule` and `Director.event`.
+- No file reassigns a function another file defined. Modules extend each other through registries and through the per-step event queue. The registries that exist: `Defs.add`, `Defs.allow` and `Defs.extend` (content, word lists and fields of the schema), `Sim.field`, `Sim.state`, `Sim.source` and `Sim.system` (entity fields, a system's slot in the run state, modifiers for every sheet, a system's part of every step), `Gfx.register` (views), `UI.screen` (menus), `Plat.on` (the notices `90-game.js` and others post), `Settings.define` and `Settings.row` (settings and rows of the settings screen), `Sound.define` (sound effects as code recipes), `Music.define` (pieces of music) and `Rigs.register` (rigs). Planned for Stage 1, with their signatures under "Stage 1 systems": `Skills.archetype`, `AI.register`, `Player.rule` and `Director.event`; for Stage 2, under "Stage 2 systems": `Observances.promise`.
 - `Core.seal(list)` freezes every namespace at boot, before `Game.boot()`, so a late reassignment throws. State that changes therefore lives in a closure or inside an object the namespace holds; a namespace shows it through a getter defined while the file loads (`Game.S`, `Store.status`, `Gfx.active`).
 - Each file starts with a comment that says what the file is, names the namespaces it adds to on an `Owns:` line (`Owns: A, B`, or `Owns: (none)`), and lists its public functions with their arguments. That comment is the interface, and `tools/lint.js` holds a file to its `Owns:` line.
 
@@ -99,16 +100,22 @@ Files below 50 load in Node with nothing but `console`. That is how the simulati
 | observance | a lasting effect that holds Heed while its promise is kept | the kind `observance` |
 | favour, the row | a temporary upgrade taken at a run level; the six favours standing in a visible line | the kind `favour`; `S.favours`, `S.row` |
 | calling, peal | a subclass; a vigil kept to one rule, which earns calling points | the kind `calling`; the zone kind `peal` |
-| find, notch, haul | an item; a line a toll writes on a find you carry; the finds and coin you carry unbanked | `S.haul`, `S.coin` (finds and notches: Stage 2) |
+| find, notch, haul | an item; a line a toll writes on a find you carry; the finds and coin you carry unbanked | a `Find` and its `Line`s ("The Household's shapes"); the kinds `base` and `posture`; `S.haul`, `S.coin` |
+| stood, strode, pressed, timed | the four postures a toll period is spent in, which write the lines of finds | `Stats.POSTURES` |
+| chisel, re-walk, recast, cut | the four ways to change a find at the Lantern | `Items` (Stage 2, the second package) |
+| the chest | the Household's store of banked finds, the worn finds of the dead, and what characters gave it | `save.chest` |
 | ember, coin | experience the dead leave on the ground; the Household's money | pickups of kind 0 and 1; `S.coin` |
 | lychgate, ringing down | the way out of a vigil; leaving through it one stroke at a time | `S.gate` (the id is `gate`), `S.gate.ring`; the events `'gate'` and `'stroke'` |
 | Tolled-for | the state at no life | the condition `tolled-for`; the outcome `'spared'` |
 | bell-post, landmark | the post at the centre of each district; one of its six places that pay Hum | prop roles `bell-post`, `landmark` |
-| the Plan; door, lane, corner, square, milestone | the tree shared by all classes, and its kinds of node | Stage 2 (the kinds `treeSkeleton` and `cluster` until then) |
-| the Bellframe, Hum, the Register | the permanent tree shared by every character; its currency; what killed each character | `S.hum`; the rest Stage 2 (the kind `legacyNode` until then) |
+| the Plan; door, lane, corner, square, milestone | the tree shared by all classes, and its kinds of node | the kinds `plan` and `node` (`kind`); a character's route, `char.plan` |
+| route, doubling, beaten bounds, toll rings, banks (flood, ebb), straight miles | the Plan's rules | `Tree.mods` (Stage 2, the first package) |
+| the Bellframe, Hum, the Register | the permanent tree shared by every character; its currency; what killed each character | the kinds `bellframe`, `pit` and `gift`; `save.account.frame`; `S.hum`, `save.account.hum`; `save.register` |
+| pit, the tenor pit, bell, gift, ringing place, true ring | a place of the Bellframe (the first one opens from none); a dead character recast; what it gives those who ring it; how many bells a new character rings; neighbouring weights 10% to 30% apart | the kind `pit` (`from: null`); a `Bell`; the kind `gift`; `frame.places`; `Char.trueRing` |
+| mourning | the time the Household grieves a death: full, then half | `char.mourning`, `Char.mourning`; the flag `full-mourning` |
 | Bill, cause, bequest | an endgame district with causes added; one danger written on it; a quest-like goal | the zone kind `bill`; the kinds `cause`, `bequest` |
-| the Household, the Watch-night | standing characters kept until they die; a one-sitting run through five districts | the modes `household`, `watch-night` |
-| the Lantern | the hub | Stage 2 |
+| the Household, the Watch-night | standing characters kept until they die; a one-sitting run through five districts | the modes `household`, `watch-night`; the save, `Game.save` (`16-savedata.js`); the game's state `'household'` |
+| the Lantern | the hub | the game's state `'lantern'`, `Game.lantern` |
 | flood, ebb, slack, spring; dry, ankle, knee, waist | the tide's states; the bands of water at a body's feet | from the Ropewalk |
 
 The engine keeps a few plain words of its own that players never see: enemy, boss (the keeper's machinery), gate (the lychgate's id), skill (a voice in its place), offer (a choice that pauses the run; none does yet). The first plan's words have no successor where the design has no such thing: there is no shield, no healing drink, no dodge, no critical strike, no evasion and no resistance.
@@ -121,7 +128,12 @@ Modifier operations are shown to players as `+12` (flat), `+12%` (inc) and `x1.2
 
 ```js
 cfg = {mode, zone, seed, char, account}       // seed: a number or a string. mode defaults to 'household'.
-                                              // char is a deep copy; the run changes the copy, the game writes it back
+                                              // Char.begin makes it for a character's vigil: char is a deep copy, which
+                                              // the run changes (experience and levels, the lines its worn finds take,
+                                              // what it finds) and the game keeps (Char.checkpoint, Char.end); account
+                                              // is what the run reads of the save, {frame, open, warned}: the
+                                              // Bellframe, what bequests opened, and the Register's head start for
+                                              // each attack that killed a character (see "Stage 2 systems")
       // a run without a character (tests, debug scenes, the first vigil) may carry instead:
       //   mods: [Mod], voices: [VoiceInst|null], level, class (the class id whose rule and trade the player has),
       //   weapon: {family, damage, aps} (no tool is a weapon: always left out in the game)
@@ -155,11 +167,16 @@ S = {
   events, eventCount, eventStart, eventsDropped,   // see "Events" below
   haul: [], coin, bank: {coin, finds: []},    // finds and coin carried (lost at death); what ringing down banked
   hum, kills, counters: {},                   // Hum heard this vigil; kills is counted in the deaths phase of the step
+  cause: null|{attack, kind, toll},           // the harm that last took the player to no life (the fall into
+                                              // Tolled-for, or death): the attack's id (null for the press of a body,
+                                              // a rider or the ground), its kind of harm, the toll it came at.
+                                              // 11-damage sets it; the Register is written from it.
   dirty,                                      // set it to true when modifiers, the loadout, a count of a per modifier
                                               // or player.conds changed: the sheets are rebuilt in the same step, or at
-                                              // once after a command
+                                              // once after a command. A run with a character is marked so at every
+                                              // toll, for the toll rings of the Plan.
   result: null|{outcome:'left'|'spared'|'died', mode, zone, seed, steps, time, tolls, threat, kills, coin, banked, hum,
-                runLevel, haul /* how many finds */, eventsDropped},
+                runLevel, haul /* how many finds */, eventsDropped, cause},
   uid,                                        // the last uid given out
   debug: null|{x, y}                          // the centre of Sim.debugScene; null in a real run
   // plus one field for each Sim.state(name, make) a system declared while its file loaded: S[name] = make(S)
@@ -213,24 +230,26 @@ Every pooled object has one fixed set of fields and is sealed, so a field that w
 | **`00-core`** | sim | namespaces, maths, hash, RNG | `Core.HZ`, `Core.DT`, `Core.TAU`; `Core.clamp(v, lo, hi)`, `lerp(a, b, t)`, `sign(v)`, `mod(a, n)`, `approach(v, target, step)`, `dist2(ax, ay, bx, by)`, `dist(ax, ay, bx, by)`, `angleWrap(a)`, `angleDiff(from, to)`, `angleToward(a, target, step)`; `Core.hashStr(text)`, `Core.hashMix(h, number)`; `new Core.RNG(seed)`: `next()`, `u32()`, `range(a, b)`, `int(a, b)`, `chance(p)`, `pick(array, n?)`, `weighted(items, key?, n?)`, `shuffle(array, n?)`, `fork(label)`, `getState()`, `setState(state)`, `hash(h)`; `Core.assert(cond, message)`, `Core.deepFreeze(obj)`, `Core.seal(list)` |
 | **`01-defs`** | sim | registries, schemas, validation, freeze | `Defs.KINDS`, `Defs.add(kind, def) -> def`, `Defs.get(kind, id)` (throws when there is none), `Defs.has(kind, id)`, `Defs.all(kind) -> [def]`, `Defs.SCHEMA`, `Defs.SHAPES`, `Defs.ENUMS`, `Defs.allow(name, word, ...)`, `Defs.extend(kind, fields)`, `Defs.finalize() -> [error]` |
 | **`02-pool-grid`** | sim | fixed-shape pools, spatial grid | `new Core.Pool(make, cap, reset?)`: `items`, `n`, `cap`, `moves`, `alloc()` (an object, or `null` when full), `kill(o)`, `compact() -> removed`, `clear()`; `new Core.Grid(cell)`: `rebuild(pool)`, `query(x, y, r, out) -> n`, `near(body, margin, out) -> n` |
-| **`10-stats`** | sim | the tables of section 15 of `02-combat.md`; sheets | the tables `Stats.TYPES`, `TYPE`, `FAMILIES`, `PRIMARIES`, `PER`, `AILMENTS`, `AILMENT`, `RULE`, `COND_MAX`, `TAGS`, `CONDS`, `COND`, `STATS`, `WANTS`, `LEVEL_MAX`; `Stats.stat(id)`, `Stats.is(table, id)`, `Stats.condMask(conds)`, `Stats.scaled(value, level)`, `Stats.resolve(mods, level, out?)`, `Stats.share(have, want)`, `Stats.query(mods, stat, tags?, conds?, primaries?)`, `Stats.queryRange(mods, stat, tags, conds, primaries, out)`, `Stats.sheet(mods, ctx) -> Sheet`, `Stats.skillSheet(mods, voiceInst, sheet) -> SkillSheet`, `Stats.hitMult(skillSheet, kindIndex, conds)`, `Stats.fits(voiceDef, knotDef)` |
+| **`10-stats`** | sim | the tables of section 15 of `02-combat.md`; sheets | the tables `Stats.TYPES`, `TYPE`, `FAMILIES`, `PRIMARIES`, `PER`, `AILMENTS`, `AILMENT`, `RULE`, `COND_MAX`, `TAGS`, `CONDS`, `COND`, `STATS`, `WANTS`, `POSTURES`, `POSTURE`, `LEVEL_MAX`; `Stats.stat(id)`, `Stats.is(table, id)`, `Stats.condMask(conds)`, `Stats.scaled(value, level)`, `Stats.resolve(mods, level, out?)`, `Stats.share(have, want)`, `Stats.query(mods, stat, tags?, conds?, primaries?)`, `Stats.holds(mod, conds)`, `Stats.queryRange(mods, stat, tags, conds, primaries, out)`, `Stats.sheet(mods, ctx) -> Sheet`, `Stats.skillSheet(mods, voiceInst, sheet) -> SkillSheet`, `Stats.hitMult(skillSheet, kindIndex, conds)`, `Stats.fits(voiceDef, knotDef)` |
 | `11-damage` | sim | hits, guards, the lee test, conditions, posture of the dead, Drag ticks | see "Stage 1 systems" |
-| `12-items` | sim | finds: lines written at tolls, chisel, re-walk, recast, cut | Stage 2 |
-| `13-tree` | sim | the Plan: one route, doubling, beaten bounds, toll rings, banks, straight miles | Stage 2 |
-| `14-character` | sim | character operations, modifier collection, the share rule for finds | `Char.create(classId, name)`, `Char.mods(char, run, account)`, `Char.weapon(char)` (always `null`: no tool is a weapon), `Char.allocate(char, id, choice)`, `Char.equip(char, uid, slot)`; Stage 2 |
-| `15-progress` | sim | bequests, unlocks, Bills, peals, Hum and the Bellframe | Stage 2 |
-| `16-savedata` | sim | save schema, migrations, text codec | `SaveData.blank()`, `migrate(raw)`, `validate(raw)`, `encode(save)`, `decode(text)`; Stage 2 |
-| **`20-sim`** | sim | run state, step order, commands, events, entity fields | `Sim.create(cfg) -> S`, `Sim.step(S, input?) -> boolean`, `Sim.command(S, cmd) -> boolean`, `Sim.emit(S, k, x, y, a, b, id)`, `Sim.spawnEnemy(S, id, x, y, opts?)` (an enemy, or `null` when the pool is full; opts `{level, rank, traits}`; the id may be a keeper), `Sim.rebuild(S) -> Sheet`, `Sim.end(S, outcome) -> result`, `Sim.result(S)`, `Sim.hash(S) -> uint32`, `Sim.debugScene(n, seed = 1) -> S`, `Sim.field(kind, name, value)`, `Sim.fields(kind)`, `Sim.state(name, make)`, `Sim.source(fn)`, `Sim.COMMON`, `Sim.ELITE`, `Sim.MINIBOSS`, `Sim.BOSS`, `Sim.NO_INPUT` |
+| `12-items` | sim | finds: making one, what it gives, the lines a toll writes, chisel, re-walk, recast, cut, cooling, prices | see "Stage 2 systems" |
+| `13-tree` | sim | the Plan: one route, doubling, beaten bounds, toll rings, banks, straight miles | see "Stage 2 systems" |
+| **`14-character`** | sim | a character of the Household as plain data, and everything done to one: making it, the modifiers it brings to a vigil, the Plan's route, finds, voices and knots, observances and Heed, experience and levels, the end of a vigil (banking, Tolled-for, death and the Register, mourning, bells) | `Char.SLOTS`, `Char.PLACES`; `Char.create(save, classId, name, bells?)`, `Char.find(save, uid)`, `Char.open(save, classId)`, `Char.classes(save)`, `Char.mods(char, S, account) -> [Mod]`, `Char.weapon(char)` (always `null`: no tool is a weapon), `Char.sheet(char, account)`, `Char.findMods(find, attrs, out)`, `Char.lineMod(line, share)`, `Char.notches(find)`, `Char.points(char)`, `Char.allocate(char, nodeId, choice?)`, `Char.refundPrice(char)`, `Char.refund(char, account)`, `Char.equip(char, uid, slot, chest)`, `Char.unequip(char, slot, chest)`, `Char.places(char)`, `Char.place(char, voiceUid, place)`, `Char.voice(uid, voiceId)`, `Char.rope(level)`, `Char.tie(char, voiceUid, at, knotId)`, `Char.untie(char, voiceUid, at)`, `Char.give(char, chest, what)`, `Char.take(char, chest, what)`, `Char.heed(char, account)`, `Char.learn(char, id)`, `Char.hold(char, id, account)`, `Char.release(char, id)`, `Char.need(char, mode?)`, `Char.gain(char, xp, mode?)`, `Char.mourning(char)`, `Char.trueRing(weights)`, `Char.begin(save, uid, zone, seed) -> cfg`, `Char.checkpoint(save, S)`, `Char.end(save, S) -> report`, `Char.abandoned(save) -> report`, `Char.retire(save, uid) -> bell` |
+| `15-progress` | sim | bequests and what they open; the end of a vigil for them | see "Stage 2 systems" |
+| **`16-savedata`** | sim | the save as versioned JSON, its migrations and its check, the text of an export | `SaveData.VERSION` (2), `SaveData.KEY` (`'save'`), `SaveData.LIMITS`, `SaveData.blank()`, `SaveData.uid(save)`, `SaveData.clone(value)`, `SaveData.MIGRATIONS`, `SaveData.migrate(raw) -> {save, errors, notes}`, `SaveData.validate(raw) -> [error]` (never throws), `SaveData.read(raw)`, `SaveData.encode(save) -> text`, `SaveData.decode(text) -> {save, errors, notes}` (never throws) |
+| `17-bellframe` | sim | the Bellframe: what it gives a character, opening pits, ringing places, hanging bells, recasting gifts | see "Stage 2 systems" |
+| **`20-sim`** | sim | run state, step order, commands, events, entity fields | `Sim.create(cfg) -> S`, `Sim.step(S, input?) -> boolean`, `Sim.command(S, cmd) -> boolean`, `Sim.emit(S, k, x, y, a, b, id)`, `Sim.spawnEnemy(S, id, x, y, opts?)` (an enemy, or `null` when the pool is full; opts `{level, rank, traits}`; the id may be a keeper), `Sim.rebuild(S) -> Sheet`, `Sim.end(S, outcome) -> result`, `Sim.result(S)`, `Sim.hash(S) -> uint32`, `Sim.debugScene(n, seed = 1) -> S`, `Sim.field(kind, name, value)`, `Sim.fields(kind)`, `Sim.state(name, make)`, `Sim.source(fn)`, `Sim.system(name, fn)`, `Sim.systems()`, `Sim.COMMON`, `Sim.ELITE`, `Sim.MINIBOSS`, `Sim.BOSS`, `Sim.NO_INPUT` |
 | `21-player` | sim | the player: movement, posture, the turn rule, the class rule and trade, the heave, wounds and mending, pickups, run levels | see "Stage 1 systems" |
 | `22-enemies` | sim | the wake; the dead's steering, separation, attacks and rules (procession, mourning, riders) | see "Stage 1 systems" |
 | `23-skills`, `24-archetypes` | sim | voices speaking, the pull; the archetypes `ring`, `rap`, `bar`, `spark`, `cone` | see "Stage 1 systems" |
 | `25-boss` | sim | the keepers' phases | see "Stage 1 systems" |
 | `26-director` | sim | tolls' effects, the count, spawns, elites, lychgates, ringing down, Tolled-for's lychgate, drops, district rules | see "Stage 1 systems" |
 | `27-favours` | sim | the row and its walk-in offers | see "Stage 1 systems" |
+| `27-bequests`, `27-notches`, `27-observances` | sim | the parts of Stage 2 that run in a vigil, each a `Sim.system`: bequests counted and the keeper's Hum; the postures of a toll period and the lines a toll writes, finds dropped, the heave; observances' promises, and the voices and knots the dead leave | see "Stage 2 systems" |
 | `28-bot` | sim | scripted players | see "Stage 1 systems" |
 | **`29-world`** | sim | seeded regions, authored and scattered props, roles, obstacles | `World.region(seed, zoneDef, x?, y?) -> {x, y, radius, startX, startY, props, grid}`, `World.propsNear(S, x, y, r, out) -> count`, `World.withRole(S, role, out) -> count`, `World.pushOut(S, ent) -> boolean`, `World.CLEAR`, `World.GAP`. The ground's height, the tide, depth, bands, currents and fresh water (`02-combat.md`, section 15.13) arrive with the Ropewalk; until then every place is dry. |
 | **`30-modes-curves`** | content | the two modes, the level curves, the constants of a run, the debug zone | modes `household` and `watch-night`; curves `main` (for levels 1 to 70: `enemyLife`, `enemyDamage`, `enemyXp`, `charXp`, `nightXp`, `runXp`; and `rank[0..3]`); constants `main` (`spawnRadius`, `despawnRadius`, `tollSeconds`, `keeperToll`, `gateEvery`, `gateOpenSeconds`, `gateRadius`, `ringStrokes`, `strokeSeconds`, `backSeconds`, `caps`, `gridCell`, `playerRadius`); zone `debug`; enemy `debug.husk` |
-| `31` to `49` | content | one file per class with its voices; the dead, keeper and favours of each district; puppets, props and tilesets; later the Plan, finds, observances, the Bellframe | `Defs.add(...)` only; the files of the first vigil are under "Stage 1 systems" |
+| `31` to `49` | content | one file per class with its voices; the dead, keeper and favours of each district; puppets, props and tilesets; the Plan (`32`), bases and the posture tables (`33`, `34`), knots and observances (`35`, `36`), the Bellframe (`44`) and bequests (`45`) | `Defs.add(...)` only; the files of the first vigil are under "Stage 1 systems", those of the Household under "Stage 2 systems" |
 | **`48-puppets-test`**, **`49-tilesets-test`** | content | test figures, props and grounds for the views and their tests | `Defs.add(...)` only |
 | **`50-platform`** | presentation | namespaces, the browser as the game sees it, the notice board, storage adapter | `Plat.query(name)`, `Plat.isTouch`, `Plat.dpr()`, `Plat.now()`, `Plat.loop(fn)`, `Plat.stop()`, `Plat.onVisibility(fn) -> off`, `Plat.onResize(fn) -> off`, `Plat.on(name, fn) -> off`, `Plat.emit(name, a, b, c)`; `Store.read(key)` (a promise of an object or `null`), `Store.write(key, obj)` and `Store.remove(key)` (promises of a boolean), `Store.status` (`'saved'`, `'memory'` or `'error'`), `Store.onStatus(fn) -> off` |
 | **`51-settings`** | presentation | the player's settings, stored; the settings screen | `Settings.define(key, spec)` (spec `{value, label, group, order}`, plus `min, max, step, format, live` for a number or `options [{value, label}]` for a choice; a boolean value makes a switch), `Settings.get(key)`, `Settings.set(key, value) -> value held`, `Settings.on(key \| 'group.*' \| '*', fn(value, key)) -> off`, `Settings.row(id, order, build(back))`, `Settings.open() -> element \| null`, `Settings.keys()`, `Settings.reset()`, `Settings.loaded` |
@@ -249,8 +268,8 @@ Every pooled object has one fixed set of fields and is sealed, so a field that w
 | **`69-vfx`** | presentation | pooled particles (1500; 400 at 'low'), harm numbers merged per target, life bars on the overlay canvas, shake and flash from the settings | `Vfx.consume(S)` (it also listens to live 'step' and 'command' itself), `Vfx.update`, `Vfx.harm(uid, x, y, z, amount, kind)` (kind 0 harm to one of the dead, 1 harm to the player), `Vfx.burst`, `Vfx.billboards`, `Vfx.decals`, `Vfx.offset`, `Vfx.post`, `Vfx.overlay(bars, count)`, `Vfx.clear`, `Vfx.quality`; `Vfx.shake`, `Vfx.flash`, `Vfx.numbers` read `fx.*` from Settings |
 | **`70-ui-core`** | presentation | element builder, screen stack, confirm dialog, toasts, focus by keys and pad | `UI.h(tag, attrs, ...children)`, `UI.button(label, onClick, attrs)`, `UI.screen(id, {open, close, pause, back, scrim})`, `UI.has(id)`, `UI.isOpen(id)`, `UI.open(id, args)`, `UI.close(id?)`, `UI.replace(id, args)`, `UI.clear()`, `UI.top()`, `UI.pausing()`, `UI.confirm(text, {yes, no})` (a promise of a boolean), `UI.toast(text, ms)`, `UI.nav(dx, dy)`, `UI.activate()`, `UI.back()`, `UI.setKeys(on)` |
 | `71-hud` | presentation | the HUD of a vigil | see "Stage 1 systems" |
-| `72` to `77` | presentation | the title and results; later the Lantern, finds, the Plan, voices and knots, the Bellframe, bequests, the memorial, onboarding | screens registered with `UI.screen` |
-| **`90-game`** | presentation | the states title, run and results; the frame loop with its 60 Hz steps (at most 4 a frame), paused when hidden; stand-in title, results and picture | `Game.boot()`, `Game.start(cfg)` (the run, or `null`), `Game.title()`, `Game.command(cmd) -> boolean`, `Game.sim(seconds, {bot, policy}) -> steps`, `Game.S`, `Game.state`, `Game.debug`, `Game.VERSION` |
+| `72` to `77` | presentation | the title and results (`73`); the Plan (`74`), finds (`75`), voices, knots and observances (`76`), the Lantern, the Household, the Bellframe, the Register and bequests (`77`); later onboarding | screens registered with `UI.screen` |
+| **`90-game`** | presentation | the states title, Household, Lantern, run and results; the save of the Household, read at boot and written through `Store`; the frame loop with its 60 Hz steps (at most 4 a frame), paused when hidden; stand-in title, Household, Lantern, save text, results and picture | `Game.boot() -> Promise`, `Game.start(cfg)` (the run, or `null`), `Game.title()`, `Game.household()`, `Game.lantern(uid?) -> char`, `Game.vigil(zone?, seed?) -> S`, `Game.make(classId, name, bells?) -> char`, `Game.write() -> Promise`, `Game.exportText() -> text`, `Game.importText(text) -> {ok, errors, notes}`, `Game.command(cmd) -> boolean`, `Game.sim(seconds, {bot, policy}) -> steps`, `Game.S`, `Game.state`, `Game.save`, `Game.char`, `Game.report`, `Game.ROOMS`, `Game.debug`, `Game.VERSION` |
 | **`99-boot`** | presentation | collects the namespaces; finalize, seal, boot | `window.TB`: every namespace, and `TB.ready` |
 
 **The order of a step**, set in `Sim.step` and nowhere else. Other namespaces are called only if they exist.
@@ -270,9 +289,12 @@ Every pooled object has one fixed set of fields and is sealed, so a field that w
                                        Pools are compacted here and only here.
 10  Player.pickups(S)                  embers, coin and finds; run levels
 11  Favours.step(S)                    the row; walk-in favours rise, are taken, sink
+11b each system of Sim.system          in the order they were registered (the files' order): the parts of Stage 2
+                                       that run in a vigil. A system reads this step's events and S.toll, which rose
+                                       at the end of the step before when a toll rang.
 12  Sim.rebuild(S), if S.dirty
 13  Offers.step(S)
-14  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event
+14  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event; a run with a character is marked dirty
 ```
 
 In a debug scene (`Sim.debugScene`, `S.debug` not null) steps 2, 4 and 7 give way to the scene's own rule: every husk walks a ring round the spot where the player began. Without `Player.step`, the move vector of the input walks the player there at 5 m/s.
@@ -280,10 +302,12 @@ In a debug scene (`Sim.debugScene`, `S.debug` not null) steps 2, 4 and 7 give wa
 **What is called if it exists.** The kernel and the game are written against systems that come later, and ask with `typeof` before each call. These are the signatures they use; whoever writes the system keeps to them, or changes the caller in the same change.
 
 - `Sim.step`: the hooks of the list above.
-- `Sim.command`: `Offers.resolve(S, cmd)` for `pick`, `banish`, `reroll` and `skip`; `Char.allocate(char, id, choice)` and `Char.equip(char, uid, slot)`. Each counts as done unless it returns `false`.
+- `Sim.command`: `Offers.resolve(S, cmd)` for `pick`, `banish`, `reroll` and `skip`; `Char.allocate(char, id, choice)` and `Char.equip(char, uid, slot)` (which wears nothing without a chest, so it is refused in a vigil). Each counts as done unless it returns `false`.
 - `Sim.rebuild`: `Char.mods(char, S, account) -> [Mod]` and `Char.weapon(char)` (a weapon profile `{family, damage, aps}`, or `null`: always `null` in the game).
+- `Char.mods`, `Char.create`, `Char.end`, `Player.step` and `Player.pickups` call the Stage 2 packages' functions when they exist: `Tree.mods`, `Bellframe.mods`, `Items.mods`, `Items.make`, `Items.cool`, `Items.heave`, `Progress.endVigil`, and read `S.observances.broken`; "Stage 2 systems" gives their signatures. `Player.pickups` calls `Char.gain` for every ember of a character's vigil.
 - The frame loop of `90-game`: `Input.sample() -> InputFrame`, once for each step; `Scene.draw(S, alpha)`, once a frame while there is a run.
 - `Game.sim`: `Bot.input(S, policy) -> InputFrame` and `Bot.choose(S, offer)`, which returns the index to pick or a whole command.
+- `Game`: `SaveData` and `Char` (the save, a character's vigil and its end); without them the build keeps no Household and the title begins a vigil without a character.
 
 **The frame.** `90-game` adds up frame time and spends it in steps of 1/60 s. A step runs as soon as any time is owed, so after a frame the simulation stands where the frame is or up to one step ahead, and `alpha`, above 0 and up to 1, says where the frame lies between the last two steps: a thing is drawn at `px + (x - px) * alpha`. On a 60 Hz screen each frame is one step and `alpha` is 1. No step runs while a screen that pauses is open (`UI.pausing()`), while `S.phase` is `'offer'`, while the page is hidden, or once the run has ended. Menus send commands through `Game.command(cmd)`, not `Sim.command`, so that the readers of events hear of them.
 
@@ -292,7 +316,8 @@ Files that load before `90-game` cannot call it while they load. They hear from 
 | Notice | Arguments | When |
 |---|---|---|
 | `'boot'` | `view` | once, in `Game.boot`, when the view exists and before the title opens: the moment for a module to set itself up |
-| `'state'` | `state, before` | the game changed state: `'title'`, `'run'` or `'results'` |
+| `'state'` | `state, before` | the game changed state: `'title'`, `'household'`, `'lantern'`, `'run'` or `'results'` |
+| `'save'` | `save, why` | the save changed and is being written through `Store`: `why` is `'made'`, `'chosen'`, `'vigil'`, `'toll'`, `'hidden'`, `'end'`, `'unfinished'`, `'import'` or `'write'` |
 | `'step'` | `S, live` | after every simulation step; `live` is false inside `Game.sim`. The place to read `S.events` |
 | `'command'` | `S, live, cmd` | after a command sent with `Game.command`, or by `Game.sim` to resolve an offer |
 | `'frame'` | `S, alpha, dt` | once a frame, after drawing; `S` is `null` while there is no run |
@@ -303,7 +328,7 @@ Files that load before `90-game` cannot call it while they load. They hear from 
 
 What `55-sound-core` reads from the events: `'hit'`, `'kill'` (`a` = rank), `'hurt'`, `'mend'`, `'scar'`, `'pickup'` (`a` = kind, `b` = value: a big pickup when `a` is not 0 or `b` is 10 or more), `'favour'`, `'level'`, `'offer'`, `'count'` (`a` strokes, `b` elites, `id` `'gate'` for the low stroke), `'toll'`, `'gate'` at the place a lychgate opened, and `'telegraph'` at the place an attack will land. It plays ringing down while `S.gate.ring` grows. `69-vfx` reads the same and `'cast'`, `'wound'`, `'pull'`, `'trade'`, `'heave'`, `'drop'`, `'phase'` and `'stroke'`; `68-scene` reads `'cast'`. An emitter that gives these fields another meaning changes those files in the same change.
 
-The screens `'title'` and `'results'` of `90-game` are stand-ins, registered at boot only if no other file has registered those ids. `'results'` is opened with `{S, result}`. `Scene.draw` is called only while there is a run; on the title the game draws the empty ground itself.
+The screens `'title'`, `'household'`, `'lantern'`, `'save-text'` and `'results'` of `90-game` are stand-ins, registered at boot only if no other file has registered those ids. `'results'` is opened with `{S, result, report}` (`report`: what `Char.end` did, for a character's vigil; else `null`), `'lantern'` with `{char}`. `Scene.draw` is called only while there is a run; on the title, the Household and the Lantern the game draws the empty ground itself.
 
 **The renderer contract** shared by both views. A view's file registers it while it loads; `65-gfx` holds the list and the records.
 
@@ -381,29 +406,40 @@ Stat   = Primary life-max wound-term wound-join wound-cap mend-rate mend-reach m
          chance.coined chance.sealed chance.brined flag.<id> param.<key>      // table of 15.8 for bases and bounds
 
 Scaled   = number | {a, b, curve:'lin'|'exp'}                 // owner level 1 -> 20
-Mod      = {stat, op:'flat'|'inc'|'more'|'set', value:Scaled|[min,max], tags?:[Tag], cond?:Cond,
+Mod      = {stat, op:'flat'|'inc'|'more'|'set', value:Scaled|[min,max], tags?:[Tag], cond?:Cond|[Cond], unless?:Cond|[Cond],
             per?:{stat:Primary|'level'|'observances'|'favours'|'finds'|'debts', div, cap?}, local?:true}
-            // a [min,max] value only on added.<Kind>
-ModRange = {stat, op, tags?, cond?, local?, min, max}
-Req      = {level?, knee?, heel?, hand?, ear?}                // wanted, not locked: the share rule (Rules)
+            // a [min,max] value only on added.<Kind>. cond: the condition, or every one of a list, must hold; unless:
+            // none of them may (a written line cut backward works "while not Braced": unless 'braced'). A condition
+            // about the body struck (t-) in either is settled per hit (SkillSheet.targetMods).
+ModRange = {stat, op, tags?, cond?, unless?, local?, min, max}
+// What a voice, a knot and a find want of an attribute is no field: the share rule (Rules) works it from the tier,
+// or from a find's written lines. Nothing is locked.
 
 Voice     = {id, name, text, icon, attr:Primary, tier:1..5, tags:[Tag], weapon:null, archetype, target, rate:Scaled,
              damage:{[Kind]:[Scaled,Scaled]} /* exactly one kind */, weaponPct:0, eff, crit:0, params:{[key]:Scaled},
              mods:[Mod], fx:{puppet?, cast?, hit?, sfxCast?, sfxHit?, light?, ...}}
              // archetype: 'ring'|'rap'|'bar'|'spark'|'cone', and what Skills.archetype adds
              // target: 'nearest'|'densest'|'random'|'farthest'|'aim'|'self'
-VoiceInst = {uid, id, level:1..20, rope:2..5, knots:[knotId|null]}
+VoiceInst = {uid, id, level:1..20, rope:2..5, knots:[knotId|null x rope], tolls}     // tolls: spoken through, equipped,
+                                                              // in vigils survived; a level every 8 ("The Household's shapes")
 Knot      = {id, name, text, icon, attr:Primary, tier, requires:[Tag], excludes:[Tag], addTags:[Tag], mods:[Mod],
-             params:{[key]:number}, trigger:Trigger|null}
+             params:{[key]:number}, trigger:Trigger|null, rule?:knotRule|null}
+             // rule: the rule it changes (Running Line, Stone's Answer, ...), a word its registry allows
 Trigger   = {on:'kill'|'hurt'|'pull'|'trade'|'heave'|'timer', chance, cooldown}
-Observance = {id, name, text, icon, attr, tier, heed:20..40, mods:[Mod], aura:null}    // heed: the Heed it holds
+Observance = {id, name, text, icon, attr, tier, heed:20..40, mods:[Mod], aura:null, promise?:promise|null,
+              params?:{[key]:number}}
+             // heed: the Heed it holds; promise: the promise the thumb keeps (a word its registry allows) and params its
+             // numbers (Stability's 12 m); while it is broken the mods stop until the next toll
 
 Class   = {id, name, text, attrs:{[Primary]:n}, perLevel:{[Primary]:n}, base:[Mod], door?:0..5,
            voices:[voiceId x 1..6] /* the starting loadout, in place order */, startGear:[baseId],
            trade:{name, text, icon, recharge}, callings:[id,id], unlock:bequestId|null, puppet, palette:[hex]}
            // the class's first attribute starts at 10 and its second at 5; each level adds 2 and 1 (03-classes.md)
 Calling = {id, class, name, text, points:8,
-           nodes:[{key, kind:'minor'|'major', name, mods:[Mod], requires:[key], row, col}]}
+           nodes:[{key, kind:'lane'|'corner'|'square', name, text?, icon?, mods:[Mod], requires:[key], row, col}]}
+           // its small tree speaks the Plan's words; a class and its two callings name each other
+Peal    = {id, name, text, icon, calling, rule:pealRule|null, points, params?:{[key]:number}}
+           // a vigil kept to one rule of the calling from the first toll to the keeper's fall; points: what it gives
 
 Attack = {id, kind:'strike'|'throw'|'press'|'spread'|'fall'|'zone', type:Kind, mult, cooldown, range, windup,
           shape:'arc'|'line'|'circle'|'ring'|'wedge', radius, angle, count, spread, speed, evadable:false,
@@ -439,7 +475,9 @@ Favour   = {id, name, text, icon, rarity:'plain'|'turned', weight, maxStacks, gr
             requires:{tags?, class?, runLevel?}, mods:[Mod], params?:{}}
             // plain: adds numbers (flat and inc only); turned: changes a rule, by a flag.<id> modifier the rule reads
 Bequest  = {id, name, text, hidden, scope:'account'|'character', on:EventKind, count, where:{},
-            reward:{class?, zone?, unique?, planPoints?, coin?, hum?, currency?:{}}}
+            reward:{class?, bill?:{zone, causes:[causeId x 1..4]}, base?, observance?, voice?, planPoints?, coin?, hum?}}
+            // done when `count` events of kind `on` that fit `where` have come, in the Household (account) or to one
+            // character; it opens a class, a Bill, a base, an observance, gives a named voice, Plan points, coin, Hum
 Cause    = {id, name, text?, mods?:[Mod]}
 
 Mode = {id, name, text?, persistent, route:'zone'|'night', zones?, xpCurve, levelCap, runLevels,
@@ -456,38 +494,98 @@ Constants = {id:'main', spawnRadius, despawnRadius, tollSeconds, keeperToll, gat
 InputFrame = {mx, my, ax, ay, aim, trade, heave}
 Command = {type:'pick'|'banish', index} | {type:'reroll'|'skip'|'leave'} | {type:'allocate', id, choice?}
         | {type:'equip', uid, slot}
-Event   = {k:'hit'|'kill'|'cast'|'hurt'|'wound'|'mend'|'scar'|'pull'|'trade'|'heave'|'pickup'|'level'|'offer'|'favour'
-           |'telegraph'|'phase'|'drop'|'toll'|'count'|'gate'|'stroke'|'end', x, y, a, b, id}
+Event   = {k:'hit'|'kill'|'cast'|'hurt'|'wound'|'mend'|'scar'|'pull'|'trade'|'heave'|'pickup'|'level'|'grow'|'offer'
+           |'favour'|'telegraph'|'phase'|'drop'|'toll'|'count'|'gate'|'stroke'|'end', x, y, a, b, id}
+           // and the kinds a system allows with Defs.allow('event', k) ("Stage 2 systems")
 ```
 
-These keep the first plan's shapes until Stage 2 replaces them (`04-progression.md`: the Plan, finds, the Bellframe); their stats, tags, families and slots are already the design's:
+The kinds of Stage 2 (`04-progression.md`):
 
 ```js
-TreeSkeleton = {spokes, rings:[{r, slots}], pathMods:[Mod], starts:{[classId]:{sector}}}
-Cluster   = {id, name, anchor:{sector, ring, slot}, shape:'ring6'|'arc5'|'fork4'|'line3'|'diamond4', theme:[Tag], entry:key,
-             nodes:[{key, kind:'minor'|'major'|'capstone', name, text?, icon?, mods:[Mod]}]}
-LegacyNode = {id, name, text, icon, branch, row, col, requires:[id], ranks, cost:[n], mods:[Mod], unlock?:{}}
-Base     = {id, name, slot:'tool'|'hat'|'coat'|'hands'|'girdle'|'pattens'|'token', family:Family|null, tags:[string], level,
-            req:Req, twoHanded, weapon:null /* no tool is a weapon */, defence:{}|null, implicit:[ModRange], icon}
-Affix    = {id, name, type:'prefix'|'suffix', group, weights:{[itemTag]:number}, tiers:[{ilvl, mods:[ModRange]}]}
-Unique   = {id, name, base, level, mods:[ModRange], flavour, weight, unlock:bequestId|null}
-Currency = {id, name, text, icon, target:'item'|'voice', op, requires:{}, args:{}, weight, level}
-Save = {v:1, rev, updated, settings:{}, binds:{}, chars:[Char], active:uid|null, fallen:[...], account:{...}}
-Char = {uid, name, class, level, xp, calling:id|null, callingNodes:[key], tree:[{id, choice?}], voices:[VoiceInst],
-        loadout:[uid|null x6], knots:{[id]:n}, observances:[id], ...}       // what the kernel reads: class, level,
-                                                                             // voices, loadout, observances
-// Stage 2 targets: a find {uid, base, level, fixed, lines:[{stat, op, value, tags, cond, posture, toll, backward,
-// struck}]} and a base {id, name, slot, family, level, fixed, tables, icon}.
+Plan      = {id:'main', name, text?, rings:1..12, streets:3..24, ringGain, bankGain, mileGain, mileFrom, mileMost,
+             loopMost, loopShare:0..100, refund, look?:{}}
+             // the numbers of the Plan's rules: a node of ring N works from toll N - 1, its values x (1 + ringGain/100
+             // x (N - 1)); a bank node x (1 + bankGain/100); a milestone + mileGain% for each held node beyond the
+             // mileFrom-th in the unbroken run of its street, mileMost at most; a loop of loopMost nodes or fewer
+             // grants its inside at loopShare%; refund: the coin to take back the head, times its ring. look: the
+             // screen's own (colours, the river), free
+Node      = {id, kind:'door'|'lane'|'corner'|'square'|'milestone', ring:1..rings, street:0..streets-1|null,
+             bank:'flood'|'ebb'|null, x, y, name, text?, icon?, mods:[Mod], choice:[Primary x 1..4]|null,
+             links:[nodeId x 1..8], class?:classId}
+             // a door is a class's start (class names it; nothing else has class) and gives nothing; only a lane offers
+             // a choice, one point of an attribute chosen; a milestone stands in a street; only a square uses more;
+             // links go both ways and never to the node itself. x, y: its place on the street plan, for the screen
+Base      = {id, name, text?, slot:'tool'|'hat'|'coat'|'hands'|'girdle'|'pattens'|'token', family:Family|null, level,
+             fixed:ModRange, tables:{[Posture id]:{verbs?:{[key]:w}, objects?:{[key]:w}}}, icon, named?:true,
+             unlock:bequestId|null, weight}
+             // what a find is made from. Only a tool has a family. fixed: its one fixed line, rolled within the range;
+             // tables: the weight it gives an entry of a posture's table (times the entry's own w; 1 where it names
+             // none). A named find is a base with named true and a strong fixed line, which alone may use more.
+             // A token fits either token place. weight: how often it drops
+Posture   = {id:'stood'|'strode'|'pressed'|'timed', name, text?,
+             verbs:[{key, stat, op:'flat'|'inc', band:[[lo, hi] x 8], grow, w} x 1..200],
+             objects:[{key, tags:[Tag], w} x 1..200]}
+             // the table a posture writes lines from (Stats.POSTURES gives its condition and attribute): a verb is a
+             // stat and an amount, band[t - 1] the amount's range for a line written at toll t (the eighth and later:
+             // band[7]) on a find of level 1, grow the percent it rises for each level above the first; an object is
+             // the tags a line is held to. w: how often each is drawn
+Bellframe = {id:'main', pitFirst, pitGrowth, placeFirst, placeGrowth, placesMost:1..8, trueLow, trueHigh, trueGain,
+             weighPer, recast, deathHum}
+             // the Bellframe's numbers (open: a package may add its own): the first pit after the tenor costs pitFirst
+             // Hum and each after it pitGrowth times the last, ringing places likewise; a neighbouring pair of rung
+             // bells whose weights differ by trueLow to trueHigh percent of the heavier rings true, trueGain percent
+             // on every gift rung; a bell's gift works at level 1 + floor(weight / weighPer), at most 20; recast:
+             // the Hum to recast a gift; deathHum: Hum x the toll, for a death by a cause new to the Register
+Pit       = {id, name, text, icon, from:pitId|null, grant:[Mod], x, y}
+             // a place of the Bellframe: it opens from the pit `from` (the tenor pit from none: there is one); its
+             // printed grant, flat and inc only, reaches every character; it holds one bell
+Gift      = {id, name, text, icon, class, calling:callingId|null, mods:[Mod]}
+             // what a bell gives those who ring it, fixed by its class and calling (one for each class without a
+             // calling, one for each calling); flat and inc only; its Scaled values work at the bell's level
 ```
 
-`Defs.SCHEMA` in `01-defs.js` holds these shapes as data, and `Defs.finalize()` checks every definition against them at boot; each fault reads `kind id: field problem`. The check is stricter than the lines above in four ways:
+The Household's shapes are not definitions but what a game keeps: `14-character.js` makes and changes them, `16-savedata.js` checks them, and the save holds them. Uids are the save's: characters, finds, voices and bells share `save.uid` (`SaveData.uid(save)`); what a vigil makes has a uid below 1 until `Char.checkpoint` or `Char.end` gives it one.
+
+```js
+Char  = {uid, name, class, calling:callingId|null, callingPoints, callingNodes:[key], peals:[pealId], level:1..70, xp,
+         planPoints, plan:{walk:[nodeId], choice:{[nodeId]:Primary}}, worn:{[slot]:Find|null}, voices:[VoiceInst],
+         loadout:[voiceUid|null x6], knots:{[knotId]:n}, observances:[observanceId], known:[observanceId],
+         bells:[bellUid], mourning:null|{term, left}, tolls, vigils, bequests:{[bequestId]:{n, done}}}
+         // worn: the eight places Char.SLOTS (tool, hat, coat, hands, girdle, pattens, token-1, token-2). plan.walk:
+         // the route, from its class's door, a node at most twice; choice: the attribute of each lane. voices: all it
+         // holds, the loadout's six places (opening at Char.PLACES: levels 1, 3, 8, 15, 25, 35) naming some; knots:
+         // those it holds untied. observances: those it keeps (their Heed held); known: those it may keep. bells: the
+         // bells it rang when it was made. tolls, vigils: its life so far
+Find  = {uid, base, level, fixed:Mod, lines:[Line|null x8], gone:[place], walk:-1|place, cool:0..4}
+         // fixed: its fixed line as rolled. gone: places cut away or erased for good. walk: a place struck for a
+         // re-walk. cool: the steps a recast find still rises before it is first worn
+Line  = {stat, op, value, tags:[Tag], cond:Cond, posture, toll, backward, struck:null|'object'|'condition', band:[lo, hi]}
+         // one written line: verb (stat, op, value), object (tags), condition (the posture's: cond; backward, it
+         // works as unless); the toll it was written at; a word struck by the chisel; the band its value rolled in
+Bell  = {uid, of, name, class, calling, weight, gift:giftId|null, pit:pitId|null, double, known:[observanceId]}
+         // a dead or retired character recast: weight, the tolls of its whole life; pit, where it hangs (null: not
+         // yet hung); double, it rings double (the Watch-night's bede-roll); known, the observances it teaches
+Death = {uid, name, class, calling, level, tolls, vigils, zone, toll, cause:null|{attack, kind}, how:'died'|'retired', bell}
+         // a line of the Register
+Save  = {v:2, rev, uid, chars:[Char], register:[Death], chest:{finds:[Find], voices:[VoiceInst], knots:{[knotId]:n}},
+         account:{coin, hum, heard, frame:{pits:[pitId], places, bells:[Bell]},
+                  open:{classes:[classId], bases:[baseId], observances:[observanceId], bills:[{zone, causes}]},
+                  bequests:{[bequestId]:{n, done}}},
+         active:charUid|null, away:null|{char, zone, seed, hum, heard, level, tolls}}
+         // rev: the writes so far; hum: held, heard: ever heard; away: a vigil under way (Char.begin sets it,
+         // Char.end and Char.abandoned clear it). Settings keep their own key (51-settings.js).
+```
+
+`SaveData.validate` holds a save to more than its fields' types, and never throws: every uid is unique and no higher than `save.uid`; every id names a definition that exists (a death's and a bell's ids are history, and need only be ids); a route starts at its class's door, steps only between linked nodes, holds a node at most twice and spends no more points than it has, and every lane on it has its attribute chosen; a worn find sits in a place its base fits; a voice's rope is what its level gives, and each knot tied fits it; the loadout names the character's own voices, each once, none in a place its level has not opened; it keeps only observances it knows; it rang bells of the frame; a bell hangs in an open pit, one to a pit, and every open pit opens from another open one; the active character and the one away stand in the Household. A save of version 1 (the first plan's placeholder) is brought up by `SaveData.MIGRATIONS`.
+
+`Defs.SCHEMA` in `01-defs.js` holds the shapes of the definitions as data, and `Defs.finalize()` checks every definition against them at boot; each fault reads `kind id: field problem`. The check is stricter than the lines above in four ways:
 
 - A field without `?` is required. An `Attack` carries all 17 of its fields, a class exactly two callings and one to six voices.
-- An object holds no field that its shape does not list. The exceptions are `fx`, `ambient` and `anim`, and the kinds tileset, curves, constants, trait and cause, which may carry more.
-- A field the design keeps at one value holds only that value (a spec with `only`): a voice's `crit` is 0, its `weapon` null and its `weaponPct` 0; an attack's `evadable` is false; an observance's `aura` is null; a base's `weapon` is null.
+- An object holds no field that its shape does not list. The exceptions are `fx`, `ambient` and `anim`, and the kinds tileset, curves, constants, trait, cause and bellframe, which may carry more.
+- A field the design keeps at one value holds only that value (a spec with `only`): a voice's `crit` is 0, its `weapon` null and its `weaponPct` 0; an attack's `evadable` is false; an observance's `aura` is null.
 - Every id that names another definition must exist. This is not checked while the kind it points into has no definitions at all, which keeps a build without (say) its puppets valid: `debug.husk` names a puppet of its own id, and once any puppet is registered that one must be there too.
 
-It also checks the design's rules that a spec cannot say: a voice deals exactly one kind of harm; no enemy's guard is for a bare kind (the Swell); a favour's modifiers are `flat` or `inc`, and only a turned favour switches a `flag.`.
+It also checks the design's rules that a spec cannot say: a voice deals exactly one kind of harm; no enemy's guard is for a bare kind (the Swell); a favour's modifiers are `flat` or `inc`, and only a turned favour switches a `flag.`; `more` is found only on knots, squares, callings and named finds, so a pit's grant, a gift and a written line add with `flat` and `inc` only, and no other node, base or observance uses `more`; the Plan's links go both ways, a door names its class and nothing else does, a milestone stands in a street, only a lane offers a choice, and a node lies within the plan's rings and streets; a tool has a family and nothing else does; a posture is one of the four, its keys are its own and its bands run from less to more; a class and its callings name each other, and so do a gift and its calling; there is one tenor pit.
 
 A registry of behaviour adds its words to the closed lists with `Defs.allow` (`Defs.allow('ai', 'rider')`), and a system adds fields to a kind with `Defs.extend`; both only while files load.
 
@@ -625,9 +723,12 @@ Dmg.shove(S, body, dx, dy) -> number                 moves a body (the player ti
 Dmg.lay(S, body, row, seconds, v, n) -> boolean      lays a condition (a row of Stats.AILMENTS), refused where the row
                                                      spares the body, the body cannot carry it, it is sealed or immune
 Dmg.lift(S, body, row) -> boolean                    ends one, unless the body is sealed
-Dmg.warning(S, source) -> seconds                    the warning added to the fill of a Swell aimed at the player: free
-                                                     Heed x 0.01 + warn (+ 0.3 when source is Sounded), at most 1. A
-                                                     district's own rule (the Dial's shadow: 0.3 s less) is the vigil's.
+Dmg.warning(S, source, attack) -> seconds            the warning added to the fill of a Swell aimed at the player: free
+                                                     Heed x 0.01 + warn + the Register's head start for that attack id
+                                                     (S.cfg.account.warned[attack]: 0.15 s a death, three at most;
+                                                     Char.begin works it out) (+ 0.3 when source is Sounded), at most
+                                                     1. A district's own rule (the Dial's shadow: 0.3 s less) is the
+                                                     vigil's.
 Dmg.large(e) -> boolean                              its def's size is 'large', or its rank is elite or above
 Dmg.POSE = {still: 0, braced: 1, moving: 2, striding: 3}     the values of the field pose
 ```
@@ -641,18 +742,21 @@ It names the rows `wrong-footed`, `in-procession`, `sounded`, `coiled`, `swing`,
 ```
 Player.step(S, input)                phase 1: movement (move-speed, less find-weight a find carried and 8% a rider; 20%
                                      faster while Tolled-for; pushOut), posture, headings and the turn rule, the class
-                                     rule and the trade (input.trade), the heave (input.heave: no finds in Stage 1, so it
-                                     does nothing and the HUD hides button B), mending, scars, and S.player.conds (the
-                                     flickering braced, striding, crowded and in-water held 0.25 s before the mask
-                                     changes; S.dirty when it does)
+                                     rule and the trade (input.trade), the heave (input.heave: Items.heave(S) when the
+                                     finds' package has it, else nothing, and the HUD hides button B), mending, scars,
+                                     and S.player.conds (the flickering braced, striding, crowded and in-water held
+                                     0.25 s before the mask changes; S.dirty when it does)
 Player.pickups(S)                    phase 10: pickups of kinds 0 (ember: value is experience, added to p.runXp; when
-                                     runXp reaches S.curves.runXp[min(runLevel, 69)] it is spent and runLevel + 1),
-                                     1 (coin: value added to S.coin) and 2 (a find, Stage 2), drawn in within
-                                     pickup-reach. Kind 3 is the favours'.
+                                     runXp reaches S.curves.runXp[min(runLevel, 69)] it is spent and runLevel + 1; and
+                                     to the experience of the run's character by Char.gain, kept at once: a level it
+                                     gains sets S.dirty and emits 'grow'), 1 (coin: value added to S.coin; none in full
+                                     mourning, the flag full-mourning) and 2 (a find, into S.haul), drawn in within
+                                     pickup-reach. Kind 3 is the favours'. A pickup whose state is below 0 is held back
+                                     by a system (an observance's promise) and left lying.
 Player.classRun(classId, level?) -> {class, level, mods, voices}     the cfg fields of a run without a character: the
                                      class's attributes as flat modifiers (attrs + perLevel x (level - 1)), its base
-                                     modifiers, and its voices as VoiceInst at level 1 with a rope of 2. The title and
-                                     the tests start a vigil with Game.start(Object.assign({zone: 'dial', seed},
+                                     modifiers, and its voices as VoiceInst at level 1 with a rope of 2. The tests start
+                                     a vigil without a character with Game.start(Object.assign({zone: 'dial', seed},
                                      Player.classRun('change-ringer'))).
 Player.rule(classId, {step(S, input), trade(S)})     registers a class's rule (21-player.js registers the
                                      Change-ringer's: the pull and the set bell; trade Set, recharge class.trade.recharge
@@ -759,10 +863,171 @@ Its memory between steps lives in `Sim.state('bot', ...)`. `Game.sim(seconds, {b
 
 ### 71-hud.js and the screens (screens). Owns: Hud, Glyphs
 
-`71-hud.js` draws into `#hud` on the notice `'frame'`, and keeps `Hud` for what tests and other screens read (`Hud.stats`, for one). From the run it shows: the life bar (`S.player.life` in the class colour, the life lying in `S.wounds` as a pale part, `S.wounds.scarred` as a dark end, against `S.sheet.stats['life-max']`); the Heed bar under it (free Heed bright: `heed-max`, all free in Stage 1); the row (`S.row.ids`, the first `S.row.raised` places raised; each favour's `icon`); the toll ring in the last 3 s before `S.tollAt` and a tick at each quarter of `S.tollSteps`; the count as marks when the setting asks (from `'count'` events); the haul (`S.haul`, one box a find; none in Stage 1); the buttons, through `Input.button('A', {icon, cooldown: S.player.tradeCd / (trade recharge x trade-recharge / 100)})` and `Input.button('B', {hidden: true})` while there is nothing to heave; Tolled-for (the player carries the row `tolled-for`) as a grey screen. `73-screens.js` registers `'title'` (it starts a vigil of the Dial with `Player.classRun('change-ringer')`) and `'results'` (opened with `{S, result}`: the outcome, `result.tolls`, `kills`, `coin`, `banked`, `time`). The favours themselves rise in the world and are drawn by the scene; the screens show the row.
+`71-hud.js` draws into `#hud` on the notice `'frame'`, and keeps `Hud` for what tests and other screens read (`Hud.stats`, for one). From the run it shows: the life bar (`S.player.life` in the class colour, the life lying in `S.wounds` as a pale part, `S.wounds.scarred` as a dark end, against `S.sheet.stats['life-max']`); the Heed bar under it (free Heed bright: `heed-max`, all free in Stage 1); the row (`S.row.ids`, the first `S.row.raised` places raised; each favour's `icon`); the toll ring in the last 3 s before `S.tollAt` and a tick at each quarter of `S.tollSteps`; the count as marks when the setting asks (from `'count'` events); the haul (`S.haul`, one box a find; none in Stage 1); the buttons, through `Input.button('A', {icon, cooldown: S.player.tradeCd / (trade recharge x trade-recharge / 100)})` and `Input.button('B', {hidden: true})` while there is nothing to heave; Tolled-for (the player carries the row `tolled-for`) as a grey screen. `73-screens.js` registers `'title'` (its main control opens the Household, `Game.household()`; in a build that keeps no Household it starts a vigil of the Dial with `Player.classRun('change-ringer')`) and `'results'` (opened with `{S, result, report}`: the outcome, `result.tolls`, `kills`, `coin`, `banked`, `time`, and for a character's vigil who kept it and the way back to the Lantern, or to the Household after a death). The favours themselves rise in the world and are drawn by the scene; the screens show the row.
 
 As built: `Glyphs.define(id, paint)` registers an icon recipe (paint gets helpers that draw outlined, flat-shaded unit shapes); `Glyphs.icon(spec) -> canvas` (a new one, for page elements; spec an id or `{id, size, ink, dpr}`), `Glyphs.image(spec)` (a cached canvas for `drawImage`), `Glyphs.draw(ctx, spec, x, y, size)`, `Glyphs.pick(...ids)`, `has`, `ids`, `slug`, and the palette `Glyphs.C`; an unknown id gets a token whose shape and colour come from its hash. `Hud.stats` is a live record of what the HUD last drew, and `71-hud.js` defines the setting `hud.count` (draw the count as marks; off by default). In a debug scene, which has no class, the HUD shows both buttons plainly. While Tolled-for, the view greys the world itself (`post.grey`, which keeps what glows, the far lychgate's lamps among it); the HUD lays a grey of its own only where the scene does not.
 
 ### The figures and the scene (figures)
 
 `68-scene.js` draws, from the run: under every body its posture from `pose` (a closed pale ring when Braced, a short trailing streak when Striding) and a white flash of the outline while it carries `wrong-footed`; the wake from `S.wake` as a faint line, and a thin thread from each body In Procession (`condN` of `in-procession` is 1) to it; the wounds of `S.wounds` as deep red discs, darker for deeper, greying toward `wound-term`, with a ring closing while one mends; the dead's Swells (areas of team 1, and the voices' of team 0) as their shape filling in pale bone with a dark rim, the lee of props and large bodies cut out of it as clean ground; a Blow's wind-up through the rig (`state` 1, `stateT`, the attack `e.attack`); the conditions as shapes and colours on the bodies (`02-combat.md`, section 13); the open lychgate and its ring filling stroke by stroke (`S.gate.ring` against `ringStrokes x strokeSeconds`); the favours' shapes (pickups of kind 3, by their favour's `icon`). It reads no event but `'cast'`; `69-vfx.js` reads the events listed under "Modules".
+
+## Stage 2 systems
+
+Stage 2 ends in the Household (`docs/plan.md`, Appendix D; `04-progression.md`): standing characters kept between vigils until they die, with saves; one life and the Register; character levels; the Plan; voices with knots in their ropes; observances that hold Heed; written finds and the four ways to change them; the Lantern between vigils; the Bellframe and its Hum; bequests. Its acceptance: a character's level, Plan and finds survive a reload; export then import gives back the same save; a character that dies is on the Register and cannot be played; a pit opened in the Bellframe with one character changes the next; the Lantern's controls are at least 44 px on a phone. Callings and peals have their shapes, and `Char.mods` reads a calling's nodes, but a calling is first taken at the Ropewalk's keeper (`03-classes.md`): taking one, peals, Bills and the Watch-night wait for the districts that bring them.
+
+The foundation is in place (package C0): the shapes (`01-defs.js`; "Data shapes"), `14-character.js` (`Char`), `16-savedata.js` (`SaveData`), `Sim.system` and `S.cause` in the kernel, the Register's head start in `Dmg.warning`, experience and full mourning in `Player.pickups`, the game's states and the save in `90-game.js`, and stand-in screens for the Household, the Lantern and the save as text. Four packages build the rest in parallel, each in its own files. The shared files (`00-core`, `01-defs`, `10-stats`, `14-character`, `16-savedata`, `20-sim`, `50-platform`, `90-game`, `99-boot`) are not edited by any of them: what a package needs from them is here. It extends them from its own files through `Defs.allow`, `Defs.extend`, `Sim.field`, `Sim.state`, `Sim.source`, `Sim.system`, `UI.screen` and `Plat.on`, and by defining the functions below, which the shared files already call when they exist. Every namespace a package needs is declared and collected. A package that needs more of a shared file (a field of the save, another hook) asks for it rather than writing it: the save's shape changes only with a migration in `16-savedata.js`, since `SaveData.validate` refuses a field it does not know.
+
+### Who owns what
+
+| Package | Files | Namespaces |
+|---|---|---|
+| the Plan | `13-tree.js` (the Plan's rules); the content `32-plan.js` (the plan `main` and its nodes: the street plan, its banks and bridges, the Change-ringer's door); the screen `74-plan.js` (`'plan'`) | `Tree` |
+| finds | `12-items.js` (finds as data: making one, what it gives, writing a line, the four changes, cooling, prices) and `27-notches.js` (in a vigil: the toll period's postures, the lines a toll writes, the finds the dead drop, the heave); the content `33-bases.js` (the bases, with the Change-ringer's starting gear, whose ids it writes into the class's `startGear` in `31-change-ringer.js`) and `34-postures.js` (the four tables); the screen `75-finds.js` (`'finds'`) | `Items` |
+| voices, knots and observances | `27-observances.js` (the promises kept and broken in a vigil; the voices and knots the dead leave); `23-skills.js` and `24-archetypes.js` where a knot's rule acts inside a cast, and for archetypes new voices need; the content `35-knots.js`, `36-observances.js` and new voices in the class files; the screen `76-voices.js` (`'voices'`) | `Observances`, `Skills` |
+| the Lantern and the meta | `15-progress.js` (bequests and what they open; the end of a vigil for them) and `28-bequests.js` (in a vigil: the bequests' counts); `17-bellframe.js` (what the Bellframe gives; opening pits, buying ringing places, hanging bells, recasting gifts); the content `44-bellframe.js` (the bellframe `main`, the pits from the tenor pit, the gifts) and `45-bequests.js`; the screens of `77-lantern.js`: `'lantern'` and `'household'` (in place of the stand-ins), `'bellframe'`, `'register'` and `'bequests'` | `Progress`, `Bellframe` |
+
+`23-skills.js` and `24-archetypes.js` pass from the combat package to the third. `21-player.js` and `26-director.js` already do what Stage 2 asks of them (experience into the character, full mourning, `Items.heave`, Hum at the tolls and for a keeper laid, finds banked by ringing down) and stay as they are; a package that must change one says so to the others first. The systems run in the order their files load: `27-notches`, `27-observances`, then `28-bequests`, last, so that it can count every event of the step. A `'toll'` or an `'end'` event comes after the systems' place in the step, so a system notices a toll by `S.toll` rising, and what the end of a vigil decides is `Progress.endVigil`'s.
+
+### The Household as the game keeps it (C0)
+
+`90-game.js` holds the save, `Game.save`: read once at boot from `Store` under `SaveData.KEY` (one that cannot be read is set aside under `SaveData.KEY + '.unread'`, and the Household starts afresh) and written by `Game.write()`. Its states run `'title'` → `'household'` → `'lantern'` → `'run'` → `'results'` → `'lantern'`:
+
+```
+Game.household()                     the Household: choose a standing character, or make one
+Game.make(classId, name, bells?) -> char | null    Char.create on the save; the new character is active; written
+Game.lantern(uid?) -> char | null    the Lantern with that character (else the active one), made active
+Game.vigil(zone?, seed?) -> S | null the active character goes down ('dial' unless named): Char.begin, the save written
+                                     with save.away set, Game.start(cfg)
+Game.write() -> Promise<boolean>     a screen that changed Game.save calls it; nothing else writes Store
+Game.exportText() -> text            SaveData.encode(Game.save)
+Game.importText(text) -> {ok, errors, notes}    SaveData.decode; a sound save replaces the one held, and is written
+Game.char, Game.report, Game.ROOMS   the active character; what the last Char.end did; the Lantern's rooms
+```
+
+In a character's vigil the run has a copy of the character, `S.cfg.char`, and `S.cfg.account = {frame, open, warned}`: copies of the Bellframe and of what bequests opened, and `warned`, the seconds sooner the Register shows each attack that killed a character (0.15 a death, three at most). At every toll, and when the page is hidden, `Char.checkpoint(save, S)` keeps what was earned (the run's copy of the character, the Hum heard, the tolls) and the save is written, so nothing earned or heard is lost to a closed page. At the end `Char.end(save, S)` applies it and the save is written before the results open with `{S, result, report}`. A vigil the page closed or reloaded ends at the next start as `Char.abandoned(save)`, as if spared; one replaced by another run, or ended by hand without a result, ends so at once. What `Char.end` does, in order: what ringing down banked joins the Household, whatever came after (`S.bank.coin` to its coin, `S.bank.finds` to its chest, each with a uid of the save); the haul carried is lost; the Hum heard is kept; the character's tolls and vigils count up and a mourning term runs down by one; then
+
+- **left or spared**: it takes the run's copy (its experience and levels, the lines its worn finds took, the voices and knots it found); every voice of its loadout counts the tolls, a level every 8, to 20, its rope growing; a place struck for a re-walk that took a line keeps it;
+- **died**: its worn finds go to the chest (a place struck for a re-walk and both its neighbours erased for good), its knots go to the chest untied, its voices fall silent with it; it is recast as a bell weighing the tolls of its whole life, waiting to be hung; the Register gains it, with `S.cause`; a cause not yet on the Register pays `deathHum` x the toll x hum-gain; every other standing character mourns it, a vigil for every 10 levels it had and at least one (full mourning while more than half the term is left: +50% Hum and the flag `full-mourning`, under which no coin is picked up; then half mourning: +25%); a longer term replaces a shorter one that is running, a shorter one adds nothing;
+- every recast find of the chest cools by the tolls heard (`Items.cool`); and last `Progress.endVigil(save, S, report)`.
+
+The Lantern offers a room for each screen of `Game.ROOMS` that is registered: `'plan'`, `'finds'`, `'voices'`, `'bellframe'`, `'register'`, `'bequests'`, each opened with `{char}`, the active character. A room changes the save through `Char` and its package's functions, pays prices from `Game.save.account` (coin, Hum), and then calls `Game.write()`. The stand-ins `'household'`, `'lantern'` and `'save-text'` of `90-game` give way when the fourth package registers those ids first. The browser tests (`10-shell`, `20-play`, `31-scene`, `52-household`) count on these, whatever screen stands there: the title's main control opens the Household; on the Household the control with focus makes a character of the first open class while nobody stands (a control marked `data-make`, with a text field for the name) and otherwise chooses the first standing character; the Register is an element of class `game-register` with one of class `game-dead` for each death, naming the body that killed it, and a dead character has no control; on the Lantern focus starts on the way down, whose text begins "Go down to"; the Household's control "Save text" opens the save as text, in fields marked `data-field="export"` and `data-field="import"`, read in by "Read it in". A package that changes one of these changes those tests in the same change.
+
+### What every package reads
+
+- **The character** (`Char`, "The Household's shapes"). Read its fields; change them only through `Char` and the owning package's functions: the route by `Char.allocate` and `Char.refund`, worn finds by `Char.equip` and `Char.unequip` (and `Items` for a find's lines), voices and knots by `Char.place`, `Char.tie`, `Char.untie`, `Char.give` and `Char.take`, observances by `Char.learn`, `Char.hold` and `Char.release`, experience by `Char.gain`. In a vigil a system may change the run's copy, `S.cfg.char` (a line on a worn find, a voice or a knot found): the next checkpoint keeps it.
+- **Its sheet.** `Char.mods(char, S, account)` gathers, in this order: the class's attributes at its level and the class's modifiers; the Plan (`Tree.mods`); its calling's nodes; the observances it keeps, but for those `S.observances.broken` names; mourning; the Bellframe (`Bellframe.mods`); and last its worn finds (`Items.mods`), whose share is worked from the attributes all the rest gives. Until a package defines its function, `Char` reads that part plainly (its header says how: each node of the route at its printed value; every open pit's grant and the gift of each bell rung, at the bell's level by its weight, times the true ring; a find's fixed line and its lines at its share). The package's function replaces that reading; it does not add to it. Outside a vigil `Char.sheet(char, account)` gives the Lantern's numbers, with every ring of the Plan counting.
+- **uids.** Characters, finds, voices and bells take `SaveData.uid(save)`. A run cannot reach the save, so what a vigil makes takes a uid below 1, `-(++S.uid)`: a find of the haul, a voice found. `Char.checkpoint` and `Char.end` give each a uid of the save, and a voice keeps its place in the loadout.
+- **What a vigil finds** is kept at once, like experience: a voice or a knot the dead leave goes into the run's character (`S.cfg.char.voices`, held; `S.cfg.char.knots`) and is the character's from the next checkpoint, whether it lives or not (at a death its knots go to the chest, and its voices with it into silence). A find goes into `S.haul` and is kept only by ringing down.
+- **Events.** A package names each kind of event it emits with `Defs.allow('event', kind)` while its file loads, so that a bequest may count it, and it is listed below.
+- **Tests.** `tests/sim/14-character.test.js` and `16-savedata.test.js` hold `Char` and `SaveData` to their contract with none of the packages' functions present; `tests/sim/household.js` gives a small world of test content to start a package's own tests from.
+
+### 13-tree.js: the Plan (the first package). Owns: Tree
+
+```
+Tree.mods(char, toll, out) -> out    the Plan's modifiers for the route char.plan.walk at toll (S.toll in a vigil;
+                                     Infinity outside one, where every ring counts), pushed onto out, by the six rules
+                                     of 04-progression.md with the numbers of the plan 'main': every node of the walk, a
+                                     doubled node twice; a lane by the attribute chosen (char.plan.choice[id]: one flat
+                                     point of it), or its own mods when it offers no choice; beaten bounds: the nodes
+                                     inside each loop the route closes, at loopShare percent when the loop holds
+                                     loopMost or fewer, once each even inside two loops; toll rings: a node of ring N
+                                     only from toll N - 1, its values x (1 + ringGain / 100 x (N - 1)); the banks: a
+                                     flood node's modifiers also need in-water, an ebb node's dry (added to their cond),
+                                     both x (1 + bankGain / 100); straight miles: a milestone + mileGain percent for each
+                                     held node beyond the mileFrom-th in the unbroken run of held nodes through it along
+                                     its street, mileMost at most. Char.mods calls it at every rebuild.
+```
+
+Its screen `'plan'` (opened with `{char}`) draws the street plan from the nodes' `x, y`, the route, the head's neighbours, and the loops and miles as they stand. A point is `Char.allocate(char, nodeId, choice)` (one step from the head; a node held twice at most; a lane's attribute chosen the first time); taking one back is `Char.refund(char, Game.save.account)` for `Char.refundPrice(char)` coin; the points are `Char.points(char)` (one a level from the second, and the bequests' `planPoints`). What more it needs to show the Plan (the head's neighbours, the loops) it adds to `Tree`. It reads the kinds `plan` and `node`, `char.plan` and `char.planPoints`; it declares no run state (the kernel marks a character's run dirty at every toll, when a ring opens) and emits nothing. Node ids begin `plan.`; the Change-ringer's door names `class: 'change-ringer'`, and each later class brings its door with it. The command `{type: 'allocate', id, choice}` already reaches `Char.allocate` in a vigil, for the Watch-night.
+
+### 12-items.js and 27-notches.js: finds (the second package). Owns: Items
+
+```
+Items.make(baseId, level, uid, roll) -> Find   a blank find of that base and level: its fixed line rolled within the
+                                     base's range at roll (0 to 1: from S.rng.loot in a vigil, 0.5 for a class's
+                                     starting gear, which Char.create asks for), every place empty, gone [], walk -1,
+                                     cool 0
+Items.mods(find, attrs, out) -> out  what a worn find gives (Char.mods calls it): its fixed line, and every written line
+                                     (Char.lineMod) at the find's share, Stats.share(attrs[attr], Stats.WANTS.line x
+                                     notches), attr being the attribute of the posture that wrote most of its lines.
+                                     Char.findMods is that reading: keep it, or say why not
+Items.write(S, find, posture) -> place | -1    writes one line by the rule of 04-progression.md: verb and object drawn
+                                     from the posture's table (S.rng.loot), weighted by the base; the amount rolled in
+                                     the verb's band for toll S.toll at the find's level, x notch-size / 100; cut
+                                     backward one time in ten; into the struck place of a re-walk, else the first empty
+                                     place; -1 when there is none
+Items.cool(find, tolls)              a recast find not yet worn: its lowest line rises one step within its band for each
+                                     toll, cool counting the steps left down from 4 (Char.end calls it for every find of
+                                     the chest whose cool is above 0)
+Items.heave(S) -> boolean            button B (21-player.js calls it when heaveCd has run out): throws a find of the haul
+                                     at the dead (heave-harm) and emits 'heave' (x, y where it lands; a = its notches);
+                                     true when one was thrown
+Items.price(find, change) -> coin    what a change costs at the Lantern ('chisel', 'rewalk', 'recast', 'cut'), rising
+                                     with the find's level and notches
+Items.chisel(find, place, word) -> boolean     strikes 'object' or 'condition' from a line for good (Line.struck: the
+                                     line then works at 60%, Char.lineMod)
+Items.rewalk(find, place) -> boolean           strikes a line out and marks its place (find.walk): the first toll
+                                     survived wearing it writes the place anew, ringing down keeps that, and a death
+                                     erases the place and both its neighbours (Char.end does both)
+Items.recast(first, last, uid) -> Find | null  pours two finds of one slot into one: the fixed line and lines 1 to 4
+                                     of the first, 5 to 8 of the last, a blank place staying blank; the higher level;
+                                     cool 4
+Items.cut(find, place) -> boolean    cuts a line away for good (into gone); every other line rises 10%
+```
+
+`27-notches.js` is the part that runs in a vigil. Its slot, `Sim.state('notches', ...)`, holds the seconds of the toll period spent in each posture (stood while Braced, strode while Striding, pressed while crowded, from `S.player.conds`). Its `Sim.system`, when `S.toll` has risen, takes the posture of the period just ended (timed when the toll found the player within 4 m of a landmark) and writes a line on every find of `S.haul` with room, and into the struck place of each worn find on a re-walk (in `S.cfg.char.worn`, kept by the checkpoint); and it drops finds where the dead fall (`'kill'` events, by `find-chance`): pickups of kind 2 whose `item` is a find of `Items.make` at the district's level with a uid `-(++S.uid)`. `Player.pickups` puts them in `S.haul`, and ringing down banks them into `S.bank.finds`. Events: `'notch'` (x, y the player; a = the place written; b = the posture's row in `Stats.POSTURES`; id = the find's base) and `'heave'`.
+
+Its screen `'finds'` (opened with `{char}`) shows the worn finds and the chest (`Game.save.chest.finds`): wearing by `Char.equip(char, uid, slot, Game.save.chest)` and `Char.unequip(char, slot, Game.save.chest)`, and the four changes, paid from `Game.save.account.coin`. It reads the kinds `base` and `posture`, `Stats.POSTURES`, `char.worn`, `save.chest.finds` and `save.account.open.bases` (a base with an `unlock` drops only once a bequest opened it). The bases of the Change-ringer's starting gear go into `startGear` in `31-change-ringer.js`, and `Char.create` wears them as blank finds.
+
+### 27-observances.js, 23-skills.js and 24-archetypes.js: voices, knots and observances (the third package). Owns: Observances, Skills
+
+```
+Observances.promise(rule, {step(S, id, params) -> boolean})   registers a promise, and calls Defs.allow('promise', rule)
+                                     so that observances may name it. step runs once a step in a vigil for each
+                                     observance the character keeps whose promise is rule, with that observance's
+                                     params, and returns false when the promise broke
+```
+
+Its slot, `Sim.state('observances', S => ({broken: {}, ...}))`: `broken`, `{[observanceId]: true}` while a promise stays broken, is what `Char.mods` reads, so a broken observance's modifiers stop (its Heed stays held) until the next toll mends it. Its `Sim.system` runs the promises (a break: `broken[id] = true`, `S.dirty`, and an event `'promise'` with a = 0; each mended at a toll: a = 1; id = the observance) and gives what the dead leave: when an elite or a keeper falls (a `'kill'` with `a >= Sim.ELITE`), by the package's own odds, a blank voice of a tier the district gives (`Char.voice(-(++S.uid), voiceId)` into `S.cfg.char.voices`, held) or a knot (`S.cfg.char.knots[id] + 1`), `S.dirty`, and an event `'found'` (x, y where the body fell; a = 0 for a voice, 1 for a knot; id = its def's id). A promise that keeps pickups from the player sets their `state` below 0, and `Player.pickups` leaves them lying (Alms). Heed needs no system: `Dmg.warning` works free Heed from `heed-max` and the observances kept, and `Char.heed(char, account)` says the same at the Lantern.
+
+A knot that changes a rule names it in `rule`, a word its registry allows with `Defs.allow('knotRule', rule)`. Such a rule acts inside a cast, so it lives in `23-skills.js` or `24-archetypes.js`, which find a voice's knots in its skill sheet (`S.skills[slot].sheet.knots`: the knot defs that fit and are tied in). Its screen `'voices'` (opened with `{char}`): the loadout's places (`Char.places`, `Char.place`), each voice's rope (`Char.rope(level)`) and knots (`Char.tie`, `Char.untie`; `Stats.fits` says which fit), the voices and knots of the chest (`Char.give`, `Char.take`, with `Game.save.chest`), the observances known and kept against Heed (`Char.heed`, `Char.hold`, `Char.release`). It reads the kinds `voice`, `knot` and `observance`, `char.voices`, `char.loadout`, `char.knots`, `char.known`, `char.observances`, `save.chest` and `save.account.open.observances`. Events: `'found'`, `'promise'`.
+
+### 15-progress.js, 28-bequests.js and 17-bellframe.js: the Lantern and the meta (the fourth package). Owns: Progress, Bellframe
+
+```
+Progress.endVigil(save, S, report)   Char.end calls it last: the counts of the vigil's bequests (S.bequests) join the
+                                     Household's (save.account.bequests, scope 'account') and the character's
+                                     (char.bequests, scope 'character': the character report.char, if it still stands);
+                                     each bequest done pays its reward: a class, a base or an observance opened
+                                     (save.account.open), a named voice into the chest, Plan points (char.planPoints),
+                                     coin, Hum; report.bequests lists the ids done
+Bellframe.mods(account, char, out) -> out    what the Bellframe gives a character (Char.mods calls it; account is the
+                                     save's account, a run's {frame, open, warned}, or null: then nothing): the grant of
+                                     every open pit, and the gift of every bell it rang (char.bells, found in
+                                     account.frame.bells) at level 1 + floor(weight / weighPer), at most 20, x (1 +
+                                     trueGain / 100 x Char.trueRing(the weights rung)), x 2 for a bell that rings double
+Bellframe.price(save, what) -> Hum   the price of the next pit ('pit': pitFirst x pitGrowth ^ the pits opened beyond
+                                     the tenor) or of the next ringing place ('place': placeFirst x placeGrowth ^
+                                     (places - 1))
+Bellframe.open(save, pitId) -> boolean       opens a pit whose `from` is open, paid from save.account.hum
+Bellframe.place(save) -> boolean     buys a ringing place, up to placesMost
+Bellframe.hang(save, bellUid, pitId) -> boolean    hangs a bell not yet hung in an open, empty pit
+Bellframe.recast(save, bellUid, giftId) -> boolean recasts a bell's gift, for `recast` Hum, to another gift of its class
+```
+
+`28-bequests.js` (Owns: Progress) is the part that runs in a vigil, the last of the systems: its slot `Sim.state('bequests', ...)` holds the vigil's counts, and its `Sim.system` counts every event a bequest is `on` that its `where` admits (the zone, the rank, the def's id), and the tolls by `S.toll`. Hum at the tolls, for a keeper laid (`26-director.js`) and for a death by a new cause (`Char.end`) is paid already. Events: `'bequest'` (x, y the player; id = the bequest) when one is done in the vigil.
+
+Its screens, in `77-lantern.js`: `'lantern'` (the hub: the character and its sheet from `Char.sheet`, the Household's coin and Hum, its mourning, the rooms of `Game.ROOMS`, the way down by `Game.vigil`; the Lantern's own music, plain hunt on hand-bells, by `Music.define` and the notice `'state'`), `'household'` (the standing characters; making one with the bells it rings, as many as `frame.places` and only hung ones, which `Char.create` checks; the Register; the save as text), `'bellframe'` (the pits and their grants, opening and hanging, the ringing places, the gifts and their recasting), `'register'` (`save.register`: each death, what killed it from its `cause`, and the head start the Register now gives) and `'bequests'`. It reads `save.account` (coin, hum, heard, frame, open, bequests), `save.register`, `char.bells`, `char.bequests`, and the kinds `bellframe`, `pit`, `gift` and `bequest`. A pit opened changes every character after it, in every vigil after it, since `Bellframe.mods` reads the frame of the account each vigil carries: the acceptance's "a Bellframe node bought with one character changes the next one".
+
+### Choices made where the design is silent (C0)
+
+Each is in the header of `14-character.js` or `16-savedata.js`; these bear on the packages:
+
+- What a vigil finds (voices, knots) is the character's at once, like experience; finds are the haul. A dead character's voices fall silent with it; its knots and worn finds go to the chest.
+- A vigil the page left unfinished counts as spared: the character lives and its haul is lost (the outcome `'unfinished'`).
+- Full mourning lasts while more than half its term is left; a term runs down by one at the end of each of the character's vigils.
+- A bell's gift works at level 1 + floor(weight / 8); a pair of bells rings true when the lighter is 10% to 30% lighter than the heavier.
+- A death's key on the Register is the attack's id, or its kind of harm when no attack did it (the press of a body, a rider, the ground); only an attack's id gives a head start.
+- Taking back a point of the Plan costs the plan's `refund` x the head's ring, in coin.
+- No find is worn or changed in a vigil: the chest is the Lantern's, and `Char.equip` without one refuses.
+- Conditions that a written line needs (every one of several; "while not") are written as lists and `unless`, not as new condition bits: `Stats.CONDS` already holds 31, all a mask holds.

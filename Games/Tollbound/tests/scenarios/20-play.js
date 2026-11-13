@@ -1,9 +1,11 @@
 // tests/scenarios/20-play.js: the simulation and the shell together. A vigil is started from the title and
 // played, on a phone and on a desktop window, and the page is made to replay a run that Node has played.
-//   - the main control of the title starts a run; Game.sim(10) takes it 600 steps on; its entities are there
-//     and in place; the frame loop draws them and goes on stepping; a command ends the run and the results
-//     show; a real tap (a finger on the phone, the mouse on the desktop) leads back to the title and into the
-//     next run; Game.start with a cfg that names a zone starts a run of that zone
+//   - the main control of the title opens the Household, whose main control makes a character and opens the
+//     Lantern, whose main control starts the character's vigil (Stage 2: a vigil is kept by a character, so the
+//     title no longer starts one itself); Game.sim(10) takes it 600 steps on; its entities are there and in
+//     place; the frame loop draws them and goes on stepping; a command ends the run and the results show; a real
+//     tap (a finger on the phone, the mouse on the desktop) leads back to the Lantern and into the next vigil;
+//     Game.start with a cfg that names a zone starts a run of that zone
 //   - the replay: reference() below plays a debug scene in Node, through tests/sim/loader.js, with a script
 //     of inputs, and hands the script and the checksums to the page (the scenario's args). The page plays the
 //     same script on its own copy of the simulation and must reach the same checksums: the simulation in the
@@ -65,8 +67,16 @@ const play = async function (ref) {
   if (!main) return T.done();
   const bare = await rows();   // the empty ground behind the title
   main.click();
+  T.check('the main control of the title opens the Household', Game.state === 'household' && UI.top() === 'household' && Game.S === null && !!focused(),
+    [Game.state, UI.top()]);
+  if (focused()) focused().click();
+  const char = Game.char;
+  T.check('whose main control makes a character and opens the Lantern with it', Game.state === 'lantern' && UI.top() === 'lantern' && !!char && !!focused(),
+    [Game.state, UI.top(), char && char.name]);
+  if (focused()) focused().click();
   const S = Game.S;
-  T.check('the main control of the title starts a run', Game.state === 'run' && !!S && S.phase === 'play' && UI.top() === null, [Game.state, S && S.phase, UI.top()]);
+  T.check('whose main control starts the character\'s vigil', Game.state === 'run' && !!S && S.phase === 'play' && UI.top() === null && !!char && !!S.cfg.char &&
+    S.cfg.char.uid === char.uid, [Game.state, S && S.phase, UI.top()]);
   if (!S) return T.done();
 
   // ---- ten seconds of it ----
@@ -142,13 +152,13 @@ const play = async function (ref) {
   let trusted = null;
   back.addEventListener('click', (e) => { trusted = e.isTrusted; }, { once: true });
   await T.tap(back);
-  await T.until(() => Game.state === 'title', 5000);
-  T.check('a real tap on it leads to the title, and the run is dropped', trusted === true && Game.state === 'title' && UI.top() === 'title' && Game.S === null,
+  await T.until(() => Game.state === 'lantern', 5000);
+  T.check('a real tap on it leads back to the Lantern, and the run is dropped', trusted === true && Game.state === 'lantern' && UI.top() === 'lantern' && Game.S === null,
     { trusted: trusted, state: Game.state, top: UI.top() });
   await T.tap(focused());
   await T.until(() => Game.state === 'run', 5000);
-  T.check('and a real tap on the main control of the title starts the next run', Game.state === 'run' && !!Game.S && Game.S !== S && Game.S.phase === 'play' && UI.top() === null,
-    [Game.state, UI.top()]);
+  T.check('and a real tap on the main control of the Lantern starts the character\'s next vigil', Game.state === 'run' && !!Game.S && Game.S !== S &&
+    Game.S.phase === 'play' && UI.top() === null && !!Game.S.cfg.char && Game.S.cfg.char.uid === char.uid, [Game.state, UI.top()]);
   Game.title();
 
   // ---- a run of a zone, as the hub will start it (the address of this scenario says seed=7) ----

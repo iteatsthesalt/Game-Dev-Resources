@@ -5,16 +5,19 @@
 //   menus    the title, the screen stack, focus and keys, the confirm dialog, toasts, the view, the platform
 //            helpers and a first look at storage. On a desktop window and on a phone. Needs no simulation.
 //   storage  Store across a reload, and with storage that fills up or is gone. Needs no simulation.
-//   vigil    a run: "Begin vigil", the steps of the frame loop, Game.sim, the picture, pausing, the hidden page,
-//            walking, the same seed twice, the results and the way back. On a desktop window and on a phone.
+//   vigil    a run: from the title's main control, "The Household", through the Household (a character is made)
+//            and the Lantern (it goes down), the steps of the frame loop, Game.sim, the picture, pausing, the hidden
+//            page, walking, the same seed twice, the results and the way back. On a desktop window and on a phone.
 //            Needs the simulation: without Sim.debugScene its first check fails and says so.
+// The title's main control was "Begin vigil" while a vigil needed no character; in Stage 2 a vigil is kept by a
+// character of the Household, so the title leads there, and these checks follow it (MAIN below).
 // All three ask for the plain view (?view=2d) where the picture matters, so they keep testing that view once
 // the 3D view exists. Each function below runs inside the page (see tests/run.js), so it uses only T, TB and
 // the page itself.
 
 const menus = async function () {
   const { UI, Game, Plat, Gfx, Store } = TB;
-  const phone = innerWidth < 600, ui = document.getElementById('ui');
+  const phone = innerWidth < 600, ui = document.getElementById('ui'), MAIN = 'The Household';
   const key = (name, more) => {
     const e = new KeyboardEvent('keydown', Object.assign({ key: name, bubbles: true, cancelable: true }, more));
     window.dispatchEvent(e);
@@ -35,10 +38,10 @@ const menus = async function () {
 
   // ---- the title ----
   T.check('the game starts on the title, with no run', Game.state === 'title' && UI.top() === 'title' && Game.S === null, [Game.state, UI.top()]);
-  const name = ui.querySelector('h1'), sub = ui.querySelectorAll('.ui-sub'), begin = button('Begin vigil'), build = ui.querySelector('.ui-note');
+  const name = ui.querySelector('h1'), sub = ui.querySelectorAll('.ui-sub'), begin = button(MAIN), build = ui.querySelector('.ui-note');
   T.check('the title names the game', !!name && name.textContent === 'Tollbound', name && name.textContent);
   T.check('the title has one line of subtitle', sub.length === 1 && sub[0].textContent.length > 10, sub.length);
-  T.check('the title has a "Begin vigil" button, and focus starts on it', !!begin && document.activeElement === begin);
+  T.check('the title has its main control, "' + MAIN + '", and focus starts on it', !!begin && document.activeElement === begin);
   T.check('the build line names the build, the view and the storage',
     !!build && /^Build \d+\.\d+\.\d+ · .+ · .+$/.test(build.textContent) && build.textContent.includes(Game.VERSION), build && build.textContent);
   T.check('the view is the plain one the address asked for', !!Gfx.active && Gfx.active.name === '2d' && Gfx.active.caps.puppets === false, Gfx.active && Gfx.active.name);
@@ -50,7 +53,7 @@ const menus = async function () {
   T.check('the focus ring starts shown, except on a touch screen', ui.classList.contains('ui-keys') === !phone);
   if (typeof TB.Settings.open === 'function') {
     const toSettings = button('Settings'), ringWas = ui.classList.contains('ui-keys');
-    T.check('the title has a Settings button below "Begin vigil"', !!toSettings && toSettings.getBoundingClientRect().top > begin.getBoundingClientRect().bottom);
+    T.check('the title has a Settings button below "' + MAIN + '"', !!toSettings && toSettings.getBoundingClientRect().top > begin.getBoundingClientRect().bottom);
     toSettings.focus();   // as a key or pad user reaches it: .click() alone does not move focus
     toSettings.click();
     T.check('it opens the settings over the title', UI.top() === 'settings' && stackNow().startsWith('title (under)'), stackNow());
@@ -234,7 +237,7 @@ const menus = async function () {
   UI.replace('test.bare');
   T.check('UI.replace swaps the top screen', stackNow() === 'title (under), test.bare' && log[log.length - 1] === 'close', stackNow());
   UI.close();
-  T.check('and hands its way back on to the new one', UI.top() === 'title' && document.activeElement === button('Begin vigil'));
+  T.check('and hands its way back on to the new one', UI.top() === 'title' && document.activeElement === button(MAIN));
   UI.open('test.grid', { n: 2 });
   UI.open('test.bare');
   T.check('UI.close(id) closes that screen wherever it is', UI.close('test.grid') === 'test.grid' && stackNow() === 'title (under), test.bare' && !UI.isOpen('test.grid') && UI.isOpen('test.bare') && UI.close('test.grid') === null, stackNow());
@@ -251,7 +254,7 @@ const menus = async function () {
   T.check('UI.clear closes everything', UI.top() === null && ui.children.length === 0 && !UI.pausing() && UI.close() === null);
   T.check('with no screen open the keys are left alone', UI.nav(1, 0) === false && UI.activate() === false && UI.back() === false && !key('ArrowDown').defaultPrevented);
   Game.title();
-  T.check('Game.title shows the title again', UI.top() === 'title' && Game.state === 'title' && document.activeElement === button('Begin vigil'));
+  T.check('Game.title shows the title again', UI.top() === 'title' && Game.state === 'title' && document.activeElement === button(MAIN));
 
   // ---- the confirm dialog ----
   const first = UI.confirm('Leave the vigil?', { yes: 'Leave', no: 'Stay' });
@@ -265,7 +268,7 @@ const menus = async function () {
   T.check('the arrow keys move between the two buttons', document.activeElement === button('Leave'));
   button('Leave').click();
   T.check('the "yes" button resolves true', (await settle(first)) === true);
-  T.check('the dialog is gone, and focus is back where it was', UI.top() === 'title' && !ui.querySelector('[role="alertdialog"]') && document.activeElement === button('Begin vigil'));
+  T.check('the dialog is gone, and focus is back where it was', UI.top() === 'title' && !ui.querySelector('[role="alertdialog"]') && document.activeElement === button(MAIN));
   const second = UI.confirm('Again?');
   T.check('the labels are Yes and No unless given', !!button('Yes') && !!button('No'));
   button('No').click();
@@ -455,6 +458,17 @@ const vigil = async function () {
     'this scenario waits for the simulation kernel')) return T.done();
   const press = (type, code, name) => window.dispatchEvent(new KeyboardEvent(type, { code: code, key: name || code, bubbles: true, cancelable: true }));
   const button = (text) => Array.from(ui.querySelectorAll('.ui-screen:not([inert]) button')).find((b) => b.textContent.trim() === text);
+  const MAIN = 'The Household';
+  // From a screen without a run to a vigil, by the control that has focus on each: on the Household the one that
+  // makes a character (nobody stands yet) or the first character, on the Lantern the way down.
+  const goDown = () => {
+    for (let i = 0; i < 3 && Game.state !== 'run'; i++) {
+      const at = document.activeElement;
+      if (!at || at.tagName !== 'BUTTON' || !ui.contains(at)) break;
+      at.click();
+    }
+    return Game.S;
+  };
   const picture = () => new Promise((resolve) => requestAnimationFrame(() => {
     const view = document.getElementById('view'), copy = document.createElement('canvas');
     copy.width = view.width;
@@ -479,12 +493,15 @@ const vigil = async function () {
     count.seconds += dt;
   });
 
-  // ---- a run starts ----
-  button('Begin vigil').click();
-  const S = Game.S;
-  T.check('"Begin vigil" starts a run', Game.state === 'run' && !!S && S.phase === 'play' && states.join() === 'title > run', [Game.state, S && S.phase, states]);
+  // ---- a run starts: the title leads to the Household, a character is made there and goes down from the Lantern ----
+  button(MAIN).click();
+  T.check('"' + MAIN + '" opens the Household, without a run', Game.state === 'household' && UI.top() === 'household' && Game.S === null && !!Game.save, [Game.state, UI.top()]);
+  const S = goDown(), char = Game.char;
+  T.check('a character made there goes down from the Lantern into a vigil of its own', Game.state === 'run' && !!S && S.phase === 'play' && !!char &&
+    !!S.cfg.char && S.cfg.char.uid === char.uid && Game.save.away !== null && states.join() === 'title > household,household > lantern,lantern > run',
+  [Game.state, S && S.phase, states]);
   if (!S) return T.done();
-  T.check('the title is closed and nothing pauses', UI.top() === null && !UI.pausing() && ui.children.length === 0);
+  T.check('the screens are closed and nothing pauses', UI.top() === null && !UI.pausing() && ui.children.length === 0);
   const pools = [S.enemies, S.shots, S.pickups];
   T.check('the run has a player, and pools of enemies, shots and pickups', !!S.player && typeof S.player.x === 'number' && typeof S.player.y === 'number' &&
     pools.every((p) => !!p && !!p.items && typeof p.n === 'number' && p.items.length >= p.n), pools.map((p) => p && p.n));
@@ -592,12 +609,17 @@ const vigil = async function () {
   await T.sleep(150);
   T.check('an ended run is not stepped, by the frame loop or by Game.sim', last.step === held && Game.sim(1) === 0 && last.step === held);
   back.click();
-  T.check('the button leads back to the title, and the run is dropped', Game.state === 'title' && UI.top() === 'title' && Game.S === null && !!button('Begin vigil'), [Game.state, UI.top()]);
-  button('Begin vigil').click();
-  const again = Game.S;
-  T.check('a new vigil begins from there', Game.state === 'run' && !!again && again !== last && again.phase === 'play');
+  T.check('the button leads back to the title, and the run is dropped', Game.state === 'title' && UI.top() === 'title' && Game.S === null && !!button(MAIN), [Game.state, UI.top()]);
+  T.check('the character\'s vigil the other runs replaced ended as one left unfinished: it stands in the Household, not away',
+    Game.save.away === null && !!Game.save.chars.find((c) => c.uid === char.uid && c.vigils === 1), Game.save.chars.map((c) => [c.uid, c.vigils]));
+  button(MAIN).click();
+  const again = goDown();
+  T.check('a new vigil begins from there, through the Household and the Lantern', Game.state === 'run' && !!again && again !== last && again.phase === 'play' &&
+    !!again.cfg.char && again.cfg.char.uid === char.uid);
   again.phase = 'ended';
   T.check('Game.sim notices the end as well', Game.sim(1) === 0 && Game.state === 'results' && UI.top() === 'results');
+  T.check('a vigil of a character ended by hand, with no result, ends as one left unfinished', !!Game.report && Game.report.outcome === 'unfinished' &&
+    Game.save.away === null && !!button('Back to the Lantern'), Game.report);
   Game.title();
   T.check('without a run Game.command and Game.sim do nothing', Game.command({ type: 'skip' }) === false && Game.sim(1) === 0 && told.length === 2, told);
   return T.done();

@@ -28,8 +28,10 @@
 //   node        one place of the Plan: a door, lane, corner, square or milestone, on a ring, maybe in a straight street
 //               and on a bank, with its links to the nodes next to it
 //   base        what a find is made from: its slot, its family if it is a tool, its level, its fixed line, and the
-//               weights it gives the entries of each posture's table
-//   posture     the table of lines one of the four postures writes (Stats.POSTURES): verbs and objects
+//               weights it gives the entries of each posture's table (times the entry's own w; 1 where it names none)
+//   posture     the table of lines one of the four postures writes (Stats.POSTURES): verbs and objects. A verb's band
+//               holds the amount's [least, most] for a line written at each of the first eight tolls (the eighth for
+//               later ones) on a find of level 1, and grow the percent the band rises for each level above the first
 //   bellframe   the Bellframe's own numbers (one, 'main'): what pits and ringing places cost, the true ring
 //   pit         one place of the Bellframe: the pit it opens from (none for the tenor pit), its printed grant
 //   gift        what a bell gives: one for each class without a calling and one for each calling

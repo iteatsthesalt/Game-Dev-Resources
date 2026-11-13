@@ -6,6 +6,8 @@ Tollbound is a horde-survival action game for the browser, seen from a tilted ca
 
 Open `Tollbound.html` in a browser. Nothing else is needed: no server, no install, no network.
 
+The Household (your characters, the Register of the dead, the chest, the Bellframe) is saved in the browser as you play: at every toll of a vigil and whenever the page is hidden, so closing it loses nothing already earned. Where the page has no storage that lasts (some private windows, a host that allows none) it is kept until the page closes, and the title says so. "Save text" in the Household gives the whole save as text to keep or to carry to another browser, and reads such a text back in.
+
 ## Working on it
 
 `Tollbound.html` is built from `src/`. Edit `src/`, then build and test. Never edit a built file by hand.
@@ -47,7 +49,7 @@ Node 22 is needed. `npm run test:full` runs on GitHub for every change under `Ga
 - `src/js/NN-name.js`: the game, one module per file, joined in the order of the numbers.
 - `tools/`: `modules.js` gives the module order to everything else, `build.js` builds, `lint.js` checks the code rules, `shot.js` takes a picture of the running game and `hear.js` renders the sound effects to WAV files.
 - `tests/`: `run.js` runs the browser scenarios of `scenarios/*.js`, and `helpers.js` is loaded into the page for them. `sim/*.test.js` are the Node tests, and `sim/loader.js` loads the simulation for them. `bench.js` measures the step time of the simulation.
-- `docs/`: `design/` is the game itself: its words, districts and art (`01-world.md`), the combat model with the rows of every table of `src/js/10-stats.js` (`02-combat.md`), the classes (`03-classes.md`) and progression (`04-progression.md`), and the denylist the lint enforces. `engine.md` holds the contracts every module is written against: the run state, the entities, the modules with their signatures, the data shapes, the rules, and what each file of the first vigil exports ("Stage 1 systems"). Read both before writing code. `tests/sim/docs.test.js` holds parts of `engine.md` against the code, so a change to the fields of an entity or of the run state goes into both.
+- `docs/`: `design/` is the game itself: its words, districts and art (`01-world.md`), the combat model with the rows of every table of `src/js/10-stats.js` (`02-combat.md`), the classes (`03-classes.md`) and progression (`04-progression.md`), and the denylist the lint enforces. `engine.md` holds the contracts every module is written against: the run state, the entities, the modules with their signatures, the data shapes, the rules, what each file of the first vigil exports ("Stage 1 systems"), and the contracts of the Household and the packages that build it ("Stage 2 systems"). Read both before writing code. `tests/sim/docs.test.js` holds parts of `engine.md` against the code, so a change to the fields of an entity or of the run state goes into both.
 - `.build/`: development builds. Not tracked.
 
 ## Two builds from one source

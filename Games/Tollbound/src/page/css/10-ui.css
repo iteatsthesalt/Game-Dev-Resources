@@ -1,5 +1,6 @@
 /* 10-ui.css: what 70-ui-core.js and 90-game.js put on the page: the stack of screens, panels, buttons, the
-   confirm dialog, toasts, the title and results screens, and the frame-time readout.
+   confirm dialog, toasts, the stand-in screens (the title, the Household, the Lantern, the save as text and the
+   results), and the frame-time readout.
    Later screens are built from these classes:
      .ui-screen     one open screen, made by UI.open: it covers the game area and centres what it holds
      .ui-scrim      on a screen: dims what is behind it
@@ -237,6 +238,61 @@
   color: var(--second-bright);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
+}
+
+/* ---- the Household, the Lantern and the save as text (stand-ins of 90-game.js until their screens come) ---- */
+
+.game-household,
+.game-lantern,
+.game-save-text { width: min(100%, 30rem); }
+
+.game-list,
+.game-make {
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+/* a standing character: its name and class on one control, in the case it was written in */
+.game-pick {
+  width: 100%;
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+
+.game-field,
+.game-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55em 0.75em;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1rem/1.35 var(--font-ui);
+}
+
+.game-text {
+  min-height: 6.5rem;
+  resize: vertical;
+  font: 0.75rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.game-register {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.game-dead {
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--line);
 }
 
 /* ---- frame times, with ?fps=1 (90-game.js puts it in #hud) ---- */

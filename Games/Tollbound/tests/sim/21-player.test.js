@@ -250,6 +250,22 @@ test('the heave does nothing in Stage 1: no find is carried', () => {
   assert.equal(S.player.heaveCd, 0);
 });
 
+test('the heave is the finds\' to throw: Items.heave on button B when it is ready; a throw starts heave-recharge', () => {
+  const own = loadSim({ only: FILES }), thrown = [];
+  let answer = false;
+  own.Items.heave = (run) => { thrown.push(run.step); return answer; };
+  const S = own.Sim.create(Object.assign({ zone: 'debug', seed: 1 }, own.Player.classRun('change-ringer')));
+  own.Sim.step(S, frame(0, 0, false, true));
+  assert.deepEqual([thrown.length, S.player.heaveCd], [1, 0], 'nothing to throw: no recharge');
+  answer = true;
+  own.Sim.step(S, frame(0, 0, false, true));
+  assert.deepEqual([thrown.length, S.player.heaveCd], [2, S.sheet.stats['heave-recharge']], 'thrown: 4 s until the next');
+  for (let i = 0; i < 60; i++) own.Sim.step(S, frame(0, 0, false, true));
+  assert.equal(thrown.length, 2, 'not asked again while it recharges');
+  own.Sim.step(S, frame(0, 0, false, false));
+  assert.equal(thrown.length, 2, 'nor without the button');
+});
+
 // ---- wounds ----
 
 test('wounds: harm opens one where you stand, joins one within wound-join, and opens another beyond it', () => {
@@ -439,6 +455,27 @@ test('pickups: drawn in from within pickup-reach, taken on touching; beyond reac
   assert.equal(far.alive, true);
   near(far.y, 2.6, 1e-12);                                    // beyond the 2.5 m of pickup-reach it does not move
   assert.equal(S.coin, 1);
+});
+
+test('pickups: one a system holds back (state below 0) is left lying; in full mourning no coin is picked up', () => {
+  const S = plainRun();
+  const drop = (kind, value) => { const o = S.pickups.alloc(); o.kind = kind; o.value = value; o.x = 0.1; o.y = 0; o.ttl = 30; return o; };
+  const held = drop(2, 0);
+  held.state = -1;                                            // an observance's promise keeps it where it fell
+  steps(S, 5);
+  assert.deepEqual([held.alive, held.x, S.haul.length], [true, 0.1, 0]);
+  held.state = 0;
+  steps(S, 1);
+  assert.deepEqual([held.alive, S.haul.length], [false, 1], 'let go, it is taken');
+  Buffs.add(S, 't.mourning', [{ stat: 'flag.full-mourning', op: 'flat', value: 1 }], 10);   // what Char.mods gives a character in full mourning
+  steps(S, 1);
+  const coin = drop(1, 4), ember = drop(0, 1);
+  steps(S, 5);
+  assert.deepEqual([coin.alive, S.coin, ember.alive], [true, 0, false], 'the coin lies; embers are still taken');
+  S.buffs.length = 0;
+  S.dirty = true;
+  steps(S, 2);
+  assert.deepEqual([coin.alive, S.coin], [false, 4], 'half mourning allows coin again');
 });
 
 // ---- timed modifiers ----

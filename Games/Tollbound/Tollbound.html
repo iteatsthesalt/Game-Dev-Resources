@@ -191,7 +191,8 @@ button, input, select, textarea {
   }
 }
 /* 10-ui.css: what 70-ui-core.js and 90-game.js put on the page: the stack of screens, panels, buttons, the
-   confirm dialog, toasts, the title and results screens, and the frame-time readout.
+   confirm dialog, toasts, the stand-in screens (the title, the Household, the Lantern, the save as text and the
+   results), and the frame-time readout.
    Later screens are built from these classes:
      .ui-screen     one open screen, made by UI.open: it covers the game area and centres what it holds
      .ui-scrim      on a screen: dims what is behind it
@@ -429,6 +430,61 @@ button, input, select, textarea {
   color: var(--second-bright);
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
+}
+
+/* ---- the Household, the Lantern and the save as text (stand-ins of 90-game.js until their screens come) ---- */
+
+.game-household,
+.game-lantern,
+.game-save-text { width: min(100%, 30rem); }
+
+.game-list,
+.game-make {
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+/* a standing character: its name and class on one control, in the case it was written in */
+.game-pick {
+  width: 100%;
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+
+.game-field,
+.game-text {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 0.55em 0.75em;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font: 1rem/1.35 var(--font-ui);
+}
+
+.game-text {
+  min-height: 6.5rem;
+  resize: vertical;
+  font: 0.75rem/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+.game-register {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: 0.85rem;
+  text-align: left;
+}
+
+.game-dead {
+  padding: 0.4rem 0;
+  border-top: 1px solid var(--line);
 }
 
 /* ---- frame times, with ?fps=1 (90-game.js puts it in #hud) ---- */
@@ -1079,9 +1135,9 @@ button, input, select, textarea {
 //   Core.seal(list)                   freezes each namespace object in the list. 99-boot.js seals every namespace:
 //                                     after that a namespace cannot gain or change a property, so state that
 //                                     changes lives in a closure or inside an object the namespace holds.
-const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = {}, Progress = {}, Legacy = {},
+const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = {}, Progress = {}, Bellframe = {},
   SaveData = {}, Sim = {}, Player = {}, Buffs = {}, AI = {}, Enemies = {}, Skills = {}, Boss = {}, Director = {},
-  Offers = {}, Favours = {}, Bot = {}, World = {};
+  Offers = {}, Favours = {}, Observances = {}, Bot = {}, World = {};
 
 (function () {
   'use strict';
@@ -1259,9 +1315,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 // that runs once at boot.
 // Owns: Defs
 // Public:
-//   Defs.KINDS                       the kinds of definition: voice, knot, observance, treeSkeleton, cluster,
-//                                    legacyNode, class, calling, attack, enemy, boss, zone, puppet, prop, tileset, base,
-//                                    affix, unique, currency, favour, bequest, mode, curves, constants, trait, cause
+//   Defs.KINDS                       the kinds of definition: voice, knot, observance, plan, node, class, calling, peal,
+//                                    attack, enemy, boss, zone, puppet, prop, tileset, base, posture, bellframe, pit,
+//                                    gift, favour, bequest, mode, curves, constants, trait, cause
 //   Defs.add(kind, def) -> def       registers a definition. Cheap checks only: a known kind, a string id, an id
 //                                    not yet taken in that kind. Throws otherwise, and after Defs.finalize().
 //   Defs.get(kind, id) -> def        throws an error that names the kind and the id when there is none
@@ -1280,9 +1336,22 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //   Defs.finalize() -> [string]      checks every definition and then freezes all of them, the registries and
 //                                    the schema. [] means valid. Each string reads "kind id: field problem".
 //
-// The kinds voice, knot, observance, favour, bequest and cause are the design's words (docs/design/01-world.md);
-// treeSkeleton, cluster, legacyNode, base, affix, unique and currency keep the shapes of the first plan until Stage 2
-// replaces them with the Plan, the Bellframe and finds (docs/design/04-progression.md).
+// The kinds are the design's words (docs/design/01-world.md and 04-progression.md):
+//   plan        the Plan's own numbers (one, 'main'): its rings and streets, and the numbers of its rules
+//   node        one place of the Plan: a door, lane, corner, square or milestone, on a ring, maybe in a straight street
+//               and on a bank, with its links to the nodes next to it
+//   base        what a find is made from: its slot, its family if it is a tool, its level, its fixed line, and the
+//               weights it gives the entries of each posture's table (times the entry's own w; 1 where it names none)
+//   posture     the table of lines one of the four postures writes (Stats.POSTURES): verbs and objects. A verb's band
+//               holds the amount's [least, most] for a line written at each of the first eight tolls (the eighth for
+//               later ones) on a find of level 1, and grow the percent the band rises for each level above the first
+//   bellframe   the Bellframe's own numbers (one, 'main'): what pits and ringing places cost, the true ring
+//   pit         one place of the Bellframe: the pit it opens from (none for the tenor pit), its printed grant
+//   gift        what a bell gives: one for each class without a calling and one for each calling
+//   peal        a rule of a calling, kept through a vigil for calling points
+//
+//   The shapes a game holds and changes (a character, a find, a voice in its place, a bell, the save) are not
+//   definitions: 14-character.js and 16-savedata.js keep and check them.
 //
 // A spec is {type, required, nullable?, only?, ...}. A field that is not required may be left out; null is allowed
 // only where nullable is true. An object may hold only the fields its spec lists, unless it is open.
@@ -1296,9 +1365,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //        'object'             fields: {name: spec}; open: true when other fields may be there as well
 //        'shape'              shape: a name in Defs.SHAPES
 //        'union'              of: [spec, ...]; the value must fit one of them
-//        'stat' | 'tag' | 'cond' | 'harm' | 'family' | 'primary' | 'counted' | 'ailment'
+//        'stat' | 'tag' | 'cond' | 'harm' | 'family' | 'primary' | 'counted' | 'ailment' | 'posture'
 //                             the id of a row of that table in Stats (harm: a kind of harm; counted: Stats.PER;
-//                             ailment: a condition a body carries)
+//                             ailment: a condition a body carries; posture: Stats.POSTURES)
 //   enum: [word, ...]         on a string: the words allowed
 //   ref: kind                 on a string: the id of a definition of that kind. Not checked while that kind has
 //                             no definitions at all, which is how a build without (say) its puppets stays valid.
@@ -1307,20 +1376,25 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //
 // What finalize checks beyond the specs: that a definition is what JSON can carry (no function, no undefined,
 // no NaN, only plain objects and arrays); inside every Mod and ModRange that a pair value sits on a range stat
-// only and that per.div is above 0; keys and links inside one definition (cluster and calling nodes, puppet parts,
-// a boss's attack ids); that a class and its callings name each other; that no id is both an enemy and a boss;
-// that a voice deals one kind of harm; that an enemy's guard is for a kind of harm that has one; that a favour uses
-// only flat and inc modifiers, and a plain favour switches no flag.
+// only and that per.div is above 0; keys and links inside one definition (calling nodes, puppet parts, a boss's
+// attack ids, a posture's entries); that a class and its callings name each other, and so do a gift and its calling;
+// that no id is both an enemy and a boss; that a voice deals one kind of harm; that an enemy's guard is for a kind of
+// harm that has one; the engine's rule for "more" (04-progression.md): it is found only on knots, squares, callings
+// and named finds, so a favour, a pit and a gift use only flat and inc, and no other node, base, posture or
+// observance uses more; that a plain favour switches no flag; that the links between nodes go both ways, a node
+// never links itself, a door names its class and nothing else does, a milestone stands in a street and only a lane
+// offers a choice; that a tool has a family and nothing else does; that a posture's table is one of the four, and
+// that there is one tenor pit (the one pit that opens from none).
 (function () {
   'use strict';
 
-  const KINDS = ['voice', 'knot', 'observance', 'treeSkeleton', 'cluster', 'legacyNode', 'class', 'calling', 'attack', 'enemy',
-    'boss', 'zone', 'puppet', 'prop', 'tileset', 'base', 'affix', 'unique', 'currency', 'favour', 'bequest', 'mode', 'curves',
-    'constants', 'trait', 'cause'];
+  const KINDS = ['voice', 'knot', 'observance', 'plan', 'node', 'class', 'calling', 'peal', 'attack', 'enemy', 'boss', 'zone',
+    'puppet', 'prop', 'tileset', 'base', 'posture', 'bellframe', 'pit', 'gift', 'favour', 'bequest', 'mode', 'curves', 'constants',
+    'trait', 'cause'];
   const ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/, HEX = /^#[0-9a-fA-F]{6}$/;
   const TABLES = {
     stat: 'a stat', tag: 'a tag', cond: 'a modifier condition', harm: 'a kind of harm', family: 'a family of finds', primary: 'an attribute',
-    counted: 'something a per modifier can count', ailment: 'a condition a body carries',
+    counted: 'something a per modifier can count', ailment: 'a condition a body carries', posture: 'a posture that writes lines',
   };
 
   const lists = Object.create(null), byId = Object.create(null);   // no prototype behind them: "constructor" is not a kind
@@ -1360,9 +1434,12 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     archetype: ['ring', 'rap', 'bar', 'spark', 'cone'],            // what the first version needs (design 15.14)
     target: ['nearest', 'densest', 'random', 'farthest', 'aim', 'self'],
     triggerOn: ['kill', 'hurt', 'pull', 'trade', 'heave', 'timer'],
-    clusterShape: ['ring6', 'arc5', 'fork4', 'line3', 'diamond4'],
-    nodeKind: ['minor', 'major', 'capstone'],
-    callingKind: ['minor', 'major'],
+    knotRule: [],                                                  // the rules knots change: their registry allows them
+    promise: [],                                                   // the promises observances keep: likewise
+    pealRule: [],                                                  // the rules peals keep: likewise
+    nodeKind: ['door', 'lane', 'corner', 'square', 'milestone'],   // the kinds of node on the Plan
+    callingKind: ['lane', 'corner', 'square'],                     // a calling's small tree speaks the Plan's words
+    bank: ['flood', 'ebb'],                                        // the river's two banks on the Plan
     attackKind: ['strike', 'throw', 'press', 'spread', 'fall', 'zone'],
     attackShape: ['arc', 'line', 'circle', 'ring', 'wedge'],
     ai: ['wake', 'chase'],                                         // the common dead walk the wake; the rest steer at you
@@ -1373,13 +1450,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     rig: ['biped', 'quadruped', 'floater', 'crawler', 'winged', 'serpent', 'static'],
     partShape: ['box', 'taper', 'cyl', 'sphere', 'cone'],
     slot: ['tool', 'hat', 'coat', 'hands', 'girdle', 'pattens', 'token'],
-    affixType: ['prefix', 'suffix'],
-    currencyTarget: ['item', 'voice'],
-    currencyOp: ['toMagic', 'toRare', 'addMod', 'reroll', 'removeMod', 'rerollValues', 'addSocket', 'corrupt', 'levelVoice'],
     favourRarity: ['plain', 'turned'],
     favourScope: ['global', 'voices'],
     bequestScope: ['account', 'character'],
-    event: ['hit', 'kill', 'cast', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'offer', 'favour',
+    event: ['hit', 'kill', 'cast', 'hurt', 'wound', 'mend', 'scar', 'pull', 'trade', 'heave', 'pickup', 'level', 'grow', 'offer', 'favour',
       'telegraph', 'phase', 'drop', 'toll', 'count', 'gate', 'stroke', 'end'],
     route: ['zone', 'night'],
     levelOffer: ['none', 'node'],
@@ -1407,8 +1481,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   const at = (min, max) => T('number', max === undefined ? { min } : { min, max });
   const whole = (min, max) => T('int', max === undefined ? { min } : { min, max });
 
-  const text = { name: str, text: str, icon: any }, mods = list(shape('Mod')), ranges = list(shape('ModRange'));
-  const tags = list(row('tag')), vec3 = list(num, 3), req = map(at(0), either(row('primary'), word('level')));
+  const text = { name: str, text: str, icon: any }, mods = list(shape('Mod'));
+  const tags = list(row('tag')), vec3 = list(num, 3);
+  const conds = either(row('cond'), list(row('cond'), [1, 31]));   // one condition, or a list that must all hold
   const SCALED = { a: num, b: num, curve: one('curve') };          // the long form of a 'scaled' value
 
   const attack = {
@@ -1425,11 +1500,11 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 
   const SHAPES = {
     Mod: { open: false, fields: {
-      stat: row('stat'), op: one('op'), value: either(scaled, list(scaled, 2)), tags: opt(tags), cond: opt(row('cond')),
+      stat: row('stat'), op: one('op'), value: either(scaled, list(scaled, 2)), tags: opt(tags), cond: opt(conds), unless: opt(conds),
       per: opt(obj({ stat: row('counted'), div: num, cap: opt(at(0)) })), local: opt(bool),
     } },
     ModRange: { open: false, fields: {
-      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(row('cond')), local: opt(bool),
+      stat: row('stat'), op: one('op'), tags: opt(tags), cond: opt(conds), unless: opt(conds), local: opt(bool),
       min: either(num, list(num, 2)), max: either(num, list(num, 2)),
     } },
     Trigger: { open: false, fields: { on: one('triggerOn'), chance: at(0), cooldown: at(0) } },
@@ -1445,20 +1520,21 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     }),
     knot: Object.assign({}, text, {
       attr: row('primary'), tier: whole(1, 5), requires: tags, excludes: tags, addTags: tags, mods, params: map(num), trigger: nul(shape('Trigger')),
+      rule: opt(nul(one('knotRule'))),                             // the rule it changes, if it changes one
     }),
     observance: Object.assign({}, text, {
       attr: row('primary'), tier: whole(1, 5), heed: at(20, 40), mods, aura: pinned(null),
+      promise: opt(nul(one('promise'))), params: opt(map(num)),     // the promise the thumb keeps, and its numbers
     }),
-    treeSkeleton: {
-      spokes: whole(1), rings: list(obj({ r: at(0), slots: whole(1) })), pathMods: mods, starts: map(obj({ sector: whole(0) }), ref('class')),
+    plan: {
+      name: str, text: opt(str), rings: whole(1, 12), streets: whole(3, 24),
+      ringGain: at(0), bankGain: at(0), mileGain: at(0), mileFrom: whole(0), mileMost: whole(0), loopMost: whole(0), loopShare: at(0, 100),
+      refund: at(0), look: opt(map(any)),
     },
-    cluster: {
-      name: str, anchor: obj({ sector: whole(0), ring: whole(0), slot: whole(0) }), shape: one('clusterShape'), theme: tags, entry: str,
-      nodes: list(obj({ key: str, kind: one('nodeKind'), name: str, text: opt(str), icon: opt(any), mods })),
+    node: {
+      kind: one('nodeKind'), ring: whole(1, 12), street: nul(whole(0, 23)), bank: nul(one('bank')), x: num, y: num, name: str, text: opt(str),
+      icon: opt(any), mods, choice: nul(list(row('primary'), [1, 4])), links: list(ref('node'), [1, 8]), class: opt(ref('class')),
     },
-    legacyNode: Object.assign({}, text, {
-      branch: str, row: whole(0), col: whole(0), requires: list(ref('legacyNode')), ranks: whole(1), cost: list(at(0)), mods, unlock: opt(map(any)),
-    }),
     class: {
       name: str, text: str, attrs: map(at(0), row('primary')), perLevel: map(at(0), row('primary')), base: mods, door: opt(whole(0, 5)),
       voices: list(ref('voice'), [1, 6]), startGear: list(ref('base')), trade: obj({ name: str, text: str, icon: any, recharge: at(0) }),
@@ -1468,6 +1544,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       class: ref('class'), name: str, text: str, points: whole(1),
       nodes: list(obj({ key: str, kind: one('callingKind'), name: str, text: opt(str), icon: opt(any), mods, requires: list(str), row: whole(0), col: whole(0) })),
     },
+    peal: Object.assign({}, text, { calling: ref('calling'), rule: nul(one('pealRule')), points: whole(1), params: opt(map(num)) }),
     attack,
     enemy,
     boss: Object.assign({}, enemy, { arena: obj({ radius: at(0) }), phases: list(phase) }),
@@ -1495,14 +1572,21 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     },
     tileset: { recipe: opt(str), span: opt(at(0.5)), colors: opt(map(either(hex, list(at(0, 1), 3)))) },
     base: {
-      name: str, slot: one('slot'), family: nul(row('family')), tags: list(str), level: whole(1), req, twoHanded: bool,
-      weapon: pinned(null), defence: nul(map(at(0))), implicit: ranges, icon: any,
+      name: str, text: opt(str), slot: one('slot'), family: nul(row('family')), level: whole(1), fixed: shape('ModRange'),
+      tables: map(obj({ verbs: opt(map(at(0))), objects: opt(map(at(0))) }), row('posture')), icon: any,
+      named: opt(bool), unlock: nul(ref('bequest')), weight: at(0),
     },
-    affix: { name: str, type: one('affixType'), group: str, weights: map(at(0)), tiers: list(obj({ ilvl: whole(1), mods: ranges })) },
-    unique: { name: str, base: ref('base'), level: whole(1), mods: ranges, flavour: str, weight: at(0), unlock: nul(ref('bequest')) },
-    currency: Object.assign({}, text, {
-      target: one('currencyTarget'), op: one('currencyOp'), requires: map(any), args: map(any), weight: at(0), level: whole(1),
-    }),
+    posture: {
+      name: str, text: opt(str),
+      verbs: list(obj({ key: str, stat: row('stat'), op: one('op'), band: list(list(num, 2), 8), grow: at(0), w: at(0) }), [1, 200]),
+      objects: list(obj({ key: str, tags, w: at(0) }), [1, 200]),
+    },
+    bellframe: {
+      pitFirst: at(0), pitGrowth: at(1), placeFirst: at(0), placeGrowth: at(1), placesMost: whole(1, 8), trueLow: at(0, 100),
+      trueHigh: at(0, 100), trueGain: at(0), weighPer: at(1), recast: at(0), deathHum: at(0),
+    },
+    pit: Object.assign({}, text, { from: nul(ref('pit')), grant: mods, x: num, y: num }),
+    gift: Object.assign({}, text, { class: ref('class'), calling: nul(ref('calling')), mods }),
     favour: Object.assign({}, text, {
       rarity: one('favourRarity'), weight: at(0), maxStacks: whole(1), group: opt(str), scope: one('favourScope'),
       requires: obj({ tags: opt(tags), class: opt(ref('class')), runLevel: opt(whole(0)) }), mods, params: opt(map(num)),
@@ -1510,8 +1594,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     bequest: {
       name: str, text: str, hidden: bool, scope: one('bequestScope'), on: one('event'), count: whole(1), where: map(any),
       reward: obj({
-        class: opt(ref('class')), zone: opt(ref('zone')), unique: opt(ref('unique')), planPoints: opt(whole(0)), coin: opt(at(0)),
-        hum: opt(at(0)), currency: opt(map(at(0), ref('currency'))),
+        class: opt(ref('class')), bill: opt(obj({ zone: ref('zone'), causes: list(ref('cause'), [1, 4]) })), base: opt(ref('base')),
+        observance: opt(ref('observance')), voice: opt(ref('voice')), planPoints: opt(whole(0)), coin: opt(at(0)), hum: opt(at(0)),
       }),
     },
     mode: {
@@ -1525,7 +1609,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     trait: { name: str, text: opt(str), mods: opt(mods) },
     cause: { name: str, text: opt(str), mods: opt(mods) },
   };
-  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'cause'];
+  const OPEN = ['tileset', 'curves', 'constants', 'trait', 'cause', 'bellframe'];
 
   const SCHEMA = {};
   for (const kind of KINDS) SCHEMA[kind] = { open: OPEN.includes(kind), fields: Object.assign({ id }, FIELDS[kind]) };
@@ -1707,13 +1791,63 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return keys;
   }
   const FLAG = 'flag.';                               // the prefix of the stats that switch a rule
+  // The engine's rule (04-progression.md): "more" appears only on knots, squares, callings and named finds.
+  const noMore = (list, field, why, say) => list.forEach((m, i) => {
+    if (m.op === 'more') say(field + '[' + i + '].op', '"more" is found only on knots, squares, callings and named finds, not ' + why);
+  });
+  const flatInc = (list, field, what, say) => list.forEach((m, i) => {
+    if (m.op !== 'flat' && m.op !== 'inc') say(field + '[' + i + '].op', '"' + m.op + '": ' + what + ' adds numbers with flat and inc only');
+  });
   const RULES = {
     voice: function (def, say) {
       const kinds = Object.keys(def.damage);
       if (kinds.length !== 1) say('damage', 'must name one kind of harm, not ' + kinds.length + ': every voice deals one kind');
     },
-    cluster: function (def, say) {
-      if (!keyRules(def.nodes, say).includes(def.entry)) say('entry', '"' + def.entry + '" is not the key of one of its nodes');
+    observance: function (def, say) { noMore(def.mods, 'mods', 'on an observance', say); },
+    node: function (def, say) {
+      def.links.forEach((link, i) => {
+        if (link === def.id) say('links[' + i + ']', 'is the node itself');
+        const other = byId.node.get(link);
+        if (other !== undefined && Array.isArray(other.links) && !other.links.includes(def.id)) say('links[' + i + ']', '"' + link + '" does not link back');
+      });
+      if (twice(def.links) !== undefined) say('links', 'names "' + twice(def.links) + '" twice');
+      if ((def.kind === 'door') !== (def.class !== undefined)) say('class', def.kind === 'door' ? 'is missing: a door is a class\'s start' : 'is only for a door');
+      if (def.kind === 'door' && def.mods.length > 0) say('mods', 'must be empty: a door gives nothing');
+      if (def.kind === 'milestone' && def.street === null) say('street', 'is null: a milestone stands in a straight street');
+      if (def.choice !== null && def.kind !== 'lane') say('choice', 'is only for a lane');
+      if (def.kind !== 'square') noMore(def.mods, 'mods', 'on a ' + def.kind, say);
+      const plan = byId.plan.get('main');
+      if (plan !== undefined && def.ring > plan.rings) say('ring', 'must be at most ' + plan.rings + ', the rings of the Plan, not ' + def.ring);
+      if (plan !== undefined && def.street !== null && def.street >= plan.streets) say('street', 'must be below ' + plan.streets + ', the streets of the Plan');
+    },
+    base: function (def, say) {
+      if ((def.slot === 'tool') !== (def.family !== null)) say('family', def.slot === 'tool' ? 'is null: a tool has a family' : 'is only for a tool');
+      if (def.named !== true && def.fixed.op === 'more') say('fixed.op', '"more" is found only on knots, squares, callings and named finds');
+    },
+    posture: function (def, say) {
+      if (typeof Stats.is === 'function' && !Stats.is('posture', def.id)) say('id', '"' + def.id + '" is not one of the postures that write lines');
+      const verbs = def.verbs.map((v) => v.key), objects = def.objects.map((o) => o.key);
+      if (twice(verbs) !== undefined) say('verbs', 'has two verbs with the key "' + twice(verbs) + '"');
+      if (twice(objects) !== undefined) say('objects', 'has two objects with the key "' + twice(objects) + '"');
+      def.verbs.forEach((v, i) => {
+        if (v.op !== 'flat' && v.op !== 'inc') say('verbs[' + i + '].op', '"' + v.op + '": a written line adds with flat and inc only');
+        v.band.forEach((b, k) => { if (b[0] > b[1]) say('verbs[' + i + '].band[' + k + ']', 'runs from more to less'); });
+      });
+    },
+    pit: function (def, say) {
+      flatInc(def.grant, 'grant', 'the Bellframe', say);
+      if (def.from === def.id) say('from', 'is the pit itself');
+      if (def.from === null) {                     // told of the second and later: the first stands as the tenor pit
+        for (const other of lists.pit) {
+          if (other === def) break;
+          if (other.from === null) { say('from', 'is null, and so is that of "' + other.id + '": there is one tenor pit'); break; }
+        }
+      }
+    },
+    gift: function (def, say) {
+      flatInc(def.mods, 'mods', 'the Bellframe', say);
+      const calling = def.calling === null ? undefined : byId.calling.get(def.calling);
+      if (calling !== undefined && calling.class !== def.class) say('calling', '"' + def.calling + '" belongs to the class "' + calling.class + '"');
     },
     calling: function (def, say) {
       const keys = keyRules(def.nodes, say);
@@ -1728,9 +1862,6 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
         const calling = byId.calling.get(callingId);
         if (calling !== undefined && calling.class !== def.id) say('callings[' + i + ']', '"' + callingId + '" belongs to the class "' + calling.class + '"');
       });
-    },
-    legacyNode: function (def, say) {
-      if (def.cost.length !== def.ranks) say('cost', 'must hold one cost for each of its ' + def.ranks + ' ranks, not ' + def.cost.length);
     },
     enemy: function (def, say) {
       const own = def.attacks.map((a) => (typeof a === 'string' ? a : a.id)), again = twice(own);
@@ -1767,6 +1898,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
         if (m.op !== 'flat' && m.op !== 'inc') say('mods[' + i + '].op', '"' + m.op + '": a favour adds numbers with flat and inc only');
         if (def.rarity === 'plain' && typeof m.stat === 'string' && m.stat.startsWith(FLAG)) say('mods[' + i + '].stat', '"' + m.stat + '" switches a rule, which only a turned favour does');
       });
+    },
+    peal: function (def, say) {
+      const calling = byId.calling.get(def.calling);
+      if (calling !== undefined && calling.points > 0 && def.points > calling.points) say('points', 'must be at most ' + calling.points + ', the points of its calling');
     },
     mode: function (def, say) {
       const curves = byId.curves.get('main');
@@ -2060,11 +2195,17 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                        prefix  the row stands for every id that starts with this ('flag.', 'param.')
 //   Stats.WANTS        {voice: 10, knot: 6, line: 4}   what a voice and a knot want of their attribute for each
 //                                                tier, and a find for each written line (section 14 of the design)
+//   Stats.POSTURES     [{id, cond, attr}]        the four things a toll period can be spent doing, which write the
+//                                                lines of finds (04-progression.md, "How lines are written"): stood
+//                                                (Braced), strode (Striding), pressed (crowded) and timed (the toll
+//                                                found you at a landmark). cond: the condition a line it writes works
+//                                                under; attr: the attribute a find mostly written by it wants (14)
+//   Stats.POSTURE      {id: row number}
 //   Stats.LEVEL_MAX    20                        the top level of a Scaled value
 // Public, functions:
 //   Stats.stat(id) -> row | null                 the row of a stat id, also for 'flag.<id>' and 'param.<key>'
 //   Stats.is(table, id) -> boolean               table: 'stat' | 'tag' | 'cond' | 'harm' (Stats.TYPES) | 'family' |
-//                                                'primary' | 'counted' (Stats.PER) | 'ailment'
+//                                                'primary' | 'counted' (Stats.PER) | 'ailment' | 'posture'
 //   Stats.condMask(conds) -> number              a set of conditions from an array of ids (a number passes through)
 //   Stats.scaled(value, level) -> number         a Scaled at an owner level: a number is itself; {a, b, curve} runs
 //                                                from a at level 1 to b at level 20, 'lin' in equal steps, 'exp' by
@@ -2079,11 +2220,12 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                                                the value of one stat from a list of modifiers:
 //                                                  clamp(set ?? (base + flat) * max(0, 1 + inc/100) * product(1 + more/100), min, max)
 //                                                A modifier counts when its stat is the one asked for, all its tags
-//                                                are among tags, its cond (if any) is in conds (an array of ids or a
-//                                                mask) and it is not local. A "per" modifier is multiplied by
-//                                                min(cap, floor(primaries[per.stat] / per.div)). Of several "set" the
-//                                                lowest wins. A Scaled value that was not resolved counts at level 1.
-//                                                For a range stat this is the low end.
+//                                                are among tags, its condition holds for conds (an array of ids or a
+//                                                mask; see "Conditions" below) and it is not local. A "per" modifier
+//                                                is multiplied by min(cap, floor(primaries[per.stat] / per.div)). Of
+//                                                several "set" the lowest wins. A Scaled value that was not resolved
+//                                                counts at level 1. For a range stat this is the low end.
+//   Stats.holds(mod, conds) -> boolean           whether a modifier's condition holds for conds (a mask or ids)
 //   Stats.queryRange(mods, stat, tags, conds, primaries, out) -> out      both ends, as out[0] and out[1]
 //   Stats.sheet(mods, ctx) -> Sheet              ctx: {level, weapon?, observances?, favours?, finds?, debts?, conds?}
 //   Stats.skillSheet(mods, voiceInst, sheet) -> SkillSheet
@@ -2132,13 +2274,22 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                                  (rows with chance), and what its seconds are multiplied by (cond-duration)
 //   params,                        {[key]: number}: the voice's params at its level, plus its knots' params, then
 //                                  modifiers of param.<key>
-//   targetMods,                    [{stat, op, value, hi, cond, kinds, skill}]: modifiers whose condition is about the
-//                                  body struck, left out of everything above for the hit code to apply. cond is a bit
-//                                  number, kinds a mask of the kind indices whose tags it fits, skill is true when it
+//   targetMods,                    [{stat, op, value, hi, cond, unless, kinds, skill}]: modifiers whose condition is
+//                                  about the body struck, left out of everything above for the hit code to apply. cond
+//                                  is the mask of the body's conditions that must hold and unless the mask of those
+//                                  that must not (the player's part of a mixed condition is settled when the sheet is
+//                                  made); kinds a mask of the kind indices whose tags it fits; skill is true when it
 //                                  fits the voice without a kind.
 // }
 // The tags of one kind of harm: the kind's id, and 'dot' if the kind ticks, else 'hit'. A voice's harm of a kind is
 // worked out with its tags and that kind's; everything else on its sheet with its tags and those of the kinds it deals.
+//
+// Conditions. A modifier's cond is one condition id or a list of ids, every one of which must hold; its unless is one
+// id or a list, none of which may hold (a written line cut backward works "while not Braced": unless 'braced'). An id
+// that is not in the tables never holds: in cond it keeps the modifier out for good, in unless it keeps nothing out.
+// A modifier any of whose conditions is about the body struck (a t- condition) never counts in a sheet's own numbers:
+// a voice's sheet sets it aside in targetMods, and the player's sheet leaves it out. Stats.query asks no such
+// question: it counts whatever holds for the conds it is given.
 (function () {
   'use strict';
 
@@ -2171,6 +2322,14 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       { stat: 'damage', op: 'inc', value: 1, div: 1, tags: ['timed'] },
       { stat: 'heed-max', op: 'flat', value: 1, div: 1 },
       { stat: 'warn', op: 'flat', value: 0.05, div: 10 }] },
+  ];
+  // what a toll period was spent doing, which writes a line on each find carried (04-progression.md): the condition
+  // the line works under, and the attribute a find mostly written that way wants (02-combat.md, section 14)
+  const POSTURES = [
+    { id: 'stood', cond: 'braced', attr: 'knee' },
+    { id: 'strode', cond: 'striding', attr: 'heel' },
+    { id: 'pressed', cond: 'crowded', attr: 'hand' },
+    { id: 'timed', cond: 'after-quarter', attr: 'ear' },
   ];
   // what a sheet's ctx brings for "per" modifiers: character level (from 1), observances kept, favours taken this
   // vigil, finds carried, and the Surety's debts. Whoever changes one of them sets S.dirty.
@@ -2258,7 +2417,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     rows.forEach((r, i) => { if (typeof r[key] === 'string') map[r[key]] = i; });
     return map;
   };
-  const TYPE = index(TYPES, 'id'), AILMENT = index(AILMENTS, 'id'), RULE = index(AILMENTS, 'rule');
+  const TYPE = index(TYPES, 'id'), AILMENT = index(AILMENTS, 'id'), RULE = index(AILMENTS, 'rule'), POSTURE = index(POSTURES, 'id');
   const PER = PRIMARIES.map((p) => p.id).concat(COUNTS);
   const TAGS = TYPES.map((t) => t.id).concat(FAMILIES, ROLE_TAGS, AILMENTS.map((a) => a.id));
   const CONDS = PLAYER_CONDS.map((id) => ({ id, target: false, ailment: null }))
@@ -2315,13 +2474,17 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   const SETS = {
     tag: new Set(TAGS), cond: new Set(CONDS.map((c) => c.id)), harm: new Set(TYPES.map((t) => t.id)), family: new Set(FAMILIES),
     primary: new Set(PRIMARIES.map((p) => p.id)), counted: new Set(PER), ailment: new Set(AILMENTS.map((a) => a.id)),
+    posture: new Set(POSTURES.map((p) => p.id)),
   };
+  for (const p of POSTURES) Core.assert(COND[p.cond] !== undefined && SETS.primary.has(p.attr), 'Stats: the posture ' + p.id + ' names what is not in the tables');
   const NO_TAGS = Object.freeze([]), NONE = Object.freeze({});
 
   Stats.TYPES = TYPES; Stats.TYPE = TYPE; Stats.FAMILIES = FAMILIES; Stats.PRIMARIES = PRIMARIES; Stats.PER = PER;
   Stats.AILMENTS = AILMENTS; Stats.AILMENT = AILMENT; Stats.RULE = RULE; Stats.COND_MAX = COND_MAX; Stats.TAGS = TAGS;
   Stats.CONDS = CONDS; Stats.COND = COND; Stats.STATS = STATS; Stats.WANTS = WANTS; Stats.LEVEL_MAX = LEVEL_MAX;
-  Core.deepFreeze([TYPES, TYPE, FAMILIES, PRIMARIES, PER, AILMENTS, AILMENT, RULE, TAGS, CONDS, COND, STATS, WANTS, INHERENT, KIND_TAGS]);
+  Stats.POSTURES = POSTURES; Stats.POSTURE = POSTURE;
+  Core.deepFreeze([TYPES, TYPE, FAMILIES, PRIMARIES, PER, AILMENTS, AILMENT, RULE, TAGS, CONDS, COND, STATS, WANTS, INHERENT, KIND_TAGS,
+    POSTURES, POSTURE]);
 
   Stats.stat = function (id) {
     const known = BY_ID[id];
@@ -2390,6 +2553,47 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   let aLo = 0, aHi = 0, aInc = 0, aMore = 1, aSet = 0, aSetHi = 0, aHasSet = false;
   let vLo = 0, vHi = 0;
 
+  // ---- conditions: a modifier's cond (all must hold) and unless (none may hold), each one id or a list ----
+
+  const NEVER = -1;                               // what needOf gives for a cond that names an unknown id
+
+  // the mask of the conditions a cond field asks for, or NEVER when it names one the tables lack
+  function needOf(c) {
+    if (c === undefined) return 0;
+    if (typeof c === 'string') { const b = COND[c]; return b === undefined ? NEVER : 1 << b; }
+    let m = 0;
+    for (let i = 0; i < c.length; i++) {
+      const b = COND[c[i]];
+      if (b === undefined) return NEVER;
+      m |= 1 << b;
+    }
+    return m;
+  }
+
+  // the mask of the conditions an unless field forbids; an unknown id forbids nothing
+  function noneOf(u) {
+    if (u === undefined) return 0;
+    if (typeof u === 'string') { const b = COND[u]; return b === undefined ? 0 : 1 << b; }
+    let m = 0;
+    for (let i = 0; i < u.length; i++) { const b = COND[u[i]]; if (b !== undefined) m |= 1 << b; }
+    return m;
+  }
+
+  function holds(m, conds) {
+    if (m.cond === undefined && m.unless === undefined) return true;
+    const need = needOf(m.cond);
+    return need !== NEVER && (conds & need) === need && (conds & noneOf(m.unless)) === 0;
+  }
+
+  // is any of a modifier's conditions about the body struck?
+  function aboutTarget(m) {
+    if (m.cond === undefined && m.unless === undefined) return false;
+    const need = needOf(m.cond);
+    return need !== NEVER && ((need | noneOf(m.unless)) & TARGET_BITS) !== 0;
+  }
+
+  Stats.holds = function (m, conds) { return holds(m, condMask(conds)); };
+
   function within(few, many) {                    // is every tag of the first list in the second?
     for (let i = 0; i < few.length; i++) {
       let found = false;
@@ -2414,17 +2618,17 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     vHi *= times;
   }
 
-  // stat: only modifiers of this stat count (null: the list is of one stat already).
-  function fold(mods, stat, tags, conds, prim) {
+  // stat: only modifiers of this stat count (null: the list is of one stat already). sheet: the modifiers about the
+  // body struck are left out, as a sheet's own numbers leave them.
+  function fold(mods, stat, tags, conds, prim, sheet) {
     aLo = 0; aHi = 0; aInc = 0; aMore = 1; aSet = 0; aSetHi = 0; aHasSet = false;
     if (!mods) return;
     for (let i = 0; i < mods.length; i++) {
       const m = mods[i];
       if (stat !== null && m.stat !== stat) continue;
       if (m.local === true) continue;
-      if (m.cond !== undefined) {
-        const bit = COND[m.cond];
-        if (bit === undefined || ((conds >>> bit) & 1) === 0) continue;
+      if (m.cond !== undefined || m.unless !== undefined) {
+        if (!holds(m, conds) || (sheet === true && aboutTarget(m))) continue;
       }
       if (m.tags !== undefined && !within(m.tags, tags)) continue;
       amount(m, prim);
@@ -2445,8 +2649,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return r.int ? floor(v + 1e-9) : v;
   }
 
+  // the value of one stat on a sheet (the modifiers about the body struck left out)
   function value(list, r, tags, conds, prim) {
-    fold(list, null, tags, conds, prim);
+    fold(list, null, tags, conds, prim, true);
     return finish(r, r.base, false);
   }
 
@@ -2567,11 +2772,11 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       let lo = 0, hi = 0;
       if ((kinds >>> t) & 1) {
         const id = TYPES[t].id, own = def.damage[id], held = armed ? weapon.damage[id] : undefined, r = BY_ID[ADDED[t]];
-        fold(by.get(ADDED[t]), null, hitTags[t], conds, prim);
+        fold(by.get(ADDED[t]), null, hitTags[t], conds, prim, true);
         lo = (scaled(own[0], level) + (held ? held[0] * toolPct : 0) + finish(r, r.base, false) * def.eff) * part;
         hi = (scaled(own[1], level) + (held ? held[1] * toolPct : 0) + finish(r, r.base, true) * def.eff) * part;
       }
-      fold(by.get(DAMAGE), null, hitTags[t], conds, prim);
+      fold(by.get(DAMAGE), null, hitTags[t], conds, prim, true);
       const scale = (aInc > -100 ? 1 + aInc / 100 : 0) * aMore;
       ss.baseMin[t] = lo; ss.baseMax[t] = hi; ss.inc[t] = aInc; ss.more[t] = aMore;
       ss.min[t] = lo * scale; ss.max[t] = hi * scale;
@@ -2598,20 +2803,23 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     for (const key in ss.params) {
       const list = by.get(PARAM + key);
       if (list === undefined) continue;
-      fold(list, null, skillTags, conds, prim);
+      fold(list, null, skillTags, conds, prim, true);
       ss.params[key] = finish(PARAM_ROW, ss.params[key], false);
     }
 
-    // modifiers that depend on the body struck cannot be settled here: they are set aside, worth and reach worked out
+    // modifiers that depend on the body struck cannot be settled here: they are set aside, worth and reach worked out.
+    // The player's part of a condition that is about both is settled now, against the conditions of this sheet.
     for (let i = 0; i < all.length; i++) {
-      const m = all[i], bit = m.cond === undefined ? undefined : COND[m.cond];
-      if (bit === undefined || !CONDS[bit].target || m.local === true) continue;
+      const m = all[i];
+      if (m.local === true || !aboutTarget(m)) continue;
+      const need = needOf(m.cond), none = noneOf(m.unless), ownNeed = need & ~TARGET_BITS;
+      if ((conds & ownNeed) !== ownNeed || (conds & none & ~TARGET_BITS) !== 0) continue;
       const skill = m.tags === undefined || within(m.tags, skillTags);
       let fit = 0;
       for (let t = 0; t < n; t++) if (m.tags === undefined || within(m.tags, hitTags[t])) fit |= 1 << t;
       if (fit === 0 && !skill) continue;
       amount(m, prim);
-      ss.targetMods.push({ stat: m.stat, op: m.op, value: vLo, hi: vHi, cond: bit, kinds: fit, skill });
+      ss.targetMods.push({ stat: m.stat, op: m.op, value: vLo, hi: vHi, cond: need & TARGET_BITS, unless: none & TARGET_BITS, kinds: fit, skill });
     }
     return ss;
   };
@@ -2621,7 +2829,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     const list = ss.targetMods;
     for (let i = 0; i < list.length; i++) {
       const m = list[i];
-      if (m.stat !== DAMAGE || ((m.kinds >>> t) & 1) === 0 || ((conds >>> m.cond) & 1) === 0) continue;
+      if (m.stat !== DAMAGE || ((m.kinds >>> t) & 1) === 0 || (conds & m.cond) !== m.cond || (conds & m.unless) !== 0) continue;
       if (m.op === 'inc') inc += m.value;
       else if (m.op === 'more') more *= m.value > -100 ? 1 + m.value / 100 : 0;
     }
@@ -2648,7 +2856,9 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //       area (it has a team) carries its harm in damage already, so for it d = source.damage x scale. scale: a
 //       factor (the keeper's echo is 0.3). seen: the warning the player had, which is the wound's depth (a Blow's
 //       wind-up, the whole fill of a Swell as shown, 0 for Drag). The caller has done step 1, the shape and the
-//       lee. Emits 'hurt', and 'wound' through Player.wound.
+//       lee. Emits 'hurt', and 'wound' through Player.wound. When the harm takes the player to no life, S.cause
+//       becomes {attack, kind, toll}: the attack's id (null for a press, a rider or the ground), the id of the kind
+//       of harm, and S.toll: what the Register will name if the character dies of it.
 //   Dmg.tick(S)                 phase 8, every 15th step: the Drag ticks of 15.12. The dead whose edge is within
 //                               0.1 m of yours press you (damage x press / 4 each); each rider on you deals its Drag
 //                               / 4, and riders on a large dead do the same to it; each Drag zone of the dead you
@@ -2676,8 +2886,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                               a voice by its own fields (len above 0: a lane of half-width r_area along angle;
 //                               a3 above 0: a wedge of that opening round angle; else a circle), an area of the dead
 //                               by its def's shape ('wedge' and 'arc' with def.angle, 'line' with len, else a circle)
-//   Dmg.warning(S, source) -> seconds    added to the fill of a Swell aimed at the player: free Heed x 0.01 + warn
-//                               (+ 0.3 when source is Sounded), at most 1. The Dial's shadow is the vigil's.
+//   Dmg.warning(S, source, attack) -> seconds    added to the fill of a Swell aimed at the player: free Heed x 0.01
+//                               + warn (+ 0.3 when source is Sounded) + what the Register gives for that attack (its
+//                               id: S.cfg.account.warned[attack], the seconds Char.begin worked out from the deaths it
+//                               caused), at most 1 in all. The Dial's shadow is the vigil's.
 //   Dmg.large(e) -> boolean     its def's size is 'large', or its rank is elite or above
 //   Dmg.POSE = {still: 0, braced: 1, moving: 2, striding: 3}    the values of the field pose
 // Shared with 21-player.js, which runs the same rules for the player:
@@ -2795,7 +3007,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       const mods = e.traits[i] && e.traits[i].mods;
       for (let j = 0; mods && j < mods.length; j++) {
         const m = mods[j];
-        if (m.stat !== TAKEN || m.cond !== undefined || !fits(m.tags, tags)) continue;
+        if (m.stat !== TAKEN || m.cond !== undefined || m.unless !== undefined || !fits(m.tags, tags)) continue;
         const v = typeof m.value === 'number' ? m.value : Stats.scaled(m.value, 1);
         if (m.op === 'flat') flat += v;
         else if (m.op === 'inc') inc += v;
@@ -3145,9 +3357,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   // ---- a hit on the player ----
 
   // Falling to no life: Tolled-for once a vigil, until the next toll; a second fall is death. A seal does not hold
-  // back a fall: it breaks first.
-  function fall(S, p) {
+  // back a fall: it breaks first. What brought the player down is noted for the Register (S.cause).
+  function fall(S, p, id, t) {
     p.life = 0;
+    S.cause = { attack: id, kind: TYPES[t].id, toll: S.toll };
     const c = S.combat;
     if (c && !c.reprieved) {
       c.reprieved = true;
@@ -3194,7 +3407,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       }
     }
     Sim.emit(S, 'hurt', p.x, p.y, lost, t, id);
-    if (p.life <= 0) fall(S, p);                                     // 10 no life
+    if (p.life <= 0) fall(S, p, id, t);                              // 10 no life
     return lost;
   }
 
@@ -3338,8 +3551,16 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return free > 0 ? free : 0;
   }
 
-  Dmg.warning = function (S, source) {
-    let w = freeHeed(S) * WARN_PER_HEED + S.sheet.stats.warn;
+  // the Register: each attack that killed one of the Household's characters shows sooner to every later one
+  function registered(S, attack) {
+    const account = S.cfg.account, warned = account && account.warned;
+    if (!warned || typeof attack !== 'string' || !Object.prototype.hasOwnProperty.call(warned, attack)) return 0;
+    const w = warned[attack];
+    return w > 0 ? w : 0;
+  }
+
+  Dmg.warning = function (S, source, attack) {
+    let w = freeHeed(S) * WARN_PER_HEED + S.sheet.stats.warn + registered(S, attack);
     if (source && source.condT && carries(source, SOUNDING)) w += SOUND_EARLY;
     return w < 0 ? 0 : w > WARN_MOST ? WARN_MOST : w;
   };
@@ -3369,6 +3590,1466 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   };
 
 })();
+// 14-character.js: a character of the Household as plain data, and everything done to one: making it, the modifiers
+// it brings to a vigil, its route on the Plan, its finds, voices and knots, its observances and Heed, its experience
+// and levels, and what the end of a vigil does to it and to the Household (docs/design/04-progression.md). Every
+// function takes and changes plain JSON data; none keeps anything between calls.
+// Owns: Char
+// Public:
+//   Char.SLOTS                       the eight places a character wears finds in: tool, hat, coat, hands, girdle,
+//                                    pattens, token-1, token-2 (a base of slot 'token' fits either token place)
+//   Char.PLACES = [1, 3, 8, 15, 25, 35]   the levels at which the six places of a loadout open
+//   Char.create(save, classId, name, bells?) -> char | null
+//                                    a new standing character of the Household: level 1, its class's door as the start
+//                                    of its route on the Plan (when the Plan has one), its class's starting voices (the
+//                                    first in the places its level opens, the rest held), its class's starting gear
+//                                    worn as blank finds (Items.make when there is one), and the bells it rings: uids of
+//                                    bells hung in the Bellframe, at most the ringing places bought, whose dead teach it
+//                                    the observances they knew. null, and nothing changed, when the class is not open,
+//                                    the name is not 1 to 24 letters, a bell cannot be rung, or a vigil is under way.
+//   Char.find(save, uid) -> char | null      a standing character of the save
+//   Char.open(save, classId) -> boolean      the class exists and is open (its unlock is null, or a bequest opened it)
+//   Char.classes(save) -> [classId]          the classes a new character may take, in the order they were defined
+//   Char.mods(char, S, account) -> [Mod]     what the character brings to the sheet (20-sim.js asks for it at every
+//                                    rebuild): its class's attributes at its level and the class's own modifiers; the
+//                                    Plan (Tree.mods(char, toll, out) when 13-tree.js has it; else every node of the
+//                                    route at its printed value, once for each time the route holds it, a lane by the
+//                                    attribute point chosen); its calling's nodes; the observances it keeps, but for
+//                                    those S.observances.broken names (their promise broken until the next toll);
+//                                    mourning (full: hum-gain +50% and the flag full-mourning; half: hum-gain +25%); the
+//                                    Bellframe (Bellframe.mods(account, char, out) when there is one; else every open
+//                                    pit's grant and the gift of every bell it rang, worked at the bell's level, one
+//                                    for every bellframe.weighPer tolls it weighs past the first, to 20, times the true
+//                                    ring, and twice for a bell that rings double); and last its worn finds
+//                                    (Items.mods(find, attrs, out) when 12-items.js has it; else Char.findMods), whose
+//                                    share is worked from the attributes the rest gives. S is the run or null (outside
+//                                    a vigil every ring of the Plan counts); account the save's account or a run's.
+//   Char.weapon(char) -> null                no tool is a weapon (02-combat.md, 15.2)
+//   Char.sheet(char, account) -> Sheet       the character's sheet outside a vigil (Stats.sheet of Char.mods, no
+//                                    conditions), for the Lantern
+//   Char.findMods(find, attrs, out) -> out   the plain meaning of a find: its fixed line, and every written line by
+//                                    Char.lineMod at the find's share: Stats.share of the attribute of the posture that
+//                                    wrote most of its lines (the earliest place breaks a tie) against 4 a notch
+//   Char.lineMod(line, share) -> Mod         one written line as a modifier: its value times share, times 0.6 when a
+//                                    word is struck; its tags unless the object is struck; its condition (as unless
+//                                    when the line is cut backward) unless the condition is struck
+//   Char.notches(find) -> n                  the lines written on it
+//   Char.points(char) -> {have, spent, free} points of the Plan: one a level from the second, and planPoints
+//   Char.allocate(char, nodeId, choice?) -> boolean   one point: the route's head steps to a node linked to it. A node
+//                                    the route holds already is doubled (once at most). A lane that offers a choice
+//                                    needs one of its attributes the first time. (Sim.command 'allocate' calls it.)
+//   Char.refundPrice(char) -> coin           what taking back the head costs: the plan's refund x the node's ring
+//   Char.refund(char, account) -> nodeId | null   takes back the newest point, paid from account.coin; never the door
+//   Char.equip(char, uid, slot, chest) -> boolean   wears a find of chest.finds in a place its base fits; what was worn
+//                                    there goes back to the chest. A find first worn stops cooling (cool 0). Without a
+//                                    chest (Sim.command 'equip' in a vigil) nothing is worn: false.
+//   Char.unequip(char, slot, chest) -> boolean
+//   Char.places(char) -> n                   the places of the loadout its level has opened
+//   Char.place(char, voiceUid | null, place) -> boolean   puts a voice it holds in an open place (0 to 5), or empties
+//                                    the place; a voice already placed elsewhere swaps with what stood there
+//   Char.voice(uid, voiceId) -> VoiceInst    a voice as it is found: level 1, a rope of two empty places, no tolls
+//   Char.rope(level) -> 2..5                 the knots a voice's rope holds at a level: 2, and one more at 7, 13, 19
+//   Char.tie(char, voiceUid, at, knotId) -> boolean   ties one of the character's knots into place at of a voice's
+//                                    rope, when it fits the voice (Stats.fits); what was tied there is untied first
+//   Char.untie(char, voiceUid, at) -> boolean
+//   Char.give(char, chest, what) -> boolean  from the character to the Household's chest: {voice: uid} (not placed)
+//                                    or {knot: id} (one untied knot)
+//   Char.take(char, chest, what) -> boolean  the other way
+//   Char.heed(char, account) -> {max, held, free}   its Heed: heed-max from its sheet, what its observances hold
+//   Char.learn(char, observanceId) -> boolean
+//   Char.hold(char, observanceId, account) -> boolean   keeps an observance it knows, when its free Heed allows
+//   Char.release(char, observanceId) -> boolean
+//   Char.need(char, mode?) -> xp             the experience its next level needs (mode.xpCurve of the curves 'main';
+//                                    the Household's when no mode is given); Infinity at the mode's levelCap
+//   Char.gain(char, xp, mode?) -> levels     experience, kept the moment it is earned: levels rise while it reaches what
+//                                    the next needs; a place a new level opens takes a voice the character holds.
+//                                    21-player.js calls it for every ember of a vigil.
+//   Char.mourning(char) -> 'full' | 'half' | null
+//   Char.trueRing(weights) -> pairs          the true ring of bells of these weights: in order of weight, the
+//                                    neighbouring pairs whose weights differ by trueLow to trueHigh percent of the
+//                                    heavier (10 to 30)
+//   Char.begin(save, uid, zone, seed) -> cfg | null
+//                                    a vigil of that character: the save notes it under way (save.away) and the run's
+//                                    cfg is {mode: 'household', zone, seed, char: a copy, account}, where account is
+//                                    what the run reads of the save: {frame, open, warned}: copies of the Bellframe and
+//                                    of what bequests opened, and warned, the seconds sooner the Register shows each
+//                                    attack that killed a character (0.15 a death, three at most). null when there is
+//                                    no such character, the zone does not exist, or a vigil is under way already.
+//   Char.checkpoint(save, S) -> boolean      what is kept the moment it is earned goes into the save while the vigil
+//                                    goes on (the game calls it at every toll and when the page is hidden): the run's
+//                                    copy of the character (its experience, levels, the lines its worn finds took, the
+//                                    voices and knots it found), the Hum heard so far, the tolls heard so far
+//   Char.end(save, S) -> report | null       what the end of the vigil S does (S.result set): what was banked joins the
+//                                    Household (S.bank.coin to its coin, S.bank.finds to its chest, each with a uid of
+//                                    the save) whatever came after; the haul carried (S.haul, S.coin) is lost; the Hum
+//                                    heard is kept. Rung down ('left') or spared, the character lives: it takes the
+//                                    run's copy, every voice of its loadout counts the tolls (a level every 8, to 20,
+//                                    its rope growing), and a struck place that took a line keeps it. Dead ('died'): its
+//                                    worn finds go to the chest (a place struck for a re-walk and its two neighbours
+//                                    are erased for good), its knots go to the chest untied, its voices fall silent
+//                                    with it; it is recast as a bell (weight: the tolls of its whole life) waiting to be
+//                                    hung; the Register gains it (S.cause); a cause not yet on the Register pays
+//                                    bellframe.deathHum (40) x the tolls x hum-gain; every other standing character
+//                                    mourns it (a vigil for every 10 levels it had, at least one; a longer term
+//                                    lengthens a term already running, a shorter one adds nothing). Every recast find
+//                                    of the chest cools by the tolls heard (Items.cool, when there is one). The tolls
+//                                    heard are S.toll, which counts a toll rung in the step the vigil ended. Then
+//                                    Progress.endVigil(save, S, report), when 15-progress.js has it. report: {char,
+//                                    name, class, outcome, zone, tolls, level, rose, coin, finds, lost: {coin, finds},
+//                                    hum, death, bell, first}
+//   Char.abandoned(save) -> report | null    a vigil the page left unfinished (save.away still set when the game
+//                                    starts): the character lives, as if spared, with what the last checkpoint kept,
+//                                    its haul lost; outcome 'unfinished'
+//   Char.retire(save, uid) -> bell | null    a standing character leaves the Household alive: recast as a bell, on the
+//                                    Register as retired, everything it held given to the chest
+//
+// A uid below 1 is a run's own: a voice found in a vigil takes -(++S.uid) (the run cannot know the save's counter),
+// and Char.checkpoint and Char.end give each such voice a uid of the save, its place in the loadout kept.
+// The shapes (16-savedata.js checks them):
+//   Char = {uid, name, class, calling, callingPoints, callingNodes, peals, level, xp, planPoints,
+//           plan: {walk: [nodeId], choice: {[nodeId]: attribute}}, worn: {[slot]: Find | null}, voices: [VoiceInst],
+//           loadout: [uid | null] x 6, knots: {[knotId]: n}, observances: [id], known: [id], bells: [bellUid],
+//           mourning: null | {term, left}, tolls, vigils, bequests: {[id]: {n, done}}}
+//   VoiceInst = {uid, id, level, rope, knots: [knotId | null] x rope, tolls}
+//   Find = {uid, base, level, fixed: Mod, lines: [Line | null] x 8, gone: [place], walk: -1 | place, cool: 0..4}
+//   Line = {stat, op, value, tags, cond, posture, toll, backward, struck: null | 'object' | 'condition', band: [lo, hi]}
+//   Bell = {uid, of, name, class, calling, weight, gift, pit, double, known}
+//   Death = {uid, name, class, calling, level, tolls, vigils, zone, toll, cause: null | {attack, kind}, how, bell}
+(function () {
+  'use strict';
+
+  const floor = Math.floor, min = Math.min, max = Math.max;
+  const SLIVER = 1e-9, XP_MOST = 1e12;
+  const SLOTS = ['tool', 'hat', 'coat', 'hands', 'girdle', 'pattens', 'token-1', 'token-2'];
+  const PLACES = [1, 3, 8, 15, 25, 35];
+  const ROPE_AT = [7, 13, 19];                     // a rope holds 2 knots, and one more at each of these voice levels
+  const VOICE_TOLLS = 8, VOICE_MOST = 20;          // a voice gains a level for every 8 tolls it speaks through
+  const LINES = 8, STRUCK = 0.6;                   // the places of a find; what a line with a struck word works at
+  const NAME_MOST = 24, BAD_NAME = /[\u0000-\u001f\u007f]/;
+  const MOURN_LEVELS = 10, FULL_HUM = 50, HALF_HUM = 25;
+  const REGISTER_EARLY = 0.15, REGISTER_MOST = 3;
+  // the numbers of the Bellframe when it has no def of its own ('bellframe' 'main', 44-bellframe.js)
+  const FRAME = Object.freeze({ trueLow: 10, trueHigh: 30, trueGain: 5, weighPer: 8, deathHum: 40, placesMost: 8 });
+  const MOURNING = 'flag.full-mourning';
+  const NO_TAGS = Object.freeze([]);
+
+  Char.SLOTS = Object.freeze(SLOTS.slice());
+  Char.PLACES = Object.freeze(PLACES.slice());
+
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  const frameNumbers = () => (Defs.has('bellframe', 'main') ? Defs.get('bellframe', 'main') : FRAME);
+
+  function indexOf(save, uid) {
+    for (let i = 0; i < save.chars.length; i++) if (save.chars[i].uid === uid) return i;
+    return -1;
+  }
+
+  Char.find = function (save, uid) {
+    const i = indexOf(save, uid);
+    return i < 0 ? null : save.chars[i];
+  };
+
+  // ---- classes, names, and a new character ----
+
+  Char.open = function (save, classId) {
+    if (typeof classId !== 'string' || !Defs.has('class', classId)) return false;
+    return Defs.get('class', classId).unlock === null || save.account.open.classes.indexOf(classId) >= 0;
+  };
+
+  Char.classes = function (save) {
+    return Defs.all('class').filter((c) => Char.open(save, c.id)).map((c) => c.id);
+  };
+
+  function goodName(name) {
+    if (typeof name !== 'string') return false;
+    const t = name.trim();
+    return t.length >= 1 && t.length <= NAME_MOST && !BAD_NAME.test(t);
+  }
+
+  // the bells a new character may ring: hung ones, none twice, no more than the places bought
+  function ringable(save, bells) {
+    const frame = save.account.frame;
+    if (bells.length > frame.places) return false;
+    for (let i = 0; i < bells.length; i++) {
+      if (bells.indexOf(bells[i]) !== i) return false;
+      const b = bellOf(frame, bells[i]);
+      if (b === null || b.pit === null) return false;
+    }
+    return true;
+  }
+
+  function bellOf(frame, uid) {
+    const list = frame && Array.isArray(frame.bells) ? frame.bells : NO_TAGS;
+    for (let i = 0; i < list.length; i++) if (list[i].uid === uid) return list[i];
+    return null;
+  }
+
+  function doorOf(classId) {
+    const nodes = Defs.all('node');
+    for (let i = 0; i < nodes.length; i++) if (nodes[i].kind === 'door' && nodes[i].class === classId) return nodes[i].id;
+    return null;
+  }
+
+  // the middle of a ModRange's range, as a value: a blank find made without a roll
+  function middle(r) {
+    if (Array.isArray(r.min)) return [(r.min[0] + r.max[0]) / 2, (r.min[1] + r.max[1]) / 2];
+    return (r.min + r.max) / 2;
+  }
+
+  // a blank find of a base: only its fixed line, every place for a written line empty
+  function blankFind(baseId, level, uid) {
+    if (typeof Items.make === 'function') return Items.make(baseId, level, uid, 0.5);
+    const base = Defs.get('base', baseId), f = base.fixed;
+    const fixed = { stat: f.stat, op: f.op, value: middle(f) };
+    if (f.tags !== undefined) fixed.tags = f.tags.slice();
+    if (f.cond !== undefined) fixed.cond = clone(f.cond);
+    if (f.unless !== undefined) fixed.unless = clone(f.unless);
+    const lines = [];
+    for (let i = 0; i < LINES; i++) lines.push(null);
+    return { uid, base: baseId, level, fixed, lines, gone: [], walk: -1, cool: 0 };
+  }
+
+  function fitsSlot(base, slot) { return base.slot === 'token' ? slot === 'token-1' || slot === 'token-2' : base.slot === slot; }
+
+  // a place for a find of this base that holds nothing yet, or null
+  function freeSlot(char, base) {
+    for (let i = 0; i < SLOTS.length; i++) if (fitsSlot(base, SLOTS[i]) && char.worn[SLOTS[i]] === null) return SLOTS[i];
+    return null;
+  }
+
+  Char.voice = function (uid, id) { return { uid, id, level: 1, rope: 2, knots: [null, null], tolls: 0 }; };
+
+  Char.create = function (save, classId, name, bells) {
+    const ring = Array.isArray(bells) ? bells : [];
+    if (save.away !== null || !Char.open(save, classId) || !goodName(name) || !ringable(save, ring)) return null;
+    const def = Defs.get('class', classId), char = {
+      uid: SaveData.uid(save), name: name.trim(), class: classId, calling: null, callingPoints: 0, callingNodes: [], peals: [],
+      level: 1, xp: 0, planPoints: 0, plan: { walk: [], choice: {} }, worn: {}, voices: [], loadout: [null, null, null, null, null, null],
+      knots: {}, observances: [], known: [], bells: ring.slice(), mourning: null, tolls: 0, vigils: 0, bequests: {},
+    };
+    for (let i = 0; i < SLOTS.length; i++) char.worn[SLOTS[i]] = null;
+    const door = doorOf(classId);
+    if (door !== null) char.plan.walk.push(door);
+    for (let i = 0; i < def.voices.length; i++) char.voices.push(Char.voice(SaveData.uid(save), def.voices[i]));
+    fill(char);
+    for (let i = 0; i < def.startGear.length; i++) {
+      if (!Defs.has('base', def.startGear[i])) continue;
+      const base = Defs.get('base', def.startGear[i]), slot = freeSlot(char, base);
+      if (slot !== null) char.worn[slot] = blankFind(base.id, base.level, SaveData.uid(save));
+    }
+    for (let i = 0; i < ring.length; i++) {          // the dead teach the observances they knew
+      const known = bellOf(save.account.frame, ring[i]).known;
+      for (let k = 0; k < known.length; k++) Char.learn(char, known[k]);
+    }
+    save.chars.push(char);
+    return char;
+  };
+
+  // ---- what a character brings to the sheet ----
+
+  function planMods(char, out) {
+    const walk = char.plan.walk, choice = char.plan.choice;
+    for (let i = 0; i < walk.length; i++) {
+      if (!Defs.has('node', walk[i])) continue;
+      const node = Defs.get('node', walk[i]);
+      if (node.choice !== null && own(choice, walk[i])) out.push({ stat: choice[walk[i]], op: 'flat', value: 1 });
+      for (let k = 0; k < node.mods.length; k++) out.push(node.mods[k]);
+    }
+  }
+
+  function times(m, k) {
+    if (k === 1) return m;
+    const v = m.value;
+    return Object.assign({}, m, { value: Array.isArray(v) ? [v[0] * k, v[1] * k] : v * k });
+  }
+
+  Char.trueRing = function (weights) {
+    const w = weights.slice().sort((a, b) => a - b), n = frameNumbers();
+    let pairs = 0;
+    for (let i = 1; i < w.length; i++) {
+      if (!(w[i] > 0)) continue;
+      const d = (w[i] - w[i - 1]) / w[i] * 100;
+      if (d >= n.trueLow - SLIVER && d <= n.trueHigh + SLIVER) pairs++;
+    }
+    return pairs;
+  };
+
+  function frameMods(account, char, out) {
+    const frame = account && account.frame;
+    if (!frame) return;
+    const pits = Array.isArray(frame.pits) ? frame.pits : NO_TAGS;
+    for (let i = 0; i < pits.length; i++) {
+      if (!Defs.has('pit', pits[i])) continue;
+      const grant = Defs.get('pit', pits[i]).grant;
+      for (let k = 0; k < grant.length; k++) out.push(grant[k]);
+    }
+    const rung = [];
+    for (let i = 0; i < char.bells.length; i++) { const b = bellOf(frame, char.bells[i]); if (b !== null) rung.push(b); }
+    if (rung.length === 0) return;
+    const n = frameNumbers(), ring = 1 + n.trueGain / 100 * Char.trueRing(rung.map((b) => b.weight));
+    for (let i = 0; i < rung.length; i++) {
+      const b = rung[i];
+      if (b.gift === null || !Defs.has('gift', b.gift)) continue;
+      const level = min(Stats.LEVEL_MAX, 1 + floor(b.weight / n.weighPer)), list = Stats.resolve(Defs.get('gift', b.gift).mods, level);
+      for (let k = 0; k < list.length; k++) out.push(times(list[k], ring * (b.double ? 2 : 1)));
+    }
+  }
+
+  Char.notches = function (find) {
+    let n = 0;
+    for (let i = 0; i < find.lines.length; i++) if (find.lines[i] !== null) n++;
+    return n;
+  };
+
+  Char.lineMod = function (line, share) {
+    const k = (share > 0 ? share : 0) * (line.struck === null || line.struck === undefined ? 1 : STRUCK), v = line.value;
+    const m = { stat: line.stat, op: line.op, value: Array.isArray(v) ? [v[0] * k, v[1] * k] : v * k };
+    if (line.struck !== 'object' && line.tags.length > 0) m.tags = line.tags;
+    if (line.struck !== 'condition') { if (line.backward) m.unless = line.cond; else m.cond = line.cond; }
+    return m;
+  };
+
+  Char.findMods = function (find, attrs, out) {
+    if (find.fixed) out.push(find.fixed);
+    const by = [0, 0, 0, 0], first = [LINES, LINES, LINES, LINES];
+    let notches = 0;
+    for (let i = 0; i < find.lines.length; i++) {
+      const line = find.lines[i];
+      if (line === null) continue;
+      notches++;
+      const p = Stats.POSTURE[line.posture];
+      if (p === undefined) continue;
+      by[p]++;
+      if (i < first[p]) first[p] = i;
+    }
+    if (notches === 0) return out;
+    let best = -1;
+    for (let p = 0; p < by.length; p++) if (by[p] > 0 && (best < 0 || by[p] > by[best] || (by[p] === by[best] && first[p] < first[best]))) best = p;
+    const attr = best < 0 ? null : Stats.POSTURES[best].attr;
+    const share = attr === null ? 1 : Stats.share(attrs[attr], Stats.WANTS.line * notches);
+    for (let i = 0; i < find.lines.length; i++) if (find.lines[i] !== null) out.push(Char.lineMod(find.lines[i], share));
+    return out;
+  };
+
+  Char.mourning = function (char) {
+    const m = char.mourning;
+    if (!m || !(m.left > 0)) return null;
+    return m.left > floor(m.term / 2) ? 'full' : 'half';
+  };
+
+  Char.mods = function (char, S, account) {
+    const out = [], def = Defs.get('class', char.class), level = char.level >= 1 ? char.level : 1;
+    for (let i = 0; i < Stats.PRIMARIES.length; i++) {
+      const id = Stats.PRIMARIES[i].id, v = (def.attrs[id] || 0) + (def.perLevel[id] || 0) * (level - 1);
+      if (v !== 0) out.push({ stat: id, op: 'flat', value: v });
+    }
+    for (let i = 0; i < def.base.length; i++) out.push(def.base[i]);
+    const toll = S ? S.toll : Infinity;
+    if (typeof Tree.mods === 'function') Tree.mods(char, toll, out); else planMods(char, out);
+    if (char.calling !== null && Defs.has('calling', char.calling)) {
+      const nodes = Defs.get('calling', char.calling).nodes;
+      for (let i = 0; i < nodes.length; i++) if (char.callingNodes.indexOf(nodes[i].key) >= 0) for (let k = 0; k < nodes[i].mods.length; k++) out.push(nodes[i].mods[k]);
+    }
+    const broken = S && S.observances && S.observances.broken ? S.observances.broken : null;
+    for (let i = 0; i < char.observances.length; i++) {
+      const id = char.observances[i];
+      if (!Defs.has('observance', id) || (broken !== null && broken[id] === true)) continue;
+      const mods = Defs.get('observance', id).mods;
+      for (let k = 0; k < mods.length; k++) out.push(mods[k]);
+    }
+    const grief = Char.mourning(char);
+    if (grief === 'full') out.push({ stat: 'hum-gain', op: 'inc', value: FULL_HUM }, { stat: MOURNING, op: 'flat', value: 1 });
+    else if (grief === 'half') out.push({ stat: 'hum-gain', op: 'inc', value: HALF_HUM });
+    if (typeof Bellframe.mods === 'function') Bellframe.mods(account || null, char, out); else frameMods(account, char, out);
+    // last, the finds: what each works at depends on the attributes all the rest gives
+    const conds = S && S.player ? S.player.conds : 0, prim = { level }, attrs = {};
+    for (let i = 0; i < Stats.PRIMARIES.length; i++) attrs[Stats.PRIMARIES[i].id] = Stats.query(out, Stats.PRIMARIES[i].id, NO_TAGS, conds, prim);
+    for (let i = 0; i < SLOTS.length; i++) {
+      const find = char.worn[SLOTS[i]];
+      if (!find) continue;
+      if (typeof Items.mods === 'function') Items.mods(find, attrs, out); else Char.findMods(find, attrs, out);
+    }
+    return out;
+  };
+
+  Char.weapon = function () { return null; };
+
+  Char.sheet = function (char, account) {
+    return Stats.sheet(Char.mods(char, null, account), { level: char.level, observances: char.observances.length, conds: 0 });
+  };
+
+  // ---- the Plan ----
+
+  Char.points = function (char) {
+    const have = char.level - 1 + char.planPoints, spent = char.plan.walk.length > 1 ? char.plan.walk.length - 1 : 0;
+    return { have, spent, free: have - spent };
+  };
+
+  Char.allocate = function (char, id, choice) {
+    const walk = char.plan.walk;
+    if (typeof id !== 'string' || !Defs.has('node', id) || walk.length === 0 || Char.points(char).free <= 0) return false;
+    const head = walk[walk.length - 1];
+    if (!Defs.has('node', head) || Defs.get('node', head).links.indexOf(id) < 0) return false;
+    let held = 0;
+    for (let i = 0; i < walk.length; i++) if (walk[i] === id) held++;
+    if (held >= 2) return false;                     // a node is doubled once at most
+    const node = Defs.get('node', id);
+    if (held === 0 && node.choice !== null) {
+      if (node.choice.indexOf(choice) < 0) return false;
+      char.plan.choice[id] = choice;
+    }
+    walk.push(id);
+    return true;
+  };
+
+  Char.refundPrice = function (char) {
+    const walk = char.plan.walk;
+    if (walk.length < 2 || !Defs.has('plan', 'main') || !Defs.has('node', walk[walk.length - 1])) return 0;
+    return Defs.get('plan', 'main').refund * Defs.get('node', walk[walk.length - 1]).ring;
+  };
+
+  Char.refund = function (char, account) {
+    const walk = char.plan.walk;
+    if (!account || walk.length < 2) return null;
+    const price = Char.refundPrice(char);
+    if (!(account.coin >= price)) return null;
+    account.coin -= price;
+    const id = walk.pop();
+    if (walk.indexOf(id) < 0) delete char.plan.choice[id];
+    return id;
+  };
+
+  // ---- finds ----
+
+  Char.equip = function (char, uid, slot, chest) {
+    if (!chest || !Array.isArray(chest.finds) || SLOTS.indexOf(slot) < 0) return false;
+    let at = -1;
+    for (let i = 0; i < chest.finds.length; i++) if (chest.finds[i].uid === uid) at = i;
+    if (at < 0) return false;
+    const find = chest.finds[at];
+    if (!Defs.has('base', find.base) || !fitsSlot(Defs.get('base', find.base), slot)) return false;
+    chest.finds.splice(at, 1);
+    if (char.worn[slot]) chest.finds.push(char.worn[slot]);
+    find.cool = 0;                                   // a recast find cools until it is first worn
+    char.worn[slot] = find;
+    return true;
+  };
+
+  Char.unequip = function (char, slot, chest) {
+    if (!chest || !Array.isArray(chest.finds) || SLOTS.indexOf(slot) < 0 || !char.worn[slot]) return false;
+    chest.finds.push(char.worn[slot]);
+    char.worn[slot] = null;
+    return true;
+  };
+
+  // ---- voices and knots ----
+
+  Char.places = function (char) {
+    let n = 0;
+    for (let i = 0; i < PLACES.length; i++) if (char.level >= PLACES[i]) n++;
+    return n;
+  };
+
+  Char.rope = function (level) {
+    let n = 2;
+    for (let i = 0; i < ROPE_AT.length; i++) if (level >= ROPE_AT[i]) n++;
+    return n;
+  };
+
+  function voiceOf(char, uid) {
+    for (let i = 0; i < char.voices.length; i++) if (char.voices[i].uid === uid) return char.voices[i];
+    return null;
+  }
+
+  // the open places that are empty take the voices it holds that stand in no place, in order
+  function fill(char) {
+    const open = Char.places(char);
+    for (let p = 0; p < open && p < char.loadout.length; p++) {
+      if (char.loadout[p] !== null) continue;
+      let v = null;
+      for (let i = 0; i < char.voices.length && v === null; i++) if (char.loadout.indexOf(char.voices[i].uid) < 0) v = char.voices[i];
+      if (v === null) return;
+      char.loadout[p] = v.uid;
+    }
+  }
+
+  Char.place = function (char, uid, place) {
+    if (typeof place !== 'number' || floor(place) !== place || place < 0 || place >= Char.places(char) || place >= char.loadout.length) return false;
+    if (uid === null) { char.loadout[place] = null; return true; }
+    if (voiceOf(char, uid) === null) return false;
+    const was = char.loadout.indexOf(uid);
+    if (was >= 0) char.loadout[was] = char.loadout[place];
+    char.loadout[place] = uid;
+    return true;
+  };
+
+  function untieAt(char, v, at) {
+    const k = v.knots[at];
+    if (k === null || k === undefined) return false;
+    char.knots[k] = (own(char.knots, k) ? char.knots[k] : 0) + 1;
+    v.knots[at] = null;
+    return true;
+  }
+
+  Char.tie = function (char, uid, at, knotId) {
+    const v = voiceOf(char, uid);
+    if (v === null || typeof at !== 'number' || floor(at) !== at || at < 0 || at >= v.rope) return false;
+    if (typeof knotId !== 'string' || !own(char.knots, knotId) || !(char.knots[knotId] > 0) || !Defs.has('knot', knotId) || !Defs.has('voice', v.id)) return false;
+    if (!Stats.fits(Defs.get('voice', v.id), Defs.get('knot', knotId))) return false;
+    untieAt(char, v, at);
+    if (--char.knots[knotId] <= 0) delete char.knots[knotId];
+    v.knots[at] = knotId;
+    return true;
+  };
+
+  Char.untie = function (char, uid, at) {
+    const v = voiceOf(char, uid);
+    return v !== null && typeof at === 'number' && at >= 0 && at < v.knots.length && untieAt(char, v, at);
+  };
+
+  function moveKnot(from, to, id) {
+    if (typeof id !== 'string' || !own(from, id) || !(from[id] > 0)) return false;
+    if (--from[id] <= 0) delete from[id];
+    to[id] = (own(to, id) ? to[id] : 0) + 1;
+    return true;
+  }
+
+  Char.give = function (char, chest, what) {
+    if (!chest || !what) return false;
+    if (what.voice !== undefined) {
+      if (char.loadout.indexOf(what.voice) >= 0) return false;
+      for (let i = 0; i < char.voices.length; i++) {
+        if (char.voices[i].uid !== what.voice) continue;
+        chest.voices.push(char.voices.splice(i, 1)[0]);
+        return true;
+      }
+      return false;
+    }
+    return what.knot !== undefined && moveKnot(char.knots, chest.knots, what.knot);
+  };
+
+  Char.take = function (char, chest, what) {
+    if (!chest || !what) return false;
+    if (what.voice !== undefined) {
+      for (let i = 0; i < chest.voices.length; i++) {
+        if (chest.voices[i].uid !== what.voice) continue;
+        char.voices.push(chest.voices.splice(i, 1)[0]);
+        fill(char);
+        return true;
+      }
+      return false;
+    }
+    return what.knot !== undefined && moveKnot(chest.knots, char.knots, what.knot);
+  };
+
+  // ---- observances and Heed ----
+
+  function held(char) {
+    let n = 0;
+    for (let i = 0; i < char.observances.length; i++) if (Defs.has('observance', char.observances[i])) n += Defs.get('observance', char.observances[i]).heed;
+    return n;
+  }
+
+  Char.heed = function (char, account) {
+    const most = Char.sheet(char, account).stats['heed-max'], h = held(char);
+    return { max: most, held: h, free: most - h };
+  };
+
+  Char.learn = function (char, id) {
+    if (typeof id !== 'string' || !Defs.has('observance', id) || char.known.indexOf(id) >= 0) return false;
+    char.known.push(id);
+    return true;
+  };
+
+  Char.hold = function (char, id, account) {
+    if (char.known.indexOf(id) < 0 || char.observances.indexOf(id) >= 0 || !Defs.has('observance', id)) return false;
+    if (Char.heed(char, account).free < Defs.get('observance', id).heed) return false;
+    char.observances.push(id);
+    return true;
+  };
+
+  Char.release = function (char, id) {
+    const at = char.observances.indexOf(id);
+    if (at < 0) return false;
+    char.observances.splice(at, 1);
+    return true;
+  };
+
+  // ---- experience and levels ----
+
+  function modeOf(mode) {
+    if (mode && typeof mode.xpCurve === 'string') return mode;
+    return Defs.has('mode', 'household') ? Defs.get('mode', 'household') : null;
+  }
+
+  Char.need = function (char, mode) {
+    const m = modeOf(mode), curves = Defs.has('curves', 'main') ? Defs.get('curves', 'main') : null;
+    const curve = m !== null && curves !== null ? curves[m.xpCurve] : null;
+    if (!Array.isArray(curve) || curve.length === 0 || char.level >= m.levelCap) return Infinity;
+    const need = curve[char.level - 1 < curve.length ? char.level - 1 : curve.length - 1];
+    return need > 0 ? need : Infinity;
+  };
+
+  Char.gain = function (char, xp, mode) {
+    if (!(xp > 0)) return 0;
+    char.xp = char.xp + xp < XP_MOST ? char.xp + xp : XP_MOST;
+    let rose = 0;
+    for (;;) {
+      const need = Char.need(char, mode);
+      if (!(char.xp >= need - SLIVER)) break;
+      char.xp = char.xp - need > 0 ? char.xp - need : 0;
+      char.level++;
+      rose++;
+    }
+    if (rose > 0) fill(char);
+    return rose;
+  };
+
+  // ---- the vigil ----
+
+  function warnedOf(register) {
+    const deaths = Object.create(null), out = Object.create(null);
+    for (let i = 0; i < register.length; i++) {
+      const d = register[i];
+      if (d.how !== 'died' || d.cause === null || typeof d.cause.attack !== 'string') continue;
+      const k = d.cause.attack, n = deaths[k] === undefined ? 0 : deaths[k];
+      deaths[k] = n < REGISTER_MOST ? n + 1 : n;
+    }
+    for (const k in deaths) out[k] = deaths[k] * REGISTER_EARLY;
+    return out;
+  }
+
+  Char.begin = function (save, uid, zone, seed) {
+    const char = Char.find(save, uid);
+    if (char === null || save.away !== null || typeof zone !== 'string' || !Defs.has('zone', zone)) return null;
+    if (!(typeof seed === 'string' || (typeof seed === 'number' && seed === seed))) return null;
+    save.away = { char: uid, zone, seed, hum: save.account.hum, heard: save.account.heard, level: char.level, tolls: 0 };
+    save.active = uid;
+    const account = { frame: clone(save.account.frame), open: clone(save.account.open), warned: warnedOf(save.register) };
+    return { mode: 'household', zone, seed, char: clone(char), account };
+  };
+
+  // a voice found in the run has a uid below 1: it takes one of the save's, and keeps its place
+  function renumber(save, char) {
+    for (let i = 0; i < char.voices.length; i++) {
+      const v = char.voices[i];
+      if (v.uid >= 1) continue;
+      const was = v.uid, at = char.loadout.indexOf(was);
+      v.uid = SaveData.uid(save);
+      if (at >= 0) char.loadout[at] = v.uid;
+    }
+    return char;
+  }
+
+  function hum(n) { return n > 0 && n < XP_MOST ? n : 0; }
+
+  Char.checkpoint = function (save, S) {
+    const away = save.away, run = S && S.cfg ? S.cfg.char : null;
+    if (!away || !run || run.uid !== away.char) return false;
+    const i = indexOf(save, away.char);
+    if (i < 0) return false;
+    save.chars[i] = renumber(save, clone(run));
+    save.account.hum = away.hum + hum(S.hum);
+    save.account.heard = away.heard + hum(S.hum);
+    away.tolls = S.toll;
+    return true;
+  };
+
+  function countdown(char) {
+    if (char.mourning === null) return;
+    char.mourning.left--;
+    if (!(char.mourning.left > 0)) char.mourning = null;
+  }
+
+  function mourn(char, level) {
+    const term = max(1, floor(level / MOURN_LEVELS)), m = char.mourning;
+    if (m === null || term > m.left) char.mourning = { term, left: term };
+  }
+
+  // a character that lived through the vigil: its loadout's voices count the tolls; a struck place that took a line keeps it
+  function survive(char, tolls) {
+    for (let i = 0; i < char.loadout.length; i++) {
+      const v = char.loadout[i] === null ? null : voiceOf(char, char.loadout[i]);
+      if (v === null) continue;
+      v.tolls += tolls;
+      const level = min(VOICE_MOST, 1 + floor(v.tolls / VOICE_TOLLS));
+      if (level > v.level) v.level = level;
+      v.rope = Char.rope(v.level);
+      while (v.knots.length < v.rope) v.knots.push(null);
+    }
+    for (let i = 0; i < SLOTS.length; i++) {
+      const f = char.worn[SLOTS[i]];
+      if (f && f.walk >= 0 && f.lines[f.walk] !== null) f.walk = -1;
+    }
+  }
+
+  // a find worn at death: the place struck for a re-walk and both its neighbours are erased for good
+  function erase(f) {
+    if (!(f.walk >= 0)) return;
+    for (let k = f.walk - 1; k <= f.walk + 1; k++) {
+      if (k < 0 || k >= f.lines.length) continue;
+      f.lines[k] = null;
+      if (f.gone.indexOf(k) < 0) f.gone.push(k);
+    }
+    f.gone.sort((a, b) => a - b);
+    f.walk = -1;
+  }
+
+  function giftOf(classId, callingId) {
+    const gifts = Defs.all('gift');
+    for (let i = 0; i < gifts.length; i++) if (gifts[i].class === classId && gifts[i].calling === callingId) return gifts[i].id;
+    return null;
+  }
+
+  // recast as a bell, weighing the tolls of its whole life; hung by the player later
+  function cast(save, char) {
+    const bell = {
+      uid: SaveData.uid(save), of: char.uid, name: char.name, class: char.class, calling: char.calling, weight: char.tolls,
+      gift: giftOf(char.class, char.calling), pit: null, double: false, known: char.known.slice(),
+    };
+    save.account.frame.bells.push(bell);
+    return bell;
+  }
+
+  function knotsToChest(save, char) {
+    const chest = save.chest.knots;
+    for (let i = 0; i < char.voices.length; i++) {
+      const knots = char.voices[i].knots;
+      for (let k = 0; k < knots.length; k++) if (knots[k] !== null) chest[knots[k]] = (own(chest, knots[k]) ? chest[knots[k]] : 0) + 1;
+    }
+    for (const id of Object.keys(char.knots)) chest[id] = (own(chest, id) ? chest[id] : 0) + char.knots[id];
+  }
+
+  const causeKey = (c) => (c === null || c === undefined ? null : typeof c.attack === 'string' ? c.attack : c.kind);
+
+  function bury(save, char, i, zone, toll, cause) {
+    const key = causeKey(cause);
+    let first = key !== null;
+    for (let k = 0; k < save.register.length && first; k++) if (save.register[k].how === 'died' && causeKey(save.register[k].cause) === key) first = false;
+    for (let k = 0; k < SLOTS.length; k++) {
+      const f = char.worn[SLOTS[k]];
+      if (!f) continue;
+      erase(f);
+      save.chest.finds.push(f);
+      char.worn[SLOTS[k]] = null;
+    }
+    knotsToChest(save, char);
+    const bell = cast(save, char), death = {
+      uid: char.uid, name: char.name, class: char.class, calling: char.calling, level: char.level, tolls: char.tolls, vigils: char.vigils,
+      zone, toll, cause: cause ? { attack: cause.attack, kind: cause.kind } : null, how: 'died', bell: bell.uid,
+    };
+    save.register.push(death);
+    save.chars.splice(i, 1);
+    if (save.active === char.uid) save.active = null;
+    for (let k = 0; k < save.chars.length; k++) mourn(save.chars[k], char.level);
+    return { death, bell, first };
+  }
+
+  // recast finds in the chest cool by every toll the Household hears, by the finds' own rule
+  function cool(save, tolls) {
+    if (typeof Items.cool !== 'function' || !(tolls > 0)) return;
+    for (let i = 0; i < save.chest.finds.length; i++) if (save.chest.finds[i].cool > 0) Items.cool(save.chest.finds[i], tolls);
+  }
+
+  Char.end = function (save, S) {
+    const away = save.away, run = S && S.cfg ? S.cfg.char : null, result = S ? S.result : null;
+    if (!away || !run || run.uid !== away.char || !result) return null;
+    save.away = null;
+    const i = indexOf(save, away.char);
+    if (i < 0) return null;
+    // the tolls heard: S.toll, which counts a toll rung in the very step the vigil ended (a character Tolled-for dies
+    // as the toll rings, after the result was counted): the death came at that toll
+    const char = renumber(save, clone(run)), tolls = S.toll, gain = S.sheet ? S.sheet.stats['hum-gain'] / 100 : 1;
+    const report = {
+      char: char.uid, name: char.name, class: char.class, outcome: result.outcome, zone: result.zone, tolls, level: char.level,
+      rose: char.level - away.level, coin: S.bank.coin, finds: S.bank.finds.length, lost: { coin: S.coin, finds: S.haul.length },
+      hum: hum(S.hum), death: null, bell: null, first: false,
+    };
+    save.account.coin += S.bank.coin;                // what was banked belongs to the Household, whatever came after
+    for (let k = 0; k < S.bank.finds.length; k++) {
+      const find = clone(S.bank.finds[k]);
+      find.uid = SaveData.uid(save);
+      save.chest.finds.push(find);
+    }
+    char.tolls += tolls;
+    char.vigils++;
+    countdown(char);
+    if (result.outcome === 'died') {
+      const d = bury(save, char, i, result.zone, tolls, S.cause);
+      report.death = d.death;
+      report.bell = d.bell;
+      report.first = d.first;
+      if (d.first) report.hum += frameNumbers().deathHum * tolls * gain;
+    } else {
+      survive(char, tolls);
+      save.chars[i] = char;
+    }
+    save.account.hum = away.hum + report.hum;
+    save.account.heard = away.heard + report.hum;
+    cool(save, tolls);
+    if (typeof Progress.endVigil === 'function') Progress.endVigil(save, S, report);
+    return report;
+  };
+
+  Char.abandoned = function (save) {
+    const away = save.away;
+    if (!away) return null;
+    save.away = null;
+    const char = Char.find(save, away.char);
+    if (char === null) return null;
+    char.tolls += away.tolls;
+    char.vigils++;
+    countdown(char);
+    survive(char, away.tolls);
+    cool(save, away.tolls);
+    return {
+      char: char.uid, name: char.name, class: char.class, outcome: 'unfinished', zone: away.zone, tolls: away.tolls, level: char.level,
+      rose: char.level - away.level, coin: 0, finds: 0, lost: { coin: 0, finds: 0 }, hum: save.account.hum - away.hum, death: null, bell: null, first: false,
+    };
+  };
+
+  Char.retire = function (save, uid) {
+    const i = indexOf(save, uid);
+    if (save.away !== null || i < 0) return null;
+    const char = save.chars[i];
+    for (let k = 0; k < SLOTS.length; k++) {
+      if (char.worn[SLOTS[k]]) save.chest.finds.push(char.worn[SLOTS[k]]);
+      char.worn[SLOTS[k]] = null;
+    }
+    for (let k = 0; k < char.voices.length; k++) save.chest.voices.push(char.voices[k]);
+    for (const id of Object.keys(char.knots)) save.chest.knots[id] = (own(save.chest.knots, id) ? save.chest.knots[id] : 0) + char.knots[id];
+    const bell = cast(save, char);
+    save.register.push({
+      uid: char.uid, name: char.name, class: char.class, calling: char.calling, level: char.level, tolls: char.tolls, vigils: char.vigils,
+      zone: null, toll: 0, cause: null, how: 'retired', bell: bell.uid,
+    });
+    save.chars.splice(i, 1);
+    if (save.active === uid) save.active = null;
+    return bell;
+  };
+})();
+// 16-savedata.js: the save of the Household as versioned JSON: a blank one, the uids it gives out, the migrations from
+// older versions, the check that trusts nothing it is given and never throws, and the text of an export. It reads
+// and writes no storage: 90-game.js keeps the save through Store (50-platform.js), under SaveData.KEY.
+// Owns: SaveData
+// Public:
+//   SaveData.VERSION = 2              the version this file writes
+//   SaveData.KEY = 'save'             the Store key the game keeps the save under (the settings keep their own)
+//   SaveData.LIMITS                   the most a save may hold: {chars, register, finds, voices, bells, walk, text,
+//                                     errors (the problems one check reports at most)}
+//   SaveData.blank() -> Save          a Household with nobody in it yet: no characters, an empty chest, no coin or
+//                                     Hum, the tenor pit open (the one pit that opens from none, when there is one) and
+//                                     one ringing place
+//   SaveData.uid(save) -> number      the next uid of the save: characters, finds, voices and bells share one counter
+//   SaveData.clone(value) -> copy     a deep copy, through JSON
+//   SaveData.MIGRATIONS               [{from, to, what, up(raw, notes) -> raw}]: each brings a save of one version to
+//                                     the next. Version 1 is the first plan's placeholder (docs/plan.md, Appendix B).
+//   SaveData.migrate(raw) -> {save, errors, notes}   a copy of raw brought up to VERSION, or save null and why;
+//                                     notes tell what a migration had to leave behind
+//   SaveData.validate(raw) -> [string]   every problem of a save of this version, each "where: what" (at most
+//                                     LIMITS.errors); [] when it is sound. It never throws: whatever raw is, it answers.
+//   SaveData.read(raw) -> {save, errors, notes}   migrate, then validate: save is null unless both are clean
+//   SaveData.encode(save) -> text     the text of an export: a first line "TOLLBOUND SAVE <v> <check>", then the JSON
+//   SaveData.decode(text) -> {save, errors, notes}   an import: the text read (with its check if it has the first
+//                                     line; plain JSON is read too), migrated and validated. Never throws.
+//
+// Save = {
+//   v, rev,                    the version, and the writes so far (the game adds 1 at every write)
+//   uid,                       the last uid given out
+//   chars: [Char],             the standing characters, in the order they were made (14-character.js has the shape)
+//   register: [Death],         the dead and the retired, in the order they left: the Register
+//   chest: {finds: [Find], voices: [VoiceInst], knots: {[knotId]: n}}   the Household's chest: banked finds, the worn
+//                              finds of the dead, and what characters gave it
+//   account: {coin, hum, heard, frame: {pits: [pitId], places, bells: [Bell]}, open: {classes, bases, observances,
+//             bills: [{zone, causes}]}, bequests: {[id]: {n, done}}}
+//                              the Household's money; Hum held, and all Hum ever heard; the Bellframe (open pits, ringing
+//                              places bought, every bell cast, hung in a pit or not); what bequests opened; bequests
+//   active: uid | null,        the character last chosen
+//   away: null | {char, zone, seed, hum, heard, level, tolls}   a vigil under way (Char.begin sets it, Char.end clears
+//                              it): the Hum and the level it began with, and the tolls heard by the last checkpoint
+// }
+// What the check holds a save to beyond each field's type: every uid is unique and no higher than save.uid; every id
+// names a definition that exists (a death's and a bell's ids are history and need only be ids); a character's route
+// starts at its class's door, steps only between linked nodes, holds a node at most twice and spends no more points
+// than it has; a lane on the route has its attribute chosen; a worn find sits in a place its base fits; a voice's rope
+// is what its level gives, and each knot tied fits it; the loadout names the character's own voices, each once, and
+// none in a place its level has not opened; the observances it keeps are ones it knows; the bells it rang are bells
+// of the frame; a bell hangs in an open pit, one bell a pit; every open pit opens from another open one; the active
+// character and the one away stand in the Household.
+(function () {
+  'use strict';
+
+  const VERSION = 2, KEY = 'save';
+  const LIMITS = Object.freeze({ chars: 100, register: 5000, finds: 5000, voices: 1000, bells: 5000, walk: 2000, text: 8000000, errors: 50 });
+  const ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
+  const HEADER = /^TOLLBOUND SAVE (\d+) ([0-9a-f]{8})[ \t]*\r?\n/;
+  const BIG = 1e12;
+  const OPS = ['flat', 'inc', 'more', 'set'];
+
+  const SAVE_FIELDS = ['v', 'rev', 'uid', 'chars', 'register', 'chest', 'account', 'active', 'away'];
+  const CHAR_FIELDS = ['uid', 'name', 'class', 'calling', 'callingPoints', 'callingNodes', 'peals', 'level', 'xp', 'planPoints', 'plan',
+    'worn', 'voices', 'loadout', 'knots', 'observances', 'known', 'bells', 'mourning', 'tolls', 'vigils', 'bequests'];
+  const FIND_FIELDS = ['uid', 'base', 'level', 'fixed', 'lines', 'gone', 'walk', 'cool'];
+  const LINE_FIELDS = ['stat', 'op', 'value', 'tags', 'cond', 'posture', 'toll', 'backward', 'struck', 'band'];
+  const VOICE_FIELDS = ['uid', 'id', 'level', 'rope', 'knots', 'tolls'];
+  const BELL_FIELDS = ['uid', 'of', 'name', 'class', 'calling', 'weight', 'gift', 'pit', 'double', 'known'];
+  const DEATH_FIELDS = ['uid', 'name', 'class', 'calling', 'level', 'tolls', 'vigils', 'zone', 'toll', 'cause', 'how', 'bell'];
+  const ACCOUNT_FIELDS = ['coin', 'hum', 'heard', 'frame', 'open', 'bequests'];
+  const AWAY_FIELDS = ['char', 'zone', 'seed', 'hum', 'heard', 'level', 'tolls'];
+
+  SaveData.VERSION = VERSION;
+  SaveData.KEY = KEY;
+  SaveData.LIMITS = LIMITS;
+
+  const clone = (v) => JSON.parse(JSON.stringify(v));
+  SaveData.clone = clone;
+
+  function tenorPit() {
+    const pits = Defs.all('pit');
+    for (let i = 0; i < pits.length; i++) if (pits[i].from === null) return pits[i].id;
+    return null;
+  }
+
+  SaveData.blank = function () {
+    const tenor = tenorPit();
+    return {
+      v: VERSION, rev: 0, uid: 0, chars: [], register: [],
+      chest: { finds: [], voices: [], knots: {} },
+      account: {
+        coin: 0, hum: 0, heard: 0, frame: { pits: tenor === null ? [] : [tenor], places: 1, bells: [] },
+        open: { classes: [], bases: [], observances: [], bills: [] }, bequests: {},
+      },
+      active: null, away: null,
+    };
+  };
+
+  SaveData.uid = function (save) {
+    save.uid = (save.uid >= 0 ? Math.floor(save.uid) : 0) + 1;
+    return save.uid;
+  };
+
+  // ---- reading values that may be anything ----
+
+  const own = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
+  // a plain object: what JSON makes (its prototype is an Object.prototype of some realm, or null)
+  function isObj(v) {
+    if (v === null || typeof v !== 'object' || Array.isArray(v)) return false;
+    const p = Object.getPrototypeOf(v);
+    return p === null || Object.getPrototypeOf(p) === null;
+  }
+  const int = (v, lo, hi) => typeof v === 'number' && Number.isInteger(v) && v >= lo && v <= hi;
+  const num = (v, lo, hi) => typeof v === 'number' && Number.isFinite(v) && v >= lo && v <= hi;
+  const isId = (v) => typeof v === 'string' && v.length <= 120 && ID.test(v);
+  const ref = (kind, v) => isId(v) && Defs.has(kind, v);
+  const join = (path, key) => path + '.' + key;
+  function show(v) {
+    let s;
+    try { s = JSON.stringify(v); } catch (e) { s = undefined; }
+    if (typeof s !== 'string') s = typeof v === 'number' ? String(v) : typeof v;
+    return s.length > 40 ? s.slice(0, 37) + '...' : s;
+  }
+  const message = (e) => (e && typeof e.message === 'string' ? e.message : String(e));
+
+  // a plain object with every field of names, and with no others but those of optional. false when a field it needs
+  // is missing, so that what is inside is not looked at.
+  function shape(v, path, names, say, optional) {
+    if (!isObj(v)) { say(path, 'must be an object, not ' + show(v)); return false; }
+    let whole = true;
+    for (let i = 0; i < names.length; i++) if (!own(v, names[i])) { say(join(path, names[i]), 'is missing'); whole = false; }
+    for (const k of Object.keys(v)) if (names.indexOf(k) < 0 && (!optional || optional.indexOf(k) < 0)) say(join(path, k), 'is not a field of this shape');
+    return whole;
+  }
+
+  function list(v, path, most, say) {
+    if (!Array.isArray(v)) { say(path, 'must be a list, not ' + show(v)); return false; }
+    if (v.length > most) { say(path, 'holds ' + v.length + ' entries, more than the ' + most + ' a save may hold'); return false; }
+    return true;
+  }
+
+  function ids(v, path, kind, most, say) {
+    if (!list(v, path, most, say)) return;
+    for (let i = 0; i < v.length; i++) {
+      if (!ref(kind, v[i])) say(path + '[' + i + ']', 'names the ' + kind + ' ' + show(v[i]) + ', and there is none');
+      else if (v.indexOf(v[i]) !== i) say(path + '[' + i + ']', 'names ' + show(v[i]) + ' twice');
+    }
+  }
+
+  // a map from ids of a kind (null: any id) to whole numbers within lo..hi
+  function counts(v, path, kind, lo, hi, say) {
+    if (!isObj(v)) { say(path, 'must be an object, not ' + show(v)); return; }
+    for (const k of Object.keys(v)) {
+      if (kind === null ? !isId(k) : !ref(kind, k)) say(join(path, k), '(the key) names no ' + (kind || 'id'));
+      else if (!int(v[k], lo, hi)) say(join(path, k), 'must be a whole number from ' + lo + ' to ' + hi + ', not ' + show(v[k]));
+    }
+  }
+
+  function conds(v) {
+    if (typeof v === 'string') return Stats.is('cond', v);
+    if (!Array.isArray(v) || v.length < 1 || v.length > 31) return false;
+    for (let i = 0; i < v.length; i++) if (!Stats.is('cond', v[i])) return false;
+    return true;
+  }
+
+  function tags(v) {
+    if (!Array.isArray(v) || v.length > 41) return false;
+    for (let i = 0; i < v.length; i++) if (!Stats.is('tag', v[i])) return false;
+    return true;
+  }
+
+  // a value: a number, or [low, high] on a stat that takes a range
+  function value(v, stat) {
+    if (typeof v === 'number') return Number.isFinite(v) && Math.abs(v) <= BIG;
+    const row = Stats.stat(stat);
+    return Array.isArray(v) && v.length === 2 && num(v[0], -BIG, BIG) && num(v[1], -BIG, BIG) && v[0] <= v[1] && row !== null && row.range === true;
+  }
+
+  // ---- the parts of a save ----
+
+  function checkMod(m, path, say) {
+    if (!shape(m, path, ['stat', 'op', 'value'], say, ['tags', 'cond', 'unless'])) return;
+    if (typeof m.stat !== 'string' || Stats.stat(m.stat) === null) return say(path + '.stat', show(m.stat) + ' is not a stat');
+    if (OPS.indexOf(m.op) < 0) say(path + '.op', show(m.op) + ' is not one of ' + OPS.join(', '));
+    if (!value(m.value, m.stat)) say(path + '.value', 'must be a number (or a pair on a range stat), not ' + show(m.value));
+    if (own(m, 'tags') && !tags(m.tags)) say(path + '.tags', 'must be a list of tags, not ' + show(m.tags));
+    if (own(m, 'cond') && !conds(m.cond)) say(path + '.cond', show(m.cond) + ' is not a condition, or a list of them');
+    if (own(m, 'unless') && !conds(m.unless)) say(path + '.unless', show(m.unless) + ' is not a condition, or a list of them');
+  }
+
+  function checkLine(l, path, say) {
+    if (!shape(l, path, LINE_FIELDS, say)) return;
+    if (typeof l.stat !== 'string' || Stats.stat(l.stat) === null) return say(path + '.stat', show(l.stat) + ' is not a stat');
+    if (l.op !== 'flat' && l.op !== 'inc') say(path + '.op', 'a written line adds with flat or inc, not ' + show(l.op));
+    if (!value(l.value, l.stat)) say(path + '.value', 'must be a number (or a pair on a range stat), not ' + show(l.value));
+    if (!tags(l.tags)) say(path + '.tags', 'must be a list of tags, not ' + show(l.tags));
+    if (typeof l.cond !== 'string' || !Stats.is('cond', l.cond)) say(path + '.cond', show(l.cond) + ' is not a condition');
+    if (!Stats.is('posture', l.posture)) say(path + '.posture', show(l.posture) + ' is not a posture that writes lines');
+    if (!int(l.toll, 1, 1e6)) say(path + '.toll', 'must be the toll it was written at, from 1, not ' + show(l.toll));
+    if (l.backward !== true && l.backward !== false) say(path + '.backward', 'must be true or false, not ' + show(l.backward));
+    if (l.struck !== null && l.struck !== 'object' && l.struck !== 'condition') say(path + '.struck', 'must be null, "object" or "condition", not ' + show(l.struck));
+    if (!Array.isArray(l.band) || l.band.length !== 2 || !num(l.band[0], -BIG, BIG) || !num(l.band[1], -BIG, BIG) || l.band[0] > l.band[1]) {
+      say(path + '.band', 'must be [low, high], not ' + show(l.band));
+    }
+  }
+
+  function checkFind(f, path, c, slot) {
+    const say = c.say;
+    if (!shape(f, path, FIND_FIELDS, say)) return;
+    c.uid(f.uid, path + '.uid');
+    if (!ref('base', f.base)) return say(path + '.base', 'names the base ' + show(f.base) + ', and there is none');
+    const base = Defs.get('base', f.base);
+    if (slot !== null && (base.slot === 'token' ? slot !== 'token-1' && slot !== 'token-2' : base.slot !== slot)) {
+      say(path + '.base', '"' + f.base + '" is worn in ' + slot + ', but its slot is ' + base.slot);
+    }
+    if (!int(f.level, 1, 70)) say(path + '.level', 'must be a whole number from 1 to 70, not ' + show(f.level));
+    checkMod(f.fixed, path + '.fixed', say);
+    if (!Array.isArray(f.lines) || f.lines.length !== 8) return say(path + '.lines', 'must hold 8 places, not ' + show(f.lines));
+    for (let i = 0; i < 8; i++) if (f.lines[i] !== null) checkLine(f.lines[i], path + '.lines[' + i + ']', say);
+    if (list(f.gone, path + '.gone', 8, say)) {
+      for (let i = 0; i < f.gone.length; i++) {
+        const g = f.gone[i];
+        if (!int(g, 0, 7) || f.gone.indexOf(g) !== i) say(path + '.gone[' + i + ']', 'must be a place from 0 to 7, once, not ' + show(g));
+        else if (f.lines[g] !== null) say(path + '.lines[' + g + ']', 'holds a line, but the place is erased for good');
+      }
+    }
+    if (!int(f.walk, -1, 7)) say(path + '.walk', 'must be -1 or a place from 0 to 7, not ' + show(f.walk));
+    else if (f.walk >= 0 && Array.isArray(f.gone) && f.gone.indexOf(f.walk) >= 0) say(path + '.walk', 'is a place erased for good');
+    if (!int(f.cool, 0, 4)) say(path + '.cool', 'must be a whole number from 0 to 4, not ' + show(f.cool));
+  }
+
+  function checkVoice(v, path, c) {
+    const say = c.say;
+    if (!shape(v, path, VOICE_FIELDS, say)) return;
+    c.uid(v.uid, path + '.uid');
+    if (!ref('voice', v.id)) return say(path + '.id', 'names the voice ' + show(v.id) + ', and there is none');
+    if (!int(v.level, 1, 20)) return say(path + '.level', 'must be a whole number from 1 to 20, not ' + show(v.level));
+    if (v.rope !== Char.rope(v.level)) say(path + '.rope', 'must be ' + Char.rope(v.level) + ', the rope of a voice of level ' + v.level + ', not ' + show(v.rope));
+    if (!int(v.tolls, 0, BIG)) say(path + '.tolls', 'must be a whole number, not ' + show(v.tolls));
+    if (!Array.isArray(v.knots) || v.knots.length !== v.rope) return say(path + '.knots', 'must hold a place for each knot of its rope, not ' + show(v.knots));
+    const def = Defs.get('voice', v.id);
+    for (let i = 0; i < v.knots.length; i++) {
+      const k = v.knots[i];
+      if (k === null) continue;
+      if (!ref('knot', k)) say(path + '.knots[' + i + ']', 'names the knot ' + show(k) + ', and there is none');
+      else if (!Stats.fits(def, Defs.get('knot', k))) say(path + '.knots[' + i + ']', '"' + k + '" does not fit the voice "' + v.id + '"');
+    }
+  }
+
+  function checkPlan(plan, path, char, say) {
+    if (!shape(plan, path, ['walk', 'choice'], say)) return;
+    const walk = plan.walk;
+    if (list(walk, path + '.walk', LIMITS.walk, say)) {
+      let sound = true;
+      for (let i = 0; i < walk.length && sound; i++) {
+        if (!ref('node', walk[i])) { say(path + '.walk[' + i + ']', 'names the node ' + show(walk[i]) + ', and there is none'); sound = false; }
+      }
+      if (sound && walk.length > 0) {
+        const door = Defs.get('node', walk[0]);
+        if (door.kind !== 'door' || door.class !== char.class) say(path + '.walk[0]', '"' + walk[0] + '" is not the door of the ' + char.class);
+        for (let i = 1; i < walk.length; i++) {
+          if (Defs.get('node', walk[i - 1]).links.indexOf(walk[i]) < 0) say(path + '.walk[' + i + ']', '"' + walk[i] + '" is not linked to "' + walk[i - 1] + '"');
+          let n = 0;
+          for (let k = 0; k <= i; k++) if (walk[k] === walk[i]) n++;
+          if (n === 3) say(path + '.walk[' + i + ']', 'holds "' + walk[i] + '" a third time: a node is doubled once at most');
+        }
+        if (int(char.level, 1, 70) && int(char.planPoints, 0, 1000) && walk.length - 1 > char.level - 1 + char.planPoints) {
+          say(path + '.walk', 'spends ' + (walk.length - 1) + ' points, more than the ' + (char.level - 1 + char.planPoints) + ' it has');
+        }
+      }
+      if (isObj(plan.choice)) {
+        for (const k of Object.keys(plan.choice)) {
+          const node = ref('node', k) ? Defs.get('node', k) : null;
+          if (node === null || walk.indexOf(k) < 0) say(path + '.choice.' + k, '(the key) is not a node of the route');
+          else if (node.choice === null || node.choice.indexOf(plan.choice[k]) < 0) say(path + '.choice.' + k, show(plan.choice[k]) + ' is not an attribute that lane offers');
+        }
+        for (let i = 0; i < walk.length; i++) {
+          if (ref('node', walk[i]) && Defs.get('node', walk[i]).choice !== null && !own(plan.choice, walk[i])) say(path + '.choice', 'has no attribute chosen for the lane "' + walk[i] + '"');
+        }
+      } else say(path + '.choice', 'must be an object, not ' + show(plan.choice));
+    }
+  }
+
+  function checkChar(ch, path, c) {
+    const say = c.say;
+    if (!shape(ch, path, CHAR_FIELDS, say)) return;
+    c.uid(ch.uid, path + '.uid');
+    if (typeof ch.name !== 'string' || ch.name.trim() !== ch.name || ch.name.length < 1 || ch.name.length > 24 || /[\u0000-\u001f\u007f]/.test(ch.name)) {
+      say(path + '.name', 'must be a name of 1 to 24 letters, not ' + show(ch.name));
+    }
+    if (!ref('class', ch.class)) return say(path + '.class', 'names the class ' + show(ch.class) + ', and there is none');
+    const cls = Defs.get('class', ch.class);
+    let calling = null;
+    if (ch.calling !== null) {
+      if (!ref('calling', ch.calling) || cls.callings.indexOf(ch.calling) < 0) say(path + '.calling', show(ch.calling) + ' is not a calling of the ' + ch.class);
+      else calling = Defs.get('calling', ch.calling);
+    }
+    if (!int(ch.callingPoints, 0, calling ? calling.points : 0)) say(path + '.callingPoints', 'must be a whole number from 0 to its calling\'s points, not ' + show(ch.callingPoints));
+    if (list(ch.callingNodes, path + '.callingNodes', 64, say)) {
+      for (let i = 0; i < ch.callingNodes.length; i++) {
+        const key = ch.callingNodes[i];
+        if (calling === null || !calling.nodes.some((n) => n.key === key) || ch.callingNodes.indexOf(key) !== i) say(path + '.callingNodes[' + i + ']', show(key) + ' is not a node of its calling, once');
+      }
+    }
+    ids(ch.peals, path + '.peals', 'peal', 64, say);
+    if (!int(ch.level, 1, 70)) say(path + '.level', 'must be a whole number from 1 to 70, not ' + show(ch.level));
+    if (!num(ch.xp, 0, BIG)) say(path + '.xp', 'must be a number of 0 or more, not ' + show(ch.xp));
+    if (!int(ch.planPoints, 0, 1000)) say(path + '.planPoints', 'must be a whole number from 0 to 1000, not ' + show(ch.planPoints));
+    checkPlan(ch.plan, path + '.plan', ch, say);
+    if (shape(ch.worn, path + '.worn', Char.SLOTS, say)) {
+      for (let i = 0; i < Char.SLOTS.length; i++) {
+        const f = ch.worn[Char.SLOTS[i]];
+        if (f !== null) checkFind(f, path + '.worn.' + Char.SLOTS[i], c, Char.SLOTS[i]);
+      }
+    }
+    const mine = [];
+    if (list(ch.voices, path + '.voices', 64, say)) {
+      for (let i = 0; i < ch.voices.length; i++) {
+        checkVoice(ch.voices[i], path + '.voices[' + i + ']', c);
+        if (isObj(ch.voices[i])) mine.push(ch.voices[i].uid);
+      }
+    }
+    if (!Array.isArray(ch.loadout) || ch.loadout.length !== 6) say(path + '.loadout', 'must hold its six places, not ' + show(ch.loadout));
+    else {
+      const open = int(ch.level, 1, 70) ? Char.places(ch) : 6;
+      for (let i = 0; i < 6; i++) {
+        const u = ch.loadout[i];
+        if (u === null) continue;
+        if (mine.indexOf(u) < 0) say(path + '.loadout[' + i + ']', 'names ' + show(u) + ', which is none of its voices');
+        else if (ch.loadout.indexOf(u) !== i) say(path + '.loadout[' + i + ']', 'names ' + u + ' a second time');
+        else if (i >= open) say(path + '.loadout[' + i + ']', 'is a place its level has not opened');
+      }
+    }
+    counts(ch.knots, path + '.knots', 'knot', 1, 9999, say);
+    ids(ch.known, path + '.known', 'observance', 64, say);
+    ids(ch.observances, path + '.observances', 'observance', 16, say);
+    if (Array.isArray(ch.observances) && Array.isArray(ch.known)) {
+      let heed = 0;
+      for (let i = 0; i < ch.observances.length; i++) {
+        if (ch.known.indexOf(ch.observances[i]) < 0) say(path + '.observances[' + i + ']', show(ch.observances[i]) + ' is kept but not known');
+        if (ref('observance', ch.observances[i])) heed += Defs.get('observance', ch.observances[i]).heed;
+      }
+      if (heed > Stats.stat('heed-max').max) say(path + '.observances', 'hold ' + heed + ' Heed, more than any character has');
+    }
+    if (list(ch.bells, path + '.bells', 8, say)) {
+      for (let i = 0; i < ch.bells.length; i++) {
+        if (c.bells.indexOf(ch.bells[i]) < 0 || ch.bells.indexOf(ch.bells[i]) !== i) say(path + '.bells[' + i + ']', show(ch.bells[i]) + ' is not a bell of the frame, once');
+      }
+    }
+    if (ch.mourning !== null && (!shape(ch.mourning, path + '.mourning', ['term', 'left'], say) || !int(ch.mourning.term, 1, 7) || !int(ch.mourning.left, 1, ch.mourning.term))) {
+      say(path + '.mourning', 'must be null or {term, left}, left from 1 to term, not ' + show(ch.mourning));
+    }
+    if (!int(ch.tolls, 0, BIG)) say(path + '.tolls', 'must be a whole number, not ' + show(ch.tolls));
+    if (!int(ch.vigils, 0, BIG)) say(path + '.vigils', 'must be a whole number, not ' + show(ch.vigils));
+    checkBequests(ch.bequests, path + '.bequests', say);
+  }
+
+  function checkBequests(b, path, say) {
+    if (!isObj(b)) return say(path, 'must be an object, not ' + show(b));
+    for (const k of Object.keys(b)) {
+      if (!ref('bequest', k)) { say(join(path, k), '(the key) names no bequest'); continue; }
+      if (shape(b[k], join(path, k), ['n', 'done'], say) && (!int(b[k].n, 0, BIG) || (b[k].done !== true && b[k].done !== false))) {
+        say(join(path, k), 'must be {n: a whole number, done: true or false}, not ' + show(b[k]));
+      }
+    }
+  }
+
+  function checkBell(b, path, c, pits, hung) {
+    const say = c.say;
+    if (!shape(b, path, BELL_FIELDS, say)) return;
+    c.uid(b.uid, path + '.uid');
+    if (!int(b.of, 1, BIG)) say(path + '.of', 'must be the uid of the character it was, not ' + show(b.of));
+    if (typeof b.name !== 'string' || b.name.length > 24) say(path + '.name', 'must be a name, not ' + show(b.name));
+    if (!isId(b.class)) say(path + '.class', 'must be an id, not ' + show(b.class));
+    if (b.calling !== null && !isId(b.calling)) say(path + '.calling', 'must be null or an id, not ' + show(b.calling));
+    if (!int(b.weight, 0, BIG)) say(path + '.weight', 'must be the tolls it heard, not ' + show(b.weight));
+    if (b.gift !== null && !ref('gift', b.gift)) say(path + '.gift', 'names the gift ' + show(b.gift) + ', and there is none');
+    if (b.pit !== null) {
+      if (pits.indexOf(b.pit) < 0) say(path + '.pit', show(b.pit) + ' is not an open pit');
+      else if (hung.indexOf(b.pit) >= 0) say(path + '.pit', '"' + b.pit + '" holds another bell already');
+      else hung.push(b.pit);
+    }
+    if (b.double !== true && b.double !== false) say(path + '.double', 'must be true or false, not ' + show(b.double));
+    if (!list(b.known, path + '.known', 64, say)) return;
+    for (let i = 0; i < b.known.length; i++) if (!isId(b.known[i])) say(path + '.known[' + i + ']', 'must be an id, not ' + show(b.known[i]));
+  }
+
+  function checkDeath(d, path, c) {
+    const say = c.say;
+    if (!shape(d, path, DEATH_FIELDS, say)) return;
+    c.uid(d.uid, path + '.uid');
+    if (typeof d.name !== 'string' || d.name.length > 24) say(path + '.name', 'must be a name, not ' + show(d.name));
+    if (!isId(d.class)) say(path + '.class', 'must be an id, not ' + show(d.class));
+    if (d.calling !== null && !isId(d.calling)) say(path + '.calling', 'must be null or an id, not ' + show(d.calling));
+    if (!int(d.level, 1, 70)) say(path + '.level', 'must be a whole number from 1 to 70, not ' + show(d.level));
+    if (!int(d.tolls, 0, BIG) || !int(d.vigils, 0, BIG) || !int(d.toll, 0, BIG)) say(path, 'must count its tolls, vigils and the toll it left at in whole numbers');
+    if (d.zone !== null && !isId(d.zone)) say(path + '.zone', 'must be null or an id, not ' + show(d.zone));
+    if (d.how !== 'died' && d.how !== 'retired') say(path + '.how', 'must be "died" or "retired", not ' + show(d.how));
+    if (d.cause !== null && (!shape(d.cause, path + '.cause', ['attack', 'kind'], say) || (d.cause.attack !== null && !isId(d.cause.attack)) || !Stats.is('harm', d.cause.kind))) {
+      say(path + '.cause', 'must be null or {attack: an id or null, kind: a kind of harm}, not ' + show(d.cause));
+    }
+    if (c.bells.indexOf(d.bell) < 0) say(path + '.bell', show(d.bell) + ' is not a bell of the frame');
+  }
+
+  function checkAccount(a, path, c) {
+    const say = c.say;
+    if (!shape(a, path, ACCOUNT_FIELDS, say)) return false;
+    for (const k of ['coin', 'hum', 'heard']) if (!num(a[k], 0, BIG)) say(join(path, k), 'must be a number from 0 to ' + BIG + ', not ' + show(a[k]));
+    if (shape(a.frame, path + '.frame', ['pits', 'places', 'bells'], say)) {
+      const f = a.frame, most = Defs.has('bellframe', 'main') ? Defs.get('bellframe', 'main').placesMost : 8;
+      ids(f.pits, path + '.frame.pits', 'pit', 1000, say);
+      if (Array.isArray(f.pits)) {
+        for (let i = 0; i < f.pits.length; i++) {
+          if (!ref('pit', f.pits[i])) continue;
+          const from = Defs.get('pit', f.pits[i]).from;
+          if (from !== null && f.pits.indexOf(from) < 0) say(path + '.frame.pits[' + i + ']', '"' + f.pits[i] + '" opens from "' + from + '", which is not open');
+        }
+      }
+      if (!int(f.places, 1, most)) say(path + '.frame.places', 'must be a whole number from 1 to ' + most + ', not ' + show(f.places));
+      if (list(f.bells, path + '.frame.bells', LIMITS.bells, say)) {
+        const pits = Array.isArray(f.pits) ? f.pits : [], hung = [];
+        for (let i = 0; i < f.bells.length; i++) {
+          checkBell(f.bells[i], path + '.frame.bells[' + i + ']', c, pits, hung);
+          if (isObj(f.bells[i])) c.bells.push(f.bells[i].uid);
+        }
+      }
+    }
+    if (shape(a.open, path + '.open', ['classes', 'bases', 'observances', 'bills'], say)) {
+      ids(a.open.classes, path + '.open.classes', 'class', 100, say);
+      ids(a.open.bases, path + '.open.bases', 'base', 5000, say);
+      ids(a.open.observances, path + '.open.observances', 'observance', 500, say);
+      if (list(a.open.bills, path + '.open.bills', 500, say)) {
+        for (let i = 0; i < a.open.bills.length; i++) {
+          const b = a.open.bills[i], at = path + '.open.bills[' + i + ']';
+          if (!shape(b, at, ['zone', 'causes'], say)) continue;
+          if (!ref('zone', b.zone)) say(at + '.zone', 'names the zone ' + show(b.zone) + ', and there is none');
+          if (!Array.isArray(b.causes) || b.causes.length < 1 || b.causes.length > 4) say(at + '.causes', 'must hold one to four causes, not ' + show(b.causes));
+          else ids(b.causes, at + '.causes', 'cause', 4, say);
+        }
+      }
+    }
+    checkBequests(a.bequests, path + '.bequests', say);
+    return true;
+  }
+
+  function checkSave(s, say) {
+    if (!shape(s, 'save', SAVE_FIELDS, say)) return;
+    if (s.v !== VERSION) return say('save.v', 'must be ' + VERSION + ', not ' + show(s.v));
+    if (!int(s.rev, 0, BIG)) say('save.rev', 'must be a whole number, not ' + show(s.rev));
+    const top = int(s.uid, 0, BIG) ? s.uid : 0;
+    if (!int(s.uid, 0, BIG)) say('save.uid', 'must be a whole number, not ' + show(s.uid));
+    const seen = new Map();
+    const c = {
+      say, bells: [],
+      uid: function (v, path) {
+        if (!int(v, 1, top)) say(path, 'must be a whole number from 1 to save.uid (' + top + '), not ' + show(v));
+        else if (seen.has(v)) say(path, 'is ' + v + ', the uid of ' + seen.get(v) + ' as well');
+        else seen.set(v, path);
+      },
+    };
+    checkAccount(s.account, 'save.account', c);
+    const standing = [];
+    if (list(s.chars, 'save.chars', LIMITS.chars, say)) {
+      for (let i = 0; i < s.chars.length; i++) {
+        checkChar(s.chars[i], 'save.chars[' + i + ']', c);
+        if (isObj(s.chars[i])) standing.push(s.chars[i].uid);
+      }
+    }
+    if (list(s.register, 'save.register', LIMITS.register, say)) for (let i = 0; i < s.register.length; i++) checkDeath(s.register[i], 'save.register[' + i + ']', c);
+    if (shape(s.chest, 'save.chest', ['finds', 'voices', 'knots'], say)) {
+      if (list(s.chest.finds, 'save.chest.finds', LIMITS.finds, say)) for (let i = 0; i < s.chest.finds.length; i++) checkFind(s.chest.finds[i], 'save.chest.finds[' + i + ']', c, null);
+      if (list(s.chest.voices, 'save.chest.voices', LIMITS.voices, say)) for (let i = 0; i < s.chest.voices.length; i++) checkVoice(s.chest.voices[i], 'save.chest.voices[' + i + ']', c);
+      counts(s.chest.knots, 'save.chest.knots', 'knot', 1, 99999, say);
+    }
+    if (s.active !== null && standing.indexOf(s.active) < 0) say('save.active', show(s.active) + ' is no standing character');
+    if (s.away !== null && shape(s.away, 'save.away', AWAY_FIELDS, say)) {
+      const w = s.away;
+      if (standing.indexOf(w.char) < 0) say('save.away.char', show(w.char) + ' is no standing character');
+      if (!ref('zone', w.zone)) say('save.away.zone', 'names the zone ' + show(w.zone) + ', and there is none');
+      if (!(num(w.seed, -BIG * 1e3, BIG * 1e3) || (typeof w.seed === 'string' && w.seed.length <= 200))) say('save.away.seed', 'must be a number or a short text, not ' + show(w.seed));
+      if (!num(w.hum, 0, BIG) || !num(w.heard, 0, BIG)) say('save.away', 'must hold the Hum the vigil began with');
+      if (!int(w.level, 1, 70)) say('save.away.level', 'must be a level, not ' + show(w.level));
+      if (!int(w.tolls, 0, BIG)) say('save.away.tolls', 'must be a whole number, not ' + show(w.tolls));
+    }
+  }
+
+  SaveData.validate = function (raw) {
+    const errors = [];
+    const say = (path, problem) => { if (errors.length < LIMITS.errors) errors.push(path + ' ' + problem); };
+    try {
+      checkSave(raw, say);
+    } catch (e) {
+      errors.push('the save could not be read: ' + message(e));
+    }
+    return errors;
+  };
+
+  // ---- migrations ----
+
+  // Version 1: the first plan's placeholder shape (docs/plan.md, Appendix B). No build ever wrote one; this brings
+  // over what has a successor and notes what does not.
+  function fromFirstPlan(old, notes) {
+    const s = SaveData.blank(), account = isObj(old.account) ? old.account : {}, legacy = isObj(account.legacy) ? account.legacy : {};
+    const amount = (v) => (num(v, 0, BIG) ? v : 0);
+    s.rev = int(old.rev, 0, BIG) ? old.rev : 0;
+    s.account.coin = amount(account.gold);
+    s.account.hum = s.account.heard = amount(legacy.echoes);
+    if (isObj(account.unlocks) && Array.isArray(account.unlocks.classes)) {
+      for (const id of account.unlocks.classes) if (ref('class', id) && s.account.open.classes.indexOf(id) < 0) s.account.open.classes.push(id);
+    }
+    if (isObj(account.deeds)) {
+      for (const id of Object.keys(account.deeds)) {
+        const d = account.deeds[id];
+        if (ref('bequest', id) && isObj(d)) s.account.bequests[id] = { n: int(d.n, 0, BIG) ? d.n : 0, done: d.done === true };
+      }
+    }
+    if (Array.isArray(account.stash) && account.stash.length > 0) notes.push('the ' + account.stash.length + ' items of the old stash have no written lines, and were left behind');
+    const uids = new Map();                          // an old character's uid -> its new one
+    for (const c of Array.isArray(old.chars) ? old.chars : []) {
+      if (!isObj(c) || !ref('class', c.class)) { notes.push('a character of the class ' + show(isObj(c) ? c.class : c) + ' was left behind: there is no such class'); continue; }
+      const name = typeof c.name === 'string' && c.name.trim() !== '' ? c.name.trim().replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 24) : 'Ringer';
+      const made = Char.create(s, c.class, name || 'Ringer', []);
+      if (made === null) { notes.push('the character ' + show(c.name) + ' could not be made again'); continue; }
+      if (int(c.uid, 1, BIG)) uids.set(c.uid, made.uid);
+      made.level = int(c.level, 1, 70) ? c.level : 1;
+      made.xp = num(c.xp, 0, BIG) ? c.xp : 0;
+      made.planPoints = int(c.bonusPoints, 0, 1000) ? c.bonusPoints : 0;
+      if (Array.isArray(c.tree) && c.tree.length > 0) notes.push(made.name + ': the first plan\'s tree is not the Plan; its points are free to walk again');
+      const voices = [], loadout = [null, null, null, null, null, null];
+      for (const sg of Array.isArray(c.sigils) ? c.sigils : []) {
+        if (!isObj(sg) || !ref('voice', sg.id)) continue;
+        const v = Char.voice(SaveData.uid(s), sg.id), level = int(sg.level, 1, 20) ? sg.level : 1;
+        v.level = level;
+        v.tolls = (level - 1) * 8;
+        v.rope = Char.rope(level);
+        while (v.knots.length < v.rope) v.knots.push(null);
+        voices.push(v);
+        if (Array.isArray(c.loadout)) { const at = c.loadout.indexOf(sg.uid); if (at >= 0 && at < 6) loadout[at] = v.uid; }
+      }
+      if (voices.length > 0) {
+        made.voices = voices;
+        made.loadout = loadout.map((u, i) => (i < Char.places(made) ? u : null));
+      }
+      if (isObj(c.bindings)) for (const id of Object.keys(c.bindings)) if (ref('knot', id) && int(c.bindings[id], 1, 9999)) made.knots[id] = c.bindings[id];
+      if (isObj(c.vows)) for (const id of Object.keys(c.vows)) Char.learn(made, id);
+      if (Array.isArray(c.activeVows)) for (const id of c.activeVows) if (made.known.indexOf(id) >= 0 && made.observances.indexOf(id) < 0) made.observances.push(id);
+    }
+    for (const f of Array.isArray(old.fallen) ? old.fallen : []) {
+      if (!isObj(f)) continue;
+      const of = SaveData.uid(s), cls = isId(f.class) ? f.class : 'unknown', name = typeof f.name === 'string' ? f.name.slice(0, 24) : 'Ringer';
+      const bell = {
+        uid: SaveData.uid(s), of, name, class: cls, calling: isId(f.calling) ? f.calling : null, weight: int(f.tolls, 0, BIG) ? f.tolls : 0,
+        gift: null, pit: null, double: false, known: [],
+      };
+      s.account.frame.bells.push(bell);
+      s.register.push({
+        uid: of, name, class: cls, calling: bell.calling, level: int(f.level, 1, 70) ? f.level : 1, tolls: bell.weight, vigils: 0,
+        zone: isId(f.zone) ? f.zone : null, toll: 0, cause: null, how: 'died', bell: bell.uid,
+      });
+    }
+    s.active = uids.has(old.active) ? uids.get(old.active) : null;
+    if (isObj(old.gauntlet)) notes.push('a run of the old gauntlet was under way, and was left behind');
+    return s;
+  }
+
+  SaveData.MIGRATIONS = Object.freeze([
+    Object.freeze({ from: 1, to: 2, what: 'the first plan\'s placeholders become the Household of docs/design/04-progression.md', up: fromFirstPlan }),
+  ]);
+
+  SaveData.migrate = function (raw) {
+    const notes = [];
+    try {
+      if (!isObj(raw)) return { save: null, errors: ['the save must be an object, not ' + show(raw)], notes };
+      let v = raw.v, cur = clone(raw);
+      if (!int(v, 1, 1e6)) return { save: null, errors: ['the save has no version it can be read by (v is ' + show(v) + ')'], notes };
+      if (v > VERSION) return { save: null, errors: ['the save is of version ' + v + ', newer than this game reads (' + VERSION + ')'], notes };
+      while (v < VERSION) {
+        const m = SaveData.MIGRATIONS.find((x) => x.from === v);
+        if (m === undefined) return { save: null, errors: ['there is no way from version ' + v + ' to ' + VERSION], notes };
+        cur = m.up(cur, notes);
+        cur.v = m.to;
+        v = m.to;
+      }
+      return { save: cur, errors: [], notes };
+    } catch (e) {
+      return { save: null, errors: ['the save could not be brought up to date: ' + message(e)], notes };
+    }
+  };
+
+  SaveData.read = function (raw) {
+    const m = SaveData.migrate(raw);
+    if (m.save === null) return m;
+    const errors = SaveData.validate(m.save);
+    return errors.length > 0 ? { save: null, errors, notes: m.notes } : m;
+  };
+
+  // ---- the text of an export ----
+
+  const hex = (n) => ('00000000' + (n >>> 0).toString(16)).slice(-8);
+
+  SaveData.encode = function (save) {
+    const body = JSON.stringify(save);
+    return 'TOLLBOUND SAVE ' + save.v + ' ' + hex(Core.hashStr(body)) + '\n' + body + '\n';
+  };
+
+  SaveData.decode = function (text) {
+    const fail = (why) => ({ save: null, errors: [why], notes: [] });
+    try {
+      if (typeof text !== 'string') return fail('the save must be given as text');
+      if (text.length > LIMITS.text) return fail('the text is longer than any save can be');
+      let body = text.replace(/^﻿/, '').trim();
+      const head = HEADER.exec(body + '\n');
+      if (head !== null) {
+        body = body.slice(head[0].length).trim();
+        if (hex(Core.hashStr(body)) !== head[2]) return fail('the save text was changed or cut short: its check does not match');
+      }
+      let raw;
+      try { raw = JSON.parse(body); } catch (e) { return fail('the text is not a save: ' + message(e)); }
+      return SaveData.read(raw);
+    } catch (e) {
+      return fail('the text could not be read: ' + message(e));
+    }
+  };
+})();
 // 20-sim.js: the run state, the order of a step, commands and events.
 // Owns: Sim
 // Public:
@@ -3393,6 +5074,14 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //   Sim.fields(kind) -> [name]       the fields of a kind, built in and added
 //   Sim.state(name, make)            gives every run a slot S[name] = make(S), for a system's own state
 //   Sim.source(fn)                   fn(S, out) adds modifiers to every sheet rebuild: out.push(mod)
+//   Sim.system(name, fn)             fn(S) runs once in every step, at step 11b of the order below (after the favours,
+//                                    before the sheets are rebuilt), in the order the systems were registered, in a
+//                                    debug scene too. It is how a system of Stage 2 joins the step from its own file
+//                                    (the finds' notches, the observances' promises, the bequests): it reads this
+//                                    step's events (S.events: 'kill', 'hurt', 'pickup' and the rest) and S.toll,
+//                                    which rose at the end of the step before when a toll rang. Declared while the
+//                                    file loads, as Sim.state is.
+//   Sim.systems() -> [name]          the systems registered, in their order
 //   Sim.COMMON = 0, Sim.ELITE = 1, Sim.MINIBOSS = 2, Sim.BOSS = 3     the ranks of an enemy (a keeper is Sim.BOSS)
 //   Sim.NO_INPUT                     the InputFrame of a player who does nothing
 //
@@ -3426,9 +5115,14 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //   S.haul, S.coin, S.bank       the finds carried, the coin carried (both unbanked: lost at death), and what
 //                                ringing down has banked, {coin, finds}
 //   S.hum, S.kills, S.counters   the Hum heard this vigil; S.kills is counted here, in the deaths phase
-//   S.dirty                      set it to true when modifiers changed; the sheets are rebuilt in the same step
+//   S.cause                      null | {attack, kind, toll}: the harm that last took the player to no life (the fall
+//                                that made it Tolled-for, or the one that killed it): the attack's id (null for the
+//                                press of a body, a rider or the ground), the id of its kind of harm, and the toll it
+//                                came at. 11-damage.js sets it; the Register is written from it.
+//   S.dirty                      set it to true when modifiers changed; the sheets are rebuilt in the same step. A
+//                                run with a character is marked so at every toll, for the toll rings of the Plan.
 //   S.result                     null | {outcome, mode, zone, seed, steps, time, tolls, threat, kills, coin, banked, hum,
-//                                runLevel, haul (how many finds), eventsDropped}
+//                                runLevel, haul (how many finds), eventsDropped, cause (S.cause)}
 //   S.uid                        the last uid given out
 //   S.debug                      null | the state of Sim.debugScene
 //
@@ -3450,10 +5144,11 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                                      here and only here.
 //   10  Player.pickups(S)
 //   11  Favours.step(S)                the row; walk-in favours rise, are taken, sink
+//   11b each system of Sim.system, in its order
 //   12  Sim.rebuild(S), if S.dirty
 //   13  Offers.step(S)
 //   14  the clock: S.step, S.t, and on time S.toll + 1 with a 'toll' event (just before it, what was made in
-//       this step gets its px, py)
+//       this step gets its px, py); a run with a character is marked dirty at the toll
 // A step that began in 'play' runs to its end even if the run ends or an offer opens on the way.
 // In a debug scene (S.debug) steps 2, 4 and 7 are replaced by the scene's own rule: every enemy circles the
 // spot where the player began. Without Player.step, the move vector of the input walks the player.
@@ -3545,7 +5240,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     },
     skill: { inst: null, sheet: null, cd: 0, t: 0, n: 0, target: 0, a0: 0, a1: 0, a2: 0, a3: 0 },
   };
-  const states = [], sources = [];
+  const states = [], sources = [], systems = [];
   let made = null;               // the factories, built when the first run is created; from then on the fields are fixed
 
   Sim.field = function (kind, name, value) {
@@ -3573,6 +5268,15 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     Core.assert(typeof fn === 'function', 'Sim.source needs a function (S, out)');
     sources.push(fn);
   };
+
+  Sim.system = function (name, fn) {
+    Core.assert(made === null, 'Sim.system: systems are fixed once a run exists; register "' + name + '" while the file loads');
+    Core.assert(typeof name === 'string' && name !== '' && typeof fn === 'function', 'Sim.system needs a name and a function (S)');
+    for (let i = 0; i < systems.length; i++) Core.assert(systems[i].name !== name, 'Sim.system: there are two systems named "' + name + '"');
+    systems.push({ name, fn });
+  };
+
+  Sim.systems = function () { return systems.map((s) => s.name); };
 
   // make() gives a sealed object with every field of the table; reset(o) puts every field back to its default.
   // The first object is built with Object.defineProperty and the rest are copies of it, which keeps all of them
@@ -3656,7 +5360,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       grid: new Core.Grid(rules.gridCell), region: null, props: null,
       gate: null, boss: null, offer: null, offerQueue: [], favours: {}, buffs: [],
       events: [], eventCount: 0, eventStart: 0, eventsDropped: 0,
-      haul: [], coin: 0, bank: { coin: 0, finds: [] }, hum: 0, kills: 0, counters: {},
+      haul: [], coin: 0, bank: { coin: 0, finds: [] }, hum: 0, kills: 0, counters: {}, cause: null,
       dirty: false, result: null, uid: 0, debug: null,
     };
     const pool = (kind, cap) => new Core.Pool(F[kind].make, cap, function (o) { F[kind].reset(o); o.uid = ++S.uid; });
@@ -3832,6 +5536,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     deaths(S);
     if (typeof Player.pickups === 'function') Player.pickups(S);
     if (typeof Favours.step === 'function') Favours.step(S);
+    for (let i = 0; i < systems.length; i++) systems[i].fn(S);
     if (S.dirty) Sim.rebuild(S);
     if (typeof Offers.step === 'function') Offers.step(S);
     holdAll(S, before);
@@ -3841,6 +5546,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       S.toll++;
       S.tollAt += S.tollSteps;
       Sim.emit(S, 'toll', p.x, p.y, S.toll, 0, null);
+      if (S.cfg.char) S.dirty = true;            // the toll rings of the Plan: a node of ring N works from toll N - 1
     }
     return true;
   };
@@ -3883,7 +5589,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     return {
       outcome, mode: S.mode.id, zone: S.zone.id, seed: S.cfg.seed, steps: S.step, time: S.t, tolls: S.toll, threat: S.threat,
       kills: S.kills, coin: S.coin, banked: S.bank.coin, hum: S.hum, runLevel: S.player.runLevel, haul: S.haul.length,
-      eventsDropped: S.eventsDropped,
+      eventsDropped: S.eventsDropped, cause: S.cause,
     };
   }
 
@@ -4006,13 +5712,19 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                                a heading record every 0.1 s; the class rule's step, then the turn rule (a turn of
 //                                more than turn-limit from a heading of the last 0.5 s, above 30% of top speed,
 //                                lays wrong-footed for 0.5 s, unless the class rule took the turn as its own act);
-//                                the trade on input.trade; the heave (input.heave: nothing to throw in Stage 1, so it
-//                                does nothing); mending and scars; and S.player.conds, where braced, striding,
-//                                crowded and in-water must hold 0.25 s before the mask changes (S.dirty when it does)
+//                                the trade on input.trade; the heave on input.heave, when heaveCd has run out:
+//                                Items.heave(S) throws the find (12-items' package; it returns true when it threw one,
+//                                and heaveCd becomes heave-recharge); mending and scars; and S.player.conds, where
+//                                braced, striding, crowded and in-water must hold 0.25 s before the mask changes
+//                                (S.dirty when it does)
 //   Player.pickups(S)            phase 10. Pickups of kind 0 (an ember: value is experience into runXp; when runXp
 //                                reaches S.curves.runXp[min(runLevel, 69)] it is spent and the run level rises, to
-//                                the mode's runLevels), 1 (coin: value into S.coin) and 2 (a find, into S.haul) are
-//                                drawn in from within pickup-reach and taken on touching. Kind 3 is the favours'.
+//                                the mode's runLevels; and into the experience of the run's character, kept at once,
+//                                by Char.gain, which may raise the character's level: then S.dirty and a 'grow'
+//                                event), 1 (coin: value into S.coin; none is taken in full mourning, while the sheet
+//                                has the flag full-mourning) and 2 (a find, into S.haul) are drawn in from within
+//                                pickup-reach and taken on touching. Kind 3 is the favours'. A pickup whose state is
+//                                below 0 is held back by a system (an observance's promise) and is left lying.
 //   Player.classRun(classId, level?) -> {class, level, mods, voices}
 //                                the cfg fields of a run without a character: the class's attributes as flat
 //                                modifiers (attrs + perLevel x (level - 1)), its base modifiers, and its voices as
@@ -4051,7 +5763,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 // recharge it starts; id = the class id), 'mend' (x, y the wound; a = the life given back since the last, at most
 // four a second; id 'whole' when it closed), 'scar' (x, y the wound; a = the greatest life lost), 'wound' (x, y the
 // wound's centre; a = the life this harm put in it; b = its depth now; id = 'open' or 'join'), 'pickup' (x, y; a =
-// kind, b = value) and 'level' (x, y the player; a = the new run level). No 'heave' in Stage 1: nothing is carried.
+// kind, b = value), 'level' (x, y the player; a = the new run level) and 'grow' (x, y the player; a = the character's
+// new level). The 'heave' event is the finds' (Items.heave).
 (function () {
   'use strict';
 
@@ -4066,6 +5779,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   const HOLD = 0.25;             // seconds a flickering condition must hold before the mask changes
   const CROWD = 3, CROWD_REACH = 3, LADEN = 4, FAINT = 0.35, AT_POST = 6, AFTER_QUARTER = 8;
   const DRAW_SPEED = 12, TOUCH = 0.3;       // pickups fly in at this speed and are taken this near your edge
+  const MOURNING = 'full-mourning';         // the flag of full mourning (Char.mods gives it): no coin is picked up
   const MEND_TELL = 15;          // steps between two 'mend' events of one wound
   const RINGER = 'change-ringer', PULL_TURN = 120, PULL_GAP = 0.4;
 
@@ -4225,7 +5939,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
       if (most > st['turn-limit']) Dmg.lay(S, p, FOOTING, FOOT_SECONDS + DT, most, 0);
     }
     if (f.trade && p.tradeCd <= 0) trade(S, p, rule);
-    // the heave (input.heave): it throws the find with the most notches; no find is carried in Stage 1
+    // the heave (input.heave): it throws the find with the most notches, by the finds' own rule
+    if (f.heave && p.heaveCd <= 0 && typeof Items.heave === 'function' && Items.heave(S) === true) p.heaveCd = st['heave-recharge'];
     mend(S, p, st);
     scars(S, st);
     conds(S, p, st);
@@ -4376,6 +6091,12 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
         p.runLevel++;
         Sim.emit(S, 'level', p.x, p.y, p.runLevel, 0, null);
       }
+      // the character's experience is kept the moment it is earned (04-progression.md)
+      const char = S.cfg.char;
+      if (char && typeof Char.gain === 'function' && Char.gain(char, o.value, S.mode) > 0) {
+        S.dirty = true;
+        Sim.emit(S, 'grow', p.x, p.y, char.level, 0, null);
+      }
     } else if (o.kind === 1) {
       S.coin += o.value;
     } else {
@@ -4390,9 +6111,10 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
     const p = S.player;
     if (!p.alive || S.phase === 'ended') return;
     const reach = S.sheet.stats['pickup-reach'], items = S.pickups.items, step = DRAW_SPEED * DT;
+    const noCoin = S.sheet.flags[MOURNING] === true;          // full mourning: no coin may be picked up
     for (let i = 0; i < S.pickups.n; i++) {
       const o = items[i];
-      if (!o.alive || o.kind < 0 || o.kind > 2) continue;
+      if (!o.alive || o.kind < 0 || o.kind > 2 || o.state < 0 || (noCoin && o.kind === 1)) continue;
       const dx = p.x - o.x, dy = p.y - o.y, d2 = dx * dx + dy * dy, touch = p.r + (o.r > 0 ? o.r : 0) + TOUCH;
       if (d2 <= touch * touch) { take(S, p, o); continue; }
       if (d2 > reach * reach) continue;
@@ -4473,7 +6195,8 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
 //                                    Exact during a step, as the dead read it; between two steps (the player has
 //                                    moved for the coming step's time already counted) it is one step more recent.
 //   Enemies.fill(S, e, attack, x, y) -> seconds   how long a Swell of e's aimed at the player fills when it is first
-//                                    shown at (x, y): its windup, plus Dmg.warning(S, e), less the district's rule
+//                                    shown at (x, y): its windup, plus Dmg.warning(S, e, attack.id) (Heed, warn, a
+//                                    Sounded body, the Register), less the district's rule
 //                                    there (the Dial's shadow: 0.3 s), never under 0.3 s
 //   Enemies.swell(S, e, attack, x, y, angle, scale, fill) -> area | null   shows a Swell of the dead: an area of
 //                                    S.areas with team 1 (see "Swells" below) and a 'telegraph' event. null when
@@ -4834,7 +6557,7 @@ const Core = {}, Defs = {}, Stats = {}, Dmg = {}, Items = {}, Tree = {}, Char = 
   }
 
   Enemies.fill = function (S, e, A, x, y) {
-    let f = A.windup + (typeof Dmg.warning === 'function' ? Dmg.warning(S, e) : 0);
+    let f = A.windup + (typeof Dmg.warning === 'function' ? Dmg.warning(S, e, A.id) : 0);
     const sh = S.vigil ? S.vigil.shade : null;
     if (sh && sh.on && Enemies.shaded(S, x, y)) f -= sh.warn;
     return f > FILL_LEAST ? f : FILL_LEAST;
@@ -11750,8 +13473,9 @@ const Plat = {}, Store = {}, Settings = {}, Input = {}, Sound = {}, Music = {}, 
 //   bell is baked with Sound.bake when the piece begins, and struck live until it is ready), m.row(r) -> row r
 //   of the method's rows (they repeat), m.bells, m.beat (steps a beat), m.bar (steps a bar), m.stepTime (seconds
 //   a step), m.intensity, and m.rand(i, salt) -> [0, 1), the same for the same numbers within one playing.
-// The game: the title plays 'vigil' at rest, a run plays its zone's music (zone.music) when that is a piece,
-// else 'vigil', and the results let it sink back to rest. Until the game drives Music.intensity itself, a
+// The game: the title, the Household and the Lantern play 'vigil' at rest (until the Lantern has a piece of its
+// own), a run plays its zone's music (zone.music) when that is a piece, else 'vigil', and the results let it sink
+// back to rest. Until the game drives Music.intensity itself, a
 // stand-in follows the run twice a second: the tolls rung, the dead close to the player, the life the player
 // has lost, a boss.
 (function () {
@@ -12255,7 +13979,7 @@ const Plat = {}, Store = {}, Settings = {}, Input = {}, Sound = {}, Music = {}, 
 
   Plat.on('boot', function () { Music.play('vigil', { fade: 4, intensity: 0 }); });
   Plat.on('state', function (state) {
-    if (state === 'title') {
+    if (state === 'title' || state === 'household' || state === 'lantern') {
       Music.play('vigil', { fade: 4 });
       setTarget(0, 4);
     } else if (state === 'run') {
@@ -18729,7 +20453,8 @@ void main() {
     wipe();
   };
 
-  Plat.on('state', function (state) { if (state === 'title') Vfx.clear(); });
+  // every state without a run (the title, the Household, the Lantern) starts clear; the results keep the last picture
+  Plat.on('state', function (state) { if (state !== 'run' && state !== 'results') Vfx.clear(); });
 
   const stats = { particles: 0, numbers: 0, marks: 0, warnings: 0 };
   Object.defineProperty(Vfx, 'stats', {
@@ -20297,20 +22022,27 @@ void main() {
 // leaves its stand-ins out. css/30-hud.css styles what is theirs; the rest is the classes of css/10-ui.css.
 // Owns: (none)
 // Public: no functions. It registers two screens with UI.screen:
-//   'title'     the game's name under its emblem (Glyphs 'mark.bell'), a gold rule, one line of subtitle; "Begin
-//               vigil" (focus starts on it), a Settings button under it where the build has Settings.open; and the
+//   'title'     the game's name under its emblem (Glyphs 'mark.bell'), a gold rule, one line of subtitle; its main
+//               control (focus starts on it), a Settings button under it where the build has Settings.open; and the
 //               build line, "Build <version> · <view> · <where saves go>", kept up to date while the title is open.
-//               "Begin vigil" starts a vigil of the Dial with the Change-ringer, Game.start(Object.assign({zone:
-//               'dial'}, Player.classRun('change-ringer'))), when that function, the class and the zone exist; with
-//               the zone but not the class, a vigil of the Dial without one; with no Dial, the debug scene
-//               (Game.start()). Escape does nothing here.
-//   'results'   opened by 90-game.js with {S, result} when a run has ended (result may be null when the run was
-//               ended by hand: then Sim.result(S) gives the totals). It says which vigil it was ("The vigil of the
-//               Dial"), how it ended in the design's words (the outcomes of OUTCOMES below), and its tally: time
-//               (m:ss), tolls, laid (kills), coin, banked, and Hum when any was heard; for the Dial with a class, the
-//               class's name. Two buttons: "Back to the title" (focus starts on it) and "Another vigil", which
-//               starts the same kind of vigil again with a new seed: the same zone and class, or the debug scene
-//               after a debug scene. Escape does nothing here either.
+//               The main control is "The Household", Game.household(): a vigil is kept by a character of the
+//               Household, chosen or made there. In a build that keeps no Household (Game.save is null: no
+//               14-character.js or 16-savedata.js) it is "Begin vigil", which starts a vigil of the Dial with the
+//               Change-ringer, Game.start(Object.assign({zone: 'dial'}, Player.classRun('change-ringer'))), when that
+//               function, the class and the zone exist; with the zone but not the class, a vigil of the Dial without
+//               one; with no Dial, the debug scene (Game.start()). Escape does nothing here.
+//   'results'   opened by 90-game.js with {S, result, report} when a run has ended (result may be null when the run
+//               was ended by hand: then Sim.result(S) gives the totals; report is what the end did to the character
+//               whose vigil it was, Char.end's, and null for a run without one). It says which vigil it was ("The vigil
+//               of the Dial"), how it ended in the design's words (the outcomes of OUTCOMES below), and its tally: time
+//               (m:ss), tolls, laid (kills), coin, banked, and Hum when any was heard; then who kept it: for a
+//               character its name, class and level, the levels it gained, and, if it died, that it is on the Register
+//               and was recast as a bell; for a run with a class, the class's name. Its buttons: for a character that
+//               lives, "Back to the Lantern" (focus starts on it) and "Another vigil" (the same character into the same
+//               district, Game.vigil); for one that died, "To the Household" alone; for a run without a character,
+//               "Back to the title" (focus) and "Another vigil", which starts the same kind of vigil again with a new
+//               seed: the same zone and class, or after a debug scene what "Begin vigil" starts. Escape does nothing
+//               here either.
 (function () {
   'use strict';
 
@@ -20368,6 +22100,13 @@ void main() {
 
   let stopWatching = null;   // takes the open title off Store.onStatus again
 
+  // The way in: the Household, where a vigil is kept by one of its characters; a vigil without one in a build that
+  // keeps no Household.
+  function mainControl() {
+    const main = { class: 'primary', dataset: { focus: '' } };
+    return Game.save !== null ? UI.button('The Household', function () { Game.household(); }, main) : UI.button('Begin vigil', begin, main);
+  }
+
   UI.screen('title', {
     back: false,
     open: function () {
@@ -20382,7 +22121,7 @@ void main() {
         UI.h('div', { class: 'ui-rule' }),
         UI.h('p', { class: 'ui-sub' }, SUBTITLE),
         UI.h('div', { class: 'scr-choices' },
-          UI.button('Begin vigil', begin, { class: 'primary', dataset: { focus: '' } }),
+          mainControl(),
           typeof Settings.open === 'function' ? UI.button('Settings', function () { Settings.open(); }, { class: 'second' }) : null),
         build);
     },
@@ -20413,14 +22152,37 @@ void main() {
     return /^The /.test(name) ? 'the ' + name.slice(4) : name;
   }
 
+  const nameOfClass = (id) => (typeof id === 'string' && Defs.has('class', id) ? Defs.get('class', id).name : '');
+  const plural = (n, one, many) => n + ' ' + (n === 1 ? one : many);
+
+  // Who kept the vigil: a character (from the report of its end), else the class of a run without one.
+  function keptBy(S, rep) {
+    if (!rep) return nameOfClass(S && S.cfg ? S.cfg.class : null);
+    let text = rep.name + ', ' + (nameOfClass(rep.class) || rep.class) + ' of level ' + rep.level;
+    if (rep.rose > 0) text += ', ' + plural(rep.rose, 'level', 'levels') + ' gained';
+    if (rep.death) text += '. On the Register now, and recast as a bell of ' + plural(rep.bell ? rep.bell.weight : rep.death.tolls, 'toll', 'tolls');
+    return text + '.';
+  }
+
+  // The ways on: for a character that lives, back to the Lantern or down again; for one that died, the Household;
+  // for a run without a character, the title or the same kind of vigil.
+  function waysOn(S, rep) {
+    const main = { class: 'primary', dataset: { focus: '' } };
+    if (rep && rep.death === null) {
+      return [UI.button('Back to the Lantern', function () { Game.lantern(rep.char); }, main),
+        UI.button('Another vigil', function () { if (Game.vigil(S && S.zone ? S.zone.id : undefined) === null) Game.lantern(rep.char); }, { class: 'second' })];
+    }
+    if (rep) return [UI.button('To the Household', function () { Game.household(); }, main)];
+    return [UI.button('Back to the title', function () { Game.title(); }, main), UI.button('Another vigil', function () { again(S); }, { class: 'second' })];
+  }
+
   UI.screen('results', {
     back: false,
     open: function (args) {
-      const S = args && args.S ? args.S : null;
+      const S = args && args.S ? args.S : null, rep = args && args.report ? args.report : null;
       const result = (args && args.result) || (S && typeof Sim.result === 'function' ? Sim.result(S) : null) || {};
       const said = OUTCOMES[result.outcome] || OVER;
-      const zone = S ? S.zone : null, classId = S && S.cfg ? S.cfg.class : null;
-      const className = classId && Defs.has('class', classId) ? Defs.get('class', classId).name : '';
+      const zone = S ? S.zone : null, who = keptBy(S, rep);
       const num = function (name, fallback) { return typeof result[name] === 'number' ? result[name] : fallback; };
       const time = num('time', S ? S.t : 0), tolls = num('tolls', S ? S.toll : 0), kills = num('kills', S ? S.kills : 0);
       const coin = num('coin', S ? S.coin : 0), banked = num('banked', S && S.bank ? S.bank.coin : 0), hum = num('hum', S ? S.hum : 0);
@@ -20436,25 +22198,44 @@ void main() {
           cell('Coin', whole(coin), lost && coin > 0 ? 'lost' : ''),
           cell('Banked', whole(banked), banked > 0 ? 'kept' : ''),
           hum > 0 ? cell('Hum', whole(hum), 'kept') : null),
-        className ? UI.h('p', { class: 'scr-meta' }, className) : null,
-        UI.h('div', { class: 'ui-row' },
-          UI.button('Back to the title', function () { Game.title(); }, { class: 'primary', dataset: { focus: '' } }),
-          UI.button('Another vigil', function () { again(S); }, { class: 'second' })));
+        who ? UI.h('p', { class: 'scr-meta', dataset: rep ? { char: String(rep.char) } : {} }, who) : null,
+        UI.h('div', { class: 'ui-row' }, waysOn(S, rep)));
     },
   });
 })();
-// 90-game.js: the game itself: the states title, run and results, the frame loop with its fixed 60 Hz steps,
-// and the stand-ins that keep the game whole before the real screens, input and scene exist.
+// 90-game.js: the game itself: its states (the title, the Household, the Lantern, the vigil, the results), the save of
+// the Household and when it is written, the frame loop with its fixed 60 Hz steps, and the stand-ins that keep the
+// game whole before the real screens, input and scene exist.
 // Owns: Game
 // Public:
-//   Game.boot()                   called once by 99-boot.js: makes the view on #view (?view=2d or ?view=gl asks
-//                                 for one), fits it to the window, opens the title and starts the frame loop
+//   Game.boot() -> Promise           called once by 99-boot.js: makes the view on #view (?view=2d or ?view=gl asks
+//                                 for one), fits it to the window, reads the save (Store, SaveData.KEY), ends a vigil
+//                                 the page left unfinished (Char.abandoned), opens the title and starts the frame
+//                                 loop. The promise is kept once the save is read, so TB.ready means it is.
 //   Game.start(cfg) -> S | null   starts a vigil and closes every screen. A cfg {mode, zone, seed, char, account}
 //                                 that names a zone goes to Sim.create. Without a zone (Game.start() alone) the
 //                                 run is Sim.debugScene(200, seed). Either way the seed is cfg.seed, else ?seed=,
 //                                 else random; a cfg without one is copied and given it, and the run's cfg
 //                                 (S.cfg.seed) tells which. null, and a toast, when the build has no simulation.
+//                                 A run whose cfg.char is the character the save has away (Char.begin made the cfg:
+//                                 Game.vigil does) is that character's vigil: at every toll, and when the page is
+//                                 hidden, Char.checkpoint keeps what it earned and the save is written; when it ends
+//                                 Char.end applies the end and the save is written before the results open (a run
+//                                 ended by hand, with no S.result, ends as one left unfinished: Char.abandoned).
 //   Game.title()                  drops the run and shows the title
+//   Game.household()              the state 'household' and its screen: choose a standing character, or make one
+//   Game.lantern(uid?) -> char | null   the state 'lantern' and its screen, with that character (else the save's
+//                                 active one) made active; with no such character, the Household
+//   Game.vigil(zone?, seed?) -> S | null   the active character goes down into a district ('dial' unless named):
+//                                 Char.begin, the save written, Game.start. null when it cannot (no character, a
+//                                 vigil under way, no such zone).
+//   Game.make(classId, name, bells?) -> char | null   Char.create on the save; the new character is active
+//   Game.write() -> Promise<boolean>   writes the save through Store (save.rev + 1)
+//   Game.exportText() -> text     SaveData.encode of the save
+//   Game.importText(text) -> {ok, errors, notes}   SaveData.decode; a sound save replaces the save held, and is
+//                                 written (rev + 1: the one field an export then import changes). A vigil under
+//                                 way in it ends as one left unfinished (Char.abandoned). Refused while a vigil is
+//                                 under way here.
 //   Game.command(cmd) -> boolean  Sim.command(S, cmd) on the run, followed by the notice 'command'. Menus send
 //                                 their commands this way, so that the readers of S.events hear of what a
 //                                 command emitted. false without a run.
@@ -20464,10 +22245,17 @@ void main() {
 //                                 the input is Sim.NO_INPUT and every offer takes its first option. It stops
 //                                 early when the run ends. Open screens and a hidden page do not hold it back.
 //   Game.S                        the run, or null. A value.
-//   Game.state                    'title' | 'run' | 'results'. A value.
+//   Game.state                    'title' | 'household' | 'lantern' | 'run' | 'results'. A value.
+//   Game.save                     the save of the Household (16-savedata.js), or null before the boot has read it.
+//                                 Screens change it through Char and the packages' functions, then Game.write().
+//   Game.char                     the save's active character, or null. A value.
+//   Game.report                   what the end of the last character's vigil did (Char.end's report), or null
 //   Game.debug                    {fps, steps, stepMs, drawMs, worstMs}, renewed twice a second: frames and
 //                                 simulation steps a second, the mean time of one step and of one draw, and the
 //                                 longest frame, in ms. ?fps=1 shows them in a corner of the screen.
+//   Game.ROOMS                    the screens the Lantern offers, when they are registered, in this order: 'plan',
+//                                 'finds', 'voices', 'bellframe', 'register', 'bequests'. Each is opened with
+//                                 {char}: the active character.
 //   Game.VERSION
 //
 // A frame: its time is added up and spent in steps of 1/60 s. A step runs as soon as any time is owed, so
@@ -20484,6 +22272,13 @@ void main() {
 // frame is one step and alpha is 1: the picture is the simulation as it stands. On a faster screen the frames
 // in between show the way there, so movement is even on any screen and nothing is guessed ahead.
 //
+// The save. Read once at boot: no save yet gives SaveData.blank(); one that cannot be read is set aside under
+// SaveData.KEY + '.unread' (nothing is lost) and the Household starts afresh, with a toast. It is written when a
+// character is made or chosen, when a vigil begins, at every toll of a character's vigil and when the page is hidden
+// during one (Char.checkpoint), when the vigil ends (Char.end), and whenever a screen calls Game.write(). A
+// character's vigil dropped before its end (the title, the Household or another run started over it) ends as one
+// the page left unfinished: Char.checkpoint, then Char.abandoned.
+//
 // Notices this file posts with Plat.emit, for files that load before it (Plat.on(name, fn) hears them):
 //   'boot'    (view)              once, in Game.boot, when the view exists and before the title opens: the
 //                                 moment for a module to set itself up, since nothing runs while files load
@@ -20496,9 +22291,20 @@ void main() {
 //                                 offer (not live). S.events holds what the command emitted.
 //   'frame'   (S, alpha, dt)      once a frame, after drawing; S is null while there is no run
 //   'resize'  (cssW, cssH, dpr)   the view was fitted to a new size
+//   'save'    (save, why)         the save was changed and is being written: why is 'made', 'chosen', 'vigil',
+//                                 'toll', 'hidden', 'end', 'unfinished', 'import' or 'write' (Game.write)
 //
-// Stand-ins: the screens 'title' and 'results' are registered at boot only when no other file has registered
-// those ids, so a real screen replaces one by registering first. 'results' is opened with {S, result}.
+// Stand-ins: the screens 'title', 'household', 'lantern', 'save-text' and 'results' are registered at boot only when
+// no other file has registered those ids, so a real screen replaces one by registering first.
+//   'household'   the standing characters, each a control that opens the Lantern with it; a new character: a name
+//                 field, the classes it may take (Char.classes) and the control that makes it (focus starts there while
+//                 nobody stands), ringing the heaviest hung bells, as many as the ringing places; the Register, which
+//                 only lists the dead and what killed them (a dead character cannot be chosen); "Save text"; back.
+//   'lantern'     opened with {char}: its name, class, level and experience, the coin and Hum of the Household, its
+//                 mourning; a control for each of Game.ROOMS that is registered; "Go down to the Dial" (focus starts
+//                 on it), Game.vigil; "The Household".
+//   'save-text'   the save as text (Game.exportText), and a field whose text "Read it in" gives to Game.importText.
+//   'results'     opened with {S, result, report}: report is Char.end's for a character's vigil, else null.
 (function () {
   'use strict';
 
@@ -20518,24 +22324,90 @@ void main() {
     spared: 'Tolled-for, you reached the lychgate in time. You live; your haul is lost.',
     died: 'You fell, and joined the dead of the district.',
   };
+  const ROOMS = Object.freeze(['plan', 'finds', 'voices', 'bellframe', 'register', 'bequests']);
+  const ROOM_NAMES = { plan: 'The Plan', finds: 'Finds', voices: 'Voices', bellframe: 'The Bellframe', register: 'The Register', bequests: 'Bequests' };
+  const FIRST_ZONE = 'dial';
 
   let state = 'title', S = null, view = null, booted = false, visible = true, broken = false;
+  let save = null, report = null, lastToll = 0;
   let acc = 0;                               // seconds of frame time not yet spent on steps; after a frame it is
                                              // 0 or less: how far the simulation stands ahead of the frame
   let fitW = 0, fitH = 0, fitDpr = 0;        // what the view was last fitted to
   let discs = null, readout = null;
   let span = 0, frames = 0, stepped = 0, stepTime = 0, drawTime = 0, worst = 0;   // the half second being measured
 
-  Game.VERSION = '0.1.0';
+  Game.VERSION = '0.2.0';
+  Game.ROOMS = ROOMS;
   Game.debug = { fps: 0, steps: 0, stepMs: 0, drawMs: 0, worstMs: 0 };
   Object.defineProperty(Game, 'S', { enumerable: true, get: function () { return S; } });
   Object.defineProperty(Game, 'state', { enumerable: true, get: function () { return state; } });
+  Object.defineProperty(Game, 'save', { enumerable: true, get: function () { return save; } });
+  Object.defineProperty(Game, 'report', { enumerable: true, get: function () { return report; } });
+  Object.defineProperty(Game, 'char', {
+    enumerable: true,
+    get: function () { return save !== null && save.active !== null && typeof Char.find === 'function' ? Char.find(save, save.active) : null; },
+  });
 
   function setState(next) {
     const before = state;
     if (next === before) return;
     state = next;
     Plat.emit('state', next, before);
+  }
+
+  // ---- the save ----
+
+  const household = () => typeof SaveData.blank === 'function' && typeof Char.create === 'function';
+
+  function written(why) {
+    if (save === null || typeof Store.write !== 'function') return Promise.resolve(false);
+    save.rev++;
+    Plat.emit('save', save, why);
+    return Store.write(SaveData.KEY, save);
+  }
+
+  Game.write = function () { return written('write'); };
+
+  async function readSave() {
+    if (!household()) return;
+    let raw = null;
+    try { raw = await Store.read(SaveData.KEY); } catch (e) { raw = null; }
+    if (raw === null) { save = SaveData.blank(); return; }
+    const got = SaveData.read(raw);
+    if (got.save === null) {
+      await Store.write(SaveData.KEY + '.unread', raw);   // kept, so that nothing is lost
+      save = SaveData.blank();
+      UI.toast('The save could not be read, and was set aside. The Household begins afresh.', 9000);
+      return;
+    }
+    save = got.save;
+    const left = typeof Char.abandoned === 'function' ? Char.abandoned(save) : null;
+    if (left !== null) {
+      await written('unfinished');
+      UI.toast(left.name + '’s last vigil was left unfinished. ' + left.name + ' lives, and its haul is lost.', 7000);
+    }
+  }
+
+  // is the run the vigil of the character the save has away?
+  function ownRun(run) {
+    return run !== null && save !== null && save.away !== null && run.cfg && run.cfg.char && run.cfg.char.uid === save.away.char;
+  }
+
+  // a character's vigil dropped before its end ends as one the page left unfinished
+  function dropRun() {
+    if (ownRun(S) && S.phase !== 'ended') {
+      Char.checkpoint(save, S);
+      report = Char.abandoned(save);
+      written('unfinished');
+    }
+  }
+
+  // after each step of a character's vigil: a toll is a checkpoint
+  function heard(run) {
+    if (run.toll === lastToll || !ownRun(run)) return;
+    lastToll = run.toll;
+    Char.checkpoint(save, run);
+    written('toll');
   }
 
   // ---- input until 52-input.js arrives: W A S D and the arrows ----
@@ -20655,9 +22527,20 @@ void main() {
   // ---- the frame ----
 
   function finish() {
+    report = null;
+    if (ownRun(S)) {
+      if (S.result) {
+        report = Char.end(save, S);
+        written('end');
+      } else {                                     // ended by hand, without the simulation's end: as one left unfinished
+        Char.checkpoint(save, S);
+        report = Char.abandoned(save);
+        written('unfinished');
+      }
+    }
     setState('results');
     UI.clear();
-    UI.open('results', { S: S, result: S.result || null });
+    UI.open('results', { S: S, result: S.result || null, report: report });
   }
 
   function tick(dt) {
@@ -20672,6 +22555,7 @@ void main() {
         Sim.step(S, sampleInput());
         acc -= DT;
         steps++;
+        heard(S);
         Plat.emit('step', S, true);
       }
       if (acc > 0) acc = 0;   // more was owed than one frame may run, or the run stopped: the rest is dropped
@@ -20709,11 +22593,13 @@ void main() {
     open: function () {
       const build = UI.h('p', { class: 'ui-note' }, buildLine());
       stopWatching = Store.onStatus(function () { build.textContent = buildLine(); });
+      const go = household() ? UI.button('The Household', function () { Game.household(); }, { class: 'primary', dataset: { focus: '' } })
+        : UI.button('Begin vigil', function () { Game.start(); }, { class: 'primary', dataset: { focus: '' } });
       return UI.h('div', { class: 'ui-stack game-title' },
         UI.h('h1', { class: 'ui-title' }, 'Tollbound'),
         UI.h('div', { class: 'ui-rule' }),
         UI.h('p', { class: 'ui-sub' }, 'The bells are dumb, and every toll wakes the dead. Keep the vigil; leave by a lychgate.'),
-        UI.button('Begin vigil', function () { Game.start(); }, { class: 'primary', dataset: { focus: '' } }),
+        go,
         typeof Settings.open === 'function' ? UI.button('Settings', function () { Settings.open(); }, { class: 'second' }) : null,
         build);
     },
@@ -20728,21 +22614,139 @@ void main() {
     return Math.floor(s / 60) + ':' + (rest < 10 ? '0' : '') + rest;
   }
 
+  const className = (id) => (Defs.has('class', id) ? Defs.get('class', id).name : id);
+  const zoneName = (id) => (Defs.has('zone', id) ? Defs.get('zone', id).name : id);
+
+  // what killed a character, in words: the body whose attack it was, or the kind of harm
+  function killer(cause) {
+    if (typeof cause.attack === 'string') {
+      const bodies = Defs.all('enemy').concat(Defs.all('boss'));
+      for (let i = 0; i < bodies.length; i++) {
+        const own = bodies[i].attacks.some((a) => (typeof a === 'string' ? a : a.id) === cause.attack);
+        if (own) return bodies[i].name;
+      }
+    }
+    return cause.kind === 'drag' ? 'the press of the dead' : cause.kind === 'swell' ? 'a Swell of the dead' : 'a Blow of the dead';
+  }
+
+  function charLine(c) { return className(c.class) + ', level ' + c.level; }
+
+  // the bells a new character rings until a screen lets the player choose: the heaviest hung, as many as the places
+  function heaviestBells() {
+    const frame = save.account.frame;
+    const hung = frame.bells.filter(function (b) { return b.pit !== null; }).sort(function (a, b) { return b.weight - a.weight || a.uid - b.uid; });
+    return hung.slice(0, frame.places).map(function (b) { return b.uid; });
+  }
+
+  const householdScreen = {
+    back: function () { Game.title(); },
+    open: function () {
+      const living = save.chars.map(function (c) {
+        return UI.button(c.name + ' — ' + charLine(c), function () { Game.lantern(c.uid); }, { class: 'game-pick', dataset: { char: String(c.uid) } });
+      });
+      const field = UI.h('input', { type: 'text', class: 'game-field', maxlength: '24', value: 'Ringer ' + (save.chars.length + save.register.length + 1), 'aria-label': 'Name', dataset: { field: 'name' } });
+      const classes = Char.classes(save);
+      let chosen = classes.length > 0 ? classes[0] : null;
+      const make = function () {
+        const made = chosen === null ? null : Game.make(chosen, field.value, heaviestBells());
+        if (made === null) UI.toast('A name of 1 to 24 letters is needed.');
+        else Game.lantern(made.uid);
+      };
+      field.addEventListener('keydown', function (e) { if (e.key === 'Enter') { e.preventDefault(); make(); } });
+      const pick = classes.length > 1 ? UI.h('div', { class: 'ui-row' }, classes.map(function (id) {
+        const b = UI.button(className(id), function () {
+          chosen = id;
+          for (const other of b.parentNode.children) other.classList.toggle('primary', other === b);
+        }, { class: id === chosen ? 'primary' : 'second', dataset: { class: id } });
+        return b;
+      })) : null;
+      const dead = save.register.map(function (d) {
+        const how = d.how === 'retired' ? 'retired, and recast as a bell'
+          : (d.cause ? 'killed by ' + killer(d.cause) : 'died') + ' in ' + zoneName(d.zone) + ' after ' + d.toll + (d.toll === 1 ? ' toll' : ' tolls');
+        return UI.h('li', { class: 'game-dead', dataset: { char: String(d.uid) } }, d.name + ', ' + className(d.class) + ' of level ' + d.level + ': ' + how);
+      });
+      return UI.h('div', { class: 'ui-panel ui-stack game-household' },
+        UI.h('h2', { class: 'ui-heading' }, 'The Household'),
+        UI.h('p', { class: 'ui-sub' }, living.length ? 'Choose who goes down tonight.' : 'Nobody stands in the Household yet.'),
+        living.length ? UI.h('div', { class: 'ui-stack game-list' }, living) : null,
+        UI.h('div', { class: 'ui-stack game-make' },
+          UI.h('label', { class: 'ui-note' }, 'A new character'),
+          field, pick,
+          UI.button('Make ' + (classes.length === 1 ? 'a ' + className(classes[0]) : 'the character'), make,
+            { class: living.length ? 'second' : 'primary', dataset: Object.assign({ make: '' }, living.length ? {} : { focus: '' }) })),
+        dead.length ? UI.h('div', { class: 'ui-stack' }, UI.h('p', { class: 'ui-note' }, 'The Register'), UI.h('ul', { class: 'game-register' }, dead)) : null,
+        UI.h('div', { class: 'ui-row' },
+          UI.button('Save text', function () { UI.open('save-text'); }, { class: 'second' }),
+          UI.button('Back', function () { Game.title(); }, { class: 'second' })));
+    },
+  };
+
+  const lanternScreen = {
+    back: function () { Game.household(); },
+    open: function (args) {
+      const c = (args && args.char) || Game.char;
+      if (!c) return UI.h('div', { class: 'ui-panel' }, UI.button('The Household', function () { Game.household(); }, { class: 'primary' }));
+      const need = Char.need(c), xp = need === Infinity ? 'the most there is' : Math.floor(c.xp) + ' of ' + need + ' to the next';
+      const rooms = ROOMS.filter(function (id) { return UI.has(id); }).map(function (id) {
+        return UI.button(ROOM_NAMES[id], function () { UI.open(id, { char: Game.char }); }, { class: 'second', dataset: { room: id } });
+      });
+      const grief = Char.mourning(c);
+      return UI.h('div', { class: 'ui-panel ui-stack game-lantern', dataset: { char: String(c.uid) } },
+        UI.h('p', { class: 'ui-note' }, 'The Lantern'),
+        UI.h('h2', { class: 'ui-heading' }, c.name),
+        UI.h('p', { class: 'ui-sub' }, charLine(c) + ' · ' + xp),
+        UI.h('p', { class: 'game-tally' }, 'Coin ' + Math.floor(save.account.coin) + '  ·  Hum ' + Math.floor(save.account.hum) + '  ·  Tolls heard ' + c.tolls +
+          (grief ? '  ·  in ' + grief + ' mourning' : '')),
+        rooms.length ? UI.h('div', { class: 'ui-row' }, rooms) : null,
+        UI.button('Go down to ' + zoneName(FIRST_ZONE).replace(/^The /, 'the '), function () { Game.vigil(FIRST_ZONE); }, { class: 'primary', dataset: { focus: '', vigil: FIRST_ZONE } }),
+        UI.button('The Household', function () { Game.household(); }, { class: 'second' }));
+    },
+  };
+
+  const saveTextScreen = {
+    open: function () {
+      const out = UI.h('textarea', { class: 'game-text', readonly: true, rows: '4', 'aria-label': 'The save, as text', dataset: { field: 'export' } });
+      out.value = Game.exportText();
+      const into = UI.h('textarea', { class: 'game-text', rows: '4', 'aria-label': 'A save to read', placeholder: 'Paste a save here', dataset: { field: 'import' } });
+      const said = UI.h('p', { class: 'ui-note', role: 'status' }, '');
+      return UI.h('div', { class: 'ui-panel ui-stack game-save-text' },
+        UI.h('h2', { class: 'ui-heading' }, 'Save text'),
+        UI.h('p', { class: 'ui-sub' }, 'Keep this text somewhere safe: it is the whole Household.'),
+        out,
+        into,
+        said,
+        UI.h('div', { class: 'ui-row' },
+          UI.button('Read it in', function () {
+            const got = Game.importText(into.value);
+            if (!got.ok) {
+              said.textContent = 'It could not be read: ' + got.errors.slice(0, 3).join('; ');
+              return;
+            }
+            UI.toast('The Household was read in.');
+            if (state === 'household') Game.household(); else UI.back();   // the Household under it shows the save read
+          }, { class: 'second', dataset: { read: '' } }),
+          UI.button('Back', function () { UI.back(); }, { class: 'primary', dataset: { focus: '' } })));
+    },
+  };
+
   const resultsScreen = {
     back: false,
     open: function (args) {
-      const run = (args && args.S) || {}, result = (args && args.result) || {};
+      const run = (args && args.S) || {}, result = (args && args.result) || {}, rep = args && args.report;
       // the totals of the result where the simulation gives them, else what the run itself says
       const pick = function (name, other) { return typeof result[name] === 'number' ? result[name] : run[other]; };
       const tolls = pick('tolls', 'toll'), kills = pick('kills', 'kills');
       let tally = 'Time ' + clock(pick('time', 't'));
       if (typeof tolls === 'number') tally += '  ·  Tolls ' + tolls;
       if (typeof kills === 'number') tally += '  ·  Laid ' + kills;
+      const way = rep && rep.death === null ? UI.button('Back to the Lantern', function () { Game.lantern(rep.char); }, { class: 'primary', dataset: { focus: '' } })
+        : rep ? UI.button('To the Household', function () { Game.household(); }, { class: 'primary', dataset: { focus: '' } })
+          : UI.button('Back to the title', function () { Game.title(); }, { class: 'primary', dataset: { focus: '' } });
       return UI.h('div', { class: 'ui-panel ui-stack game-results' },
         UI.h('h2', { class: 'ui-heading' }, 'The vigil is over'),
         UI.h('p', { class: 'ui-sub' }, OUTCOMES[result.outcome] || 'The night closes over the district.'),
         UI.h('p', { class: 'game-tally' }, tally),
-        UI.button('Back to the title', function () { Game.title(); }, { class: 'primary', dataset: { focus: '' } }));
+        way);
     },
   };
 
@@ -20761,22 +22765,74 @@ void main() {
       UI.toast('This build has no simulation yet.');
       return null;
     }
-    const seed = seedOf(cfg);
+    const seed = seedOf(cfg), mine = cfg && cfg.char && save !== null && save.away !== null && cfg.char.uid === save.away.char;
+    if (!mine) dropRun();
     // Sim.create keeps the cfg it is given, so a cfg that brought its seed goes in as it is
     S = !real ? Sim.debugScene(DEBUG_ENEMIES, seed) : Sim.create(cfg.seed === seed ? cfg : Object.assign({}, cfg, { seed: seed }));
     acc = 0;
+    lastToll = S.toll;
     releaseKeys();
     UI.clear();
     setState('run');
     return S;
   };
 
-  Game.title = function () {
+  // leaves the run (a character's vigil left before its end ends unfinished) and shows a screen of no run
+  function away(next, screen, args) {
+    dropRun();
     S = null;
     acc = 0;
     UI.clear();
-    setState('title');
-    UI.open('title');
+    setState(next);
+    UI.open(screen, args);
+  }
+
+  Game.title = function () { away('title', 'title'); };
+
+  Game.household = function () {
+    if (save === null) { Game.title(); return; }
+    away('household', 'household');
+  };
+
+  Game.lantern = function (uid) {
+    const c = save === null ? null : Char.find(save, uid === undefined || uid === null ? save.active : uid);
+    if (c === null) { Game.household(); return null; }
+    if (save.active !== c.uid) { save.active = c.uid; written('chosen'); }
+    away('lantern', 'lantern', { char: c });
+    return c;
+  };
+
+  Game.make = function (classId, name, bells) {
+    if (save === null) return null;
+    const c = Char.create(save, classId, name, bells || []);
+    if (c === null) return null;
+    save.active = c.uid;
+    written('made');
+    return c;
+  };
+
+  Game.vigil = function (zone, seed) {
+    const c = Game.char;
+    if (c === null) return null;
+    if (ownRun(S) && S.phase !== 'ended') dropRun();
+    const cfg = Char.begin(save, c.uid, zone || FIRST_ZONE, seedOf(seed === undefined ? null : { seed: seed }));
+    if (cfg === null) return null;
+    written('vigil');
+    return Game.start(cfg);
+  };
+
+  Game.exportText = function () { return save === null ? '' : SaveData.encode(save); };
+
+  Game.importText = function (text) {
+    if (save === null) return { ok: false, errors: ['this build keeps no Household'], notes: [] };
+    if (ownRun(S) && S.phase !== 'ended') return { ok: false, errors: ['a vigil is under way'], notes: [] };
+    const got = SaveData.decode(text);
+    if (got.save === null) return { ok: false, errors: got.errors, notes: got.notes };
+    save = got.save;
+    // a save taken in the middle of a vigil: that vigil cannot go on here, so it ends as one left unfinished
+    if (save.away !== null && Char.abandoned(save) !== null) got.notes.push('the vigil under way in it ended as one left unfinished');
+    written('import');
+    return { ok: true, errors: [], notes: got.notes };
   };
 
   // A command empties S.events and may emit new ones, as a step does: the notice lets their readers know.
@@ -20807,6 +22863,7 @@ void main() {
       if (S.phase !== 'play') break;
       Sim.step(S, bot ? Bot.input(S, policy) : Sim.NO_INPUT);
       done++;
+      heard(S);
       Plat.emit('step', S, false);
     }
     if (S.phase === 'ended') finish();
@@ -20814,7 +22871,7 @@ void main() {
   };
 
   Game.boot = function () {
-    if (booted) return;
+    if (booted) return Promise.resolve();
     booted = true;
     const canvas = document.getElementById('view');
     Core.assert(canvas, 'the page has no #view canvas');
@@ -20825,15 +22882,25 @@ void main() {
     visible = document.visibilityState !== 'hidden';
     Plat.onVisibility(function (shown) {
       visible = shown;
-      if (!shown) releaseKeys();
+      if (shown) return;
+      releaseKeys();
+      if (ownRun(S) && S.phase !== 'ended') {      // the page may not come back: keep what was earned
+        Char.checkpoint(save, S);
+        written('hidden');
+      }
     });
     if (typeof Input.sample !== 'function') wireKeys();
     Plat.emit('boot', view);
     if (!UI.has('title')) UI.screen('title', titleScreen);
+    if (!UI.has('household')) UI.screen('household', householdScreen);
+    if (!UI.has('lantern')) UI.screen('lantern', lanternScreen);
+    if (!UI.has('save-text')) UI.screen('save-text', saveTextScreen);
     if (!UI.has('results')) UI.screen('results', resultsScreen);
     if (Plat.query('fps') === '1') readout = UI.h('div', { class: 'game-fps', 'aria-hidden': 'true' });
-    UI.open('title');
-    Plat.loop(frame);
+    return readSave().then(function () {
+      UI.open('title');
+      Plat.loop(frame);
+    });
   };
 })();
 // 99-boot.js: starts the page. It runs last, after every other file has only defined things.
@@ -20863,7 +22930,7 @@ void main() {
       Tree: typeof Tree !== 'undefined' ? Tree : null,
       Char: typeof Char !== 'undefined' ? Char : null,
       Progress: typeof Progress !== 'undefined' ? Progress : null,
-      Legacy: typeof Legacy !== 'undefined' ? Legacy : null,
+      Bellframe: typeof Bellframe !== 'undefined' ? Bellframe : null,
       SaveData: typeof SaveData !== 'undefined' ? SaveData : null,
       Sim: typeof Sim !== 'undefined' ? Sim : null,
       Player: typeof Player !== 'undefined' ? Player : null,
@@ -20875,6 +22942,7 @@ void main() {
       Director: typeof Director !== 'undefined' ? Director : null,
       Offers: typeof Offers !== 'undefined' ? Offers : null,
       Favours: typeof Favours !== 'undefined' ? Favours : null,
+      Observances: typeof Observances !== 'undefined' ? Observances : null,
       Bot: typeof Bot !== 'undefined' ? Bot : null,
       World: typeof World !== 'undefined' ? World : null,
       Plat: typeof Plat !== 'undefined' ? Plat : null,

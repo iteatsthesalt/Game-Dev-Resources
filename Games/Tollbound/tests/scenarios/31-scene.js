@@ -1,7 +1,8 @@
 // tests/scenarios/31-scene.js: the scene, the rigs and the effects in the page (src/js/61-rigs.js, 63-ground.js,
 // 68-scene.js, 69-vfx.js), on a desktop window and on a phone, in the plain view and in the 3D view.
-//   - a run started from the title is drawn through Scene.draw, without an error; the checks after it start the
-//     debug scene (Game.start() with no zone), whose rings of husks they count on
+//   - a run started from the title (through the Household and the Lantern) is drawn through Scene.draw, without
+//     an error; the checks after it start the debug scene (Game.start() with no zone), whose rings of husks they
+//     count on
 //   - the buffers of a frame hold the player and every enemy on screen: in the 3D view parts round each of them,
 //     in the plain view a disc at each
 //   - with 600 enemies the budgets hold (parts, lights), and a lower part budget drops detail parts first and
@@ -20,13 +21,17 @@ const scene = async function () {
   T.check('the view is the one asked for', !!view && view.name === wanted, view && view.name);
   const puppets = !!(view && view.caps && view.caps.puppets);
 
-  // ---- a run from the title: whatever run the title starts is drawn ----
-  const begin = Array.from(document.querySelectorAll('#ui button')).find((b) => /begin/i.test(b.textContent));
-  T.check('the title offers a way into a run', !!begin);
-  if (!begin) return T.done();
-  begin.click();
+  // ---- a run from the title: whatever run the title leads to is drawn. The title's main control opens the
+  // Household, whose main control makes a character, and the Lantern's sends it down (each has focus) ----
+  const main = () => {
+    const at = document.activeElement;
+    return at && at.tagName === 'BUTTON' && at.closest('#ui') ? at : null;
+  };
+  T.check('the title offers a way into a run', !!main());
+  if (!main()) return T.done();
+  for (let i = 0; i < 4 && Game.state !== 'run' && main(); i++) main().click();
   const first = Game.S;
-  T.check('it starts a run', Game.state === 'run' && !!first, Game.state);
+  T.check('it leads into a run', Game.state === 'run' && !!first, Game.state);
   if (!first) return T.done();
   await T.until(() => first.step >= 20 && Scene.stats.figures > 0, 20000);
   T.check('the frame loop draws it through Scene.draw', Scene.stats.figures > 0 && UI.top() === null, Scene.stats);

@@ -480,7 +480,8 @@
     wipe();
   };
 
-  Plat.on('state', function (state) { if (state === 'title') Vfx.clear(); });
+  // every state without a run (the title, the Household, the Lantern) starts clear; the results keep the last picture
+  Plat.on('state', function (state) { if (state !== 'run' && state !== 'results') Vfx.clear(); });
 
   const stats = { particles: 0, numbers: 0, marks: 0, warnings: 0 };
   Object.defineProperty(Vfx, 'stats', {

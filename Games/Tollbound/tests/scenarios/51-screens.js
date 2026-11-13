@@ -1,12 +1,14 @@
 // tests/scenarios/51-screens.js: the title and the results of 73-screens.js, which replace the stand-ins of 90-game.js.
-//   title     what it shows (the emblem, the name, one line of subtitle, "Begin vigil" with focus, Settings under it,
-//             the build line), that it fits the window and leaves the smoke test's tap clear, that every control is
-//             44 px or more, that its text follows the setting "Text and controls", and what "Begin vigil" starts:
-//             the vigil of the Dial with the Change-ringer once the vigil's and the combat's files are in the build,
-//             the debug scene before. On a phone upright and on its side (with a notch), and on a desktop.
-//   results   each way a vigil ends (rung down, spared, died, and ended by hand with no result): the place, the
-//             outcome in the design's words, the tally (time, tolls, laid, coin, banked), the buttons and their
-//             focus, "Another vigil" and "Back to the title", and the fit on a small screen.
+//   title     what it shows (the emblem, the name, one line of subtitle, its main control "The Household" with focus,
+//             Settings under it, the build line), that it fits the window and leaves the smoke test's tap clear, that
+//             every control is 44 px or more, that its text follows the setting "Text and controls", and what the main
+//             control opens: the Household, with no run (it was "Begin vigil", which started a vigil, until Stage 2
+//             gave every vigil a character of the Household). On a phone upright and on its side (with a notch), and
+//             on a desktop.
+//   results   each way a run without a character ends (rung down, spared, died, and ended by hand with no result):
+//             the place, the outcome in the design's words, the tally (time, tolls, laid, coin, banked), the buttons
+//             and their focus, "Another vigil" and "Back to the title", and the fit on a small screen. The results of
+//             a character's vigil are in 52-household.js.
 // Each function below runs inside the page (see tests/run.js), so it uses only T, TB and the page itself.
 
 const title = async function () {
@@ -18,7 +20,8 @@ const title = async function () {
 
   T.check('the game opens on the title', Game.state === 'title' && UI.top() === 'title', [Game.state, UI.top()]);
   const name = ui.querySelector('h1'), subs = ui.querySelectorAll('.ui-sub'), notes = ui.querySelectorAll('.ui-note');
-  const emblem = ui.querySelector('.scr-emblem canvas'), begin = button('Begin vigil'), settings = button('Settings');
+  const MAIN = 'The Household';
+  const emblem = ui.querySelector('.scr-emblem canvas'), begin = button(MAIN), settings = button('Settings');
   T.check('the title names the game in its heading', !!name && name.textContent === 'Tollbound', name && name.textContent);
   T.check('one line of subtitle', subs.length === 1 && subs[0].textContent.length > 20 && !/\n/.test(subs[0].textContent), subs.length && subs[0].textContent);
   T.check('the emblem is a glyph painted by code', !!emblem && emblem.dataset.glyph === 'mark.bell' && emblem.width > 0);
@@ -26,10 +29,10 @@ const title = async function () {
     emblem && emblem.getBoundingClientRect().height);
   T.check('the build line is the one note, and names the build, the view and the storage', notes.length === 1 &&
     /^Build \d+\.\d+\.\d+ · .+ · .+$/.test(notes[0].textContent) && notes[0].textContent.includes(Game.VERSION), notes.length && notes[0].textContent);
-  T.check('"Begin vigil" is the main control, with focus', !!begin && begin.classList.contains('primary') && document.activeElement === begin);
+  T.check('"' + MAIN + '" is the main control, with focus', !!begin && begin.classList.contains('primary') && document.activeElement === begin);
   if (typeof Settings.open === 'function') {
     const a = begin.getBoundingClientRect(), b = settings ? settings.getBoundingClientRect() : null;
-    T.check(short ? 'Settings stands beside "Begin vigil" on a short screen' : 'Settings stands under "Begin vigil"',
+    T.check(short ? 'Settings stands beside "' + MAIN + '" on a short screen' : 'Settings stands under "' + MAIN + '"',
       !!b && (short ? Math.abs(b.top - a.top) < 2 && b.left > a.right : b.top > a.bottom), b && [a.top, a.bottom, b.top, b.left]);
   }
   const controls = Array.from(ui.querySelectorAll('button'));
@@ -69,21 +72,17 @@ const title = async function () {
     begin.focus();
   }
 
-  // ---- what "Begin vigil" starts ----
-  const dial = Defs.has('zone', 'dial'), ringer = typeof TB.Player.classRun === 'function' && Defs.has('class', 'change-ringer');
+  // ---- what "The Household" opens ----
   const states = [];
   const off = Plat.on('state', (now, was) => states.push(was + ' > ' + now));
   begin.click();
   off();
-  const S = Game.S;
-  T.check('"Begin vigil" starts a run and closes the title', Game.state === 'run' && !!S && S.phase === 'play' && UI.top() === null && states.join() === 'title > run', states);
-  if (S) {
-    if (dial && ringer) T.check('it is a vigil of the Dial, kept by a Change-ringer', S.zone.id === 'dial' && S.cfg.class === 'change-ringer' && S.debug === null && S.skills.length > 0, [S.zone.id, S.cfg.class]);
-    else if (dial) T.check('it is a vigil of the Dial (the class is not in this build yet)', S.zone.id === 'dial' && S.debug === null, S.zone.id);
-    else T.check('it is the debug scene, while the Dial is not in this build yet', S.debug !== null && S.enemies.n > 0, S.zone.id);
-  }
+  T.check('"' + MAIN + '" opens the Household and closes the title, with no run', Game.state === 'household' && UI.top() === 'household' && Game.S === null &&
+    !UI.isOpen('title') && states.join() === 'title > household', states);
+  T.check('where a character can be made: the classes open to a new one are there', !!Game.save && TB.Char.classes(Game.save).length > 0 &&
+    (!Defs.has('class', 'change-ringer') || TB.Char.classes(Game.save).includes('change-ringer')), Game.save && TB.Char.classes(Game.save));
   Game.title();
-  T.check('Game.title brings the title back, with focus on "Begin vigil"', UI.top() === 'title' && document.activeElement === button('Begin vigil'));
+  T.check('Game.title brings the title back, with focus on "' + MAIN + '"', UI.top() === 'title' && document.activeElement === button(MAIN));
   return T.done();
 };
 
@@ -161,7 +160,12 @@ const results = async function () {
   T.check('a run that ended without a result still has its results, from the run itself', UI.top() === 'results' && S.result === null &&
     ui.querySelector('h2').textContent === 'Over' && /Time 0:02/.test(words) && /vigil/i.test(words), words.slice(0, 160));
   button('Another vigil').click();
-  T.check('after a debug scene "Another vigil" begins what the title begins', Game.state === 'run' && !!Game.S && Game.S !== S);
+  // The title began this before Stage 2 ("Begin vigil"); now it leads to the Household, and only a run without a
+  // character still begins it: the vigil of the Dial with the Change-ringer, or the debug scene without the Dial.
+  const ringer = typeof TB.Player.classRun === 'function' && Defs.has('class', 'change-ringer'), R = Game.S;
+  T.check('after a debug scene "Another vigil" begins a vigil without a character: of the Dial, kept by a Change-ringer once both are in the build',
+    Game.state === 'run' && !!R && R !== S && !R.cfg.char && (!dial || (R.zone.id === 'dial' && R.debug === null)) &&
+    (!dial || !ringer || (R.cfg.class === 'change-ringer' && R.skills.length > 0)), R && [R.zone.id, R.cfg.class]);
   Game.title();
   return T.done();
 };
