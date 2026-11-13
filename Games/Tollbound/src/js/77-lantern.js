@@ -7,12 +7,14 @@
 // focus through UI.nav, UI.activate and UI.back.
 // Owns: (none)
 // Public: no functions. It registers, with UI.screen:
-//   'household'  the standing characters, each a control that opens the Lantern with it ("Name — Class, level n"; focus
-//                starts on the first); a new character: its name (the first text field, data-field "name"), its class
-//                when more than one is open, the hung bells it will ring (as many as the ringing places, the heaviest
-//                chosen first; each a switch), and the control that makes it (data-make; focus starts there while nobody
-//                stands); the Register (.game-register, one .game-dead for each death, naming what killed it; a dead
-//                character has no control); "Save text" (the stand-in 'save-text' of 90-game.js); back to the title
+//   'household'  the Household's coin, Hum, standing and dead (once there is any), and the bequests a death's vigil met;
+//                the standing characters, each a control that opens the Lantern with it (its text begins with the name,
+//                then class, level and tolls; focus starts on the first); a new character: its name (the first text
+//                field, data-field "name"), its class when more than one is open, the hung bells it will ring (as many
+//                as the ringing places, the heaviest chosen first; each a switch, with the true ring the chosen make),
+//                and the control that makes it (data-make; focus starts there while nobody stands); the Register
+//                (.game-register, one .game-dead for each death, naming what killed it; a dead character has no
+//                control); "Save text" (the stand-in 'save-text' of 90-game.js); back to the title
 //   'lantern'    opened with {char}: its name (the first heading), class and level and the experience to the next, its
 //                mourning, the bequests its last vigil met; the way down, "Go down to the Dial" (Game.vigil; focus
 //                starts on it), then a control for each room of Game.ROOMS that is registered, each opened with {char};
@@ -28,7 +30,8 @@
 //   'register'   opened with {char}: the head start the Register gives (Progress.headStart) and every death, newest
 //                first, with what killed it from its cause, where and when, and the bell it became
 //   'bequests'   opened with {char}: the bequests, the character's own and the Household's, each with its wish, how far
-//                it has come (Progress.status) and what it leaves; a sealed one only once it is met
+//                it has come (Progress.status) and what it leaves; a sealed one only once it is met, and one that asks
+//                for another class not among the character's own
 // And with Music.define, the piece 'lantern', played on the notice 'state' for 'household' and 'lantern'.
 (function () {
   'use strict';
@@ -83,9 +86,10 @@
     knee: ['Knee', ''], heel: ['Heel', ''], hand: ['Hand', ''], ear: ['Ear', ''],
   };
   const TAG_SAY = { moving: 'while you move', still: 'while you stand still', round: 'of voices round you', timed: 'on the quarters', held: 'of voices that last' };
+  // a signed number as a player reads it: whole from 10 up, one place from 1, two below
   function num(v) {
-    const r = Math.round(v * 100) / 100, s = Math.abs(r) >= 10 ? String(Math.round(Math.abs(r) * 10) / 10) : String(Math.abs(r));
-    return (r < 0 ? '−' : '+') + s;
+    const a = Math.abs(v), r = a >= 10 ? Math.round(a) : a >= 1 ? Math.round(a * 10) / 10 : Math.round(a * 100) / 100;
+    return (v < 0 ? '−' : '+') + String(r);
   }
   function sayMod(m) {
     const row = SAY[m.stat], v = Array.isArray(m.value) ? m.value[0] : m.value;
@@ -177,7 +181,7 @@
       const living = save.chars.map(function (c, i) {
         const grief = Char.mourning(c);
         const attrs = { class: 'game-pick lt-char', dataset: Object.assign({ char: String(c.uid) }, i === 0 ? { focus: '' } : {}) };
-        return UI.button([h('span', { class: 'lt-char-name' }, c.name), h('span', { class: 'lt-char-line' }, ' — ' + nameOfClass(c.class) + ', level ' + c.level +
+        return UI.button([h('span', { class: 'lt-char-name' }, c.name), ' ', h('span', { class: 'lt-char-line' }, nameOfClass(c.class) + ', level ' + c.level +
           ' · ' + plural(c.tolls, 'toll', 'tolls') + (grief ? ' · in ' + grief + ' mourning' : ''))], function () { Game.lantern(c.uid); }, attrs);
       });
       // a new character
@@ -188,7 +192,7 @@
       const places = save.account.frame.places, hung = hungBells(save), ring = hung.slice(0, places).map((b) => b.uid);
       const ringNote = h('p', { class: 'ui-note lt-ring-note' });
       const toggles = hung.map(function (b) {
-        const t = UI.button([h('span', { class: 'lt-toggle-name' }, b.name), h('span', { class: 'lt-toggle-line' }, nameOfClass(b.class) + ' · ' + plural(b.weight, 'toll', 'tolls') +
+        const t = UI.button([h('span', { class: 'lt-toggle-name' }, b.name), ' ', h('span', { class: 'lt-toggle-line' }, nameOfClass(b.class) + ' · ' + plural(b.weight, 'toll', 'tolls') +
           (b.gift && Defs.has('gift', b.gift) ? ' · ' + Defs.get('gift', b.gift).name + ', level ' + Bellframe.level(b) : ''))], function () {
           const at = ring.indexOf(b.uid);
           if (at >= 0) ring.splice(at, 1);
@@ -227,21 +231,25 @@
         : save.account.frame.bells.length ? h('p', { class: 'ui-note lt-ring-note' }, plural(waiting, 'bell waits', 'bells wait') +
           ' in the Bellframe to be hung. Only a hung bell can be rung.') : null;
       const dead = save.register.slice().reverse().map(deathLine);
-      const met = told && told.death ? metLine(told.bequests, 'The Household met a bequest:') : null;
+      const met = told && told.death ? metLine(told.bequests, 'Met in the last vigil, for the Household:') : null;
       if (told && told.death) told = null;
-      return h('div', { class: 'ui-panel ui-stack lt-household game-household' },
-        h('p', { class: 'lt-kicker' }, 'The Lantern'),
-        h('h2', { class: 'ui-heading' }, 'The Household'),
-        h('p', { class: 'ui-sub' }, living.length ? 'Choose who goes down tonight.' : 'Nobody stands in the Household yet.'),
-        h('div', { class: 'lt-tally' }, cell('Coin', MONEY(save.account.coin)), cell('Hum', MONEY(save.account.hum)), cell('Standing', String(save.chars.length)),
-          cell('Dead', String(save.register.length))),
-        met,
-        living.length ? h('div', { class: 'ui-stack game-list lt-list' }, living) : null,
-        h('div', { class: 'ui-stack game-make lt-make' }, h('label', { class: 'ui-note' }, 'A new character'), field, pick, bells, makeBtn),
-        dead.length ? h('div', { class: 'ui-stack lt-register-box' }, h('p', { class: 'ui-note' }, 'The Register'), h('ul', { class: 'game-register lt-register' }, dead)) : null,
-        h('div', { class: 'ui-row lt-foot' },
-          UI.button('Save text', function () { UI.open('save-text'); }, { class: 'second' }),
-          UI.button('Back', function () { Game.title(); }, { class: 'second' })));
+      return h('div', { class: 'ui-panel lt-household game-household' },
+        h('div', { class: 'ui-stack lt-head' },
+          h('p', { class: 'lt-kicker' }, 'The Lantern'),
+          h('h2', { class: 'ui-heading' }, 'The Household'),
+          h('p', { class: 'ui-sub' }, living.length ? 'Choose who goes down tonight.' : 'Nobody stands in the Household yet.'),
+          living.length || dead.length ? h('div', { class: 'lt-tally' }, cell('Coin', MONEY(save.account.coin)), cell('Hum', MONEY(save.account.hum)),
+            cell('Standing', String(save.chars.length)), cell('Dead', String(save.register.length))) : null,
+          met),
+        h('div', { class: 'ui-stack lt-col' },
+          living.length ? h('div', { class: 'ui-stack game-list lt-list' }, living) : null,
+          h('div', { class: 'ui-stack game-make lt-make' }, h('label', { class: 'ui-note' }, 'A new character'), field, pick, bells, makeBtn)),
+        h('div', { class: 'ui-stack lt-col' },
+          dead.length ? h('div', { class: 'ui-stack lt-register-box' }, h('p', { class: 'ui-note' }, 'The Register'), h('ul', { class: 'game-register lt-register' }, dead))
+            : h('p', { class: 'ui-note' }, 'The Register is empty: nobody of the Household has died.'),
+          h('div', { class: 'ui-row lt-foot' },
+            UI.button('Save text', function () { UI.open('save-text'); }, { class: 'second' }),
+            UI.button('Back', function () { Game.title(); }, { class: 'second' }))));
     },
   });
 
@@ -253,7 +261,8 @@
     const sheet = Char.sheet(c, account), s = sheet.stats, heed = Char.heed(c, account), pts = Char.points(c);
     const guard = (kind) => Math.round(sheet.guard[Stats.TYPE[kind]]) + '%';
     return [
-      cell('Life', String(Math.round(s['life-max'])), 'life'), cell('Heed', Math.round(heed.free) + ' of ' + Math.round(heed.max), 'heed'),
+      cell('Life', String(Math.round(s['life-max'])), 'life'),
+      cell('Heed', heed.held > 0 ? Math.round(heed.free) + '/' + Math.round(heed.max) : String(Math.round(heed.max)), 'heed'),
       cell('Knee', String(Math.round(s.knee))), cell('Heel', String(Math.round(s.heel))), cell('Hand', String(Math.round(s.hand))), cell('Ear', String(Math.round(s.ear))),
       cell('Speed', s['move-speed'].toFixed(1) + ' m/s', 'speed'), cell('Brace', guard('blow'), 'brace'), cell('Stride', guard('drag'), 'stride'),
       cell('Plan', pts.free + ' free', 'plan'),
@@ -314,7 +323,7 @@
           UI.button('Go down to ' + zonePhrase(FIRST_ZONE), function () { Game.vigil(FIRST_ZONE); }, { class: 'primary lt-down', dataset: { focus: '', vigil: FIRST_ZONE } }),
           rooms.length ? h('div', { class: 'lt-rooms' }, rooms) : null),
         h('div', { class: 'lt-side ui-stack' },
-          h('p', { class: 'ui-note' }, 'Its sheet in the Lantern, every ring of the Plan counting'),
+          h('p', { class: 'ui-note' }, 'Its sheet between vigils'),
           sheet,
           gives,
           tally,
@@ -337,7 +346,9 @@
   function frameArt(save, chosen) {
     const pits = Defs.all('pit'), open = save.account.frame.pits, parts = [];
     parts.push(svg('rect', { x: 0, y: 0, width: FRAME_W, height: FRAME_H, class: 'bf-shaft' }));
-    parts.push(svg('ellipse', { cx: 50, cy: 0, rx: 34, ry: 11, class: 'lt-glow' }), svg('ellipse', { cx: 50, cy: 0, rx: 20, ry: 6, class: 'lt-glow' }));
+    // the light of the Lantern above, falling through the hatch in the ceiling of the belfry
+    parts.push(svg('path', { d: 'M38 0 L62 0 L74 10 L26 10 Z', class: 'bf-light' }), svg('path', { d: 'M43 0 L57 0 L64 10 L36 10 Z', class: 'bf-light' }),
+      svg('rect', { x: 38, y: 0, width: 24, height: 1.2, class: 'bf-hatch' }));
     for (const x of [0, 96]) {
       parts.push(svg('rect', { x, y: 0, width: 4, height: FRAME_H, class: 'bf-wall' }));
       for (let y = 6; y < FRAME_H; y += 8) parts.push(svg('line', { x1: x, y1: y, x2: x + 4, y2: y, class: 'bf-mortar' }));
@@ -371,8 +382,8 @@
     const n = frameNumbers(), most = n ? n.placesMost : 8, places = save.account.frame.places;
     parts.push(svg('rect', { x: 4, y: FLOOR - 2, width: 92, height: 2, class: 'bf-beam' }));
     parts.push(svg('rect', { x: 4, y: FLOOR, width: 92, height: FRAME_H - FLOOR, class: chosen === 'floor' ? 'bf-floor is-chosen' : 'bf-floor' }));
-    for (let i = 0; i < most; i++) {
-      const x = 12 + i * (76 / Math.max(1, most - 1));
+    for (let i = 0; i < most; i++) {                // the ropes hang over the left of the floor; its right tells the count
+      const x = 10 + i * (64 / Math.max(1, most - 1));
       if (i < places) {
         parts.push(svg('line', { x1: x, y1: FLOOR, x2: x, y2: FLOOR + 11, class: 'bf-rope' }));
         parts.push(svg('rect', { x: x - 1.2, y: FLOOR + 6, width: 2.4, height: 1.4, class: 'bf-sally-a' }), svg('rect', { x: x - 1.2, y: FLOOR + 7.4, width: 2.4, height: 1.4, class: 'bf-sally-b' }),
@@ -413,15 +424,17 @@
   UI.screen('bellframe', {
     open: function (args) {
       const save = Game.save, c = args && args.char ? args.char : Game.char;
-      const root = h('div', { class: 'ui-panel ui-stack bf-screen' });
+      const root = h('div', { class: 'ui-panel bf-screen' });
       if (!save) return root;
       const pits = Defs.all('pit');
       let chosen = null;                               // {kind: 'pit' | 'floor' | 'bell', id}
       const first = pits.find((p) => Bellframe.openable(save, p.id)) || pits.find((p) => p.from === null) || null;
       if (first) chosen = { kind: 'pit', id: first.id };
 
-      const write = function (done, said) {
+      // a change made: the save is written and the screen built afresh, with then chosen when it is given
+      const write = function (done, said, then) {
         if (!done) { UI.toast(said || 'That cannot be done now.'); return; }
+        if (then) chosen = then;
         Game.write();
         render(true);
       };
@@ -433,7 +446,7 @@
         if (chosen.kind === 'floor') {
           const n = frameNumbers(), most = n ? n.placesMost : 8, places = save.account.frame.places, price = Bellframe.price(save, 'place');
           box.append(h('h3', { class: 'bf-title' }, 'The ringing floor'),
-            h('p', { class: 'bf-text' }, 'A new character rings as many bells as the Household has ringing places: ' + plural(places, 'rope hangs', 'ropes hang') + ' of ' + most + '.'));
+            h('p', { class: 'bf-text' }, 'A new character rings as many bells as the Household has ringing places. ' + places + ' of ' + most + ' ropes hang here.'));
           if (price < Infinity) {
             box.append(UI.button('Buy a ringing place for ' + price + ' Hum', function () { write(Bellframe.place(save), 'Not enough Hum.'); },
               { class: 'primary bf-act', disabled: hum < price, dataset: { action: 'place' } }));
@@ -456,7 +469,8 @@
               box.append(h('p', { class: 'ui-note' }, 'It opens from ' + Defs.get('pit', pit.from).name + ', which is boarded still.'));
             }
           } else if (bell !== null) {
-            bellDetail(box, bell);
+            bellInfo(box, bell);
+            recasts(box, bell);
           } else {
             const waiting = save.account.frame.bells.filter((b) => b.pit === null);
             if (waiting.length === 0) box.append(h('p', { class: 'ui-note' }, 'No bell waits to be hung. The dead are recast as bells, and hung here.'));
@@ -471,25 +485,31 @@
         if (!bell) return box;
         box.append(h('h3', { class: 'bf-title' }, bell.name + '’s bell'), h('p', { class: 'bf-state' }, bell.pit === null ? 'waiting to be hung' : 'hangs in ' +
           (Defs.has('pit', bell.pit) ? Defs.get('pit', bell.pit).name : 'the frame')));
-        bellDetail(box, bell);
-        if (bell.pit === null) {
+        bellInfo(box, bell);
+        if (bell.pit === null) {                       // hanging first: it is what a bell waits for
           const empty = pits.filter((p) => save.account.frame.pits.indexOf(p.id) >= 0 && Bellframe.hung(save, p.id) === null);
           if (empty.length === 0) box.append(h('p', { class: 'ui-note' }, 'No open pit is empty: open another to hang it.'));
-          for (const p of empty) {
-            box.append(UI.button('Hang it in ' + p.name, function () { write(Bellframe.hang(save, bell.uid, p.id)); }, { class: 'second bf-act', dataset: { action: 'hang', bell: String(bell.uid), pit: p.id } }));
-          }
+          empty.forEach(function (p, i) {
+            box.append(UI.button('Hang it in ' + p.name, function () { write(Bellframe.hang(save, bell.uid, p.id), null, { kind: 'pit', id: p.id }); },
+              { class: (i === 0 ? 'primary' : 'second') + ' bf-act', dataset: { action: 'hang', bell: String(bell.uid), pit: p.id } }));
+          });
         }
+        recasts(box, bell);
         return box;
       }
 
-      // a bell: what it weighs, the gift it gives and at what level, the bells it rings true beside, and recasting
-      function bellDetail(box, bell) {
+      // a bell: what it weighs, the gift it gives and at what level, the bells it rings true beside
+      function bellInfo(box, bell) {
         const level = Bellframe.level(bell), gift = bell.gift && Defs.has('gift', bell.gift) ? Defs.get('gift', bell.gift) : null;
         box.append(h('p', { class: 'bf-text' }, nameOfClass(bell.class) + ', recast weighing ' + plural(bell.weight, 'toll', 'tolls') + ' of its life. Its gift works at level ' + level +
           (bell.double ? ', and rings double' : '') + '.'));
         if (gift) box.append(h('p', { class: 'bf-grant' }, gift.name + ': ' + sayMods(Stats.resolve(gift.mods, level)) + ', to whoever rings it.'));
         const others = save.account.frame.bells.filter((b) => b !== bell && b.pit !== null && Char.trueRing([b.weight, bell.weight]) === 1);
         if (others.length) box.append(h('p', { class: 'ui-note' }, 'Rings true beside ' + others.map((b) => b.name + ' (' + b.weight + ')').join(', ') + '.'));
+      }
+
+      // recasting its gift as another of its class
+      function recasts(box, bell) {
         const n = frameNumbers();
         for (const id of Bellframe.gifts(bell.class)) {
           if (id === bell.gift || !n) continue;
@@ -498,67 +518,74 @@
         }
       }
 
+      const keyOf = (x) => (x === null ? null : x.kind === 'pit' ? 'pit.' + x.id : x.kind === 'bell' ? 'bell.' + x.id : 'floor');
+      const detailBox = h('div', { class: 'bf-detail-box' });
+
+      // choosing moves the marks and tells what is chosen; the controls of the frame stay as they are, so that the
+      // control under a finger or the focus is never taken away from it
       function choose(next) {
+        if (keyOf(next) === keyOf(chosen)) return;
         chosen = next;
-        render(false);
+        const key = keyOf(chosen);
+        for (const el of root.querySelectorAll('.bf-pit, .bf-floor-btn, .bf-waiting-btn')) el.classList.toggle('is-chosen', el.dataset.key === key);
+        const floor = root.querySelector('rect.bf-floor');
+        if (floor) floor.classList.toggle('is-chosen', key === 'floor');
+        detailBox.replaceChildren(detail());
       }
 
-      function render(keepFocus) {
-        const before = document.activeElement && root.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+      // the whole screen, built afresh: when it opens, and after something was done
+      function render(after) {
         const heaviest = save.account.frame.bells.reduce((m, b) => Math.max(m, b.weight), 0);
         const tower = h('div', { class: 'bf-tower', style: { '--bf-ratio': FRAME_W + ' / ' + FRAME_H } }, frameArt(save, chosen && chosen.kind === 'floor' ? 'floor' : null));
         for (const pit of pits) {
           const open = save.account.frame.pits.indexOf(pit.id) >= 0, next = !open && Bellframe.openable(save, pit.id), bell = open ? Bellframe.hung(save, pit.id) : null;
           const left = bayLeft(pit.x) + 1, top = bayTop(pit.y) + 1, rung = bell && c && c.bells.indexOf(bell.uid) >= 0;
           const label = next ? h('span', { class: 'bf-price' }, String(Bellframe.price(save, 'pit')), h('small', null, 'Hum'))
-            : bell ? h('span', { class: 'bf-name' }, bell.name) : null;
+            : bell ? h('span', { class: 'bf-name' }, bell.name.split(' ')[0]) : null;
           const b = UI.button([bayArt(save, pit, heaviest), label], function () { choose({ kind: 'pit', id: pit.id }); }, {
             class: ['bf-pit', open ? 'is-open' : 'is-shut', next ? 'is-next' : '', bell ? 'is-hung' : '', rung ? 'is-rung' : '',
               chosen && chosen.kind === 'pit' && chosen.id === pit.id ? 'is-chosen' : ''],
             style: { left: left + '%', top: (top / FRAME_H * 100) + '%', width: (BAY - 2) + '%', height: ((BAY_H - 2) / FRAME_H * 100) + '%' },
             'aria-label': pit.name + ': ' + pitState(save, pit), dataset: { pit: pit.id, key: 'pit.' + pit.id },
           });
-          b.addEventListener('focus', function () { if (!(chosen && chosen.kind === 'pit' && chosen.id === pit.id)) { chosen = { kind: 'pit', id: pit.id }; render(false); } });
+          b.addEventListener('focus', function () { choose({ kind: 'pit', id: pit.id }); });
           tower.appendChild(b);
         }
-        const floor = UI.button(h('span', { class: 'bf-floor-label' }, 'Ringing places ' + save.account.frame.places), function () { choose({ kind: 'floor' }); }, {
+        const most = frameNumbers() ? frameNumbers().placesMost : 8;
+        const floor = UI.button(h('span', { class: 'bf-floor-label' }, h('small', null, 'Places'), save.account.frame.places + ' of ' + most), function () { choose({ kind: 'floor' }); }, {
           class: ['bf-floor-btn', chosen && chosen.kind === 'floor' ? 'is-chosen' : ''], style: { top: (FLOOR / FRAME_H * 100) + '%', height: ((FRAME_H - FLOOR) / FRAME_H * 100) + '%' },
           'aria-label': 'The ringing floor: ' + save.account.frame.places + ' ringing places', dataset: { key: 'floor' },
         });
-        floor.addEventListener('focus', function () { if (!(chosen && chosen.kind === 'floor')) { chosen = { kind: 'floor' }; render(false); } });
+        floor.addEventListener('focus', function () { choose({ kind: 'floor' }); });
         tower.appendChild(floor);
         const waiting = save.account.frame.bells.filter((b) => b.pit === null).map(function (b) {
           const btn = UI.button([svg('svg', { viewBox: '0 0 16 16', class: 'bf-mini', 'aria-hidden': 'true', focusable: 'false' }, bellArt(8, 1, 13, 14)),
             h('span', null, b.name + ' · ' + b.weight)], function () { choose({ kind: 'bell', id: b.uid }); },
           { class: ['second', 'bf-waiting-btn', chosen && chosen.kind === 'bell' && chosen.id === b.uid ? 'is-chosen' : ''], dataset: { bell: String(b.uid), key: 'bell.' + b.uid } });
-          btn.addEventListener('focus', function () { if (!(chosen && chosen.kind === 'bell' && chosen.id === b.uid)) { chosen = { kind: 'bell', id: b.uid }; render(false); } });
+          btn.addEventListener('focus', function () { choose({ kind: 'bell', id: b.uid }); });
           return btn;
         });
+        detailBox.replaceChildren(detail());
         const ring = c ? Bellframe.ring(save.account, c) : null;
         root.replaceChildren(
-          h('p', { class: 'lt-kicker' }, 'Below the Lantern'),
-          h('h2', { class: 'ui-heading' }, 'The Bellframe'),
-          h('div', { class: 'lt-tally' }, cell('Hum', MONEY(save.account.hum)), cell('Heard', MONEY(save.account.heard)), cell('Pits', save.account.frame.pits.length + ' of ' + pits.length, 'pits'),
-            cell('Places', String(save.account.frame.places), 'places')),
-          h('div', { class: 'bf-body' },
-            h('div', { class: 'bf-left' }, tower,
-              ring && ring.bells.length ? h('p', { class: 'ui-note bf-rings' }, c.name + ' rings ' + ring.bells.map((b) => b.name).join(', ') +
-                (ring.pairs ? ': ' + plural(ring.pairs, 'pair', 'pairs') + ' true' : '') + '.') : null),
-            h('div', { class: 'bf-right ui-stack' }, detail(),
-              waiting.length ? h('div', { class: 'bf-waiting' }, h('p', { class: 'ui-note' }, 'Waiting to be hung'), waiting) : null)),
-          h('div', { class: 'ui-row lt-foot' }, UI.button('Back to the Lantern', function () { UI.back(); }, { class: 'second', dataset: { key: 'back' } })));
-        if (!keepFocus) {
-          const key = before === null ? (chosen ? (chosen.kind === 'pit' ? 'pit.' + chosen.id : chosen.kind === 'bell' ? 'bell.' + chosen.id : 'floor') : null) : before;
-          const again = key ? root.querySelector('[data-key="' + key + '"]') : null;
-          if (again && document.activeElement !== again && root.isConnected) again.focus({ preventScroll: true });
-        } else {
-          const act = root.querySelector('.bf-act:not([disabled])') || root.querySelector('[data-key="' + (chosen && chosen.kind === 'pit' ? 'pit.' + chosen.id : 'floor') + '"]');
-          if (act && root.isConnected) act.focus({ preventScroll: true });
-        }
+          h('div', { class: 'ui-stack bf-head' },
+            h('p', { class: 'lt-kicker' }, 'Below the Lantern'),
+            h('h2', { class: 'ui-heading' }, 'The Bellframe'),
+            h('div', { class: 'lt-tally' }, cell('Hum', MONEY(save.account.hum)), cell('Heard', MONEY(save.account.heard)),
+              cell('Pits', save.account.frame.pits.length + ' of ' + pits.length, 'pits'), cell('Places', String(save.account.frame.places), 'places'))),
+          h('div', { class: 'bf-left' }, tower,
+            ring && ring.bells.length ? h('p', { class: 'ui-note bf-rings' }, c.name + ' rings ' + ring.bells.map((b) => b.name).join(', ') +
+              (ring.pairs ? ': ' + plural(ring.pairs, 'pair', 'pairs') + ' true' : '') + '.') : null),
+          h('div', { class: 'bf-right ui-stack' }, detailBox,
+            waiting.length ? h('div', { class: 'bf-waiting' }, h('p', { class: 'ui-note' }, 'Waiting to be hung'), waiting) : null),
+          h('div', { class: 'ui-row lt-foot bf-foot' }, UI.button('Back to the Lantern', function () { UI.back(); }, { class: 'second', dataset: { key: 'back' } })));
+        // after something was done, focus goes on to what can be done next, else back to what is chosen
+        const next = after ? root.querySelector('.bf-act:not([disabled])') || root.querySelector('[data-key="' + keyOf(chosen) + '"]') : null;
+        if (next && root.isConnected) next.focus({ preventScroll: true });
       }
 
       render(false);
-      const focusFirst = root.querySelector('.bf-pit.is-chosen');
+      const focusFirst = root.querySelector('[data-key="' + keyOf(chosen) + '"]');
       if (focusFirst) focusFirst.dataset.focus = '';
       return root;
     },
@@ -617,6 +644,7 @@
       const save = Game.save, c = args && args.char ? Char.find(save, args.char.uid) || args.char : Game.char, all = Defs.all('bequest');
       let sealed = 0;
       const item = function (def) {
+        if (def.scope === 'character' && c && typeof def.where.class === 'string' && def.where.class !== c.class) return null;   // another class's own
         const st = Progress.status(save, def.scope === 'character' ? c : null, def.id);
         if (def.hidden && !st.done) { sealed++; return null; }
         const shown = Math.min(st.n, st.count);
@@ -625,7 +653,7 @@
           h('span', { class: 'lt-bq-wish' }, def.text),
           h('span', { class: 'lt-bq-bar', role: 'meter', 'aria-valuemin': '0', 'aria-valuemax': String(st.count), 'aria-valuenow': String(shown),
             'aria-label': shown + ' of ' + st.count }, h('span', { class: 'lt-bq-fill', style: { width: (shown / st.count * 100) + '%' } })),
-          h('span', { class: 'lt-bq-line' }, shown + ' of ' + st.count + ' · leaves ' + leaves(def.reward)));
+          h('span', { class: 'lt-bq-line' }, shown + ' of ' + st.count + ' · ' + (st.done ? 'it left ' : 'it leaves ') + leaves(def.reward)));
       };
       const own = c ? all.filter((d) => d.scope === 'character').map(item).filter(Boolean) : [];
       const household = all.filter((d) => d.scope === 'account').map(item).filter(Boolean);
@@ -633,11 +661,11 @@
         h('p', { class: 'lt-kicker' }, 'The Lantern'),
         h('h2', { class: 'ui-heading' }, 'Bequests'),
         h('p', { class: 'ui-sub' }, 'The last wishes of the city’s dead. Meet one in a vigil, and it leaves what it promised.'),
-        c ? h('p', { class: 'ui-note lt-bq-head' }, c.name + '’s own') : null,
-        own.length ? h('ul', { class: 'lt-bq-list' }, own) : null,
-        h('p', { class: 'ui-note lt-bq-head' }, 'The Household’s'),
-        household.length ? h('ul', { class: 'lt-bq-list' }, household) : null,
-        sealed ? h('p', { class: 'ui-note' }, 'And ' + plural(sealed, 'sealed wish', 'sealed wishes') + ', read only once met.') : null,
+        h('div', { class: 'lt-bq-cols' },
+          c ? h('div', { class: 'lt-bq-col' }, h('p', { class: 'ui-note lt-bq-head' }, c.name + '’s own'), own.length ? h('ul', { class: 'lt-bq-list' }, own) : null) : null,
+          h('div', { class: 'lt-bq-col' }, h('p', { class: 'ui-note lt-bq-head' }, 'The Household’s'),
+            household.length ? h('ul', { class: 'lt-bq-list' }, household) : null,
+            sealed ? h('p', { class: 'ui-note lt-bq-head' }, 'And ' + plural(sealed, 'sealed wish', 'sealed wishes') + ', read only once met.') : null)),
         h('div', { class: 'ui-row lt-foot' }, UI.button('Back to the Lantern', function () { UI.back(); }, { class: 'second' })));
     },
   });

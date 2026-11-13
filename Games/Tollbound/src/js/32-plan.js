@@ -94,8 +94,8 @@
   ];
 
   // The quarters, by the street of their door. names: the lanes that give a point of the quarter's two attributes.
-  // lanes: those with a small stat. corners: a stat held to a tag or a condition. squares: a rule with its price, in
-  // the order they are set down (the high street's at rings 3 and 6, then the courts).
+  // lanes: those with a small stat. corners: a stat held to a tag or a condition. squares: a rule with its price: the
+  // first two where the high street crosses rings 3 and 6, the other four at the ends of the quarter's courts.
   const QUARTERS = [
     { street: 1, cls: 'toll-gatherer', colour: '#8C3A25', pair: ['ear', 'hand'],
       door: { name: 'the Gatherers\' Door', text: 'The toll-gatherers went out from the close to their bars by this door.' },
@@ -363,7 +363,7 @@
     3: { name: 'the Lych Bridge', text: 'Every coffin of the south side crossed here.',
       mods: [{ stat: 'guard.drag', op: 'flat', value: 6 }, { stat: 'guard.blow', op: 'flat', value: -3 }] },
     4: { name: 'the Weeping Bridge', text: 'Mourners stopped here to look back.',
-      mods: [{ stat: 'mend-rate', op: 'more', value: 15 }, { stat: 'wound-join', op: 'flat', value: -0.3 }] },
+      mods: [{ stat: 'mend-rate', op: 'more', value: 15 }, { stat: 'wound-term', op: 'flat', value: -6 }] },
   };
   const ALL = ['knee', 'heel', 'hand', 'ear'];
 
@@ -515,7 +515,7 @@
   }
 
   // ---- what each place is ----
-  for (let q = 0; q < QUARTERS.length; q++) QUARTERS[q].at = { names: 0, lanes: 0, corners: 0, squares: 0 };
+  for (let q = 0; q < QUARTERS.length; q++) QUARTERS[q].at = { names: 0, lanes: 0, corners: 0, courts: 0 };
   const seamAt = { hand: { lanes: 0, corners: 0 }, heel: { lanes: 0, corners: 0 }, ear: { lanes: 0, corners: 0 }, knee: { lanes: 0, corners: 0 } };
   const at = { late: 0, turn: 0, flood: 0, ebb: 0, floodNames: 0, ebbNames: 0 };
   const defs = [];
@@ -534,9 +534,12 @@
     } else if (bridge[i]) {
       kind = 'square';
       from = BRIDGES[node.street];
-    } else if ((where === 'cross' && seam === null && (ring === 3 || ring === 6)) || deadEnd[i]) {
+    } else if (where === 'cross' && seam === null && (ring === 3 || ring === 6)) {
       kind = 'square';
-      from = quarter.squares[quarter.at.squares++ % quarter.squares.length];
+      from = quarter.squares[ring === 3 ? 0 : 1];
+    } else if (deadEnd[i]) {
+      kind = 'square';
+      from = quarter.squares[2 + quarter.at.courts++ % (quarter.squares.length - 2)];
     } else if (where === 'mid' && (ring === 3 || ring === 6)) {
       kind = 'milestone';
       from = street.miles[ring === 3 ? 0 : 1];

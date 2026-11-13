@@ -196,7 +196,15 @@ test('recasting a gift: to another gift of the bell\'s class, for the bellframe\
 
 // ---- the Bellframe that ships, with every module below 50 ----
 
-const sim = loadSim({ boot: true });
+// every module below 50, finalized and sealed as the page boots them. What this package defines must be sound
+// (01-defs.test.js holds the whole build to that)
+function whole() {
+  const W = loadSim();
+  assert.deepEqual(plain(W.Defs.finalize()).filter((e) => /^(bequest|pit|gift|bellframe) /.test(e)), [], 'the frame and the bequests are sound');
+  W.Core.seal(Object.values(W));
+  return W;
+}
+const sim = whole();
 
 test('the frame that ships: one tree of pits from the tenor pit, three tiers drawn as a frame, flat and inc grants; one gift for each class and calling there is', () => {
   const { Defs } = sim, pits = Defs.all('pit'), n = Defs.get('bellframe', 'main');

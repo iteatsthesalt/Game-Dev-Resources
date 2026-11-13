@@ -151,7 +151,7 @@
   'use strict';
 
   const DT = Core.DT, HZ = Core.HZ, PI = Math.PI;
-  const atan2 = Math.atan2, cos = Math.cos, sin = Math.sin, abs = Math.abs, floor = Math.floor, round = Math.round;
+  const atan2 = Math.atan2, cos = Math.cos, sin = Math.sin, abs = Math.abs, floor = Math.floor, round = Math.round, sqrt = Math.sqrt;
   const SLIVER = 1e-9, DEG = 180 / PI;
   const PLACES = 6, AGAIN = 0.2, AGAIN_STEPS = Math.round(AGAIN * HZ), TICK = 0.25, LEE = 3;
   const FILL = 0, ZONE = 1, MARK = 2, LANDED = 3;
@@ -174,7 +174,8 @@
   const ANSWER_STEPS = Math.round(0.3 * HZ), ANSWER_REACH = 6, ANSWER_WEAK = 0.8, ANSWERS = 4;   // Stone's Answer
   const MUFFLE_ECHO = 0.3, MUFFLE_REACH = 0.8;                 // Muffle
   const CLASH_STOCK = 0.5, CLASH_WITHIN = 0.25;                // Clash
-  const FINE_POOR = 0.5, FINE_R = 0.25;                        // Ringer's Fine: half harm with no coin; a coin's radius
+  const FINE_POOR = 0.5, FINE_R = 0.25, FINE_OUT = 3;          // Ringer's Fine: half harm with no coin; a coin's radius;
+                                                               // the least it is flung from the player (beyond its reach)
   const SECOND_COST = 0.75, SECOND_SLOW = 1.25;                // Second Voice
   const WAKE_SKIP = 3;           // the newest places of the wake a crossing does not count (0.3 s)
   const COIN = 1;                // the pickup kind of coin
@@ -918,9 +919,13 @@
   Skills.knotRule('balance', {});
   Skills.knotRule('unlaid', {});
 
-  // a coin flung out where the cast landed: it lies until the next toll unless walked back for
-  function fling(S, x, y) {
-    const until = (S.tollAt - S.step) / HZ;
+  // a coin flung out where the cast landed, at least FINE_OUT from the player (a ring round the player flings it the way
+  // the player faces): it lies until the next toll unless walked back for
+  function fling(S, lx, ly) {
+    const p = S.player, until = (S.tollAt - S.step) / HZ;
+    let dx = lx - p.x, dy = ly - p.y, d = sqrt(dx * dx + dy * dy);
+    if (d < 1e-6) { dx = cos(p.face); dy = sin(p.face); d = 1; }
+    const k = d < FINE_OUT ? FINE_OUT / d : 1, x = p.x + dx * k, y = p.y + dy * k;
     if (typeof Director.drop === 'function') {
       const o = Director.drop(S, COIN, 1, x, y);
       // a coin of its own lies until the toll; one a full pool joined to another coin keeps that one's time

@@ -3,13 +3,17 @@
 // event is counted, is in the header of 15-progress.js.
 // Owns: (none)
 // Public: nothing; it only registers definitions with Defs.add, of the kind bequest:
-//   the Household's (scope 'account'), met once for every character that comes after:
-//     great-hour            lay the Half-muffled Keeper                         120 Hum, 30 coin
+//   the Household's (scope 'account'), met once for every character that comes after; the six that open an
+//   observance (36-observances.js) also teach it to the character who met it (Progress.pay):
+//     great-hour            lay the Half-muffled Keeper                         120 Hum, 30 coin; the Unbroken Round
+//     stand-your-ground     hear 10 tolls                                       Stability
+//     keep-the-first-mourning   the first death in the Household                Full Mourning
 //     a-quiet-dial          lay 1500 of the dead in the Dial                    60 coin, 60 Hum
-//     the-heavy-ones        lay 100 Lumpers                                     60 Hum
+//     the-heavy-ones        lay 100 Lumpers                                     60 Hum; Hand on the Bell
 //     shake-them-off        lay 100 hangers-on                                  40 coin
-//     the-great-dead        lay 20 elites (rank 1 or above)                     the voice Plumb, into the chest
-//     put-by                bank 150 coin by ringing down                       50 Hum
+//     the-great-dead        lay 20 elites (rank 1 or above)                     the voice Plumb, into the chest;
+//                                                                               Telling the Bees
+//     put-by                bank 150 coin by ringing down                       50 Hum; Alms
 //     three-times-over      lay the Half-muffled Keeper three times (sealed)    150 Hum, 50 coin
 //     twenty-homecomings    ring down 20 times                                  100 coin
 //   each character's own (scope 'character'), met by each character for itself:
@@ -36,8 +40,18 @@
 
   Defs.add('bequest', {
     id: 'great-hour', name: 'Let Great Hour Speak', hidden: false, scope: 'account', on: 'kill', count: 1, where: { id: KEEPER },
-    text: 'Josiah Brede wound the clock of the Dial for forty years. His wish: that its keeper be laid, and the bell he wound speak again.',
-    reward: { hum: 120, coin: 30 },
+    text: 'Josiah Brede wound the clock of the Dial for forty years, and walked round its bell-post every hour of them. His wish: that its keeper be laid, and the bell he wound speak again.',
+    reward: { hum: 120, coin: 30, observance: 'unbroken-round' },
+  });
+  Defs.add('bequest', {
+    id: 'stand-your-ground', name: 'Stand Your Ground', hidden: false, scope: 'account', on: 'toll', count: 10, where: {},
+    text: 'Hob Tanner held the gate of the Dial through the night of the flood, and did not give a yard. He asks the Household to hear ten tolls, and stand them.',
+    reward: { observance: 'stability' },
+  });
+  Defs.add('bequest', {
+    id: 'keep-the-first-mourning', name: 'Keep the First Mourning', hidden: false, scope: 'account', on: 'end', count: 1, where: { id: 'died' },
+    text: 'Agnes Clay wore black for forty years. She asks that when the Household first loses one of its own, it mourn as she did.',
+    reward: { observance: 'full-mourning' },
   });
   Defs.add('bequest', {
     id: 'a-quiet-dial', name: 'A Quiet Dial', hidden: false, scope: 'account', on: 'kill', count: 1500, where: { zone: 'dial' },
@@ -46,8 +60,8 @@
   });
   Defs.add('bequest', {
     id: 'the-heavy-ones', name: 'Carry the Heavy Ones', hidden: false, scope: 'account', on: 'kill', count: 100, where: { id: 'dial.heavy' },
-    text: 'Ned Ashworth bore coffins for the parish all his life. He asks that a hundred of the heavy dead be laid down at last.',
-    reward: { hum: 60 },
+    text: 'Ned Ashworth bore coffins for the parish all his life, and no weight ever moved him. He asks that a hundred of the heavy dead be laid down at last.',
+    reward: { hum: 60, observance: 'hand-on-the-bell' },
   });
   Defs.add('bequest', {
     id: 'shake-them-off', name: 'Shake Them Off', hidden: false, scope: 'account', on: 'kill', count: 100, where: { id: 'dial.hanger-on' },
@@ -56,13 +70,13 @@
   });
   Defs.add('bequest', {
     id: 'the-great-dead', name: 'Lay the Great Dead', hidden: false, scope: 'account', on: 'kill', count: 20, where: { rank: 1 },
-    text: 'Caleb Ord kept the parish book of the great dead, the ones the whole town feared. He asks that twenty be laid, and leaves the voice he was rung out with.',
-    reward: { voice: 'plumb' },
+    text: 'Caleb Ord kept the parish book of the great dead, and the bees of the churchyard, and told them every death. He asks that twenty of the great dead be laid, and leaves the voice he was rung out with.',
+    reward: { voice: 'plumb', observance: 'telling-the-bees' },
   });
   Defs.add('bequest', {
     id: 'put-by', name: 'Put By for the Parish', hidden: false, scope: 'account', on: 'stroke', count: 150, where: { sum: 'b' },
-    text: 'Gideon Marsh never spent a coin he could put by. He asks that 150 coin be rung down through the lychgates.',
-    reward: { hum: 50 },
+    text: 'Gideon Marsh never spent a coin he could put by, and left it all to the parish poor. He asks that 150 coin be rung down through the lychgates.',
+    reward: { hum: 50, observance: 'alms' },
   });
   Defs.add('bequest', {
     id: 'three-times-over', name: 'Three Times Over', hidden: true, scope: 'account', on: 'kill', count: 3, where: { id: KEEPER },

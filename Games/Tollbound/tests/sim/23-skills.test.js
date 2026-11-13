@@ -2,7 +2,10 @@
 // casting by rate and by target rule, silenced places, no voice while Tolled-for, Skills.speak; ring, rap, bar,
 // spark and cone each striking what its shape covers and nothing else, in each kind of harm (a Blow at once, a Drag
 // zone that the ticks bite through, a Swell that fills and lands, bare, with lee for a spreading one); the
-// Change-ringer's three voices (src/js/31-change-ringer.js); and the same seed giving the same run.
+// Change-ringer's three voices (src/js/31-change-ringer.js); and the same seed giving the same run. Then what the
+// third package added for the voices found blank: the ring's beat and byCount, the target rules 'crossing', 'step' and
+// 'ahead' (the cone's held length, the spark's rear), and the numbers of those voices. The knots' rules have their own
+// test (35-knots.test.js).
 // The kernel and the combat package only. The dead stand where they are put unless a test moves them.
 'use strict';
 const test = require('node:test');
@@ -43,6 +46,11 @@ voice('t.cone-drag', { archetype: 'cone', target: 'nearest', damage: { drag: [40
 voice('t.bar-drag', { archetype: 'bar', target: 'self', damage: { drag: [40, 40] }, params: { length: 7, width: 1, duration: 1 } });
 voice('t.spark-swell', { archetype: 'spark', target: 'nearest', damage: { swell: [10, 10] }, params: { reach: 10, speed: 15, splash: 1.5, fill: 0.5 } });
 voice('t.idle', { rate: 0 });
+voice('t.beat', { params: { radius: 3, beat: 1.1, beatMost: 3 } });
+voice('t.count', { params: { radius: 2.5, byCount: 3 } });
+voice('t.hitch', { target: 'crossing', params: { radius: 2 } });
+voice('t.breath', { archetype: 'cone', target: 'step', params: { length: 4, angle: 60, held: 2, heldMost: 3 } });
+voice('t.draw', { archetype: 'spark', target: 'ahead', params: { reach: 6, speed: 15, size: 0.2, behind: 1, rearGrow: 10, rearWide: 0.5, rearMost: 10 } });
 const enemy = (id, more) => Defs.add('enemy', Object.assign({
   id, name: id, puppet: id, radius: 0.4, life: 100, damage: 5, speed: 2, xp: 1, cost: 1, loot: null, ai: 'chase', aiParams: {},
   attacks: [], guard: {}, size: 'small', press: 0, tags: [],
@@ -413,4 +421,99 @@ test('the same seed twice gives the same run, and another seed another', () => {
   assert.ok(a.kills > 0, 'the voices laid some of the dead');
   assert.notEqual(Sim.hash(a), Sim.hash(c));
   assert.deepEqual([a.kills, a.player.life, a.wounds.n], [b.kills, b.player.life, b.wounds.n]);
+});
+
+// ---- what the voices found blank need (the third package) ----
+
+test('ring, beat: two forks a beat apart; each ring is beatMost x cos^2 of their phase, swelling and fading once a beat', () => {
+  const S = run(['t.beat']), e = spawn(S, 2, 0);             // rate 1 and beat 1.1: the forks beat once every 11 s
+  steps(S, 1);
+  near(harmOf(e), 30, 1e-9, 'at the start the forks sound together: three times');
+  const T = run(['t.beat']);
+  steps(T, 330);                                             // 5.5 s: half a beat, the forks half a beat apart
+  const f = spawn(T, 2, 0);
+  steps(T, 1);
+  near(harmOf(f), 0, 1e-9, 'all but silent');
+  const U = run(['t.beat']);
+  steps(U, 165);                                             // a quarter of a beat: cos^2 of 45 degrees
+  const g = spawn(U, 2, 0);
+  steps(U, 1);
+  near(harmOf(g), 15, 1e-9);
+});
+
+test('ring, byCount: its harm is multiplied by the dead it catches, byCount at most', () => {
+  const S = run(['t.count']), a = spawn(S, 1, 0), b = spawn(S, -1, 0);
+  steps(S, 1);
+  assert.deepEqual([harmOf(a), harmOf(b)], [20, 20]);
+  const T = run(['t.count']), many = [[1, 0], [-1, 0], [0, 1], [0, -1], [1.2, 1.2]].map(([x, y]) => spawn(T, x, y));
+  steps(T, 1);
+  assert.ok(many.every((e) => Math.abs(harmOf(e) - 30) < 1e-9), 'five caught, three at most');
+});
+
+test('target crossing: the voice speaks where the player\'s step crosses its own wake, and on no other step', () => {
+  const S = run(['t.hitch']), W = 120;
+  // a wake laid from (1, -2) south to (1, 1.8), as 22-enemies.js keeps one (S.wake is its slot: here laid by hand)
+  const wake = { n: 0, head: W - 1, x: new Float64Array(W), y: new Float64Array(W) };
+  for (let i = 0; i < 20; i++) { wake.head = (wake.head + 1) % W; wake.x[wake.head] = 1; wake.y[wake.head] = -2 + i * 0.2; wake.n++; }
+  S.wake = wake;
+  const e = spawn(S, 1, 1);
+  const out = casts(steps(S, 30, frame(1, 0)), 0);
+  assert.equal(out.length, 1, 'once, as the step crosses the line');
+  near(out[0].x, 1, 1e-9);
+  near(out[0].y, 0, 1e-9);
+  assert.equal(harmOf(e), 10);
+  assert.equal(casts(steps(S, 60, frame(1, 0)), 0).length, 0, 'walking on, it crosses nothing');
+});
+
+test('target step: the cone speaks on the first step after standing still, toward that step, longer for each second stood', () => {
+  const S = run(['t.breath']), ahead = spawn(S, 0, -7.5), side = spawn(S, 5, 0);   // ahead: beyond 4 m, within 8 m
+  assert.equal(casts(steps(S, 120)).length, 0, 'standing, it waits');
+  const out = steps(S, 1, frame(0, -1));                    // the first step, north
+  assert.equal(casts(out).length, 1);
+  const a = S.areas.items.slice(0, S.areas.n).find((x) => x.alive && x.team === 0);
+  near(a.r, 4 + 2 * 2, 1e-9, '4 m, and 2 m for each of the two seconds stood');
+  near(a.angle, -Math.PI / 2, 1e-9);
+  assert.ok(harmOf(ahead) > 0 && harmOf(side) === 0);
+  assert.equal(casts(steps(S, 90, frame(0, -1))).length, 0, 'walking on, it does not speak again');
+  assert.equal(Skills.speak(S, 0, 1), true, 'the pull still makes it speak, the way the player faces');
+});
+
+test('target ahead: thrown straight the way the player faces and straight back; the one behind stronger and wider as the heading holds', () => {
+  const S = run(['t.draw']);
+  steps(S, 1, frame(1, 0));
+  const shots = S.shots.items.slice(0, S.shots.n).filter((o) => o.alive);
+  assert.deepEqual(plain(shots.map((o) => Math.sign(o.vx)).sort()), [-1, 1], 'one ahead, one behind, with nothing in reach');
+  const T = run(['t.draw']);
+  T.skills[0].cd = 99;
+  steps(T, 126, frame(1, 0));
+  T.skills[0].cd = 0;
+  steps(T, 1, frame(1, 0));
+  const held = T.knots.straight, back = T.shots.items.slice(0, T.shots.n).filter((o) => o.alive && o.vx < 0).pop();
+  assert.ok(held >= 2 - 1e-9);
+  near(back.part, 1 + 0.1 * held, 1e-9);
+  near(back.r, 0.2 + 0.5 * held, 1e-9);
+});
+
+test('the voices found blank: the design\'s Hand-bell and the pool\'s others, each with its kind among its tags and its shape', () => {
+  const v = (id) => Defs.get('voice', id);
+  assert.deepEqual([v('hand-bell').archetype, v('hand-bell').target, v('hand-bell').params.radius], ['ring', 'self', 2]);
+  near(1 / v('hand-bell').rate, 1.5, 1e-9);
+  assert.deepEqual([v('beating-pair').params.radius, v('beating-pair').params.beat, v('beating-pair').rate], [4, 1.1, 1]);
+  assert.deepEqual([v('held-breath').target, v('held-breath').params.length, v('held-breath').params.held, v('held-breath').params.heldMost,
+    v('held-breath').params.angle], ['step', 4, 2, 3, 60]);
+  assert.deepEqual([v('hitch').target, v('hitch').params.radius, v('hitch').params.byCount], ['crossing', 2.5, 12]);
+  assert.deepEqual([v('long-draw').target, v('long-draw').params.rearGrow, v('long-draw').params.rearWide, v('long-draw').params.rearMost],
+    ['ahead', 10, 0.5, 10]);
+  for (const def of Defs.all('voice').filter((d) => !d.id.startsWith('t.'))) {
+    assert.ok(def.tags.includes(Object.keys(def.damage)[0]), `${def.id} carries the tag of its kind of harm`);
+    assert.ok(Defs.has('attack', def.id), `${def.id} has the shape the scene draws`);
+    const want = def.tags.includes('still') ? 'knee' : def.tags.includes('moving') ? 'heel' : def.tags.includes('timed') ? 'ear' : null;
+    if (want) assert.equal(def.attr, want, `${def.id}: a voice tagged still, moving or timed wants Knee, Heel or Ear`);
+  }
+  // each speaks in a run: standing, then walking east or west, by turns
+  const S = run(['hand-bell', 'beating-pair', 'held-breath', 'long-draw']);
+  for (const [x, y] of [[1.5, 0], [-1.5, 0.5], [0, 2], [3, 0], [0, -3]]) spawn(S, x, y);
+  const out = [];
+  for (let i = 0; i < 240; i++) out.push(...steps(S, 1, i % 80 < 40 ? STILL : frame(i % 160 < 80 ? 1 : -1, 0)));
+  assert.deepEqual([...new Set(casts(out).map((e) => e.id))].sort(), ['beating-pair', 'hand-bell', 'held-breath', 'long-draw']);
 });

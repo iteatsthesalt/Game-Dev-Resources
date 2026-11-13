@@ -1,0 +1,579 @@
+/* 43-lantern.css: the hub's screens of 77-lantern.js: the Household, the Lantern, and its rooms the Bellframe, the
+   Register and the bequests. Built on the classes of 10-ui.css (panels, stacks, controls); what is theirs alone is
+   named lt-* (the hub) and bf-* (the Bellframe's drawing). Colours are the tokens below and those of 00-base.css; sizes
+   of text are in rem, so the setting "Text and controls" scales them; no control is lower or narrower than 44px.
+   The look: the one lit place above the water. Lamp-light at the top of the Lantern; below it the belfry, oak and iron
+   and stone, its bells bronze; boarded pits in slate. Only the Lantern glows. */
+
+:root {
+  --lt-lamp: #e6c25a;                       /* lamp yellow: the Lantern's light */
+  --lt-glow: rgba(230, 194, 90, 0.1);       /* its glow, laid in rings */
+  --lt-pane: #e9c879;                       /* the lit glass */
+  --lt-pane-lit: #f7e2a8;
+  --lt-flame: #fff3cc;
+  --lt-oak: #6a492d;                        /* the frame's timber */
+  --lt-oak-lit: #8a5f37;
+  --lt-oak-dark: #3f2b1b;
+  --lt-iron: #3b404d;                       /* a strap not yet joined */
+  --lt-stone: #2b2f3a;                      /* the tower's walls */
+  --lt-stone-lit: #3b404e;
+  --lt-mortar: #1a1d25;
+  --lt-shaft: #0f1218;                      /* the dark inside the tower */
+  --lt-floor: #1c1a17;                      /* the ringing floor's boards */
+  --lt-board: #4b465f;                      /* a boarded pit: slate violet */
+  --lt-board-edge: #2a2737;
+  --lt-bronze: #c79a45;                     /* the bells */
+  --lt-bronze-dark: #7d6230;
+  --lt-bronze-shade: rgba(10, 12, 17, 0.32);
+  --lt-outline: rgba(10, 12, 17, 0.92);
+  --lt-rope: #c7a86f;                       /* hemp */
+  --lt-sally-a: #a7312c;                    /* the striped sally of a bell-rope */
+  --lt-sally-b: #ece9e1;
+  --lt-sally-c: #2e4e8e;
+  --lt-price-bg: rgba(10, 12, 17, 0.78);
+  --lt-chosen: #efc977;
+}
+
+/* ---- shared ---- */
+
+.lt-kicker {
+  margin: 0;
+  color: var(--accent-bright);
+  font: 600 0.78rem/1.2 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* a row of cells: a label over its number; the lines between them are the gaps over the frame's colour */
+.lt-tally,
+.lt-sheet {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  align-self: stretch;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.lt-cell {
+  display: flex;
+  flex: 1 1 4.5rem;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  padding: 0.45rem 0.35rem 0.5rem;
+  background: var(--surface-raised);
+}
+
+.lt-k {
+  color: var(--ink-faint);
+  font: 600 0.68rem/1.2 var(--font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.lt-v {
+  color: var(--ink);
+  font: 400 1.1rem/1.15 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.lt-met,
+.lt-mourning {
+  margin: 0;
+  padding: 0.45rem 0.7rem;
+  border-left: 3px solid var(--second);
+  background: var(--surface-raised);
+  color: var(--second-bright);
+  font-size: 0.88rem;
+  text-align: left;
+}
+
+.lt-mourning { border-left-color: var(--ink-faint); color: var(--ink-dim); }
+
+.lt-foot { align-self: stretch; }
+
+.lt-wide { align-self: stretch; }
+
+/* ---- the Household ---- */
+
+/* a heading, then the standing and a new character, then the Register: in one column, or two side by side */
+.lt-household {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  width: min(100%, 32rem);
+}
+
+.lt-head { gap: 0.8rem; }
+.lt-col { align-items: stretch; gap: 0.9rem; }
+
+@media (min-width: 720px) {
+  .lt-household {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 1.75rem;
+    width: min(100%, 54rem);
+  }
+
+  .lt-household > .lt-head { grid-column: 1 / -1; }
+}
+
+.lt-list,
+.lt-make {
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0.6rem;
+}
+
+/* a standing character, and a bell to ring: its name over a line of what it is */
+.ui-btn.lt-char,
+.ui-btn.lt-toggle {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.2rem;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.lt-char-name,
+.lt-toggle-name {
+  font: 400 1.05rem/1.2 var(--font-display);
+  letter-spacing: 0.05em;
+}
+
+.lt-char-line,
+.lt-toggle-line {
+  color: var(--ink-dim);
+  font: 0.8rem/1.3 var(--font-ui);
+}
+
+.ui-btn.lt-toggle {
+  border-color: var(--line);
+  background: var(--clear);
+}
+
+.ui-btn.lt-toggle[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--surface-raised);
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.ui-btn.lt-toggle[aria-pressed="true"] .lt-toggle-name::after {
+  content: "\00a0\00b7\00a0rung";
+  color: var(--accent-bright);
+  font: 600 0.72rem/1 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.lt-bells {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lt-ring-note { text-align: left; }
+
+.lt-make-btn { width: 100%; }
+
+.lt-register-box {
+  align-self: stretch;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+
+.lt-dead-name {
+  color: var(--ink);
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.lt-dead-line,
+.lt-dead-how { color: var(--ink-dim); }
+
+/* ---- the Lantern ---- */
+
+.lt-lantern {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  width: min(100%, 34rem);
+  background-image: radial-gradient(ellipse 70% 14rem at 50% 0, var(--lt-glow), var(--clear));
+}
+
+.lt-side { gap: 0.8rem; }
+
+.lt-crown {
+  width: 3.8rem;
+  height: 3.8rem;
+  margin-bottom: -0.3rem;
+}
+
+.lt-emblem {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.lt-glow { fill: var(--lt-glow); }
+.lt-stone { fill: var(--lt-stone-lit); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-oak { fill: var(--lt-oak); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-pane { fill: var(--lt-pane); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-pane-lit { fill: var(--lt-pane-lit); }
+.lt-mullion { stroke: var(--lt-oak-dark); stroke-width: 1.6; }
+.lt-flame { fill: var(--lt-flame); }
+.lt-roof { fill: var(--lt-oak-lit); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-roof-shade { fill: var(--lt-bronze-shade); }
+
+.ui-btn.lt-down { width: 100%; }
+
+.lt-rooms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.6rem;
+  align-self: stretch;
+}
+
+.lt-rooms > .ui-btn {
+  padding-left: 0.5em;
+  padding-right: 0.5em;
+  font-size: 0.86rem;
+}
+
+/* an odd room out takes the whole row */
+.lt-rooms > .ui-btn:last-child:nth-child(odd) { grid-column: 1 / -1; }
+
+.lt-gives {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--ink-dim);
+  font-size: 0.8rem;
+  text-align: left;
+}
+
+.lt-gives > li { padding: 0.18rem 0; }
+.lt-gives b { color: var(--accent-bright); font-weight: 600; }
+
+/* wide enough for two: the character, the way down and the rooms beside its sheet */
+@media (min-width: 720px) {
+  .lt-lantern {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: start;
+    column-gap: 1.75rem;
+    width: min(100%, 54rem);
+  }
+}
+
+/* ---- the bells, wherever they are drawn ---- */
+
+.lt-bell-body { fill: var(--lt-bronze); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-bell-shade { fill: var(--lt-bronze-shade); }
+.lt-bell-bow { stroke: var(--lt-bronze-dark); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.lt-bell-clapper { fill: var(--lt-oak-dark); }
+
+/* ---- the Bellframe ---- */
+
+/* the heading, the frame, what is chosen and the way back: in one column, or the frame down the left of the rest */
+.bf-screen {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  width: min(100%, 34rem);
+  padding-left: 0.9rem;
+  padding-right: 0.9rem;
+}
+
+.bf-head { gap: 0.8rem; }
+
+.bf-left { display: flex; flex-direction: column; gap: 0.5rem; }
+
+.bf-tower {
+  position: relative;
+  width: 100%;
+  aspect-ratio: var(--bf-ratio);
+  border: 1px solid var(--line);
+}
+
+.bf-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.bf-shaft { fill: var(--lt-shaft); }
+.bf-light { fill: var(--lt-glow); }
+.bf-hatch { fill: var(--lt-lamp); }
+.bf-wall { fill: var(--lt-stone); }
+.bf-mortar { stroke: var(--lt-mortar); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.bf-beam { fill: var(--lt-oak); stroke: var(--lt-oak-dark); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.bf-post { fill: var(--lt-oak-lit); stroke: var(--lt-oak-dark); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.bf-strap { fill: var(--lt-iron); stroke: var(--lt-outline); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.bf-strap.is-next { fill: var(--lt-bronze-dark); }
+.bf-strap.is-open { fill: var(--lt-bronze); }
+.bf-rivet { fill: var(--lt-outline); }
+.bf-floor { fill: var(--lt-floor); }
+.bf-floor.is-chosen { fill: var(--surface-raised); }
+.bf-rope { stroke: var(--lt-rope); stroke-width: 1.5px; vector-effect: non-scaling-stroke; }
+.bf-sally-a { fill: var(--lt-sally-a); }
+.bf-sally-b { fill: var(--lt-sally-b); }
+.bf-sally-c { fill: var(--lt-sally-c); }
+.bf-hole { fill: var(--lt-mortar); stroke: var(--lt-iron); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+
+/* a bay of the frame is a control: what it holds is drawn inside it */
+.bf-tower .ui-btn.bf-pit,
+.bf-tower .ui-btn.bf-floor-btn {
+  position: absolute;
+  display: block;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 1px solid var(--clear);
+  background: var(--clear);
+  color: var(--ink);
+  text-transform: none;
+  letter-spacing: 0;
+}
+
+.bf-tower .ui-btn.bf-pit.is-shut { background: var(--lt-board-edge); }
+.bf-tower .ui-btn.bf-pit.is-next { border: 1px dashed var(--accent); }
+.bf-tower .ui-btn.bf-pit.is-rung { box-shadow: inset 0 -3px 0 var(--lt-sally-a); }
+.bf-tower .ui-btn.bf-pit.is-chosen,
+.bf-tower .ui-btn.bf-floor-btn.is-chosen { border: 2px solid var(--lt-chosen); }
+
+.bf-bay-art {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.bf-board { fill: var(--lt-board); stroke: var(--lt-board-edge); stroke-width: 1px; vector-effect: non-scaling-stroke; }
+.bf-headstock { fill: var(--lt-oak-dark); }
+.bf-ghost { fill: none; stroke: var(--line-strong); stroke-width: 1px; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+
+.bf-price,
+.bf-name {
+  position: absolute;
+  left: 50%;
+  bottom: 3px;
+  max-width: calc(100% - 4px);
+  padding: 1px 2px;
+  overflow: hidden;
+  transform: translateX(-50%);
+  background: var(--lt-price-bg);
+  font: 600 0.72rem/1.15 var(--font-ui);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.bf-price { color: var(--accent-bright); }
+.bf-price small { display: block; color: var(--ink-faint); font-size: 0.6rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+.bf-name { color: var(--ink-dim); font-weight: 400; font-size: 0.64rem; }
+
+.bf-tower .ui-btn.bf-floor-btn {
+  left: 4%;
+  width: 92%;
+}
+
+.bf-floor-label {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-dim);
+  font: 400 0.8rem/1.1 var(--font-display);
+  text-align: center;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.bf-floor-label small {
+  display: block;
+  color: var(--ink-faint);
+  font: 600 0.58rem/1.2 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.bf-rings { text-align: left; }
+
+.bf-right { align-items: stretch; gap: 0.8rem; }
+
+.bf-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--accent);
+  background: var(--surface-raised);
+  text-align: left;
+}
+
+.bf-title {
+  margin: 0;
+  color: var(--ink);
+  font: 400 1.2rem/1.2 var(--font-display);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.bf-state {
+  margin: 0;
+  color: var(--accent-bright);
+  font: 600 0.74rem/1.2 var(--font-ui);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.bf-text { margin: 0; color: var(--ink-dim); font: italic 0.92rem/1.45 var(--font-display); }
+.bf-grant { margin: 0; color: var(--second-bright); font-size: 0.88rem; }
+
+.ui-btn.bf-act {
+  width: 100%;
+  padding-left: 0.8em;
+  padding-right: 0.8em;
+  font-size: 0.84rem;
+  text-transform: none;
+  letter-spacing: 0.04em;
+}
+
+.bf-waiting { display: flex; flex-wrap: wrap; gap: 0.5rem; align-items: center; }
+.bf-waiting > .ui-note { flex: 1 1 100%; text-align: left; }
+
+.ui-btn.bf-waiting-btn {
+  flex: 1 1 9rem;
+  justify-content: flex-start;
+  padding-left: 0.5em;
+  padding-right: 0.8em;
+  text-transform: none;
+  letter-spacing: 0.03em;
+}
+
+.ui-btn.bf-waiting-btn.is-chosen { border-color: var(--lt-chosen); }
+
+.bf-mini { flex: none; width: 1.4rem; height: 1.4rem; }
+
+@media (min-width: 720px) {
+  .bf-screen {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas: "left head" "left right" "left foot";
+    column-gap: 1.5rem;
+    width: min(100%, 60rem);
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+
+  .bf-head { grid-area: head; }
+  .bf-left { grid-area: left; }
+  .bf-right { grid-area: right; }
+  .bf-foot { grid-area: foot; }
+}
+
+/* a short window, and a phone on its side: the frame is kept to a height the screen can show */
+@media (max-height: 600px) and (min-width: 720px) {
+  .bf-left { width: min(100%, 24rem); justify-self: center; }
+}
+
+@media (max-height: 500px) {
+  .bf-left { width: min(100%, 17.5rem); justify-self: center; }
+  .lt-crown { display: none; }
+}
+
+/* ---- the Register and the bequests ---- */
+
+.lt-page { width: min(100%, 34rem); }
+
+.lt-warnings,
+.lt-ledger,
+.lt-bq-list {
+  align-self: stretch;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  text-align: left;
+}
+
+.lt-warnings {
+  padding: 0.5rem 0.8rem;
+  border-left: 3px solid var(--warn);
+  background: var(--surface-raised);
+  color: var(--ink-dim);
+  font-size: 0.86rem;
+}
+
+.lt-warnings b { color: var(--ink); font-weight: 600; }
+
+.lt-entry {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.6rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.lt-entry .lt-dead-name { font-size: 1.05rem; text-transform: uppercase; letter-spacing: 0.08em; }
+.lt-entry .lt-dead-line { font-size: 0.8rem; color: var(--ink-faint); }
+.lt-entry .lt-dead-how { font-size: 0.88rem; }
+
+.lt-bq-head { align-self: stretch; text-align: left; letter-spacing: 0.12em; text-transform: uppercase; }
+
+/* the character's own and the Household's: one under the other, or side by side where there is room */
+.lt-bq-cols {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+  align-self: stretch;
+}
+
+.lt-bq-col { display: flex; flex-direction: column; gap: 0.6rem; }
+
+@media (min-width: 880px) {
+  .lt-bequests-room { width: min(100%, 58rem); }
+  .lt-bq-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); column-gap: 1.75rem; }
+}
+
+.lt-bequest {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.65rem 0;
+  border-top: 1px solid var(--line);
+}
+
+.lt-bq-name { color: var(--ink); font: 400 1.05rem/1.25 var(--font-display); letter-spacing: 0.04em; }
+.lt-bq-wish { color: var(--ink-dim); font: italic 0.88rem/1.4 var(--font-display); }
+.lt-bq-line { color: var(--ink-faint); font-size: 0.78rem; }
+
+.lt-bq-bar {
+  display: block;
+  height: 6px;
+  border: 1px solid var(--line);
+  background: var(--bg);
+}
+
+.lt-bq-fill { display: block; height: 100%; background: var(--accent-dim); }
+.lt-bequest.is-met .lt-bq-fill { background: var(--second); }
+
+.lt-seal {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--good);
+  color: var(--good);
+  font: 600 0.66rem/1.5 var(--font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: 0.15em;
+}

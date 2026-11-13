@@ -22,11 +22,13 @@
 //                                    which wants nothing
 //   Items.attrs(char, account) -> {knee, heel, hand, ear}   the attributes a worn find's share is worked from outside a
 //                                    vigil: all that Char.mods gives the character but its finds
-//   Items.fits(stat, tags) -> boolean   whether a line on that stat can be held to those tags: no tags always; the tags
-//                                    of voices and of kinds of harm only on a stat a voice's own sheet works out
-//                                    (damage, speed, cond-duration, the skill rows, through., added., chance., param.);
-//                                    a condition's id only on chance. and cond-duration; kinds of harm on taken; a
-//                                    family never (no tool is held as a weapon, so its tag never holds)
+//   Items.fits(stat, tags) -> boolean   whether a line on that stat can be held to those tags, so that it can ever
+//                                    work: no tags always; the tags of voices and of kinds of harm only on a stat a
+//                                    voice's own sheet works out (damage, speed, cond-duration, the skill rows,
+//                                    through., added., chance., param.), and on a stat of one kind of harm (added.drag)
+//                                    of the kinds' tags only its own (drag, dot); a condition's id only on chance. and
+//                                    cond-duration; kinds of harm alone on taken; a family never (no tool is held as a
+//                                    weapon, so its tag never holds)
 //   Items.draw(rng, open, level) -> baseId | null   a base for a find that drops in a district of that level, drawn by
 //                                    the bases' weights: those of level at most that, whose unlock is null or whose id
 //                                    is in open (account.open.bases); null when none may drop

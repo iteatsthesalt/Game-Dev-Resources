@@ -10,7 +10,9 @@
 //                                        of its plain reading. By the rules, with the numbers of the plan 'main':
 //                                        - every node of the walk, a doubled node twice; a lane that offers a choice
 //                                          by the attribute chosen (char.plan.choice[id]: one flat point of it, and
-//                                          nothing while none is chosen), any other node by its own mods
+//                                          nothing while none is chosen), any other node by its own mods. A point
+//                                          grows with its ring like any value; a sheet counts an attribute in whole
+//                                          points (10-stats.js), so the fractions of outer lanes count together
 //                                        - beaten bounds: the nodes inside each loop the route closes (Tree.loops),
 //                                          at loopShare percent when the loop holds loopMost or fewer, once each even
 //                                          inside two loops, and never a node the route holds; a lane granted so gives

@@ -25,7 +25,7 @@
 //   to the find, from the find to the list, and from the list out of the room. Controls are marked for tests and
 //   for focus: data-uid (a find), data-slot (a worn place), data-place (a line), data-act (a control's act: wear,
 //   wear-token-1, wear-token-2, off, chisel-object, chisel-condition, rewalk, cut, recast, list, find, pour-first,
-//   pour-last), data-partner (a find to pour with); the status line is .fnd-said.
+//   pour-last, leave), data-partner (a find to pour with); the status line is .fnd-said.
 (function () {
   'use strict';
 
@@ -231,6 +231,7 @@
     if (!line) return;
     line.textContent = text;
     line.classList.toggle('is-done', !!good);
+    line.classList.remove('is-note');
   }
 
   function write() { if (typeof Game.write === 'function') Game.write(); }
@@ -392,7 +393,7 @@
         UI.button('Pour ' + nameOf(a) + ' first · ' + price + ' coin', function () { pour(a, z); }, { class: 'second', dataset: { act: 'pour-first' } }),
         UI.button('Pour ' + nameOf(z) + ' first · ' + price + ' coin', function () { pour(z, a); }, { class: 'second', dataset: { act: 'pour-last' } })));
     }
-    panel.appendChild(UI.h('p', { class: 'fnd-said', role: 'status' }, mates.length ? 'Choose the find to pour with it.' : REFUSALS.none));
+    panel.appendChild(UI.h('p', { class: ['fnd-said', mates.length ? 'is-note' : ''], role: 'status' }, mates.length ? 'Choose the find to pour with it.' : REFUSALS.none));
   }
 
   // ---- what the controls do ----

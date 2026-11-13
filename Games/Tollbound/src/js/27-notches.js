@@ -20,9 +20,15 @@
 //                                    half harm. Each burst is harm 9 x the curves' enemyLife at the district's level x
 //                                    heave-harm / 100 on every one of the dead it touches (Dmg.harmEnemy: guard, taken,
 //                                    swing). It lies where it fell, blank (its written lines and any re-walk gone, its
-//                                    base and fixed line kept), a pickup of kind 2 to walk over and carry again. Emits
-//                                    'heave'. false, and nothing thrown, when the haul is empty, the player is not
-//                                    alive, or the pickups have no room for it to lie in.
+//                                    base and fixed line kept), a pickup of kind 2 to walk over and carry again. Each
+//                                    burst also leaves an area of no voice (team 0, skill -1, in the state Skills.MARK)
+//                                    for 0.18 s, which the scene draws as the mark of a Blow. Emits 'heave'. false, and
+//                                    nothing thrown, when the haul is empty, the player is not alive, or the pickups
+//                                    have no room for it to lie in.
+//   Items.lay(S, find, x, y) -> pickup | null   a find laid on the ground: a pickup of kind 2 (value 1, lying 300 s,
+//                                    item the find) at (x, y), out of props and inside the district (World.pushOut),
+//                                    held back at once when the haul has no room for it; null when the pickups are
+//                                    full. Every find this file lays goes through it; a system that lays one should too.
 // Slot: S.notches = {seen, secs, known, n, lx, ly, throws: {n, x, y, left, at, harm}}: the toll last written for; the
 // seconds of this toll period spent in each posture (Float64Array, by row of Stats.POSTURES; timed counts none); the
 // landmarks, found once (their number and places); and the heaves bursting (at most 4 at once: where, the bursts left,
@@ -32,11 +38,11 @@
 // find of S.cfg.char on a re-walk (S.dirty then; the next checkpoint keeps it), while the player lives; then this
 // step's seconds go to the new period's postures; then for every 'kill' of the step a find may drop where the body
 // fell: keeper 1, elite 0.3, a large common body 0.02, a small one 0.004, times find-chance / 100 (the number expected:
-// above 1 drops more than one), drawn from S.rng.loot. A drop is a pickup of kind 2 (value 1, lying 300 s) whose item
-// is Items.make of a base Items.draw gives (S.cfg.account.open.bases opens those with an unlock) at the district's
-// level (zone.level), its fixed line rolled from S.rng.loot, uid -(++S.uid), with a 'drop' event (a = 2, b = 1); none
-// when the pickups are within 8 of full (the room the favours' shapes keep). Then the heaves' bursts, then the haul's
-// limit. Player.pickups puts a find walked over into S.haul, and ringing down banks it into S.bank.finds.
+// above 1 drops more than one), drawn from S.rng.loot. A drop is Items.lay of a find Items.make makes of a base
+// Items.draw gives (S.cfg.account.open.bases opens those with an unlock) at the district's level (zone.level), its
+// fixed line rolled from S.rng.loot, uid -(++S.uid), with a 'drop' event (a = 2, b = 1); none when the pickups are
+// within 8 of full (the room the favours' shapes keep). Then the heaves' bursts, then the haul's limit. Player.pickups
+// puts a find walked over into S.haul, and ringing down banks it into S.bank.finds.
 // Events: 'notch' (x, y the player; a = the place written; b = the posture's row of Stats.POSTURES; id = the find's
 // base), 'heave' (x, y where it lands; a = its notches; id = its base) and 'drop' (as the director's, a = 2).
 //
@@ -138,7 +144,9 @@
 
   const levelOf = (S) => (S.zone && S.zone.level >= 1 ? floor(S.zone.level) : 1);
 
-  function lay(S, o, find, x, y) {
+  Items.lay = function (S, find, x, y) {
+    const o = S.pickups.alloc();
+    if (o === null) return null;
     o.kind = KIND_FIND;
     o.value = 1;
     o.x = o.px = x;
@@ -150,7 +158,9 @@
     World.pushOut(S, o);
     o.px = o.x;
     o.py = o.y;
-  }
+    room(S);                                       // held back at once if the haul has no room for it
+    return o;
+  };
 
   function drop(S, x, y) {
     const pool = S.pickups, rng = S.rng.loot;
@@ -158,11 +168,9 @@
     const account = S.cfg.account, open = account && account.open ? account.open.bases : null, level = levelOf(S);
     const id = Items.draw(rng, open, level);
     if (id === null) return;
-    const o = pool.alloc();
-    if (o === null) return;
     const roll = rng.next(), jx = (rng.next() - 0.5) * SCATTER, jy = (rng.next() - 0.5) * SCATTER;
-    lay(S, o, Items.make(id, level, -(++S.uid), roll), x + jx, y + jy);
-    Sim.emit(S, 'drop', o.x, o.y, KIND_FIND, 1, null);
+    const o = Items.lay(S, Items.make(id, level, -(++S.uid), roll), x + jx, y + jy);
+    if (o !== null) Sim.emit(S, 'drop', o.x, o.y, KIND_FIND, 1, null);
   }
 
   function drops(S) {
@@ -210,8 +218,6 @@
       const k = haul[i] && Array.isArray(haul[i].lines) ? notches(haul[i]) : 0;
       if (k > most) { most = k; best = i; }
     }
-    const o = pool.alloc();
-    if (o === null) return false;
     const find = haul[best];
     for (let i = best; i < haul.length - 1; i++) haul[i] = haul[i + 1];
     haul.length--;
@@ -221,7 +227,7 @@
     if (l > 1e-6) { ax /= l; ay /= l; } else { ax = cos(p.face); ay = sin(p.face); }
     if (Array.isArray(find.lines)) for (let i = 0; i < find.lines.length; i++) find.lines[i] = null;
     find.walk = -1;
-    lay(S, o, find, p.x + ax * THROW, p.y + ay * THROW);
+    const o = Items.lay(S, find, p.x + ax * THROW, p.y + ay * THROW);   // there is room: the pool was asked above
     addThrow(S, o.x, o.y, most > 0 ? most : 1, burstHarm(S, most));
     Sim.emit(S, 'heave', o.x, o.y, most, 0, find.base === undefined ? null : find.base);
     return true;

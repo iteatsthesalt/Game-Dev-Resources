@@ -18,7 +18,8 @@
 //                                    Bill added to open.bills, a named voice into the chest (Char.voice, with a uid
 //                                    of the save), Plan points to char (char.planPoints, to 1000), coin, and Hum times
 //                                    gain (account.hum and heard: all Hum is multiplied by hum-gain, and endVigil
-//                                    gives the vigil's); char may be null. Returns the Hum it paid.
+//                                    gives the vigil's); char may be null. A reward naming content this build does
+//                                    not have is left out, so that the save never names it. Returns the Hum it paid.
 //   Progress.status(save, char, bequestId) -> {n, count, done, scope}   how far a bequest has come: the Household's
 //                                    record, or char's (none: n 0, not done)
 //   Progress.compiled() -> {list, byKind, tolls, ends, byId}   the bequests as the counting reads them, built once
@@ -135,16 +136,19 @@
 
   function opens(list, id) { if (list.indexOf(id) < 0) list.push(id); }
 
+  // a reward names content of another kind: what is not in this build is left out, so that the save never names it
+  const there = (kind, id) => typeof id === 'string' && Defs.has(kind, id);
+
   Progress.pay = function (save, id, char, gain) {
     const r = Defs.get('bequest', id).reward, open = save.account.open;
-    if (typeof r.class === 'string') opens(open.classes, r.class);
-    if (typeof r.base === 'string') opens(open.bases, r.base);
-    if (typeof r.observance === 'string') {
+    if (there('class', r.class)) opens(open.classes, r.class);
+    if (there('base', r.base)) opens(open.bases, r.base);
+    if (there('observance', r.observance)) {
       opens(open.observances, r.observance);
       if (char) Char.learn(char, r.observance);
     }
-    if (r.bill) open.bills.push({ zone: r.bill.zone, causes: r.bill.causes.slice() });
-    if (typeof r.voice === 'string') save.chest.voices.push(Char.voice(SaveData.uid(save), r.voice));
+    if (r.bill && there('zone', r.bill.zone) && r.bill.causes.every((c) => there('cause', c))) open.bills.push({ zone: r.bill.zone, causes: r.bill.causes.slice() });
+    if (there('voice', r.voice)) save.chest.voices.push(Char.voice(SaveData.uid(save), r.voice));
     if (r.planPoints > 0 && char) char.planPoints = min(PLAN_MOST, char.planPoints + r.planPoints);
     if (r.coin > 0) save.account.coin = min(MOST, save.account.coin + r.coin);
     let hum = 0;

@@ -166,14 +166,23 @@ test('the bequest event: when a character\'s own bequest is met in the vigil, an
 
 // ---- the bequests that ship, with every module below 50 ----
 
-const B = loadSim();
-assert.deepEqual(plain(B.Defs.finalize()), []);
+// every module below 50, finalized; its Director is free to be replaced. What this package defines must be sound
+// (01-defs.test.js holds the whole build to that)
+function whole(options) {
+  const W = loadSim(options);
+  assert.deepEqual(plain(W.Defs.finalize()).filter((e) => /^(bequest|pit|gift|bellframe) /.test(e)), [], 'the bequests and the frame are sound');
+  return W;
+}
+
+const B = whole();
 const QUEUE = injected(B);
 const KEEPER = 'dial.half-muffled-keeper';
 
 // For each bequest: what counts (an event, a toll, or the vigil's end) and what does not, as [event, ctx] pairs.
 const RULES = {
   'great-hour': { yes: ev('kill', 3, 1, KEEPER), no: [[ev('kill', 1, 1, 'dial.heavy')], [ev('kill', 3, 1, 'other.keeper')]] },
+  'stand-your-ground': { toll: true, no: [[ev('kill', 0, 1, 'dial.heavy')]] },
+  'keep-the-first-mourning': { end: 'died', no: [[ev('end', 2, 1, 'left')], [ev('end', 2, 1, 'spared')]] },
   'a-quiet-dial': { yes: ev('kill', 0, 1, 'dial.wake-walker'), no: [[ev('kill', 0, 1, 'debug.husk'), { zone: 'debug' }]] },
   'the-heavy-ones': { yes: ev('kill', 0, 2, 'dial.heavy'), no: [[ev('kill', 0, 1, 'dial.wake-walker')]] },
   'shake-them-off': { yes: ev('kill', 0, 1, 'dial.hanger-on'), no: [[ev('kill', 0, 1, 'dial.heavy')]] },
@@ -236,7 +245,7 @@ function meet(id) {
   } else {
     vigil(steps(times(Math.ceil(def.count / (rule.sum || 1)), rule.yes)), 'left');
   }
-  return { save, c: Char.find(save, c.uid), reports, heard, def };
+  return { save, c: Char.find(save, c.uid), reports, heard, def };     // c is null when the vigil it asked for was a death
 }
 
 test('every bequest that ships is met by doing what it asks, once, and leaves what it says: Plan points to the character, coin and Hum to the Household, a voice to the chest', () => {
@@ -250,18 +259,23 @@ test('every bequest that ships is met by doing what it asks, once, and leaves wh
     if (def.scope === 'character' && !['end', 'toll'].includes(def.on)) assert.ok(heard.includes(id), `${id}: the bequest event in the vigil it was met`);
     // what every bequest met in these vigils left, added up, is what the Household and the character gained
     let points = 0, coin = 0, hum = 0, voices = 0;
+    const opened = [];
     for (const m of met) {
       const r = B.Defs.get('bequest', m).reward;
       points += r.planPoints || 0;
       coin += r.coin || 0;
       hum += r.hum || 0;
       voices += r.voice ? 1 : 0;
+      if (r.observance) opened.push(r.observance);
     }
-    assert.equal(c.planPoints, points, `${id}: Plan points`);
+    if (c !== null) assert.equal(c.planPoints, points, `${id}: Plan points`);
     assert.equal(save.account.coin, coin, `${id}: coin (nothing was rung down in these vigils)`);
-    near(save.account.hum, hum, 1e-9);                                  // the Change-ringer's hum-gain is 100%: no mourning
+    const deathHum = RULES[id].end === 'died' ? 40 * reports[0].tolls : 0;   // a death by a cause new to the Register pays Hum too
+    near(save.account.hum, hum + deathHum, 1e-9);                       // the Change-ringer's hum-gain is 100%: no mourning
     assert.equal(save.chest.voices.length, voices, `${id}: voices into the chest`);
     if (def.reward.voice) assert.ok(save.chest.voices.some((v) => v.id === def.reward.voice));
+    assert.deepEqual(plain(save.account.open.observances).sort(), opened.sort(), `${id}: the observances its bequests opened`);
+    if (def.reward.observance && c !== null) assert.ok(c.known.includes(def.reward.observance), `${id}: and the character who met it learnt it`);
     near(reports.reduce((n, r) => n + r.hum, 0), save.account.hum, 1e-9);   // a report's Hum counts what its bequests paid
     assert.deepEqual(plain(SaveData.validate(save)), [], id);
   }
@@ -270,9 +284,11 @@ test('every bequest that ships is met by doing what it asks, once, and leaves wh
 test('a character that dies takes its own counts with it; the Household keeps its counts from that vigil', () => {
   const { SaveData, Char } = B, save = SaveData.blank(), c = Char.create(save, 'change-ringer', 'Agnes');
   const r = keep(B, save, c.uid, 'dial', [...steps(times(3, ev('kill', 3, 1, KEEPER))), ...tolls(2)], 'died', QUEUE);
-  assert.deepEqual(plain(r.report.bequests), ['great-hour', 'three-times-over'], 'the Household\'s; lay-the-keeper went with the character');
-  assert.deepEqual(plain(save.account.bequests), { 'great-hour': { n: 3, done: true }, 'a-quiet-dial': { n: 3, done: false }, 'the-great-dead': { n: 3, done: false },
+  assert.deepEqual(plain(r.report.bequests), ['great-hour', 'keep-the-first-mourning', 'three-times-over'], 'the Household\'s; lay-the-keeper went with the character');
+  assert.deepEqual(plain(save.account.bequests), { 'great-hour': { n: 3, done: true }, 'stand-your-ground': { n: 2, done: false },
+    'keep-the-first-mourning': { n: 1, done: true }, 'a-quiet-dial': { n: 3, done: false }, 'the-great-dead': { n: 3, done: false },
     'three-times-over': { n: 3, done: true } }, 'three keepers laid in the Dial count for the Dial\'s dead and the great dead as well');
+  assert.deepEqual(plain(save.account.open.observances), ['unbroken-round', 'full-mourning'], 'opened for the Household; nobody stands to learn them');
   assert.equal(save.chars.length, 0);
   // a cause new to the Register pays 40 Hum times the toll (2); the two bequests 120 and 150 Hum, 30 and 50 coin
   assert.deepEqual([r.report.hum, save.account.hum, save.account.coin], [40 * 2 + 120 + 150, 40 * 2 + 120 + 150, 30 + 50]);
@@ -280,7 +296,7 @@ test('a character that dies takes its own counts with it; the Household keeps it
 });
 
 test('the system changes nothing a run plays: a character\'s vigil plays the same with it as without it', () => {
-  const without = loadSim({ only: modules.sim().filter((f) => f !== '28-bequests.js'), boot: true }), withIt = loadSim({ boot: true });
+  const without = whole({ only: modules.sim().filter((f) => f !== '28-bequests.js') }), withIt = whole();
   const play = (W) => {
     const save = W.SaveData.blank(), c = W.Char.create(save, 'change-ringer', 'Agnes'), S = W.Sim.create(W.Char.begin(save, c.uid, 'dial', 11));
     for (let i = 0; i < 1500; i++) W.Sim.step(S, W.Bot.input(S, 'vigil'));

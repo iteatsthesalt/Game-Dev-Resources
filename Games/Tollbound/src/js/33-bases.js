@@ -93,10 +93,11 @@
 
   // ---- coats ----
 
+  // the Change-ringer's two numbers: the rope quickens the pull (pull-window), the jerkin the setting of the bell
   Defs.add('base', {
     id: 'base.ringers-jerkin', name: 'Ringer\'s Jerkin', text: 'A short leather jerkin, rubbed thin where the rope ran.',
-    slot: 'coat', family: null, level: 1, fixed: { stat: 'guard.blow', op: 'flat', min: 2, max: 4 },
-    tables: { stood: { verbs: { 'brace-guard': 2 } }, pressed: { verbs: { 'every-guard': 2 } } },
+    slot: 'coat', family: null, level: 1, fixed: { stat: 'set-time', op: 'flat', min: -0.12, max: -0.08 },
+    tables: { stood: { verbs: { 'set-sooner': 2, 'brace-guard': 1.5 } }, pressed: { verbs: { 'every-guard': 2 } } },
     icon: 'find.coat', unlock: null, weight: 3,
   });
   Defs.add('base', {

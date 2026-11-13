@@ -111,6 +111,8 @@
 
 .fnd-said.is-done { color: var(--good); }
 
+.fnd-said.is-note { color: var(--ink-dim); }
+
 /* ---- one find ---- */
 
 .ui-btn.fnd-up { align-self: flex-start; }
