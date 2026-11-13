@@ -496,6 +496,19 @@ test('the Plan: each door leads into its own quarter, which holds together, and 
   }
   assert.equal(look.streets.length, 12);
   assert.equal(look.walls.length, 8);
+  // the quarters connect: every seam (an even street) links into both quarters it lies between, at more than one ring
+  for (let s = 0; s < 12; s += 2) {
+    const mid = look.first + look.step * s, side = (n) => Math.sign(((angle(n) - mid + 540) % 360) - 180);
+    const before = new Set(), after = new Set();
+    for (const n of NODES.filter((x) => x.street === s)) {
+      for (const l of n.links) {
+        const m = BY_ID.get(l);
+        if (m.street === s) continue;
+        if (side(m) < 0) before.add(n.ring); else if (side(m) > 0) after.add(n.ring);
+      }
+    }
+    assert.ok(before.size >= 3 && after.size >= 3, look.streets[s] + ' joins the quarters on both its sides (rings ' + [...before] + ' / ' + [...after] + ')');
+  }
 });
 
 test('the Plan: room for sixty levels of real choices from every door', () => {

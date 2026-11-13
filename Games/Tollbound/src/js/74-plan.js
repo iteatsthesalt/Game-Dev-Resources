@@ -201,7 +201,7 @@
 
   // the way from one node to another over the plan's links, fewest steps first: [id] from the first to the last
   function wayTo(g, from, to) {
-    if (from === null || to === null || from === to) return [];
+    if (from === to || !g.byId[from] || !g.byId[to]) return [];
     const back = Object.create(null), todo = [from];
     back[from] = '';
     for (let i = 0; i < todo.length; i++) {
@@ -675,7 +675,7 @@
           ctx.fillStyle = c.block;
           ctx.fill();
           if (tint) {
-            ctx.globalAlpha = 0.13;
+            ctx.globalAlpha = 0.1;
             ctx.fillStyle = tint;
             ctx.fill();
             ctx.globalAlpha = 1;

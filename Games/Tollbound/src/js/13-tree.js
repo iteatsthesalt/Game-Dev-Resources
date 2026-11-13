@@ -201,7 +201,9 @@
   Tree.from = function (node) { return node.ring - 1; };
 
   // its ring and its bank
-  function base(node, n) { return (1 + n.ringGain / 100 * (node.ring - 1)) * (node.bank === null ? 1 : 1 + n.bankGain / 100); }
+  function base(node, n) {
+    return (1 + n.ringGain / 100 * (node.ring - 1)) * (node.bank === 'flood' || node.bank === 'ebb' ? 1 + n.bankGain / 100 : 1);
+  }
 
   Tree.factor = function (node, walk) {
     const n = Tree.plan();
@@ -236,7 +238,7 @@
   }
 
   Tree.give = function (node, attr, k, out) {
-    const list = out || [], also = node.bank === null ? null : BANKS[node.bank];
+    const list = out || [], also = node.bank === 'flood' || node.bank === 'ebb' ? BANKS[node.bank] : null;
     if (node.choice !== null) {
       if (typeof attr === 'string' && node.choice.indexOf(attr) >= 0) list.push(at({ stat: attr, op: 'flat', value: 1 }, k, also));
       return list;

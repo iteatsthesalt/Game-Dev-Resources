@@ -6,7 +6,8 @@
 //                    loops of 12 or fewer at 50%, refund 5 coin x the head's ring. look: what the screen draws: the
 //                    rings' radii and the walls' names, the streets' angles and names, the close, the river (its
 //                    course as points and its half width), and a colour for each class's quarter.
-//   node 'plan.*'    about 640 places: the six class doors, lanes, corners, squares, milestones and four bridges.
+//   node 'plan.*'    627 places (the design's "about 640"): the six class doors, 274 lanes, 283 corners, 36 squares,
+//                    24 milestones, and four bridges, which are squares too: each crossing has its toll.
 //
 // The shape (04-progression.md, "Its shape"). The cathedral close is the middle, and no node: the Lantern's tower
 // stands in it. Round it run eight ring roads, the old walls, numbered outward; twelve straight streets run out from
