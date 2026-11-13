@@ -368,7 +368,7 @@
     m = at(m, B_TOLLED, p.condT[REPRIEVE] > 0);
     m = at(m, B_ON_WOUND, onWound(S, p, st['mend-reach']));
     m = at(m, B_LADEN, S.haul.length >= LADEN);
-    m = at(m, B_SCARRED, S.wounds.scarred > 0);
+    m = at(m, B_SCARRED, S.wounds.scarred > 0 || (S.observances !== undefined && S.observances.scarred > 0));   // Hand on the Bell's scars too
     m = at(m, B_FAINT, p.life < FAINT * st['life-max']);
     const px = p.x - c.postX, py = p.y - c.postY;
     m = at(m, B_AT_POST, c.post && px * px + py * py <= AT_POST * AT_POST);

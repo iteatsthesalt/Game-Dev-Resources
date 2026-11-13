@@ -42,7 +42,15 @@
 //   S.crowd = {climb, rider}: seconds the player has stood still toward the next hanger-on climbing on, and the id of
 //     the enemy def the riders came from (they drop off as that when the large body they ride falls)
 //   enemy fields: attack (-1, or the index in def.attacks of the attack winding up or striking), pace (its speed this
-//     step: top speed with its rules), lifeSeen (its life at the end of the last Enemies.step, to tell a harm)
+//     step: top speed with its rules), lifeSeen (its life at the end of the last Enemies.step, to tell a harm), seenX,
+//     seenY (where it last made the player out: where the player stood when it rose, then wherever it saw the player)
+//     and lost (true while it cannot make the player out: Full Mourning's sight, below)
+//
+// Full Mourning's sight (04-progression.md, "Observances and Heed"). While S.observances.sight is above 0
+// (27-observances.js keeps it: 7 m, then 10, then 14), each of the dead farther than that from the player, a keeper
+// excepted, cannot make the player out: it is lost, walks to where it last saw the player (seenX, seenY) and stands
+// there, and begins no attack; a wind-up begun while it saw the player still lands. Within sight it steers by its
+// behaviour again. The wake's train is a way of seeing too: a lost body of the train leaves it for its last sight.
 //
 // Attacks. state 1 is a wind-up (stateT the seconds into it, a1 its length, a0 the aim locked when it began) and
 // state 2 a strike (0.35 s: Scene.ATTACK). Cooldowns cd0..cd3 belong to def.attacks[0..3]; a body's first step
@@ -142,6 +150,9 @@
   Sim.field('enemy', 'attack', -1);
   Sim.field('enemy', 'pace', 0);
   Sim.field('enemy', 'lifeSeen', 0);
+  Sim.field('enemy', 'seenX', 0);
+  Sim.field('enemy', 'seenY', 0);
+  Sim.field('enemy', 'lost', false);
 
   Sim.state('wake', function (S) {
     const rg = S.region, R = (rg ? rg.radius : 60) + CELL_MARGIN, side = Math.ceil(2 * R / CELL);
@@ -300,7 +311,7 @@
   // a hanger-on climbs onto the player; false when the player can carry no more
   function climbOn(S, e, attack) {
     const p = S.player, n = p.condN[CLUNG];
-    if (n >= RIDERS || p.condT[SEALED] > 0) return false;
+    if (n >= RIDERS || p.condT[SEALED] > 0 || (typeof Skills.beat === 'function' && Skills.beat(S))) return false;   // Open Lead's beat
     const drag = e.damage * (attack ? attack.mult : 1);
     p.condV[CLUNG] = (p.condV[CLUNG] * n + drag) / (n + 1);
     p.condN[CLUNG] = n + 1;
@@ -470,7 +481,7 @@
       if (e.stateT >= STRIKE_SECONDS - SLIVER) { e.state = 0; e.stateT = 0; e.attack = -1; }
       return;
     }
-    if (!p.alive || !mayStrike(e)) return;
+    if (!p.alive || !mayStrike(e) || e.lost) return;   // a body that cannot make the player out begins nothing
     const dx = p.x - e.x, dy = p.y - e.y, d = sqrt(dx * dx + dy * dy);
     for (let i = 0; i < count; i++) {
       if (cdOf(e, i) > 0) continue;
@@ -502,13 +513,25 @@
   const near = new Array(NEAR_MAX).fill(null);
 
   // a body's first step: its cooldowns are set to a share of each attack's, by its uid, so a crowd strikes out of step
-  function first(e) {
+  function first(S, e) {
     const list = attacksOf(e.def);
     for (let i = 0; i < list.length; i++) {
       const k = e.uid * 0.6180339887 + i * 0.37, share = k - floor(k);
       setCd(e, i, list[i].cooldown * share);
     }
     e.lifeSeen = e.life;
+    e.seenX = S.player.x;                          // the dead rise knowing where the player stood
+    e.seenY = S.player.y;
+  }
+
+  // Full Mourning's sight (S.observances.sight, metres; 0 while nothing hides the player): a body farther than that
+  // from the player cannot make it out and is lost; one that can notes where the player stands. A keeper always sees.
+  function sighted(S, e, p, sight) {
+    if (sight > 0 && e.rank < BOSS && p.alive) {
+      const dx = p.x - e.x, dy = p.y - e.y;
+      e.lost = dx * dx + dy * dy > sight * sight;
+    } else e.lost = false;
+    if (!e.lost) { e.seenX = p.x; e.seenY = p.y; }
   }
 
   function coinedWalk(S, e) {
@@ -646,11 +669,13 @@
     Enemies.wakeAt(S, lag, lagPoint);
     const items = S.enemies.items, n = S.enemies.n, turn = S.step % WAKE_EVERY, since = S.t - length;
     const v = S.vigil, gate = v && S.sheet && S.sheet.flags['pass-the-gate'] && v.passed > 0 ? 1 + 0.04 * v.passed : 1;
+    const sight = S.observances && S.observances.sight > 0 ? S.observances.sight : 0;
     for (let i = 0; i < n; i++) {
       const e = items[i];
       if (!e.alive) continue;
-      if (e.t === 0) first(e);
+      if (e.t === 0) first(S, e);
       e.t += DT;
+      sighted(S, e, p, sight);
       const grade = mourning(e);
       if (e.uid % WAKE_EVERY === turn) procession(S, e, p, since);
       setPace(S, e, gate, grade);
@@ -665,6 +690,7 @@
         continue;
       }
       if (e.condT[COINED] > 0) { coinedWalk(S, e); continue; }
+      if (e.lost) { AI.steer(S, e, e.seenX, e.seenY, 0); AI.strike(S, e); continue; }   // to where it last saw you
       const fn = behaviours[e.def.ai];
       if (fn !== undefined) fn(S, e);
       else { AI.steer(S, e, p.x, p.y, 0); AI.strike(S, e); }

@@ -147,12 +147,14 @@ test('the bequest event: when a character\'s own bequest is met in the vigil, an
   const W = small(), { SaveData, Char, Sim } = W, queue = injected(W), save = SaveData.blank(), c = Char.create(save, 'test.ringer', 'Agnes');
   const kill = ev('kill', 0, 1, 'debug.husk');
   let r = keep(W, save, c.uid, 'debug', [{ events: [kill, kill] }, { events: [kill, kill] }, { events: [kill] }, { events: [kill] }], 'left', queue);
-  assert.deepEqual(plain(r.heard), ['test.best-vigil'], 'the fifth kill meets it; the Household\'s record is not in the run\'s account');
-  // a run whose account carries the Household's records hears the Household's bequests too
+  assert.deepEqual(plain(r.heard), ['test.opens', 'test.best-vigil'],
+    'the fifth kill meets the character\'s own; the Household\'s is heard too, its record being in the run\'s account (Char.begin)');
+  // the run's account carries a copy of the Household's records, so a bequest under way is heard as it is met
   const save2 = SaveData.blank(), d = Char.create(save2, 'test.ringer', 'Bram');
   save2.account.bequests['test.opens'] = { n: 1, done: false };
   const cfg = Char.begin(save2, d.uid, 'debug', 5);
-  cfg.account.bequests = JSON.parse(JSON.stringify(save2.account.bequests));
+  assert.deepEqual(plain(cfg.account.bequests), plain(save2.account.bequests), 'Char.begin copies them');
+  assert.notEqual(cfg.account.bequests, save2.account.bequests, 'a copy: the run never writes the save');
   const S = Sim.create(cfg);
   queue.push(kill);
   Sim.step(S, Sim.NO_INPUT);

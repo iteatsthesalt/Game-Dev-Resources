@@ -21,7 +21,8 @@
 //   Scene.stats                  what the last frame drew: {figures, enemies, culled, corpses, detail, cut, parts,
 //                                dropped, decals, billboards, lights, discs, bars, fillMs} and the marks of the
 //                                screen language: {postures, threads, wake, swells, lees, wounds, marks, walls,
-//                                favours, shadow (0 or 1), grey (0..1)}. detail is whether detail parts were drawn;
+//                                favours, shadow (0 or 1), grey (0..1), rings (Stability's), cairns, splices
+//                                (Back-splice's figures), balanced (Balance's standing throws)}. detail is whether detail parts were drawn;
 //                                cut how many enemies were drawn as a body and a head only; marks the solid parts
 //                                that mark conditions; fillMs the time spent filling the buffers, after begin() and
 //                                before the view's calls.
@@ -33,7 +34,7 @@
 //   Scene.LOOK                   the colours of the screen language, [r, g, b] each (frozen): posture, wake,
 //                                thread, bone (a Swell's fill), rim (its rim), fall (a falling Swell's fill), wound,
 //                                deep, scar, mend, tick, wax, sounded, coil, coin, rider, riderCap, lamp, bell,
-//                                ember, white
+//                                ember, white, promise (an observance's ring), stone (a cairn)
 //   Scene.BAR_STRIDE = 6         a bar for Vfx.overlay: x, y, z (where above the ground it sits), life (0..1), rank,
 //                                alpha
 //   Scene.ATTACK                 {windup: 1, strike: 2, length: 0.35}: an enemy or minion whose state is windup is
@@ -77,6 +78,13 @@
 //              finds as small boxes, favours (kind 3) as solid shapes that rise from the ground, by their icon),
 //              the open lychgate's ring of strokes filling one by one as the player rings down (S.gate.ring and
 //              strokes against ringStrokes and strokeSeconds)
+//   knots and observances   Stability's ring (S.observances.of of each observance kept whose promise is 'stability':
+//              a ring as far out as its reach round where the last toll found the player, in the promise colour,
+//              brighter over its last 3 m, faint and dark while broken); Alms' cairns (finds held back as cairns,
+//              Observances.held: a heap of three stones), and a find Full Mourning holds back darker; Back-splice's
+//              figure (S.knots.figX, figY for each voice tied with it: a pale ghost of the player's figure and a thin
+//              ring at its feet); Balance's standing throws (shots of team 0 standing still in state 1: a small bell
+//              mouth-up in the voice's colour, rocking with each body that rocked it, a1)
 //   billboards shots (with a short trail), embers, the far lychgate's lit way, and Vfx's particles
 //   lights     the player's own small light at the belt, the lychgate's lamps, props that carry a light, shots: the
 //              nearest 32 to the player
@@ -117,6 +125,7 @@
     tick: [1, 0.95, 0.78], wax: [0.82, 0.14, 0.09], sounded: [0.98, 0.88, 0.62], coil: [0.5, 0.36, 0.2],
     coin: [0.97, 0.78, 0.3], rider: [0.42, 0.37, 0.31], riderCap: [0.88, 0.64, 0.2], lamp: [1, 0.74, 0.38],
     bell: [0.62, 0.43, 0.23], ember: [1, 0.52, 0.18], white: [1, 1, 1],
+    promise: [0.95, 0.84, 0.58], stone: [0.5, 0.49, 0.47],
   };
   // where riders sit on a figure: across (by its radius), up (by its height), forward (by its radius)
   const RIDERS = [[0.55, 0.78, -0.25], [-0.55, 0.78, -0.25], [0, 0.66, -0.7], [0.62, 0.5, -0.35], [-0.62, 0.5, -0.35]];
@@ -133,6 +142,7 @@
     figures: 0, enemies: 0, culled: 0, corpses: 0, detail: true, cut: 0, parts: 0, dropped: 0, decals: 0, billboards: 0,
     lights: 0, discs: 0, bars: 0, fillMs: 0,
     postures: 0, threads: 0, wake: 0, swells: 0, lees: 0, wounds: 0, marks: 0, walls: 0, favours: 0, shadow: 0, grey: 0,
+    rings: 0, cairns: 0, splices: 0, balanced: 0,
   };
   Scene.stats = stats;
 
@@ -895,6 +905,55 @@
     stats.wounds = n;
   }
 
+  // ---- what the knots and observances leave on the ground ----
+  // Stability's ring: drawn where the last toll found the player (S.observances.of[id]), as far out as the promise
+  // reaches, bright while kept and brighter as the player nears its edge; faint while the promise is broken.
+  function promiseMarks(S, px, py) {
+    stats.rings = 0;
+    const O = S.observances, char = S.cfg ? S.cfg.char : null;
+    if (!O || !O.of || !char || !Array.isArray(char.observances)) return;
+    for (let i = 0; i < char.observances.length; i++) {
+      const id = char.observances[i];
+      if (!Defs.has('observance', id)) continue;
+      const def = Defs.get('observance', id), r = O.of[id];
+      if (def.promise !== 'stability' || !r || !(r.toll >= 0)) continue;
+      const reach = def.params && def.params.reach > 0 ? def.params.reach : 0;
+      if (!(reach > 0) || !inView(r.x, r.y, reach)) continue;
+      const broken = O.broken[id] === true, d = sqrt((px - r.x) * (px - r.x) + (py - r.y) * (py - r.y));
+      const near = Math.max(0, Math.min(1, 1 - (reach - d) / 3));    // the last 3 m before its edge
+      mark(r.x, r.y, reach, broken ? LOOK.rim : LOOK.promise, broken ? 0.3 : 0.45 + 0.5 * near, -0.012 - 0.01 * near, RING, 0, 0);
+      mark(r.x, r.y, 0.35, broken ? LOOK.rim : LOOK.promise, broken ? 0.3 : 0.6, -0.25, RING, 0, 0);   // its middle
+      stats.rings++;
+    }
+  }
+
+  // Back-splice's figure: a pale ghost of the player's own figure left where it stood 2 s ago (S.knots.figX, figY),
+  // a thin ring at its feet, for each voice of the loadout tied with the knot
+  function splices(S, now, px, py, puppets) {
+    stats.splices = 0;
+    const K = S.knots, skills = S.skills;
+    if (!K || !K.fig || !skills) return;
+    for (let i = 0; i < skills.length && i < K.fig.length; i++) {
+      const sh = skills[i].sheet;
+      if (!(K.fig[i] > 0) || !sh || !sh.knots) continue;
+      let spliced = false;
+      for (let k = 0; k < sh.knots.length; k++) if (sh.knots[k].rule === 'back-splice') spliced = true;
+      if (!spliced) continue;
+      const x = K.figX[i], y = K.figY[i];
+      if (!inView(x, y, 2)) continue;
+      mark(x, y, 0.5, LOOK.thread, 0.7, -0.2, RING, 0, 0);
+      const fig = playerFigure(S);
+      if (puppets && fig) {
+        st.x = st.px = x; st.y = st.py = y; st.alpha = 1; st.face = atan2(py - y, px - x); st.scale = 1; st.speed = 0; st.walk = 0;
+        st.cycle = 0; st.act = Rigs.NONE; st.hurt = 99; st.dying = false; st.die = 0; st.flash = 0; st.opacity = 0.4; st.glow = 0.6;
+        st.grey = 1; st.tintR = LOOK.thread[0]; st.tintG = LOOK.thread[1]; st.tintB = LOOK.thread[2]; st.seed = 0; st.detail = false;
+        st.lod = 0; st.shell = 0; st.strike = 0; st.lift = 0; st.t = now;
+        if (sink.total + fig.n <= Math.max(0, Scene.limits.parts | 0)) markParts += Rigs.draw(fig, st, sink);
+      } else mark(x, y, 0.3, LOOK.thread, 0.6, 1, DISC, 0, 0);
+      stats.splices++;
+    }
+  }
+
   // ---- Swells: filling in pale bone with a dark rim, their lee cut out ----
   // A lee record for a body or a prop at (x, y), once a frame for each reach. (A view cuts every cut decal by every
   // lee record, so where the dead's Swells and the voices' lie near the same shelter in one frame, the longer reach
@@ -1232,11 +1291,17 @@
   function things(S, alpha, now, px, py, puppets) {
     // shots: a bright bolt with a short trail, and a little light
     const shots = S.shots;
+    let balanced = 0;
     for (let i = 0; shots && i < shots.n; i++) {
       const o = shots.items[i];
       if (!o.alive) continue;
       const x = o.px + (o.x - o.px) * alpha, y = o.py + (o.y - o.py) * alpha;
       if (!inView(x, y, 1)) continue;
+      if (o.team === 0 && o.state === BALANCED && o.vx === 0 && o.vy === 0) {   // Balance: it stands mouth-up
+        standing(S, o, x, y, now, puppets);
+        balanced++;
+        continue;
+      }
       let c = null;
       if (o.team === 1) c = fxColor(o.def);
       else if (o.skill >= 0 && S.skills[o.skill] && S.skills[o.skill].inst) {
@@ -1250,10 +1315,11 @@
       board(x - dx, y - dy, 1, size * 0.5, r, g, b, 0.35, 1);
       lightCandidate(x, y, 1, 2.6, r, g, b, 0.7, px, py);
     }
+    stats.balanced = balanced;
     // pickups: an ember is a small warm glow, coin a small bright disc on the ground, a find a small box, and a
     // favour a solid shape that rises out of the ground and sinks again if it is not taken
     const pickups = S.pickups;
-    let favours = 0;
+    let favours = 0, cairns = 0;
     for (let i = 0; pickups && i < pickups.n; i++) {
       const o = pickups.items[i];
       if (!o.alive) continue;
@@ -1269,8 +1335,20 @@
           solid(CYL, x + 0.05, y - 0.04, 0.035, 0.16, 0.03, 0.16, o.uid, 0, LOOK.coin, 0.25);
         } else mark(x, y, 0.12, LOOK.coin, 1, 1, DISC, 0, 0);
       } else if (kind === 2) {
-        if (puppets) solid(BOX, x, y, 0, 0.3, 0.22, 0.24, o.uid * 0.7, 0, LOOK.posture, 0);
-        else mark(x, y, 0.16, LOOK.posture, 1, 1, DISC, 0, 0);
+        const held = o.state < 0 && typeof Observances.held === 'function' ? Observances.held(o) : null;
+        if (held === 'cairn') {
+          // Alms: the find left lying as a cairn, a heap of three stones over it
+          if (puppets) {
+            solid(SPHERE, x, y, 0, 0.5, 0.26, 0.5, o.uid, 0, LOOK.stone, 0);
+            solid(SPHERE, x + 0.03, y - 0.02, 0.17, 0.36, 0.22, 0.36, o.uid * 1.3, 0, LOOK.stone, 0);
+            solid(SPHERE, x - 0.02, y, 0.33, 0.22, 0.18, 0.22, o.uid * 1.7, 0, LOOK.posture, 0);
+          } else {
+            mark(x, y, 0.26, LOOK.stone, 1, 1, DISC, 0, 0);
+            mark(x, y, 0.12, LOOK.posture, 1, 1, DISC, 0, 0);
+          }
+          cairns++;
+        } else if (puppets) solid(BOX, x, y, 0, 0.3, 0.22, 0.24, o.uid * 0.7, 0, held === 'mourned' ? LOOK.fall : LOOK.posture, 0);
+        else mark(x, y, 0.16, held === 'mourned' ? LOOK.fall : LOOK.posture, 1, 1, DISC, 0, 0);
       } else if (kind === 3) {
         // out of the ground over RISE seconds from when the scene first saw it, back into it over its last SINK_AT
         const s = slotOf(o);
@@ -1295,6 +1373,7 @@
       }
     }
     stats.favours = favours;
+    stats.cairns = cairns;
     // the lychgate's ring and light
     gateMarks(S, now, px, py, puppets);
     // props that carry a light
@@ -1307,6 +1386,24 @@
       }
     }
   }
+  // A thing a voice with a Balance knot threw, standing mouth-up where its flight ended (24-archetypes.js: a shot of
+  // team 0 in the state BALANCED, still): a small bell on the ground in the voice's colour, rocking more with every
+  // light body that has rocked it (a1), and its rim
+  const BALANCED = 1;
+  function standing(S, o, x, y, now, puppets) {
+    const sk = o.skill >= 0 && S.skills ? S.skills[o.skill] : null, id = sk && sk.inst ? sk.inst.id : null;
+    const c = (typeof id === 'string' && Defs.has('voice', id) ? fxColor(Defs.get('voice', id)) : null) || LOOK.bell;
+    const rocks = Math.min(3, o.a1 > 0 ? o.a1 : 0), tilt = rocks > 0 ? 0.1 * rocks * sin(now * 7 + o.uid) : 0;
+    if (puppets) {
+      solid(CONE, x, y, 0.34, 0.3, 0.34, 0.3, o.uid, PI + tilt, c, 0.15);
+      solid(CYL, x, y, 0.34, 0.32, 0.03, 0.32, o.uid, tilt, c, 0.15);
+    } else {
+      mark(x, y, 0.2, c, 1, 1, DISC, 0, 0);
+      mark(x, y, 0.26, LOOK.rim, 0.9, -0.2, RING, 0, 0);
+    }
+    mark(x, y, 0.3, LOOK.rim, 0.35, 1, DISC, 0, 0);   // its shadow on the ground
+  }
+
   // The Change-ringer's bell, set mouth-up over it.
   function setBell(S, px, py, puppets) {
     const p = S.player;
@@ -1367,10 +1464,12 @@
     swells(S);
     const P = typeof Dmg.POSE === 'object' && Dmg.POSE ? Dmg.POSE : POSE;
     wounds(S, now, px, py, p.pose === P.braced);
+    promiseMarks(S, px, py);
     const detail = budget(), darkDiscs = puppets && (!caps.shadows || level === 'low');
     const flashK = typeof Vfx.flash === 'number' ? 0.35 + 0.65 * Vfx.flash : 1;
     emit(S, alpha, now, puppets, darkDiscs, detail, flashK);
     setBell(S, px, py, puppets);
+    splices(S, now, px, py, puppets);
     things(S, alpha, now, px, py, puppets);
     if (typeof Vfx.billboards === 'function') boardN = Vfx.billboards(boardBuf, boardN, BOARDS);
     chooseLights();

@@ -3,7 +3,7 @@
 // and writes no storage: 90-game.js keeps the save through Store (50-platform.js), under SaveData.KEY.
 // Owns: SaveData
 // Public:
-//   SaveData.VERSION = 2              the version this file writes
+//   SaveData.VERSION = 3              the version this file writes
 //   SaveData.KEY = 'save'             the Store key the game keeps the save under (the settings keep their own)
 //   SaveData.LIMITS                   the most a save may hold: {chars, register, finds, voices, bells, walk, text,
 //                                     errors (the problems one check reports at most)}
@@ -13,7 +13,10 @@
 //   SaveData.uid(save) -> number      the next uid of the save: characters, finds, voices and bells share one counter
 //   SaveData.clone(value) -> copy     a deep copy, through JSON
 //   SaveData.MIGRATIONS               [{from, to, what, up(raw, notes) -> raw}]: each brings a save of one version to
-//                                     the next. Version 1 is the first plan's placeholder (docs/plan.md, Appendix B).
+//                                     the next. Version 1 is the first plan's placeholder (docs/plan.md, Appendix B);
+//                                     version 2 the Household before every route began at a door: from 2 to 3 an
+//                                     empty route (a character made before the Plan was laid out) starts at its
+//                                     class's door, and the shape stays as it was.
 //   SaveData.migrate(raw) -> {save, errors, notes}   a copy of raw brought up to VERSION, or save null and why;
 //                                     notes tell what a migration had to leave behind
 //   SaveData.validate(raw) -> [string]   every problem of a save of this version, each "where: what" (at most
@@ -49,7 +52,7 @@
 (function () {
   'use strict';
 
-  const VERSION = 2, KEY = 'save';
+  const VERSION = 3, KEY = 'save';
   const LIMITS = Object.freeze({ chars: 100, register: 5000, finds: 5000, voices: 1000, bells: 5000, walk: 2000, text: 8000000, errors: 50 });
   const ID = /^[a-z0-9]+(?:[.-][a-z0-9]+)*$/;
   const HEADER = /^TOLLBOUND SAVE (\d+) ([0-9a-f]{8})[ \t]*\r?\n/;
@@ -560,8 +563,30 @@
     return s;
   }
 
+  // Version 2 to 3: a character made before the Plan was laid out has an empty route, from which no point can be
+  // laid. Its route now starts at its class's door, where there is one; nothing else of the save changes.
+  function doorOf(classId) {
+    const nodes = Defs.all('node');
+    for (let i = 0; i < nodes.length; i++) if (nodes[i].kind === 'door' && nodes[i].class === classId) return nodes[i].id;
+    return null;
+  }
+
+  function toDoors(old, notes) {
+    const chars = Array.isArray(old.chars) ? old.chars : [];
+    for (let i = 0; i < chars.length; i++) {
+      const c = chars[i];
+      if (!isObj(c) || !isObj(c.plan) || !Array.isArray(c.plan.walk) || c.plan.walk.length !== 0 || typeof c.class !== 'string') continue;
+      const door = doorOf(c.class);
+      if (door === null) continue;
+      c.plan.walk.push(door);
+      notes.push((typeof c.name === 'string' ? c.name : 'a character') + ': its route was laid before the Plan, and now starts at its door');
+    }
+    return old;
+  }
+
   SaveData.MIGRATIONS = Object.freeze([
     Object.freeze({ from: 1, to: 2, what: 'the first plan\'s placeholders become the Household of docs/design/04-progression.md', up: fromFirstPlan }),
+    Object.freeze({ from: 2, to: 3, what: 'a route laid before the Plan existed starts at its class\'s door', up: toDoors }),
   ]);
 
   SaveData.migrate = function (raw) {

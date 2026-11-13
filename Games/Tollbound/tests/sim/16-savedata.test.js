@@ -65,13 +65,13 @@ function rich() {
 test('a blank save: nobody yet, an empty chest, the tenor pit open, one ringing place; and it is sound', () => {
   const save = fresh();
   assert.deepEqual(plain(save), {
-    v: 2, rev: 0, uid: 0, chars: [], register: [], chest: { finds: [], voices: [], knots: {} },
+    v: 3, rev: 0, uid: 0, chars: [], register: [], chest: { finds: [], voices: [], knots: {} },
     account: { coin: 0, hum: 0, heard: 0, frame: { pits: ['test.tenor'], places: 1, bells: [] }, open: { classes: [], bases: [], observances: [], bills: [] }, bequests: {} },
     active: null, away: null,
   });
   assert.deepEqual(plain(SaveData.validate(save)), []);
   assert.deepEqual([SaveData.uid(save), SaveData.uid(save), save.uid], [1, 2, 2], 'one counter for everything the save gives a uid');
-  assert.deepEqual([SaveData.VERSION, SaveData.KEY], [2, 'save']);
+  assert.deepEqual([SaveData.VERSION, SaveData.KEY], [3, 'save']);
   assert.notEqual(fresh(), fresh(), 'a new object each time');
 });
 
@@ -79,7 +79,7 @@ test('a blank save: nobody yet, an empty chest, the tenor pit open, one ringing 
 
 test('export then import returns the same save, character for character: levels, the route, the finds and their lines', () => {
   const save = rich(), text = SaveData.encode(save), back = SaveData.decode(text);
-  assert.match(text, /^TOLLBOUND SAVE 2 [0-9a-f]{8}\n\{"v":2,/);
+  assert.match(text, /^TOLLBOUND SAVE 3 [0-9a-f]{8}\n\{"v":3,/);
   assert.deepEqual(plain(back.errors), []);
   assert.deepEqual(plain(back.save), plain(save));
   assert.equal(SaveData.encode(back.save), text, 'and its export is the same text again');
@@ -103,7 +103,7 @@ test('an import that is not a save says why, and gives no save', () => {
   assert.match(why(null), /must be given as text/);
   assert.match(why('x'.repeat(SaveData.LIMITS.text + 1)), /longer than any save/);
   assert.match(why('[1, 2]'), /must be an object/);
-  assert.match(why('{"v": 3}'), /version 3, newer than this game reads \(2\)/);
+  assert.match(why('{"v": 4}'), /version 4, newer than this game reads \(3\)/);
   assert.match(why('{"rev": 3}'), /has no version/);
   assert.match(why('{"v": 2}'), /save\.rev is missing/);
   assert.match(why('{"v": 1.5}'), /has no version/);
@@ -125,7 +125,7 @@ const named = (change, pattern) => {
 test('the check names a fault in the shape of a save, a character, a find, a voice, a bell or a death', () => {
   named((s) => { delete s.chest; }, /^save\.chest is missing$/);
   named((s) => { s.extra = 1; }, /^save\.extra is not a field of this shape$/);
-  named((s) => { s.v = 1; }, /^save\.v must be 2, not 1$/);
+  named((s) => { s.v = 1; }, /^save\.v must be 3, not 1$/);
   named((s) => { s.chars[0].class = 'sorcerer'; }, /^save\.chars\[0\]\.class names the class "sorcerer", and there is none$/);
   named((s) => { s.chars[0].level = 71; }, /^save\.chars\[0\]\.level must be a whole number from 1 to 70, not 71$/);
   named((s) => { s.chars[0].level = 2.5; }, /level must be a whole number/);
@@ -218,8 +218,8 @@ test('the check trusts nothing: keys that would reach a prototype, numbers JSON 
 
 // ---- migrations ----
 
-test('a save of the first plan\'s shape (version 1) is brought up to version 2, and what had no successor is noted', () => {
-  assert.deepEqual(plain(SaveData.MIGRATIONS.map((m) => [m.from, m.to])), [[1, 2]]);
+test('a save of the first plan\'s shape (version 1) is brought up to the version this file writes, and what had no successor is noted', () => {
+  assert.deepEqual(plain(SaveData.MIGRATIONS.map((m) => [m.from, m.to])), [[1, 2], [2, 3]]);
   const old = {
     v: 1, rev: 9, updated: 123, settings: { volume: 1 }, binds: {}, active: 41,
     chars: [
@@ -236,7 +236,7 @@ test('a save of the first plan\'s shape (version 1) is brought up to version 2, 
   };
   const { save, errors, notes } = SaveData.migrate(old);
   assert.deepEqual(plain(errors), []);
-  assert.equal(save.v, 2);
+  assert.equal(save.v, SaveData.VERSION);
   assert.deepEqual(plain(SaveData.validate(save)), [], 'what the migration makes is sound');
   assert.deepEqual([save.rev, save.account.coin, save.account.hum, save.account.heard, plain(save.account.open.classes)], [9, 77, 450, 450, ['test.locked']]);
   assert.deepEqual(plain(save.account.bequests), { 'test.opening': { n: 1, done: true } });
@@ -257,6 +257,27 @@ test('a save of the first plan\'s shape (version 1) is brought up to version 2, 
   // a version 1 save read whole
   assert.deepEqual(plain(SaveData.read(old).save), plain(save));
   assert.deepEqual(plain(SaveData.migrate(save).save), plain(save), 'a save of the version this file writes passes as it is');
+});
+
+test('a save of version 2 whose character was made before the Plan existed: its empty route starts at its class\'s door', () => {
+  const save = rich();
+  save.v = 2;
+  save.chars[0].plan.walk = [];                         // made before the Plan was laid out: no door, no points laid
+  save.chars[0].plan.choice = {};
+  const before = JSON.stringify(save);
+  const { save: up, errors, notes } = SaveData.read(JSON.parse(before));
+  assert.deepEqual(plain(errors), []);
+  assert.equal(up.v, SaveData.VERSION);
+  assert.deepEqual(plain(up.chars[0].plan.walk), ['test.door'], 'it starts at its door');
+  assert.deepEqual(plain(up.chars[1].plan.walk), plain(save.chars[1].plan.walk), 'a route that had its door is left as it was');
+  assert.match(notes.join(' | '), /Agnes Toll.*starts at its door/);
+  assert.equal(JSON.stringify(save), before, 'the save given is not changed');
+  // and it can walk now: a point goes to the door's neighbour
+  assert.ok(Char.allocate(up.chars[0], 'test.lane', 'hand'));
+  assert.deepEqual(plain(SaveData.validate(up)), []);
+  // a version 2 text reads the same way
+  const text = SaveData.encode(Object.assign(JSON.parse(before), { v: 2 }));
+  assert.deepEqual(plain(SaveData.decode(text).save.chars[0].plan.walk), ['test.door']);
 });
 
 // ---- 500 corrupted imports ----

@@ -40,7 +40,7 @@
 
   Defs.add('knot', {
     id: 'open-lead', name: 'Open Lead', icon: 'knot.open-lead', attr: 'ear', tier: 1,
-    text: 'Every fourth stroke is left out: a beat of silence as long as its interval, 1.5 s at most, in which you take 40% less from Blows and Drag. Two beats falling together damp half as much again.',
+    text: 'Every fourth stroke is left out: a beat of silence as long as its interval, 1.5 s at most, in which you take 40% less from Blows and Drag and nothing can be laid on you. Two beats falling together damp half as much again.',
     requires: [], excludes: [], addTags: [], mods: [], params: { 'lead-damp': 40 }, trigger: null, rule: 'open-lead',
   });
 

@@ -57,9 +57,10 @@
 //   bell is baked with Sound.bake when the piece begins, and struck live until it is ready), m.row(r) -> row r
 //   of the method's rows (they repeat), m.bells, m.beat (steps a beat), m.bar (steps a bar), m.stepTime (seconds
 //   a step), m.intensity, and m.rand(i, salt) -> [0, 1), the same for the same numbers within one playing.
-// The game: the title, the Household and the Lantern play 'vigil' at rest (until the Lantern has a piece of its
-// own), a run plays its zone's music (zone.music) when that is a piece, else 'vigil', and the results let it sink
-// back to rest. Until the game drives Music.intensity itself, a
+// The game: the title plays 'vigil' at rest; the Household and the Lantern play the Lantern's own piece, 'lantern'
+// (plain hunt on hand-bells, which 77-lantern.js defines and plays on the notice 'state' too), or 'vigil' at rest in
+// a build without it; a run plays its zone's music (zone.music) when that is a piece, else 'vigil', and the results
+// let it sink back to rest. Until the game drives Music.intensity itself, a
 // stand-in follows the run twice a second: the tolls rung, the dead close to the player, the life the player
 // has lost, a boss.
 (function () {
@@ -564,7 +565,7 @@
   Plat.on('boot', function () { Music.play('vigil', { fade: 4, intensity: 0 }); });
   Plat.on('state', function (state) {
     if (state === 'title' || state === 'household' || state === 'lantern') {
-      Music.play('vigil', { fade: 4 });
+      Music.play(state !== 'title' && pieces.has('lantern') ? 'lantern' : 'vigil', { fade: 4 });
       setTarget(0, 4);
     } else if (state === 'run') {
       Music.play(runPiece(), { fade: 4 });

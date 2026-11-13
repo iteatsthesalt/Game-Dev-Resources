@@ -10,7 +10,7 @@
 //                                    Progress.compiled().list (Float64Array, Uint8Array): n, what this vigil counted;
 //                                    had, the count the record held when the vigil began; known, 1 when that record
 //                                    was there to read (a character's own, S.cfg.char.bequests; the Household's,
-//                                    S.cfg.account.bequests, which a run's account does not carry yet); done, 1 when
+//                                    S.cfg.account.bequests, the copy Char.begin gives the run); done, 1 when
 //                                    it was done before the vigil or met in it
 //   Sim.system('bequests', S => ...) once a step: every event of the step (S.events) that a bequest is on and its where
 //                                    admits (Progress.counts), and each toll by S.toll rising (a 'toll' event comes

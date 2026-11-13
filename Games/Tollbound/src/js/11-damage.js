@@ -41,7 +41,9 @@
 //                               Brace; any shove ends In Procession on the dead.
 //   Dmg.lay(S, body, row, seconds, v, n) -> boolean
 //                               lays a condition (a row of Stats.AILMENTS) with T, V and N; refused where the row
-//                               spares the body, the body cannot carry it (on), the body is sealed, or still immune
+//                               spares the body, the body cannot carry it (on), the body is sealed, or still immune,
+//                               and on the player while an Open Lead beat holds (Skills.beat: no condition can be put
+//                               on it then, and no swing is counted on it)
 //   Dmg.lift(S, body, row) -> boolean     ends one the body carries, unless the body is sealed (a seal itself lifts)
 //   Dmg.carries(body, row) -> boolean     whether a body carries a condition: its T or its N is above 0
 //   Dmg.inside(area, x, y, r) -> boolean  whether a body of radius r at (x, y) is inside an area's shape: an area of
@@ -237,9 +239,12 @@
     return a.immune !== undefined && a.seconds === undefined && t > 0;   // a crust that takes nothing new (brined)
   }
 
+  // Open Lead's beat: while it holds no condition can be put on the player (23-skills.js keeps the beat)
+  function damped(S, body) { return body === S.player && typeof Skills.beat === 'function' && Skills.beat(S); }
+
   Dmg.lay = function (S, body, row, seconds, v, n) {
     const a = AILMENTS[row];
-    if (a === undefined || body.condT[SEALED] > 0 || immune(body, row, a)) return false;
+    if (a === undefined || body.condT[SEALED] > 0 || immune(body, row, a) || damped(S, body)) return false;
     return put(S, body, row, seconds > 0 ? seconds : 0, v || 0, n > 0 ? n : 0);
   };
 
@@ -560,7 +565,7 @@
     p.hurtT = S.t;
     if (lost > 0 && typeof Player.wound === 'function') Player.wound(S, lost, kind.ticks ? 0 : seen > 0 ? seen : 0);   // 8 wound
     if (p.condT[SEALED] > 0 && h >= sealShare(p) * st['life-max']) Dmg.lift(S, p, SEALED);   // 9 seal and swing
-    if (t === BLOW) {
+    if (t === BLOW && !damped(S, p)) {
       const dir = atan2(p.y - sy, p.x - sx);
       swingCount(p, dir);
       if (p.condN[SWING] >= swingMost(S, p)) {

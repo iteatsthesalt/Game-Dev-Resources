@@ -14,7 +14,7 @@
 //     ring, quarters, tollMark   the toll ring: the share of it closed (0 when none shows; 1 while the closed ring
 //                      fades after a toll); the quarter ticks shown, 0 to 3; whether the toll's own mark shows
 //     count            {on, tellers, elites, gate, marks}: the setting, the last count heard, the marks drawn now
-//     haul             boxes drawn, one a find
+//     haul, notches    boxes drawn, one a find; the notches of all the finds of the haul together (Char.notches)
 //     trade            {id, icon, cooldown, ready, disc}: the class's trade (its def's name), the glyph of button A,
 //                      the share of its recharge still to run, whether it is ready, whether the HUD draws its disc
 //     heave            {hidden}: button B is hidden, there being nothing to heave
@@ -33,11 +33,11 @@
 //     the life bar      S.player.life in the class colour (the first colour of its palette, lifted towards bone if it
 //                       is too dark to read); after it the life lying in open wounds (S.wounds.life), a pale segment
 //                       for each, the newest first, greying as it nears its scar and lit along its top while it is
-//                       being mended (its back[] rising); scars (S.wounds.scarred) as a dark end;
+//                       being mended (its back[] rising); scars (S.wounds.scarred and Hand on the Bell's S.observances.scarred) as a dark end;
 //                       against S.sheet.stats['life-max'] and the scars together. It beats while life is under 35% of
 //                       the greatest. While Tolled-for it shows the time left before the toll instead, bone on grey.
 //     the Heed bar      under it: heed-max, the free part bright (all of it while no observance holds any)
-//     the haul          a small box for each find of S.haul, striped with its notches (none in Stage 1)
+//     the haul          a small box for each find of S.haul, striped with its notches (Char.notches), as many as fit
 //     the row           S.row.ids as six small icons (Glyphs, by the favour's icon, else its name; a place with no
 //                       favour as an empty socket), the first S.row.raised lifted; while an offer stands they beat and
 //                       a line under them runs down to their sinking; a dot under an icon for each time its favour was
@@ -102,7 +102,7 @@
     row: [], raised: 0, standing: false, pips: 0,
     ring: 0, quarters: 0, tollMark: false,
     count: { on: false, tellers: 0, elites: 0, gate: false, marks: 0 },
-    haul: 0,
+    haul: 0, notches: 0,
     trade: { id: '', icon: '', cooldown: 0, ready: false, disc: false },
     heave: { hidden: true },
     tolledFor: false, timeLeft: 0, greyBy: '',
@@ -293,7 +293,7 @@
   const now = {
     life: 0, max: 0, scars: 0, wounds: 0, woundN: 0, heed: 0, heedFree: 0, tolled: false, timeLeft: 0, faint: false,
     ring: 0, ringFade: 0, quarters: 0, bright: 0, tollMark: false, tollBright: false, keeperNext: false,
-    raised: 0, standing: false, sinkShare: 0, nails: 0, haul: 0, gate: false, far: false, gateLeft: 0,
+    raised: 0, standing: false, sinkShare: 0, nails: 0, haul: 0, notches: 0, gate: false, far: false, gateLeft: 0,
     cooldown: 0, trade: false, disc: false, countOn: false, marks: 0, countDim: false,
   };
   const held = new Float64Array(64), age = new Float64Array(64);   // the open wounds, newest first
@@ -320,7 +320,8 @@
     now.life = p.life > 0 ? p.life : 0;
     now.max = max(0, stat(S, 'life-max', now.life));
     const w = S.wounds, term = max(1, stat(S, 'wound-term', 60));
-    now.scars = w && w.scarred > 0 ? w.scarred : 0;
+    // scars: the wounds' and Hand on the Bell's (S.observances.scarred), both off life-max
+    now.scars = (w && w.scarred > 0 ? w.scarred : 0) + (S.observances && S.observances.scarred > 0 ? S.observances.scarred : 0);
     now.wounds = 0;
     now.woundN = 0;
     if (w && w.n > 0 && w.life) {
@@ -388,6 +389,12 @@
     // the haul
     now.haul = Array.isArray(S.haul) ? S.haul.length : 0;
     sig = mix(sig, now.haul);
+    now.notches = 0;
+    for (let i = 0; i < now.haul; i++) {             // a toll writes a notch: the picture changes
+      const k = notchesOf(S.haul[i]);
+      now.notches += k;
+      sig = mix(sig, k);
+    }
 
     // the count
     now.countOn = setting(COUNT_KEY, false) === true;
@@ -579,14 +586,22 @@
     if (fw < w) rect(x + fw, y, w - fw, h, col.accent);   // held by observances: their colour once they have one
   }
 
+  // the lines written on a find of the haul: its notches (Char.notches counts the places that hold a line)
+  function notchesOf(f) {
+    if (!f || !Array.isArray(f.lines)) return 0;
+    if (typeof Char.notches === 'function') return Char.notches(f);
+    let n = 0;
+    for (let i = 0; i < f.lines.length; i++) if (f.lines[i] !== null) n++;
+    return n;
+  }
+
   function drawHaul(S) {
-    const n = min(now.haul, floor(L.bw / (L.box + 3)));
+    const n = min(now.haul, floor(L.bw / (L.box + 3))), room = max(0, floor((L.box - 3) / 2));
     for (let i = 0; i < n; i++) {
-      const f = S.haul[i], x = L.bx + L.barX + i * (L.box + 3), y = L.haulY;
-      const notches = f && typeof f.notches === 'number' ? f.notches : f && Array.isArray(f.lines) ? f.lines.length : 0;
+      const x = L.bx + L.barX + i * (L.box + 3), y = L.haulY, notches = notchesOf(S.haul[i]);
       rect(x - 1, y - 1, L.box + 2, L.box + 2, col.edge);
       rect(x, y, L.box, L.box, col.accent);
-      for (let k = 0; k < min(notches, 4); k++) rect(x + 2 + k * 2, y + 2, 1, L.box - 4, col.edge);
+      for (let k = 0; k < min(notches, room); k++) rect(x + 2 + k * 2, y + 2, 1, L.box - 4, col.edge);
     }
   }
 
@@ -1008,6 +1023,7 @@
     c.on = now.countOn;
     c.marks = now.countOn ? now.marks : 0;
     stats.haul = now.haul;
+    stats.notches = now.notches;
     stats.trade.cooldown = now.cooldown;
     stats.trade.ready = now.trade && now.cooldown <= 0;
     stats.trade.disc = now.disc;

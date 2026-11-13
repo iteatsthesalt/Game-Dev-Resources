@@ -26,6 +26,7 @@
   overscroll-behavior: contain;
   touch-action: pan-y;
   outline: none;   /* it takes focus only when it holds no control */
+  overflow-wrap: anywhere;   /* a name of 24 letters with no space breaks rather than run past a phone's edge */
 }
 
 /* Centred while it fits; when it is taller than the screen the auto margins give way and it scrolls from its top. */

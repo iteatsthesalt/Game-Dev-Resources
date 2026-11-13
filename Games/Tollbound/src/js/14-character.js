@@ -33,8 +33,11 @@
 //                                    share is worked from the attributes the rest gives. S is the run or null (outside
 //                                    a vigil every ring of the Plan counts); account the save's account or a run's.
 //   Char.weapon(char) -> null                no tool is a weapon (02-combat.md, 15.2)
-//   Char.sheet(char, account) -> Sheet       the character's sheet outside a vigil (Stats.sheet of Char.mods, no
-//                                    conditions), for the Lantern
+//   Char.sheet(char, account) -> Sheet       the character's sheet outside a vigil, for the Lantern: Stats.sheet of
+//                                    Char.mods under the conditions of a dry district (the condition dry and no
+//                                    other: every district is dry until the Ropewalk), so that the Plan's Ebb bank
+//                                    counts and its Flood bank does not; Char.mods outside a vigil (S null) works a
+//                                    worn find's share under the same
 //   Char.findMods(find, attrs, out) -> out   the plain meaning of a find: its fixed line, and every written line by
 //                                    Char.lineMod at the find's share: Stats.share of the attribute of the posture that
 //                                    wrote most of its lines (the earliest place breaks a tie) against 4 a notch
@@ -79,9 +82,11 @@
 //   Char.begin(save, uid, zone, seed) -> cfg | null
 //                                    a vigil of that character: the save notes it under way (save.away) and the run's
 //                                    cfg is {mode: 'household', zone, seed, char: a copy, account}, where account is
-//                                    what the run reads of the save: {frame, open, warned}: copies of the Bellframe and
-//                                    of what bequests opened, and warned, the seconds sooner the Register shows each
-//                                    attack that killed a character (0.15 a death, three at most). null when there is
+//                                    what the run reads of the save: {frame, open, warned, bequests}: copies of the
+//                                    Bellframe and of what bequests opened, warned, the seconds sooner the Register
+//                                    shows each attack that killed a character (0.15 a death, three at most), and a
+//                                    copy of the Household's bequests (save.account.bequests), so that a vigil knows
+//                                    how far each of the Household's has come and says when it is met. null when there is
 //                                    no such character, the zone does not exist, or a vigil is under way already.
 //   Char.checkpoint(save, S) -> boolean      what is kept the moment it is earned goes into the save while the vigil
 //                                    goes on (the game calls it at every toll and when the page is hidden): the run's
@@ -140,6 +145,9 @@
   const FRAME = Object.freeze({ trueLow: 10, trueHigh: 30, trueGain: 5, weighPer: 8, deathHum: 40, placesMost: 8 });
   const MOURNING = 'flag.full-mourning';
   const NO_TAGS = Object.freeze([]);
+  // the conditions the Lantern's numbers are worked out under: those of a dry district, where you stand on dry ground
+  // (every district is dry until the Ropewalk), so that the Plan's Ebb bank shows and its Flood bank does not
+  const LANTERN = Stats.condMask(['dry']);
 
   Char.SLOTS = Object.freeze(SLOTS.slice());
   Char.PLACES = Object.freeze(PLACES.slice());
@@ -371,7 +379,7 @@
     else if (grief === 'half') out.push({ stat: 'hum-gain', op: 'inc', value: HALF_HUM });
     if (typeof Bellframe.mods === 'function') Bellframe.mods(account || null, char, out); else frameMods(account, char, out);
     // last, the finds: what each works at depends on the attributes all the rest gives
-    const conds = S && S.player ? S.player.conds : 0, prim = { level }, attrs = {};
+    const conds = S && S.player ? S.player.conds : S ? 0 : LANTERN, prim = { level }, attrs = {};
     for (let i = 0; i < Stats.PRIMARIES.length; i++) attrs[Stats.PRIMARIES[i].id] = Stats.query(out, Stats.PRIMARIES[i].id, NO_TAGS, conds, prim);
     for (let i = 0; i < SLOTS.length; i++) {
       const find = char.worn[SLOTS[i]];
@@ -384,7 +392,7 @@
   Char.weapon = function () { return null; };
 
   Char.sheet = function (char, account) {
-    return Stats.sheet(Char.mods(char, null, account), { level: char.level, observances: char.observances.length, conds: 0 });
+    return Stats.sheet(Char.mods(char, null, account), { level: char.level, observances: char.observances.length, conds: LANTERN });
   };
 
   // ---- the Plan ----
@@ -634,7 +642,9 @@
     if (!(typeof seed === 'string' || (typeof seed === 'number' && seed === seed))) return null;
     save.away = { char: uid, zone, seed, hum: save.account.hum, heard: save.account.heard, level: char.level, tolls: 0 };
     save.active = uid;
-    const account = { frame: clone(save.account.frame), open: clone(save.account.open), warned: warnedOf(save.register) };
+    const account = {
+      frame: clone(save.account.frame), open: clone(save.account.open), warned: warnedOf(save.register), bequests: clone(save.account.bequests),
+    };
     return { mode: 'household', zone, seed, char: clone(char), account };
   };
 

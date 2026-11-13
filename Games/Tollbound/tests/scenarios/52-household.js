@@ -108,7 +108,7 @@ const first = async function () {
   Game.household();
   button('Save text').click();
   const out = top().querySelector('[data-field="export"]'), into = top().querySelector('[data-field="import"]');
-  T.check('the Household offers its save as text', UI.top() === 'save-text' && !!out && !!into && out.value === Game.exportText() && /^TOLLBOUND SAVE 2 [0-9a-f]{8}\n/.test(out.value),
+  T.check('the Household offers its save as text', UI.top() === 'save-text' && !!out && !!into && out.value === Game.exportText() && new RegExp('^TOLLBOUND SAVE ' + TB.SaveData.VERSION + ' [0-9a-f]{8}\\n').test(out.value),
     out && out.value.slice(0, 30));
   T.check('every control of the save\'s text is 44 px or more, and nothing is wider than the window', small().length === 0 && !wide(), small());
   into.value = out.value.replace('"Hester Pell"', '"Hester Bell"');     // the text changed: its check no longer holds

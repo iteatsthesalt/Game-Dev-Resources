@@ -28,6 +28,8 @@
 //                                place is empty, silenced (by ringing down, or by a knot's silence), or the player is
 //                                Tolled-for, or the voice found nothing.
 //   Skills.silenced(S, slot) -> boolean   the last S.ringing.silent voices of the loadout are silenced
+//   Skills.beat(S) -> boolean    an Open Lead beat holds now: no condition can be put on the player (11-damage.js and
+//                                22-enemies.js ask)
 //   Skills.AGAIN = 0.2           seconds between the strokes of a pull spoken twice
 // For archetypes (and later voices' own):
 //   Skills.C                     the cast in hand, one reused object, set before an archetype's cast and read during
@@ -109,8 +111,9 @@
 //   running-line   line-quick: percent faster while the player's heading has held within 15 degrees for a second;
 //                  silent 0.7 s after any sharper turn
 //   open-lead      every fourth cast is left out, a beat of silence one interval long (1.5 s at most), in which
-//                  the player takes lead-damp percent less harm (Blow and Drag: a Swell is bare); two beats at once
-//                  damp half as much again
+//                  the player takes lead-damp percent less harm (Blow and Drag: a Swell is bare) and no condition
+//                  can be put on it (Skills.beat: Dmg.lay refuses the player, no swing is counted on it, no rider
+//                  climbs on); two beats at once damp half as much again
 //   quartered      it no longer speaks by itself: each cast it would have made is saved, quarter-most at most, and
 //                  all are let go at each quarter of the toll interval, 0.1 s apart, from where the player stands
 //   slip-knot      it no longer speaks by itself: while it is ready, each sharp corner the player turns (more than
@@ -275,6 +278,15 @@
     const d = beats > 1 ? deepest * LEAD_TWO : deepest;
     out.push({ stat: 'taken', op: 'more', value: -(d < LEAD_DEEPEST ? d : LEAD_DEEPEST) });
   });
+
+  // Open Lead's beat holds: the player is damped, and no condition can be put on it (Dmg.lay refuses, no swing is
+  // counted on it, no rider climbs on)
+  Skills.beat = function (S) {
+    const K = S.knots;
+    if (!K) return false;
+    for (let i = 0; i < PLACES; i++) if (K.leadEnd[i] > S.t + SLIVER) return true;
+    return false;
+  };
 
   Skills.FILL = FILL; Skills.ZONE = ZONE; Skills.MARK = MARK; Skills.LANDED = LANDED;
   Skills.TICK = TICK; Skills.LEE = LEE; Skills.AGAIN = AGAIN;
