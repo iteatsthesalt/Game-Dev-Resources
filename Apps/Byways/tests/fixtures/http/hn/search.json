@@ -1,0 +1,25 @@
+{
+  "hits": [
+    {
+      "objectID": "111",
+      "title": "Show HN: I made a tiny game",
+      "url": "https://tinygame.example.com/",
+      "points": 120,
+      "num_comments": 30,
+      "created_at_i": 1790000000,
+      "story_text": null
+    },
+    {
+      "objectID": "222",
+      "title": "Show HN: Notes app",
+      "url": "",
+      "points": 15,
+      "num_comments": 2,
+      "created_at_i": 1790100000,
+      "story_text": "<p>Hi <script>alert(1)</script>HN</p>"
+    }
+  ],
+  "nbHits": 2,
+  "page": 0,
+  "hitsPerPage": 20
+}

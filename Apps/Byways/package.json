@@ -1,0 +1,11 @@
+{
+  "name": "byways", "version": "0.1.0", "private": true, "type": "module", "license": "MIT",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "build": "node tools/build.js --target all",
+    "check": "node tools/build.js --check",
+    "test": "node tools/build.js --check && node --test \"tests/unit/**/*.test.js\"",
+    "e2e": "node tools/build.js --target all && playwright test -c tests/e2e/playwright.config.js"
+  },
+  "devDependencies": { "@axe-core/playwright": "4.14.0", "@playwright/test": "1.63.0", "fake-indexeddb": "6.2.8" }
+}

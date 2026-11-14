@@ -1,0 +1,34 @@
+name: Byways
+
+on:
+  push:
+    paths: ['Apps/Byways/**', '.github/workflows/byways.yml']
+  pull_request:
+    paths: ['Apps/Byways/**', '.github/workflows/byways.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: Apps/Byways
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: Apps/Byways/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      - uses: actions/upload-artifact@v7
+        with:
+          name: byways-extensions
+          path: |
+            Apps/Byways/dist/chrome
+            Apps/Byways/dist/firefox

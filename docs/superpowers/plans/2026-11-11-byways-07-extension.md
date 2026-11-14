@@ -1,0 +1,1464 @@
+# Byways 07: Browser Extension Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship Byways as an MV3 extension for Chrome/Edge and Firefox. The toolbar Stumble loads a find in your real tab, a side panel (Chrome) or sidebar (Firefox) shows its card, and a full Byways tab runs the whole app.
+
+**Architecture:** One manifest template plus two overlays are merged by `tools/build.js` into `dist/chrome/` and `dist/firefox/`, next to copies of `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets`. `bg.js` is a thin module that wires browser events to handlers made by `createBackground(deps)`, which drives the shared core engine with an IndexedDB store. `panel.html` and `app.html` both load `panel.js`, which boots the shared UI with `createExtensionPlatform(...)` for its surface.
+
+**Tech Stack:** JavaScript ES2022 modules, WebExtensions MV3 (`globalThis.browser ?? globalThis.chrome`), `node:test`, `@playwright/test@1.63.0` with a Chromium persistent context, GitHub Actions.
+
+**Spec:** `docs/superpowers/specs/2026-11-11-byways-design.md` (§13.3, §4 extension column, §6.2 extension row, §6.3 extension shortcuts, §15.1). Shared contract: `docs/superpowers/plans/2026-11-11-byways-00-overview.md`.
+
+## Global Constraints
+
+- Every item in the overview's "Global constraints (every plan)" and "Working conventions" applies. Commands run in `Apps/Byways/`.
+- Extension CSP, exact: `"script-src 'self' 'wasm-unsafe-eval'; object-src 'self';"` in `content_security_policy.extension_pages`.
+- Chrome/Edge: `action`, with **no** `openPanelOnActionClick`; `side_panel.default_path: panel.html`; `background: { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' }`; 4 commands (§6.3).
+- Permissions: `storage`, `unlimitedStorage`, `sidePanel`, `contextMenus` and `activeTab`; optional: `tts`, and `identity` (for Connect OpenRouter, through `platform.identity`, Task 3).
+- `host_permissions`: `https://archive.org/*` and `https://*.archive.org/*`; the provider API hosts; the open and probe source hosts; `raw.githubusercontent.com`, `itch.io` and the Pages URL. Task 1, Step 3 lists them exactly.
+- `optional_host_permissions`: `https://*/*`, `http://localhost/*`, `http://127.0.0.1/*` and `http://*/*`, each asked for from a button when you add a custom endpoint or a model on your local network, through `platform.requestOrigins(origins)` (Task 3).
+- Firefox overlay: drops `side_panel` and `sidePanel`, adds `sidebar_action.default_panel: panel.html` and `_execute_sidebar_action`; `browser_specific_settings.gecko`: `id: byways@iteatsthesalt`, `strict_min_version: 140.0`; `data_collection_permissions`: `required: ['none']`, `optional: ['searchTerms', 'browsingActivity']`. These are asked for when AI Search or "More like this page" is first used, inside the user's click (Tasks 3 and 4); a use with no click (a voice "search for …", a Rabbit Hole) is covered by the grant stored at an earlier click, which `requestDataCollection` checks in the same turn. The list is checked against AMO's current list by hand only (Task 9).
+- At startup, Byways checks `permissions.contains` and offers **Grant access** if anything was revoked.
+- Namespace: `const ext = globalThis.browser ?? globalThis.chrome`. No polyfill.
+- Suggested shortcuts: Alt+Shift+S to Stumble, Alt+Shift+B to open the panel, Alt+Shift+V to toggle listening, Alt+Shift+M for "More like this page".
+- Toolbar click: the background picks the next find through the core, `tabs.update(tab.id, {url})` loads it, and the find is stored in `storage.session` by tab id. It never loads a find the seen-set already has, because the side panel and the Byways tab run their own engines on the same store.
+- Byways tab (`app.html`): the full app UI. Lean-back runs here, and **Open** uses a new tab.
+- Side panel and sidebar (`panel.html`): hands-free there gives voice commands and read-aloud but no auto-advance: the panel's platform sets `caps.leanBack: false` (Task 3), and Plan 03's `installHandsFreeUi` reads it and creates the controller with `leanBack: false`. **Open** uses a new tab here too, as Plan 02's card handler does. Only the toolbar Stumble loads a find in your current tab.
+- Voice: the same web engines, only in the side panel, sidebar or Byways tab, after a one-time mic grant on `permission.html`. Never listens while the panel or tab is closed.
+- Keys live in `chrome.storage.local`, never in IndexedDB, in the extension.
+- **Lab:** the button opens the hosted web Lab, `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/`. The build never copies `src/lab` or `vendor/`.
+- **No content scripts in v1.**
+- Network (§15.1): only the enabled sources and the site you open, AI only to providers you set up. Requests never send cookies (`credentials: 'omit'`). A privileged `HEAD` to a host Byways has no access to goes out as `no-cors` (Task 3), so link checks still work on any site.
+- Generated data files (`daily.json`, `itch.json`, `vault-index.json`, `webrings.json`, `neocities.json`) come from the Pages site through the contract's `dataUrlFor('extension', file)`, in the pages and in the background (Task 4). The build ships none of them, and the Pages host is in `host_permissions`.
+- Ollama setup text already lists `chrome-extension://*,moz-extension://*` (§12.9). A 403 from Ollama in the extension is a missing `OLLAMA_ORIGINS` entry.
+
+## Review Focus
+
+1. **A host missing from `host_permissions`, or a check on a site outside them.** A source or provider that works in the web app must not silently fail CORS in the extension, and a link check on an arbitrary blog must not mark every find dead. Pinned by `every host the adapters and providers call is covered` (Task 1) and `transport omits cookies, drops the privileged flag and checks hosts it has no access to without CORS` (Task 3).
+2. **Rapid repeated Stumble presses** (toolbar double-click, held Alt+Shift+S). Each press must navigate once, in order, to a different find, with no unhandled rejection, and never to a find the side panel or the Byways tab already showed. Pinned by `concurrent stumbles run one at a time and never repeat a find` and `stumble skips a find another page already showed` (Task 4).
+3. **Stumble with nothing new or while offline.** The engine returns `{empty:true, reason}` or throws. The tab must stay where it is and the toolbar must say why. Pinned by `an empty pool sets the badge and title and does not navigate` and `an engine error sets the badge and does not navigate` (Task 4).
+4. **"More like this page" on a non-web tab** (`chrome://newtab/`, `about:addons`, `file:///`). The panel must still open and say it works only on web pages. Pinned by `more like this page on a non-web tab stores a not-web marker` (Task 4) and `the panel explains a not-web page and a refused consent` (Task 6).
+5. **Host access revoked after install** (Firefox lets users untick it). The badge must show it, a later Stumble must not hide it, and both pages must offer **Grant access**, which clears once granted. Pinned by `checkAccess flags revoked hosts and clears when granted` and `a Stumble after lost access keeps the global warning badge` (Task 4), and `the access banner on <page> grants and disappears` for `panel.html` and `app.html` (Task 6).
+
+---
+
+## File Structure
+
+| File | Responsibility |
+|---|---|
+| `shells/extension/manifest.base.json` | Keys shared by both browsers |
+| `shells/extension/manifest.chrome.json` | Chrome/Edge overlay: `sidePanel`, `side_panel`, `tts`, the `open-panel` command |
+| `shells/extension/manifest.firefox.json` | Firefox overlay: `sidebar_action`, `_execute_sidebar_action`, `browser_specific_settings.gecko` |
+| `tools/build.js` (modify) | `mergeManifest`, `extensionManifest`, `buildExtension`; the `extension` target |
+| `tools/check.js` (modify) | `checkExtensionDir` (manifest JSON, exact CSP, no remote script URLs, no `lab/` or `vendor/`), `EXT_PAGE_CSP`, the `csp` option of `checkHtml`, the extension folders in `runChecks` |
+| `src/platform/extension.js` | `createExtensionPlatform`, `gateVoice`, `createExtSecrets`, `requestDataCollection`, `toggleListening` |
+| `shells/extension/bg.js` | `createBackground(deps)` handlers, `createEngineLoader` (the background engine, built on the shared `loadAppData`), and `wire` |
+| `shells/extension/panel.html` | Side panel / sidebar page (`data-surface="panel"`) |
+| `shells/extension/app.html` | Byways tab page (`data-surface="tab"`) |
+| `shells/extension/panel.js` | Boots the shared UI for either surface; panel extras; access banner |
+| `shells/extension/permission.html`, `permission.js` | One-time mic grant, then the tab closes |
+| `tests/unit/ext-manifest.test.js` | Merge rules, both manifests, host coverage |
+| `tests/unit/ext-check.test.js` | `buildExtension` output and `checkExtensionDir` rules |
+| `tests/unit/ext-platform.test.js` | `createExtensionPlatform` with a fake `ext` and `win` |
+| `tests/unit/ext-bg.test.js` | `createBackground` handlers with a fake `ext` and a fake engine; `createEngineLoader`; `wire` |
+| `tests/unit/build.test.js` (modify) | Delete Plan 06's extension placeholder test, which expects empty extension folders |
+| `tests/unit/workflows.test.js` (modify) | The web job uploads the two extension zips |
+| `tests/e2e/helpers/net.js` (modify) | `mockNet`, `unmocked` and `pageProblems` accept a `BrowserContext` too |
+| `tests/e2e/extension.spec.js` | Loads `dist/chrome` in a persistent context; stumble, routes, side panel, mic page, hands-free |
+| `tests/fixtures/http/html/find-page.html` | Stand-in page for a stumbled site |
+| `.github/workflows/byways.yml` (modify; at the repo root, `../../` from `Apps/Byways`) | Zip both builds and upload the zips; `xvfb-run` for the extension spec if headless fails |
+| `CHECKLIST.md` (create) | Manual extension checks. Plan 09 adds its own sections to this file later |
+
+**Message types** (between `bg.js` and the extension pages, all via `ext.runtime.sendMessage`):
+
+| `type` | From → to | Payload | Reply / effect |
+|---|---|---|---|
+| `stumble` | page → bg | `{tabId}` | Runs the toolbar Stumble on that tab. Reply `{ok:true, find}` or `{ok:false, reason}` |
+| `tabFind` | bg → pages | `{tabId, windowId, find, branch, why}` | Panel in that window shows the card |
+| `stateChanged` | page → bg | `{}` | bg drops its cached engine (taste changed) |
+| `checkAccess` | page → bg | `{}` | bg re-runs `checkAccess()`. Reply `{needsAccess}` |
+| `toggleListening` | bg → pages | `{tabId, windowId, inBywaysTab}` | Only the named page acts: the Byways tab with that `tabId` when `inBywaysTab`, else the panel of that window. It toggles the mic |
+| `rabbit` | bg → pages | `{}` | Panel reads `pendingRabbit` from `storage.session` |
+| `openPermission` | page → bg | `{}` | bg opens or focuses `permission.html`. Reply `{tabId}` |
+| `micGranted` | permission page → pages | `{granted:boolean}` | Panel or tab announces the result |
+| `accessChanged` | bg → pages | `{needsAccess:boolean}` | Pages show or hide the **Grant access** banner |
+
+`storage.session` keys: `find:<tabId>` → `{find, branch, why}`, `pendingRabbit` → `Find`, `{error:'not-web'}` or `{error:'no-consent'}`, `permissionTabId` → number. `storage.local` keys: `secret:<id>` → string, `needsAccess` → boolean.
+
+Every `runtime.sendMessage`, in the background and in the pages, ends in `.catch(() => {})`, because a send with no receiver rejects.
+
+### Task 1: Manifest template, overlays and merge
+
+**Files:**
+- Create: `shells/extension/manifest.base.json`, `shells/extension/manifest.chrome.json`, `shells/extension/manifest.firefox.json`
+- Modify: `tools/build.js` (add three exports)
+- Test: `tests/unit/ext-manifest.test.js`
+
+**Interfaces:**
+- Consumes: `SOURCES` from `src/core/sources/index.js`; `PROVIDERS` from `src/core/ai/providers.js`; Plan 02's test kit `adapterCtx({settings?, secrets?, data?, seed?, now?, extraRoutes?}) → Promise<{ctx, calls, store}>` from `tests/unit/helpers/fixture-http.js`, whose transport answers from `tests/fixtures/routes.js`.
+- Produces (in `tools/build.js`):
+  - `mergeManifest(base: object, overlay: object) → object`
+  - `extensionManifest(browser: 'chrome'|'firefox') → Promise<object>`: the merged manifest, with `version` set from `package.json` after the merge. `manifest.base.json` keeps `"version": "0.0.0"` and the overlays set none, which Plan 09's `checkVersions` checks.
+  - `hostCovered(patterns: string[], url: string) → boolean`
+
+- [ ] **Step 1: Write the failing tests** in `tests/unit/ext-manifest.test.js`
+
+```js
+const CSP = "script-src 'self' 'wasm-unsafe-eval'; object-src 'self';";
+const PAGES = 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/';
+const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+const part = (f) => JSON.parse(readFileSync(`shells/extension/${f}`, 'utf8'));
+const keys = (c) => Object.fromEntries(Object.entries(c).map(([k, v]) => [k, v.suggested_key.default]));
+
+test('mergeManifest deep-merges objects, unions arrays and lets overlay scalars win', () => {
+  const base = { a: 1, list: ['x', 'y'], obj: { k: 1, keep: true } };
+  const out = mergeManifest(base, { a: 2, list: ['y', 'z'], obj: { k: 3 } });
+  assert.deepEqual(out, { a: 2, list: ['x', 'y', 'z'], obj: { k: 3, keep: true } });
+  assert.deepEqual(base, { a: 1, list: ['x', 'y'], obj: { k: 1, keep: true } }); // inputs untouched
+});
+
+test('the base manifest keeps version 0.0.0 and the overlays set none', () => {
+  assert.equal(part('manifest.base.json').version, '0.0.0');
+  for (const f of ['manifest.chrome.json', 'manifest.firefox.json']) assert.equal('version' in part(f), false, f);
+});
+
+test('chrome manifest', async () => {
+  const m = await extensionManifest('chrome');
+  assert.equal(m.manifest_version, 3);
+  assert.equal(m.version, pkg.version);
+  assert.deepEqual(m.background, { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' });
+  assert.equal(m.content_security_policy.extension_pages, CSP);
+  assert.deepEqual([...m.permissions].sort(), ['activeTab', 'contextMenus', 'sidePanel', 'storage', 'unlimitedStorage']);
+  assert.deepEqual([...m.optional_permissions].sort(), ['identity', 'tts']);
+  assert.deepEqual(m.optional_host_permissions, ['https://*/*', 'http://localhost/*', 'http://127.0.0.1/*', 'http://*/*']);
+  for (const h of ['https://archive.org/*', 'https://*.archive.org/*', 'https://raw.githubusercontent.com/*',
+                   'https://itch.io/*', 'https://iteatsthesalt.github.io/*']) assert.ok(m.host_permissions.includes(h), h);
+  assert.deepEqual(m.side_panel, { default_path: 'panel.html' });
+  assert.equal(m.action.default_title, 'Stumble');
+  assert.equal(m.action.openPanelOnActionClick, undefined);
+  assert.equal(m.sidebar_action, undefined);
+  assert.equal(m.browser_specific_settings, undefined);
+  assert.equal(m.content_scripts, undefined);
+  assert.deepEqual(keys(m.commands), { _execute_action: 'Alt+Shift+S', 'open-panel': 'Alt+Shift+B',
+    'toggle-listening': 'Alt+Shift+V', 'more-like-page': 'Alt+Shift+M' });
+});
+
+test('firefox manifest', async () => {
+  const m = await extensionManifest('firefox');
+  assert.equal(m.version, pkg.version);
+  assert.deepEqual(m.background, { service_worker: 'bg.js', scripts: ['bg.js'], type: 'module' });
+  assert.equal(m.content_security_policy.extension_pages, CSP);
+  assert.equal(m.side_panel, undefined);
+  assert.ok(!m.permissions.includes('sidePanel'));
+  assert.deepEqual(m.optional_permissions, ['identity']);
+  assert.equal(m.sidebar_action.default_panel, 'panel.html');
+  assert.deepEqual(m.browser_specific_settings.gecko, { id: 'byways@iteatsthesalt', strict_min_version: '140.0',
+    data_collection_permissions: { required: ['none'], optional: ['searchTerms', 'browsingActivity'] } });
+  assert.deepEqual(keys(m.commands), { _execute_action: 'Alt+Shift+S', _execute_sidebar_action: 'Alt+Shift+B',
+    'toggle-listening': 'Alt+Shift+V', 'more-like-page': 'Alt+Shift+M' });
+});
+
+test('hostCovered follows match-pattern rules', () => {
+  assert.equal(hostCovered(['https://*.wikipedia.org/*'], 'https://en.wikipedia.org/w/api.php'), true);
+  assert.equal(hostCovered(['https://*.archive.org/*'], 'https://archive.org/advancedsearch.php'), true);
+  assert.equal(hostCovered(['https://archive.org/*'], 'https://evilarchive.org/'), false);
+  assert.equal(hostCovered(['https://itch.io/*'], 'http://itch.io/feed.xml'), false);
+});
+```
+
+Review Focus 1, in the same file. `adapterCtx` answers from `tests/fixtures/routes.js`, so adapters that make several requests get past the first one, and no real request happens. Wrapping its `http` records every URL asked for. The `ctx` is the extension's: `platformName`, `caps` and `dataUrl` as the extension sets them, each secret in its contract shape, and Plan 04's `data` keys.
+
+```js
+test('every host the adapters and providers call is covered', async () => {
+  const m = await extensionManifest('chrome');
+  const readJson = (f) => JSON.parse(readFileSync(`src/data/${f}`, 'utf8'));
+  const { ctx } = await adapterCtx({
+    secrets: { 'src:europeana': 'k', 'src:openverse': JSON.stringify({ clientId: 'id', clientSecret: 's' }),
+      'src:datagov': 'k', 'src:marginalia': 'k', 'src:github': 'k' },
+    data: { library: readJson('library.json'), vaultStarter: readJson('vault-starter.json'), geocities: readJson('geocities-seeds.json'),
+      embedBroken: new Set() } });
+  Object.assign(ctx, { platformName: 'extension', dataUrl: (f) => PAGES + 'data/' + f,
+    caps: { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false, labHref: PAGES + 'lab/', framesArchive: true } });
+  const urls = [];
+  for (const k of ['request', 'getJson', 'getText']) { const f = ctx.http[k].bind(ctx.http); ctx.http[k] = (u, o) => (urls.push(u), f(u, o)); }
+  const stub = { id: 'url:stub', kind: 'site', title: 'Stub', description: '', url: 'https://www.example.com/x', tags: ['retro'], why: [], safety: 'curated', meta: {} };
+  const bugs = [];
+  for (const a of Object.values(SOURCES)) {
+    if (a.tier === 'navigate') continue;
+    if (a.probeUrl) urls.push(a.probeUrl);
+    for (const call of [() => a.random(ctx), () => a.search('retro', ctx), () => a.more({ ...stub, source: a.id }, ctx)])
+      await call().catch((e) => { if (e instanceof TypeError && !/^unmatched /.test(e.message)) bugs.push(`${a.id}: ${e.message}`); });
+  }
+  for (const p of Object.values(PROVIDERS)) if (p.baseURL?.startsWith('https://')) urls.push(p.baseURL);
+  urls.push('https://vertexaisearch.cloud.google.com/grounding-api-redirect/x', ctx.dataUrl('daily.json'));
+  assert.deepEqual(bugs, []);                      // an adapter that crashes on the extension ctx hides its hosts
+  const missing = [...new Set(urls.filter((u) => /^https?:\/\//.test(u) && !hostCovered(m.host_permissions, u))
+    .map((u) => new URL(u).host))];
+  assert.deepEqual(missing, []);
+});
+```
+
+Local providers (`ollama`, `lmstudio`) and custom endpoints are left out on purpose: they are `http://` or user-entered, and `requestOrigins` asks for them (Task 3). Link checks reach arbitrary sites, which Task 3's `no-cors` rule covers.
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-manifest.test.js`
+Expected: FAIL with `SyntaxError: The requested module '../../tools/build.js' does not provide an export named 'mergeManifest'`.
+
+- [ ] **Step 3: Write the three manifest files**
+
+- `manifest.base.json`: `manifest_version: 3`, `name: "Byways"`, `version: "0.0.0"` (it never changes: the build writes the `package.json` version into each built manifest, and the overlays never set one), `description: "Press one button and go somewhere you would not have found on your own."`, `icons: {"192": "assets/icons/icon-192.png", "512": "assets/icons/icon-512.png"}`, `action: {"default_title": "Stumble", "default_icon": {"192": "assets/icons/icon-192.png"}}`, the `background` object above, `permissions: ["storage","unlimitedStorage","contextMenus","activeTab"]`, `optional_permissions: ["identity"]`, `host_permissions`, the four `optional_host_permissions` above in that order, `content_security_policy.extension_pages` = the CSP above, and `commands` for `_execute_action` (Alt+Shift+S, "Stumble"), `toggle-listening` (Alt+Shift+V, "Turn listening on or off") and `more-like-page` (Alt+Shift+M, "More like this page"), each as `{"suggested_key": {"default": "…"}, "description": "…"}`.
+- `host_permissions`, in this order: `https://archive.org/*`, `https://*.archive.org/*`, `https://raw.githubusercontent.com/*`, `https://itch.io/*`, `https://iteatsthesalt.github.io/*`; the providers `https://api.anthropic.com/*`, `https://api.openai.com/*`, `https://generativelanguage.googleapis.com/*`, `https://vertexaisearch.cloud.google.com/*` (Gemini's grounding redirects), `https://openrouter.ai/*`, `https://api.groq.com/*`, `https://api.x.ai/*`, `https://api.mistral.ai/*`, `https://api.deepseek.com/*`, `https://ollama.com/*`; the open sources `https://*.wikipedia.org/*`, `https://*.wikimedia.org/*`, `https://api.inaturalist.org/*`, `https://openlibrary.org/*`, `https://api2.marginalia-search.com/*`, `https://api.github.com/*`, `https://api.nasa.gov/*`, `https://api.artic.edu/*`, `https://kagi.com/*`, `https://api.europeana.eu/*`, `https://api.openverse.org/*`; and the probe sources `https://collectionapi.metmuseum.org/*`, `https://openaccess-api.clevelandart.org/*`, `https://images-api.nasa.gov/*`, `https://www.loc.gov/*`, `https://wiby.me/*`, `https://api.si.edu/*`, `https://hn.algolia.com/*`. If the coverage test still reports a host, add `https://<host>/*` for it.
+- `manifest.chrome.json`: `permissions: ["sidePanel"]`, `optional_permissions: ["tts"]`, `side_panel: {"default_path": "panel.html"}`, and command `open-panel` (Alt+Shift+B, "Open the Byways panel").
+- `manifest.firefox.json`: `sidebar_action: {"default_panel": "panel.html", "default_title": "Byways", "default_icon": "assets/icons/icon-192.png"}`, command `_execute_sidebar_action` (Alt+Shift+B, "Open the Byways sidebar"), and `browser_specific_settings.gecko` exactly as the Firefox test expects.
+
+- [ ] **Step 4: Implement the three exports in `tools/build.js`**
+
+`mergeManifest`: returns a new object. Plain objects merge key by key, arrays become `[...new Set([...base, ...overlay])]`, anything else takes the overlay value. `extensionManifest(browser)` reads `shells/extension/manifest.base.json` and `manifest.<browser>.json`, merges them, then sets `version` to the `version` in `package.json`. `hostCovered(patterns, url)` parses each pattern as `<scheme>://<host>/<path>`. It needs an equal scheme, and a host that is equal or, for `*.d`, equal to `d` or ending in `.d`. Paths are ignored. Earlier plans already guard the CLI so that tests can import `tools/build.js`.
+
+- [ ] **Step 5: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-manifest.test.js`
+Expected: PASS, 6 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/extension/manifest.base.json shells/extension/manifest.chrome.json shells/extension/manifest.firefox.json tools/build.js tests/unit/ext-manifest.test.js
+git commit -m "Add the extension manifest template and browser overlays"
+```
+
+### Task 2: Extension build target and manifest checks
+
+**Files:**
+- Modify: `tools/build.js` (the `extension` branch of `build()`), `tools/check.js`, `tests/unit/build.test.js` (Plan 06's extension placeholder test)
+- Test: `tests/unit/ext-check.test.js`
+
+**Interfaces:**
+- Consumes: `extensionManifest` (Task 1); Plan 01's `build({target, outRoot, id, now}) → Promise<{outputs}>`, `OUTPUTS.extension = ['dist/chrome', 'dist/firefox']`, `runChecks({srcDir, outputs, extraHtml}) → Promise<string[]>`, `checkHtml(file, html) → string[]` and `APP_CSP` (`tools/check.js`); the steps later plans added to `build()` for every output: Plan 06's `licenses.json` (from `buildLicenses({versions, target})` in `tools/vendor.js`) and Plan 04's `--linkcheck` rewrite of `data/library.json`.
+- Produces:
+  - `buildExtension(browser: 'chrome'|'firefox', outDir: string, {id = process.env.GITHUB_SHA || 'dev', now = new Date()} = {}) → Promise<void>` in `tools/build.js`
+  - `checkExtensionDir(dir: string, browser: 'chrome'|'firefox') → Promise<string[]>` in `tools/check.js` (empty array = clean)
+  - `checkHtml(file, html, {csp} = {}) → string[]`: Plan 01's function with an optional expected CSP
+  - `EXT_PAGE_CSP` in `tools/check.js`, exactly `APP_CSP` with its `connect-src` replaced by `connect-src 'self' https: http:` (the extension may reach models on your local network): `default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' https: data: blob:; media-src 'self' https: blob:; frame-src https://archive.org https://*.archive.org; connect-src 'self' https: http:; worker-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'`
+
+- [ ] **Step 1: Write the failing tests**
+
+In `tests/unit/build.test.js`, delete the test `extension targets write only build.json and licenses.json until Plan 07`. Plan 06 split Plan 01's placeholder into that test and an Android one, and the extension folders now hold the real build. Leave `android targets write only build.json, licenses.json and the Lab until Plan 08` as it is: Plan 08 deletes it.
+
+Then, in `tests/unit/ext-check.test.js`:
+
+```js
+let dir;
+before(async () => {
+  dir = await mkdtemp(join(tmpdir(), 'byways-ext-'));
+  const stamp = { id: 'abc123', now: new Date('2026-11-11T00:00:00Z') };
+  await buildExtension('chrome', join(dir, 'chrome'), stamp);
+  await buildExtension('firefox', join(dir, 'firefox'), stamp);
+});
+const copyBuild = async () => {            // a fresh copy whose last segment is `chrome`, as runChecks needs
+  const d = join(await mkdtemp(join(tmpdir(), 'byways-ext-copy-')), 'chrome');
+  await cp(join(dir, 'chrome'), d, { recursive: true });
+  return d;
+};
+const page = (csp) => `<!doctype html><meta http-equiv="Content-Security-Policy" content="${csp}"><script type="module" src="panel.js"></script>`;
+
+for (const b of ['chrome', 'firefox']) test(`buildExtension writes the ${b} manifest, code and data`, async () => {
+  const d = join(dir, b);
+  const built = JSON.parse(readFileSync(join(d, 'manifest.json'), 'utf8'));
+  assert.deepEqual(built, await extensionManifest(b));
+  assert.equal(built.version, JSON.parse(readFileSync('package.json', 'utf8')).version);   // Plan 09's checkVersions relies on this
+  for (const f of ['core/engine.js', 'ui/boot.js', 'platform/web-voice.js', 'data/library.json', 'assets/icons/icon-192.png'])
+    assert.ok(existsSync(join(d, f)), f);
+  for (const f of readdirSync('shells/extension').filter((f) => !f.startsWith('manifest.'))) assert.ok(existsSync(join(d, f)), f);
+  assert.deepEqual(JSON.parse(readFileSync(join(d, 'build.json'), 'utf8')), { id: 'abc123', builtAt: '2026-11-11T00:00:00.000Z' });
+});
+
+test('build() gives both extension folders their manifest and the licence list', async () => {
+  const out = await mkdtemp(join(tmpdir(), 'byways-ext-all-'));
+  await build({ target: 'extension', outRoot: out, id: 'abc123', now: new Date('2026-11-11T00:00:00Z') });
+  for (const d of OUTPUTS.extension) {
+    assert.ok(existsSync(join(out, d, 'manifest.json')), d);
+    assert.deepEqual(JSON.parse(readFileSync(join(out, d, 'licenses.json'), 'utf8')).components.map((c) => c.name),
+      ['Byways', 'Atkinson Hyperlegible']);
+  }
+});
+
+test('buildExtension never copies the Lab, vendor or manifest parts', () => {
+  for (const b of ['chrome', 'firefox']) for (const f of ['lab', 'vendor', 'manifest.base.json', 'manifest.chrome.json'])
+    assert.equal(existsSync(join(dir, b, f)), false, `${b}/${f}`);
+});
+
+test('checkExtensionDir passes fresh builds', async () => {
+  assert.deepEqual(await checkExtensionDir(join(dir, 'chrome'), 'chrome'), []);
+  assert.deepEqual(await checkExtensionDir(join(dir, 'firefox'), 'firefox'), []);
+});
+
+test('checkExtensionDir reports a changed CSP', async () => {
+  const d = await copyBuild();
+  const m = JSON.parse(readFileSync(join(d, 'manifest.json'), 'utf8'));
+  m.content_security_policy.extension_pages = "script-src 'self';";
+  writeFileSync(join(d, 'manifest.json'), JSON.stringify(m));
+  assert.deepEqual(await checkExtensionDir(d, 'chrome'), ['manifest.json: extension_pages CSP is not the required string']);
+});
+
+test('checkExtensionDir reports invalid JSON', async () => {
+  const d = await copyBuild();
+  writeFileSync(join(d, 'manifest.json'), '{');
+  assert.deepEqual(await checkExtensionDir(d, 'chrome'), ['manifest.json: not valid JSON']);
+});
+
+test('checkExtensionDir reports a remote script tag', async () => {
+  const d = await copyBuild();
+  writeFileSync(join(d, 'extra.html'), '<script type="module" src="https://cdn.example/x.js"></script>');
+  assert.deepEqual(await checkExtensionDir(d, 'chrome'), ['extra.html: remote script https://cdn.example/x.js']);
+});
+
+test('checkExtensionDir reports a lab folder', async () => {
+  const d = await copyBuild();
+  mkdirSync(join(d, 'lab'));
+  assert.deepEqual(await checkExtensionDir(d, 'chrome'), ['lab/: must not be in the extension build']);
+});
+
+test('checkHtml takes the extension page CSP', () => {
+  assert.deepEqual(checkHtml('app.html', page(EXT_PAGE_CSP), { csp: EXT_PAGE_CSP }), []);
+  assert.deepEqual(checkHtml('app.html', page(APP_CSP), { csp: EXT_PAGE_CSP }), ['app.html: CSP differs from EXT_PAGE_CSP']);
+});
+
+test('runChecks runs the extension checks on a chrome folder', async () => {
+  const d = await copyBuild();
+  mkdirSync(join(d, 'lab'));
+  assert.deepEqual(await runChecks({ srcDir: 'src', outputs: [d], extraHtml: [] }), ['lab/: must not be in the extension build']);
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-check.test.js`
+Expected: FAIL with `does not provide an export named 'buildExtension'`.
+
+- [ ] **Step 3: Implement `buildExtension(browser, outDir, {id, now})` in `tools/build.js`**
+
+It copies `src/core`, `src/ui`, `src/platform`, `src/data` and `src/assets` into `outDir` (creating it) under the same names. It copies every file in `shells/extension/` except `manifest.*.json` to the root of `outDir`. It writes `manifest.json` from `extensionManifest(browser)` and `build.json` = `{id, builtAt: now.toISOString()}`. It does not empty `outDir`, because `build()` empties every output first. It never reads `src/lab`, `src/versions.json` or `vendor/`.
+
+In `build()` (also used by `all` and `--check`), the `extension` branch calls `buildExtension('chrome', join(outRoot, 'dist/chrome'), {id, now})` and the same for `firefox`, in the place where Plan 01 made the empty folders. The steps that run on every output after the per-target branch, Plan 06's `licenses.json` and Plan 04's `--linkcheck` rewrite, then apply to the extension folders too. If either of them runs before the per-target branch, move it after: `buildExtension` copies `src/data` over a filtered `library.json`.
+
+- [ ] **Step 4: Implement `checkExtensionDir(dir, browser)` in `tools/check.js`**
+
+The rules, in this order, each adding the exact message from the tests:
+1. `manifest.json` parses, else `manifest.json: not valid JSON` (and stop).
+2. `content_security_policy.extension_pages` equals the CSP string exactly.
+3. No `lab/` or `vendor/` folder at the root: `<name>/: must not be in the extension build`.
+4. Every `.html` file: each `<script … src=…>` whose value matches `/^(?:https?:)?\/\//i` gives `<file>: remote script <src>`.
+
+`checkHtml(file, html, {csp} = {})`: with `csp` given, the page must carry exactly that string, and a mismatch reads `<file>: CSP differs from <name of the constant given>` (`APP_CSP`, `LAB_CSP` or `EXT_PAGE_CSP`). Without it, Plan 01's path rule applies unchanged. `runChecks` calls `checkExtensionDir(dir, <last segment>)` for each output folder whose last segment is `chrome` or `firefox`, adds its strings unchanged, and passes `{csp: EXT_PAGE_CSP}` to `checkHtml` for the HTML files in those folders.
+
+- [ ] **Step 5: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-check.test.js`
+Expected: PASS, 11 tests.
+
+- [ ] **Step 6: Run the whole check**
+
+Run: `node --test tests/unit/build.test.js && npm run check`
+Expected: PASS, then exit code 0.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add tools/build.js tools/check.js tests/unit/ext-check.test.js tests/unit/build.test.js
+git commit -m "Build the Chrome and Firefox extensions and check their manifests"
+```
+
+### Task 3: Extension platform
+
+**Files:**
+- Create: `src/platform/extension.js`
+- Test: `tests/unit/ext-platform.test.js`
+
+**Interfaces:**
+- Consumes: `createWebVoice(win) → VoiceEngine` and `createNoVoice() → VoiceEngine` (`platform/web-voice.js`); `createWebTts(speechSynthesis) → Tts` (`platform/web-tts.js`); `createWebMedia(navigator)` and `createWebWakeLock(navigator, document)` (`platform/web-media.js`); `isHttpUrl(u) → boolean` (`core/util/url.js`); the `Platform`, `VoiceEngine` and `SecretStore` shapes in `core/types.js`; Plan 03's `HandsFree` (`state`, `command(id)`) plus the contract additions `get listening → boolean` and `setListening(on) → Promise<boolean>`.
+- Produces (in `src/platform/extension.js`):
+  - `createExtensionPlatform({ext, win, surface: 'background'|'panel'|'tab'}) → Platform`, including the contract's `requestOrigins(origins: string[]) → Promise<boolean>`, `identity` with `getRedirectURL() → Promise<string>` (Plan 05's Connect OpenRouter passes it to `startPkce` as `redirectUri`), `requestDataCollection(kinds) → Promise<boolean>` (Plan 05's `aiSearch` calls it on the first AI Search in an app session, inside the user's click: the contract's Stumble form, Plan 02, calls `app.search(text)` as its submit handler's first statement, so Firefox's prompt stays inside the gesture; a voice "search for …" or a Rabbit Hole has no click and gets its yes from the stored grant, Step 3), and `caps.leanBack: false` on the `'panel'` surface only. The tab and the background leave `caps.leanBack` out, which means `true`. There is no top-level `platform.leanBack`: Plan 03's `installHandsFreeUi` passes `leanBack: app.platform.caps.leanBack !== false` to `createHandsFree`
+  - `gateVoice(inner: VoiceEngine, {win, ext}) → VoiceEngine`
+  - `createExtSecrets(ext) → SecretStore`
+  - `requestDataCollection(ext, kinds: Array<'searchTerms'|'browsingActivity'>) → Promise<boolean>`
+  - `toggleListening(hf: HandsFree, {activated: boolean, start: () => Promise<void>}) → Promise<'needs-start'|'started'|'stopped'|'listening'|'not-listening'>`
+
+The tests use these fakes, written at the top of the test file:
+- `fakeExt({hosts = ['https://archive.org/*'], firefox = false, dataGranted = false} = {})` returns `{calls, messages, local, session, answer: true, dataGranted, storage, tabs, runtime, permissions, identity}`. `storage.local` and `storage.session` keep plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API. `tabs.query()` resolves `[{id: 7, windowId: 1}]`. `tabs.update(id, props)` and `tabs.create(props)` push `['tabs.update', id, props]` and `['tabs.create', props]` to `calls`, and `tabs.create` resolves `{id: 99, ...props}`. Storage calls are not recorded in `calls`. `runtime.sendMessage(m)` pushes `m` to `messages`. `runtime.getURL(p)` returns `'chrome-extension://test/' + p`. `runtime.getManifest()` returns `{host_permissions: hosts}`, plus, with `firefox: true`, `browser_specific_settings: {gecko: {data_collection_permissions: {required: ['none'], optional: ['searchTerms', 'browsingActivity']}}}`. `permissions.contains(q)`: with `origins`, it resolves whether every pattern is in `hosts` (not recorded); with `data_collection`, it pushes `['permissions.contains', q]` synchronously, then resolves `ext.dataGranted`, or rejects with it when it is an `Error`. `permissions.request(q)` pushes `['permissions.request', q]` synchronously, then resolves `ext.answer`, or rejects with it when it is an `Error`. `identity.getRedirectURL()` returns `'https://test.chromiumapp.org/'`; `identity.launchWebAuthFlow(o)` pushes `['identity.launchWebAuthFlow', o]` and resolves `'https://test.chromiumapp.org/?code=abc'`.
+- `fakeWin({mic = 'granted'})` returns `{calls, fetch, navigator, speechSynthesis}`. `fetch(url, init)` pushes `[url, init]` to `calls` and resolves `new Response('ok')`. `navigator.permissions.query({name})` resolves `{state: mic}`, or rejects when `mic === 'throws'`. `navigator.clipboard.writeText(t)` pushes `['copy', t]`. It has no `share` and no `document`.
+- `fakeVoice()` is a `VoiceEngine` whose `start` sets `started = true`, and whose `emit(event, data)` calls the `on` listeners.
+- `fakeHf(fields, calls)` is a `HandsFree` with the given `state`, `listening` and `canListen` (default `true`), whose `command(id)` pushes `['command', id]` and whose `setListening(on)` pushes `['setListening', on]` to `calls` and resolves `on && canListen`, as Plan 03's does.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const find = { id: 'url:1', source: 'library', kind: 'site', title: 'A small site', description: '', url: 'https://small.example/', tags: [], why: [], safety: 'curated' };
+
+test('the extension caps and name, with lean-back off only in the side panel', () => {
+  const p = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'tab' });
+  assert.equal(p.name, 'extension');
+  assert.deepEqual(p.caps, { privilegedFetch: true, localNetworkHttp: true, inAppSiteView: false,
+    labHref: 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/', framesArchive: true });   // no leanBack: lean-back runs here
+  const panel = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'panel' });
+  assert.deepEqual(panel.caps, { ...p.caps, leanBack: false });
+  assert.equal('leanBack' in panel, false);                                // it lives in caps only
+});
+
+test('transport omits cookies, drops the privileged flag and checks hosts it has no access to without CORS', async () => {   // Review Focus 1
+  const win = fakeWin({});
+  const p = createExtensionPlatform({ ext: fakeExt({ hosts: ['https://archive.org/*'] }), win, surface: 'panel' });
+  await p.transport.fetch('https://archive.org/x', { headers: { a: '1' }, privileged: true });
+  await p.transport.fetch('https://blog.example/post', { method: 'HEAD', privileged: true });
+  await p.transport.fetch('https://blog.example/feed.xml', { privileged: true });
+  await p.transport.fetch('https://blog.example/post', { method: 'HEAD' });
+  await p.transport.fetch('https://api.openai.com/v1/models', { redirect: 'error', privileged: true });   // Plan 05 sends this with every key
+  assert.deepEqual(win.calls, [
+    ['https://archive.org/x', { headers: { a: '1' }, credentials: 'omit' }],
+    ['https://blog.example/post', { method: 'HEAD', mode: 'no-cors', credentials: 'omit' }],
+    ['https://blog.example/feed.xml', { credentials: 'omit' }],
+    ['https://blog.example/post', { method: 'HEAD', credentials: 'omit' }],
+    ['https://api.openai.com/v1/models', { redirect: 'error', credentials: 'omit' }]]);
+});
+
+test('requestOrigins asks for match patterns inside the click and returns the answer', async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'tab' });
+  const asked = p.requestOrigins(['http://192.168.1.5:11434', 'https://llm.example.org/v1', 'ftp://x.example/']);
+  assert.deepEqual(ext.calls, [['permissions.request', { origins: ['http://192.168.1.5/*', 'https://llm.example.org/*'] }]]);   // before any await
+  assert.equal(await asked, true);
+  ext.answer = false;
+  assert.equal(await p.requestOrigins(['http://192.168.1.5:11434']), false);
+  ext.answer = new Error('not an optional permission');
+  assert.equal(await p.requestOrigins(['http://10.0.0.2:1234']), false);
+  assert.equal(await p.requestOrigins(['not a url']), false);
+  assert.equal(ext.calls.length, 3);                                       // nothing is asked for an empty list
+});
+
+test('identity asks for its permission first, then runs the browser flow', async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'tab' });
+  const redirect = p.identity.getRedirectURL();
+  assert.deepEqual(ext.calls, [['permissions.request', { permissions: ['identity'] }]]);
+  assert.equal(await redirect, 'https://test.chromiumapp.org/');
+  assert.equal(await p.identity.launchWebAuthFlow({ url: 'https://openrouter.ai/auth?x=1', interactive: true }),
+    'https://test.chromiumapp.org/?code=abc');
+  assert.deepEqual(ext.calls.at(-1), ['identity.launchWebAuthFlow', { url: 'https://openrouter.ai/auth?x=1', interactive: true }]);
+  ext.answer = false;
+  await assert.rejects(p.identity.getRedirectURL(), /identity permission refused/);
+});
+
+test('requestDataCollection asks Firefox inside the click, and is a yes elsewhere', async () => {
+  const ff = fakeExt({ firefox: true });
+  const asked = requestDataCollection(ff, ['searchTerms']);
+  assert.deepEqual(ff.calls, [['permissions.request', { data_collection: ['searchTerms'] }],
+    ['permissions.contains', { data_collection: ['searchTerms'] }]]);                       // both start before any await
+  assert.equal(await asked, true);
+  ff.answer = new TypeError('Unexpected property "data_collection"');
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);   // no consent, nothing is sent
+  const chrome = fakeExt();
+  assert.equal(await createExtensionPlatform({ ext: chrome, win: fakeWin({}), surface: 'tab' }).requestDataCollection(['searchTerms']), true);
+  assert.deepEqual(chrome.calls, []);
+});
+
+test('requestDataCollection takes a stored grant when there is no click, and sends nothing when both say no', async () => {
+  const ff = fakeExt({ firefox: true, dataGranted: true });
+  ff.answer = new Error('permissions.request may only be called from a user input handler');   // a voice "search for …" or a Rabbit Hole
+  assert.equal(await requestDataCollection(ff, ['searchTerms']), true);
+  ff.permissions.request = () => { throw ff.answer; };                                           // the same, thrown synchronously
+  assert.equal(await requestDataCollection(ff, ['searchTerms']), true);
+  ff.dataGranted = false;
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);                   // both say no: nothing is sent
+  ff.dataGranted = new Error('contains is not here');
+  assert.equal(await requestDataCollection(ff, ['browsingActivity']), false);
+});
+
+test('secrets live in storage.local under secret:', async () => {
+  const ext = fakeExt();
+  ext.local.needsAccess = true;
+  const s = createExtSecrets(ext);
+  await s.set('anthropic', 'k1');
+  assert.equal(ext.local['secret:anthropic'], 'k1');
+  assert.equal(await s.get('anthropic'), 'k1');
+  assert.deepEqual(await s.list(), ['anthropic']);
+  await s.delete('anthropic');
+  assert.equal(await s.get('anthropic'), null);
+});
+
+test("openFind 'current' loads the active tab and remembers the find", async () => {
+  const ext = fakeExt();
+  await createExtensionPlatform({ ext, win: fakeWin({}), surface: 'panel' }).openFind(find, 'current');
+  assert.deepEqual(ext.calls, [['tabs.update', 7, { url: 'https://small.example/' }]]);
+  assert.equal(ext.session['find:7'].find.id, 'url:1');
+});
+
+test("openFind 'tab' and 'inapp' open a new tab", async () => {
+  const ext = fakeExt();
+  const p = createExtensionPlatform({ ext, win: fakeWin({}), surface: 'panel' });
+  await p.openFind(find, 'tab');
+  await p.openFind(find, 'inapp');
+  assert.deepEqual(ext.calls, [['tabs.create', { url: 'https://small.example/' }], ['tabs.create', { url: 'https://small.example/' }]]);
+});
+
+test('openFind defaults to a new tab on every surface and refuses links that are not http(s)', async () => {
+  for (const surface of ['panel', 'tab']) {
+    const ext = fakeExt();
+    const p = createExtensionPlatform({ ext, win: fakeWin({}), surface });
+    await p.openFind(find);
+    await assert.rejects(p.openFind({ ...find, url: 'javascript:alert(1)' }, 'current'), /not an http\(s\) link/);
+    assert.deepEqual(ext.calls, [['tabs.create', { url: 'https://small.example/' }]], surface);
+  }
+});
+
+test('share copies the link when there is no share sheet', async () => {
+  const win = fakeWin({});
+  const r = await createExtensionPlatform({ ext: fakeExt(), win, surface: 'tab' }).share({ url: 'https://small.example/' });
+  assert.equal(r, 'copied');
+  assert.deepEqual(win.calls, [['copy', 'https://small.example/']]);
+});
+
+test('the background has no voice', async () => {
+  const p = createExtensionPlatform({ ext: fakeExt(), win: fakeWin({}), surface: 'background' });
+  assert.equal((await p.voice.probe({ allowCloud: false })).kind, 'none');
+});
+
+test('start asks for the mic page when the mic is not granted', async () => {
+  const ext = fakeExt(); const inner = fakeVoice(); const errors = [];
+  const v = gateVoice(inner, { win: fakeWin({ mic: 'prompt' }), ext });
+  v.on('error', (e) => errors.push(e));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, false);
+  assert.deepEqual(ext.messages, [{ type: 'openPermission' }]);
+  assert.deepEqual(errors, [{ code: 'not-allowed' }]);
+});
+
+test('start goes straight to the engine when the mic is granted', async () => {
+  const ext = fakeExt(); const inner = fakeVoice();
+  await gateVoice(inner, { win: fakeWin({ mic: 'granted' }), ext }).start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, true);
+  assert.deepEqual(ext.messages, []);
+});
+
+test('a failing permission query still tries the engine, and a not-allowed error asks for the mic page', async () => {
+  const ext = fakeExt(); const inner = fakeVoice(); const errors = [];
+  const v = gateVoice(inner, { win: fakeWin({ mic: 'throws' }), ext });
+  v.on('error', (e) => errors.push(e));
+  await v.start({ lang: 'en-US', phrases: [], allowCloud: false });
+  assert.equal(inner.started, true);
+  inner.emit('error', { code: 'not-allowed' });
+  assert.deepEqual(ext.messages, [{ type: 'openPermission' }]);
+  assert.deepEqual(errors, [{ code: 'not-allowed' }]);
+});
+
+test('toggleListening starts hands-free from idle, but only after a press on the page', async () => {
+  const calls = []; const start = async () => { calls.push(['start']); };
+  assert.equal(await toggleListening(fakeHf({ state: 'idle', listening: false }, calls), { activated: false, start }), 'needs-start');
+  assert.deepEqual(calls, []);
+  assert.equal(await toggleListening(fakeHf({ state: 'idle', listening: false }, calls), { activated: true, start }), 'started');
+  assert.deepEqual(calls, [['start']]);
+});
+
+test('toggleListening turns the mic off, then on again, and says when it could not', async () => {
+  const calls = []; const start = async () => { calls.push(['start']); };
+  assert.equal(await toggleListening(fakeHf({ state: 'active', listening: true }, calls), { activated: false, start }), 'stopped');
+  assert.equal(await toggleListening(fakeHf({ state: 'paused', listening: false }, calls), { activated: false, start }), 'listening');
+  assert.equal(await toggleListening(fakeHf({ state: 'active', listening: false, canListen: false }, calls), { activated: false, start }),
+    'not-listening');                                                      // no listener, or voice mode 'off'
+  assert.deepEqual(calls, [['command', 'stopListening'], ['setListening', true], ['setListening', true]]);
+});
+```
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-platform.test.js`
+Expected: FAIL with `Cannot find module` for `src/platform/extension.js`.
+
+- [ ] **Step 3: Implement `src/platform/extension.js`**
+
+- `createExtSecrets(ext)`: keys are stored as `secret:<id>` in `ext.storage.local`. `get` returns `null` when the key is missing. `list` returns the ids with the prefix removed and ignores other keys.
+- `gateVoice(inner, {win, ext})`: `probe`, `install`, `stop` pass through. `on('result'|'state')` subscribe to `inner`. `on('error')` subscribes to the gate's own list, which receives every inner error. `start(opts)` queries `win.navigator.permissions.query({name: 'microphone'})`. On `'granted'`, or when the query rejects, it calls `inner.start(opts)`. Otherwise it sends `{type: 'openPermission'}` and emits `{code: 'not-allowed'}`. An inner `not-allowed` error also sends `{type: 'openPermission'}`.
+- `originPattern(url)` (internal) is `<scheme>://<hostname>/*`, with no port: a match pattern without one matches every port.
+- `requestDataCollection(ext, kinds)`: when `ext.runtime.getManifest()` declares `browser_specific_settings.gecko.data_collection_permissions.optional` (Firefox), it starts, in one synchronous step, `ext.permissions.request({data_collection: kinds})` as its first statement and then `ext.permissions.contains({data_collection: kinds})`, and resolves `true` when either resolves `true`. A throw from either, synchronous or not, counts as `false` for that one: `request` throws outside a user gesture (a voice "search for …", a Rabbit Hole), and `contains` then answers from the grant stored at an earlier click; a Firefox that does not know `data_collection` throws from both, so nothing is sent without consent. Without that key (Chrome and Edge) it resolves `true` and calls nothing.
+- `toggleListening(hf, {activated, start})`: from `'idle'` it resolves `'needs-start'` when `activated` is false (a page that was never pressed cannot start speech), else awaits `start()` and resolves `'started'`. In any other state it runs `hf.command('stopListening')` when `hf.listening` (`'stopped'`), or else awaits `hf.setListening(true)` and reports what the boolean says: `'listening'` on `true`, `'not-listening'` on `false` (Plan 03 gives `false` with no listener, in `'off'` mode, while suspended, or when the listener's `start()` rejects).
+- `createExtensionPlatform({ext, win, surface})`:
+  - `transport.fetch(url, init)` calls `win.fetch(url, {...init without privileged, credentials: 'omit'})`. When `init.privileged` is set and the method is `HEAD`, it first checks `await ext.permissions.contains({origins: [originPattern(url)]})`. For a host Byways has no access to, the request also gets `mode: 'no-cors'`: Plan 02's privileged link check then gets an opaque reply with status 0, which `checkLive` counts as live, the same reachability check the web app makes. Every other request keeps CORS, which host permissions lift. The rest of `init` (`method`, `headers`, `body`, `signal`, and `redirect: 'error'`, which Plan 05 sends with every key) goes to `win.fetch` unchanged, and the browser's `Response` keeps `url`, the final address after redirects, which Plan 05's `resolveRedirect` reads (contract, "Transport rules every shell honours").
+  - `voice`: `createNoVoice()` for `'background'`, else `gateVoice(createWebVoice(win), {win, ext})`.
+  - `tts`: for `'background'`, a silent `Tts` (`speak` resolves, `voices` resolves `[]`); else `createWebTts(win.speechSynthesis)`.
+  - `openFind(find, how = 'tab')` throws `Error('not an http(s) link')` unless `isHttpUrl(find.url)`. `'current'` queries `{active: true, currentWindow: true}`, calls `ext.tabs.update(tab.id, {url})`, then sets `storage.session['find:<id>'] = {find, branch: null, why: find.why}`. `'tab'` and `'inapp'` call `ext.tabs.create({url})`.
+  - `share(data)`: `win.navigator.share` when it exists (`'shared'`, or `'cancelled'` on `AbortError`). Otherwise it copies `data.url ?? data.text` and returns `'copied'`.
+  - `files.save(name, blob)` uses an `<a download>` with an object URL. `files.pick(accept, multiple)` uses a hidden `<input type=file>`. Both are only used on page surfaces.
+  - `media` and `wakeLock` come from `createWebMedia(win.navigator)` and `createWebWakeLock(win.navigator, win.document)` when `win.document` exists, and are no-ops otherwise.
+  - `requestOrigins(origins)`: maps each http(s) origin or URL to `originPattern`, drops the rest, and calls `ext.permissions.request({origins: patterns})` as its first statement, with no `await` before it, so the click's user gesture still counts. It resolves the answer, or `false` on a throw or an empty list. Plan 05's buttons for a custom endpoint and for a model on the local network call it.
+  - `identity.getRedirectURL()` calls `ext.permissions.request({permissions: ['identity']})` as its first statement, rejects with `Error('identity permission refused')` on `false`, then resolves `ext.identity.getRedirectURL()`. `identity.launchWebAuthFlow({url, interactive})` resolves `ext.identity.launchWebAuthFlow({url, interactive})`. Plan 05's `connectWithIdentity` awaits `getRedirectURL()` first in its click and passes the result to `startPkce` as `redirectUri` (OpenRouter's `callback_url`).
+  - `requestDataCollection(kinds)` is `requestDataCollection(ext, kinds)`.
+  - `secrets: createExtSecrets(ext)`, the `caps` above (with `leanBack: false` added for `'panel'` only), and `persistStorage` resolves `true` (the manifest has `unlimitedStorage`).
+
+- [ ] **Step 4: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-platform.test.js`
+Expected: PASS, 17 tests.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add src/platform/extension.js tests/unit/ext-platform.test.js
+git commit -m "Add the extension platform with storage.local secrets, a mic gate and permission requests"
+```
+
+### Task 4: Background handlers and wiring
+
+**Files:**
+- Create: `shells/extension/bg.js`
+- Test: `tests/unit/ext-bg.test.js`
+
+**Interfaces:**
+- Consumes, by their paths in `dist/<browser>/` (`bg.js` imports `./core/…` and `./platform/…`):
+  - `buildExtension` (Task 2, for the tests); `createExtensionPlatform({ext, win, surface})` and `requestDataCollection(ext, kinds)` (`platform/extension.js`, Task 3);
+  - `openStore(backend) → Promise<Store>`, `idbBackend()` and, for the tests, `memoryBackend()` (`core/store/db.js`); `loadSettings(store) → Promise<Settings>` (`core/settings.js`); `createHttp({transport, clock}) → Http` (`core/net/http.js`); `realClock` (`core/util/clock.js`); `mulberry32(seed)` (`core/util/hash.js`); `isHttpUrl(u)`, `domainOf(u)` (`core/util/url.js`);
+  - `loadAppData({fetchFn, base, dataUrl, http, store}) → Promise<{tags, library, vaultStarter, geocities, embedBroken}>`, which also registers the `pages` Http source on `http`, and `dataUrlFor(platformName, file) → string` (`core/data.js`, Plans 01 and 04: the one data loader, which `boot.js` uses too);
+  - `createKeyring(secrets, {clock}) → {ready: Promise<void>, get(id), set(id, v), delete(id), list(), …, get locked}` (`core/keys.js`, Plan 05), whose `get` gives `null` for an `enc1:` value while locked;
+  - `createEngine({store, http, clock, rand, data, platform, settings, seen?, secrets?, dataUrl?}) → Promise<Engine>` and `EMPTY_REASONS` (`core/engine.js`; `dataUrl` defaults to `'data/' + file` and `secrets` to `platform.secrets`, and the background must pass both); `createSeen(store) → {has(url), add(url), count(), reset()}` (`core/seen.js`); `makeFind(partial) → Find|null` (`core/model/find.js`).
+- Produces, exported from `bg.js`:
+  - `createBackground({ext, getEngine: () => Promise<{engine: Engine, settings: Settings, seen: {has(url) → Promise<boolean>, add(url) → Promise<void>}}>, resetEngine: () => void}) → Background`, where `Background` has:
+    - `stumble(tab) → Promise<{ok: true, find} | {ok: false, reason: string}>`
+    - `morePage(tab) → Promise<void>`, `onCommand(command, tab) → Promise<void>`, `onMenuClick(info, tab) → Promise<void>`
+    - `onMessage(msg, sender) → Promise<any> | undefined`
+    - `checkAccess() → Promise<boolean>`, `openPermission() → Promise<{tabId}>`, `onInstalled(details) → Promise<void>`, `onTabRemoved(tabId) → Promise<void>`
+  - `createEngineLoader({ext, win = globalThis, backend = idbBackend, makeEngine = createEngine}) → {getEngine, resetEngine}`, the two functions `createBackground` takes. `backend` is called once to make the store's backend; `makeEngine` has `createEngine`'s signature, and the tests replace it to read the options the background passes
+  - `wire(ext, bg) → void`
+
+The tests import from a fresh build: `before()` runs `buildExtension('chrome', dir)` into a `mkdtemp` folder and imports `pathToFileURL(join(dir, 'bg.js')).href`. In Node there is no `chrome` global, so the wiring at the bottom of `bg.js` does not run.
+
+Test fakes, written at the top of the test file:
+- `fakeExt({granted = true, sidebar = false, dataGranted = false} = {})` returns an object with `calls`, `messages`, `local`, `session`, `tabsById = {}`, `granted` and `dataGranted` (each starts as its option) and `answer = true`, and:
+  - `storage.local` and `storage.session`: plain objects (`local`, `session`) with `get(keyOrKeys?)`, `set(obj)` and `remove(keyOrKeys)` as in the WebExtensions API, not recorded;
+  - `tabs.query()` resolves `[{id: 7, windowId: 1}]`; `tabs.get(id)` resolves `tabsById[id]` or rejects `'No tab'` (not recorded); `tabs.update(id, p)` → `['tabs.update', id, p]`; `tabs.create(p)` → `['tabs.create', p]` and resolves `{id: 99, ...p}`;
+  - `action.setBadgeText(o)` → `['badge', o]`; `action.setTitle(o)` → `['title', o]`;
+  - `sidePanel.open(o)` → `['sidePanel.open', o]`, or, with `sidebar: true` (Firefox), no `sidePanel` and `sidebarAction.open()` → `['sidebarAction.open']`;
+  - `permissions.contains(q)` → `['contains', q]`, resolves `ext.granted` for an `origins` query and `ext.dataGranted` for a `data_collection` query; `permissions.request(q)` → `['permissions.request', q]`, resolves `ext.answer`;
+  - `contextMenus.removeAll()` → `['menus.removeAll']`; `contextMenus.create(o)` → `['menus.create', o]`;
+  - `runtime.sendMessage(m)` pushes `m` to `messages`; `runtime.getURL(p)` returns `'chrome-extension://test/' + p`; `runtime.getManifest()` returns `{host_permissions: ['https://archive.org/*']}`, plus, with `sidebar: true`, `browser_specific_settings.gecko.data_collection_permissions` `{required: ['none'], optional: ['searchTerms', 'browsingActivity']}`.
+
+  Every recorder pushes synchronously, before any `await`.
+- `fakeEngine(results)`: `next({mode})` records `mode` in `modes`, waits one macrotask, then returns `results.shift()` (throwing it if it is an `Error`). It tracks `maxInFlight`.
+- `bgWith(results, {settings = {mode: 'tuned'}, seen = [], ...extOpts} = {})` returns `{bg, ext, engine, resets, seenUrls}`. `getEngine` resolves `{engine, settings, seen}`, where `seen` is `{has: async (u) => seenUrls.has(u), add: async (u) => { seenUrls.add(u); }}` over `seenUrls = new Set(seen)`.
+- `eventsExt()` is an `ext` whose `action.onClicked`, `commands.onCommand`, `contextMenus.onClicked`, `runtime.onInstalled`, `runtime.onStartup`, `runtime.onMessage`, `permissions.onAdded`, `permissions.onRemoved` and `tabs.onRemoved` each have `addListener(fn)`, which stores `fn` in `ext.fns['<namespace>.<event>']`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+const f = (n) => ({ id: `url:${n}`, source: 'library', kind: 'site', title: `Find ${n}`, description: '', url: `https://s${n}.example/`, tags: [], why: [], safety: 'curated' });
+const tab = { id: 5, windowId: 2 };
+
+test('stumble loads the next find in the tab and remembers it', async () => {
+  const { bg, ext, seenUrls } = bgWith([{ find: f(1), branch: 'taste', why: ['w'] }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: true, find: f(1) });
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'tabs.update'), ['tabs.update', 5, { url: 'https://s1.example/' }]);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { tabId: 5, text: null }]);   // null lets a global '!' show
+  assert.deepEqual(ext.session['find:5'], { find: f(1), branch: 'taste', why: ['w'] });
+  assert.deepEqual(ext.messages.at(-1), { type: 'tabFind', tabId: 5, windowId: 2, find: f(1), branch: 'taste', why: ['w'] });
+  assert.deepEqual([...seenUrls], ['https://s1.example/']);
+});
+
+test('stumble skips a find another page already showed', async () => {                 // Review Focus 2
+  const { bg, ext, seenUrls } = bgWith([{ find: f(1), branch: 'taste', why: [] }, { find: f(2), branch: 'taste', why: [] }],
+    { seen: ['https://s1.example/'] });
+  assert.deepEqual(await bg.stumble(tab), { ok: true, find: f(2) });
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'tabs.update').map((c) => c[2].url), ['https://s2.example/']);
+  assert.ok(seenUrls.has('https://s2.example/'));
+});
+
+test('four finds in a row that were already shown count as an empty pool', async () => {
+  const shown = [1, 2, 3, 4].map((n) => ({ find: f(n), branch: 'taste', why: [] }));
+  const { bg, ext } = bgWith(shown, { seen: shown.map((r) => r.find.url) });
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: EMPTY_REASONS.exhausted });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { tabId: 5, text: '0' }]);
+});
+
+test('stumble never loads a link that is not http(s)', async () => {
+  const { bg, ext } = bgWith([{ find: { ...f(1), url: 'javascript:alert(1)' }, branch: 'taste', why: [] }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'not-web' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+});
+
+test('stumble uses tuned when the saved mode is ai, and passes fate through', async () => {
+  const a = bgWith([{ find: f(1), branch: 'taste', why: [] }], { settings: { mode: 'ai' } });
+  await a.bg.stumble(tab);
+  const b = bgWith([{ find: f(1), branch: 'taste', why: [] }], { settings: { mode: 'fate' } });
+  await b.bg.stumble(tab);
+  assert.deepEqual([a.engine.modes, b.engine.modes], [['tuned'], ['fate']]);
+});
+
+test('concurrent stumbles run one at a time and never repeat a find', async () => {      // Review Focus 2
+  const { bg, ext, engine } = bgWith([{ find: f(1), branch: 'taste', why: [] }, { find: f(2), branch: 'taste', why: [] }]);
+  const [a, b] = await Promise.all([bg.stumble(tab), bg.stumble(tab)]);
+  assert.notEqual(a.find.id, b.find.id);
+  assert.equal(engine.maxInFlight, 1);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'tabs.update').map((c) => c[2].url), ['https://s1.example/', 'https://s2.example/']);
+  assert.equal(ext.session['find:5'].find.id, 'url:2');
+});
+
+test('an empty pool sets the badge and title and does not navigate', async () => {       // Review Focus 3
+  const { bg, ext } = bgWith([{ empty: true, reason: 'Nothing new here' }]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'Nothing new here' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge' || c[0] === 'title'),
+    [['badge', { tabId: 5, text: '0' }], ['title', { tabId: 5, title: 'Stumble: Nothing new here' }]]);
+});
+
+test('an engine error sets the badge and does not navigate', async () => {               // Review Focus 3
+  const { bg, ext } = bgWith([new Error('offline')]);
+  assert.deepEqual(await bg.stumble(tab), { ok: false, reason: 'error' });
+  assert.equal(ext.calls.some((c) => c[0] === 'tabs.update'), false);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge' || c[0] === 'title'),
+    [['badge', { tabId: 5, text: '!' }], ['title', { tabId: 5, title: 'Stumble: Byways could not reach its sources. Try again.' }]]);
+});
+
+test('more like this page opens the panel before anything else and stores a seed', async () => {
+  for (const sidebar of [false, true]) {
+    const { bg, ext } = bgWith([], { sidebar });
+    await bg.onMenuClick({ menuItemId: 'more-like-page' }, { ...tab, url: 'https://small.example/blog/', title: 'Small blog' });
+    assert.deepEqual(ext.calls[0], sidebar ? ['sidebarAction.open'] : ['sidePanel.open', { windowId: 2 }]);
+    assert.deepEqual([ext.session.pendingRabbit.source, ext.session.pendingRabbit.kind, ext.session.pendingRabbit.url],
+      ['marginalia', 'site', 'https://small.example/blog/']);
+    assert.deepEqual(ext.messages.at(-1), { type: 'rabbit' });
+  }
+});
+
+test('more like this page on a non-web tab stores a not-web marker', async () => {       // Review Focus 4
+  for (const url of ['chrome://newtab/', 'about:addons', 'file:///home/a.html', undefined]) {
+    const { bg, ext } = bgWith([]);
+    await bg.morePage({ ...tab, url });
+    assert.deepEqual(ext.calls[0], ['sidePanel.open', { windowId: 2 }]);
+    assert.deepEqual(ext.session.pendingRabbit, { error: 'not-web' });
+  }
+});
+
+test('more like this page on Firefox asks for browsing activity in the same turn, and sends nothing without it', async () => {
+  const { bg, ext } = bgWith([], { sidebar: true });
+  const page = { ...tab, url: 'https://small.example/blog/', title: 'Small blog' };
+  const done = bg.morePage(page);
+  assert.deepEqual(ext.calls.slice(0, 3), [['sidebarAction.open'], ['permissions.request', { data_collection: ['browsingActivity'] }],
+    ['contains', { data_collection: ['browsingActivity'] }]]);                                 // all three before any await
+  await done;
+  assert.equal(ext.session.pendingRabbit.source, 'marginalia');
+  ext.answer = false;
+  await bg.morePage(page);
+  assert.deepEqual(ext.session.pendingRabbit, { error: 'no-consent' });
+  assert.deepEqual(ext.messages.at(-1), { type: 'rabbit' });
+});
+
+test('checkAccess flags revoked hosts and clears when granted', async () => {            // Review Focus 5
+  const { bg, ext } = bgWith([], { granted: false });
+  assert.equal(await bg.checkAccess(), false);
+  assert.deepEqual(ext.calls[0], ['contains', { origins: ['https://archive.org/*'] }]);
+  assert.equal(ext.local.needsAccess, true);
+  assert.deepEqual(ext.calls.find((c) => c[0] === 'badge'), ['badge', { text: '!' }]);
+  assert.deepEqual(ext.messages.at(-1), { type: 'accessChanged', needsAccess: true });
+  ext.granted = true;                                     // the fake reads this on each contains()
+  assert.equal(await bg.checkAccess(), true);
+  assert.equal(ext.local.needsAccess, false);
+  assert.deepEqual(ext.calls.at(-1), ['badge', { text: '' }]);
+  assert.deepEqual(ext.messages.at(-1), { type: 'accessChanged', needsAccess: false });
+});
+
+test('a Stumble after lost access keeps the global warning badge', async () => {        // Review Focus 5
+  const { bg, ext } = bgWith([{ find: f(1), branch: 'taste', why: [] }], { granted: false });
+  await bg.checkAccess();
+  await bg.stumble(tab);
+  assert.deepEqual(ext.calls.filter((c) => c[0] === 'badge'), [['badge', { text: '!' }], ['badge', { tabId: 5, text: null }]]);
+});
+
+test('onInstalled recreates the context menu, then checks access', async () => {
+  const { bg, ext } = bgWith([]);
+  await bg.onInstalled({ reason: 'install' });
+  assert.deepEqual(ext.calls.slice(0, 3), [['menus.removeAll'],
+    ['menus.create', { id: 'more-like-page', title: 'More like this page', contexts: ['page'] }], ['contains', { origins: ['https://archive.org/*'] }]]);
+});
+
+test('commands', async () => {
+  const { bg, ext } = bgWith([]);
+  await bg.onCommand('toggle-listening', { ...tab, url: 'https://small.example/' });
+  await bg.onCommand('toggle-listening', { ...tab, url: 'chrome-extension://test/app.html#/stumble' });
+  await bg.onCommand('open-panel', tab);
+  assert.deepEqual(ext.messages, [{ type: 'toggleListening', tabId: 5, windowId: 2, inBywaysTab: false },
+    { type: 'toggleListening', tabId: 5, windowId: 2, inBywaysTab: true }]);
+  assert.deepEqual(ext.calls, [['sidePanel.open', { windowId: 2 }]]);
+});
+
+test('openPermission opens one mic tab and focuses it the second time', async () => {
+  const { bg, ext } = bgWith([]);
+  assert.deepEqual(await bg.openPermission(), { tabId: 99 });             // tabs.create resolves {id: 99}
+  ext.tabsById[99] = { id: 99, windowId: 2 };
+  assert.deepEqual(await bg.openPermission(), { tabId: 99 });
+  assert.deepEqual(ext.calls.filter((c) => c[0].startsWith('tabs.')),
+    [['tabs.create', { url: 'chrome-extension://test/permission.html' }], ['tabs.update', 99, { active: true }]]);
+});
+
+test('messages', async () => {
+  const { bg, ext, resets } = bgWith([{ find: f(1), branch: 'taste', why: [] }]);
+  ext.tabsById[7] = { id: 7, windowId: 1 };
+  assert.equal((await bg.onMessage({ type: 'stumble', tabId: 7 }, {})).ok, true);
+  assert.deepEqual(await bg.onMessage({ type: 'stateChanged' }, {}), { ok: true });
+  assert.equal(resets.count, 1);
+  assert.deepEqual(await bg.onMessage({ type: 'checkAccess' }, {}), { needsAccess: false });
+  assert.equal(bg.onMessage({ type: 'tabFind' }, {}), undefined);
+});
+
+test('a closed tab forgets its find', async () => {
+  const { bg, ext } = bgWith([]);
+  ext.session['find:5'] = { find: f(1) };
+  await bg.onTabRemoved(5);
+  assert.equal('find:5' in ext.session, false);
+});
+
+test('the engine loader gives the background engine the bundled data, the Pages data URL and the keyring', async () => {
+  const ext = fakeExt();
+  ext.local['secret:__lock'] = JSON.stringify({ v: 1 });                   // the passphrase lock is on
+  ext.local['secret:src:europeana'] = 'enc1:aa:bb';
+  const built = [];
+  const { getEngine, resetEngine } = createEngineLoader({ ext, backend: memoryBackend,
+    win: { fetch: async (u) => Response.json({ v: 1, from: u }) },
+    makeEngine: async (opts) => { built.push(opts); return { n: built.length }; } });
+  const first = await getEngine();
+  const [opts] = built;
+  assert.equal(opts.platform.name, 'extension');
+  assert.deepEqual([opts.data.tags.from, opts.data.library.from, opts.data.vaultStarter.from, opts.data.geocities.from],
+    ['tags.json', 'library.json', 'vault-starter.json', 'geocities-seeds.json'].map((f) => 'chrome-extension://test/data/' + f));
+  assert.ok(opts.data.embedBroken instanceof Set);
+  assert.equal(opts.dataUrl('itch.json'), 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/itch.json');
+  assert.equal(await opts.secrets.get('src:europeana'), null);             // the locked keyring, never the enc1: text
+  await opts.seen.add('https://s1.example/');
+  assert.equal(await first.seen.has('https://s1.example/'), false);        // only stumble writes the seen-set
+  assert.equal((await getEngine()).engine, first.engine);                  // same settings: the cached engine
+  resetEngine();
+  assert.notEqual((await getEngine()).engine, first.engine);
+  assert.equal(built.length, 2);
+});
+
+test('wire connects every browser event to its handler', async () => {
+  const ext = eventsExt(); const got = [];
+  const names = ['stumble', 'onCommand', 'onMenuClick', 'onInstalled', 'checkAccess', 'onTabRemoved'];
+  const bg = Object.fromEntries(names.map((n) => [n, async () => { got.push(n); }]));
+  bg.onMessage = (msg) => (msg.type === 'ping' ? Promise.resolve('pong') : undefined);
+  wire(ext, bg);
+  ext.fns['action.onClicked'](tab); ext.fns['commands.onCommand']('open-panel', tab);
+  ext.fns['contextMenus.onClicked']({ menuItemId: 'more-like-page' }, tab); ext.fns['runtime.onInstalled']({ reason: 'install' });
+  ext.fns['runtime.onStartup'](); ext.fns['permissions.onAdded']({}); ext.fns['permissions.onRemoved']({}); ext.fns['tabs.onRemoved'](5);
+  assert.deepEqual(got, ['stumble', 'onCommand', 'onMenuClick', 'onInstalled', 'checkAccess', 'checkAccess', 'checkAccess', 'onTabRemoved']);
+  let reply;
+  assert.equal(ext.fns['runtime.onMessage']({ type: 'ping' }, {}, (r) => { reply = r; }), true);
+  await new Promise((r) => setTimeout(r, 0));
+  assert.equal(reply, 'pong');
+  assert.equal(ext.fns['runtime.onMessage']({ type: 'other' }, {}, () => {}), false);
+});
+```
+
+The test file imports `createBackground`, `createEngineLoader` and `wire` from the built `bg.js`, `EMPTY_REASONS` from `src/core/engine.js` and `memoryBackend` from `src/core/store/db.js`.
+
+- [ ] **Step 2: Run the tests and see them fail**
+
+Run: `node --test tests/unit/ext-bg.test.js`
+Expected: FAIL with `ERR_MODULE_NOT_FOUND` for `bg.js` in the build folder.
+
+- [ ] **Step 3: Implement `createBackground` in `shells/extension/bg.js`**
+
+- `stumble` chains each call on one promise, so calls run one at a time and a failure does not break the chain. Each run: `getEngine()`, then `engine.next({mode: settings.mode === 'ai' ? 'tuned' : settings.mode})`. A find that `await seen.has(find.url)` reports was shown by another page is skipped and the engine is asked again, up to 4 pulls in all; four seen finds in a row count as `{empty: true, reason: EMPTY_REASONS.exhausted}`. A find whose url is not http(s) is never loaded: the reply is `{ok: false, reason: 'not-web'}` and nothing else happens. On a find, in this order: `seen.add(find.url)`, `tabs.update(tab.id, {url})`, `setBadgeText({tabId, text: null})` (which clears only this tab's text, so a global `'!'` from `checkAccess` still shows) and `setTitle({tabId, title: 'Stumble'})`, set `storage.session['find:<id>'] = {find, branch, why}`, then send `tabFind`. On `{empty}`: badge `'0'` and title `'Stumble: <reason>'`. On a throw: badge `'!'` and title `'Stumble: Byways could not reach its sources. Try again.'`, and the reply reason is `'error'`. Badge and title calls come before any other call in those two paths.
+- `openPanel(tab)` (internal) runs **synchronously** and is never awaited: `ext.sidePanel.open({windowId: tab.windowId})` when `ext.sidePanel` exists, else `ext.sidebarAction.open()`. Both browsers only allow this inside the user-action handler, so `morePage` and `onCommand('open-panel')` call it before any `await`. Its promise gets a `.catch(() => {})`.
+- `morePage(tab)`: `openPanel(tab)`, then, in the same synchronous turn and unless the tab is known not to be a web page, `consent = requestDataCollection(ext, ['browsingActivity'])` (Task 3; it asks only on Firefox, where the page's domain going to Marginalia is browsing activity). Then `pendingRabbit` = `{error: 'not-web'}` unless `isHttpUrl(tab.url ?? '')`, else `{error: 'no-consent'}` when `await consent` is false, else `makeFind({source: 'marginalia', kind: 'site', url: tab.url, title: tab.title || domainOf(tab.url)})`. Then send `{type: 'rabbit'}`.
+- `onMenuClick(info, tab)` runs `morePage` for `info.menuItemId === 'more-like-page'`. `onCommand`: `'open-panel'` → `openPanel`; `'more-like-page'` → `morePage`; `'toggle-listening'` → send `{type: 'toggleListening', tabId, windowId, inBywaysTab}` for the command's tab, where `inBywaysTab` is whether its url starts with `runtime.getURL('app.html')` (the command grants `activeTab`, so the url is readable). When Firefox gives no `tab`, both read `tabs.query({active: true, currentWindow: true})` afterwards; `morePage` opens the sidebar and asks for consent first.
+- `checkAccess()`: `permissions.contains({origins: runtime.getManifest().host_permissions})`, then `storage.local.needsAccess = !ok`, badge `'!'` or `''` (no tabId), then send `accessChanged`.
+- `openPermission()`: if `storage.session.permissionTabId` names a tab that `tabs.get` finds, `tabs.update(id, {active: true})`; otherwise `tabs.create({url: runtime.getURL('permission.html')})` and store its id.
+- `onMessage`: `stumble` → `tabs.get(msg.tabId)` then `stumble`; `stateChanged` → `resetEngine()` and `{ok: true}`; `checkAccess` → `{needsAccess: !(await checkAccess())}`; `openPermission` → `openPermission()`; anything else → `undefined`.
+- `onInstalled`: `contextMenus.removeAll()`, `contextMenus.create({id: 'more-like-page', title: 'More like this page', contexts: ['page']})`, then `checkAccess()`. `onTabRemoved(id)` removes `find:<id>`.
+- Sending a message with no page open rejects, so every send ends in `.catch(() => {})`.
+
+- [ ] **Step 4: Add the engine loader and the wiring to `bg.js`**
+
+- `createEngineLoader({ext, win, backend, makeEngine})`: `getEngine()` opens one `openStore(backend())` per worker life, calls `loadSettings(store)` each time, and builds the engine again when `JSON.stringify(settings)` differs from the cached one or after `resetEngine()`. A build makes, in this order:
+  - `platform = createExtensionPlatform({ext, win, surface: 'background'})` and `http = createHttp({transport: platform.transport, clock: realClock})`;
+  - `dataUrl = (file) => dataUrlFor('extension', file)`, the Pages address. Plan 02's default, `'data/' + file`, would point at `chrome-extension://…/data/`, which holds no generated file;
+  - `data = await loadAppData({fetchFn: (u) => platform.transport.fetch(u), base: ext.runtime.getURL(''), dataUrl, http, store})`, the loader `boot.js` uses, so the four `src/data` files come from the extension and `embedBroken` from the store. It registers the `pages` Http source itself, and `createEngine`'s Start registration covers the adapters (skipping Plan 02's `SELF_PACED` ids, which the IA queue paces), so `bg.js` calls `http.register` for nothing;
+  - `keyring = createKeyring(platform.secrets, {clock: realClock})`, then `await keyring.ready`. Each build makes a new one, so a new engine reads the lock state again. The background never unlocks it: while the passphrase lock is on, adapters get `null` for a locked key instead of its `enc1:` text;
+  - `seen = createSeen(store)`.
+
+  Then it calls `makeEngine({store, http, clock: realClock, rand: mulberry32(crypto.getRandomValues(new Uint32Array(1))[0]), data, platform, settings, dataUrl, secrets: keyring, seen: {has: seen.has, count: seen.count, reset: seen.reset, add: async () => {}}})`, so that only `stumble` writes to the seen-set, after its own check, and resolves `{engine, settings, seen}`.
+- `wire(ext, bg)` adds every listener: `action.onClicked` → `stumble`; `commands.onCommand` → `onCommand`; `contextMenus.onClicked` → `onMenuClick`; `runtime.onInstalled` → `onInstalled`; `runtime.onStartup`, `permissions.onAdded` and `permissions.onRemoved` → `checkAccess`; `tabs.onRemoved` → `onTabRemoved`. `runtime.onMessage` uses `(msg, sender, sendResponse)`. When `onMessage` returns a promise, it calls `sendResponse` with the result (or `{ok: false, reason: String(e)}`) and returns `true`. Otherwise it returns `false`.
+- The last lines of `bg.js`: when `const ext = globalThis.browser ?? globalThis.chrome` has `runtime?.id`, call `wire(ext, createBackground({ext, ...createEngineLoader({ext})}))` at the top level, in the first turn.
+- The only state the worker keeps in memory is the loader's engine cache and the stumble chain. Everything a page needs is in `storage.session` or `storage.local`.
+
+- [ ] **Step 5: Run the tests and see them pass**
+
+Run: `node --test tests/unit/ext-bg.test.js`
+Expected: PASS, 20 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/extension/bg.js tests/unit/ext-bg.test.js
+git commit -m "Add the extension background: toolbar Stumble, commands, menu, consent and access checks"
+```
+
+### Task 5: Byways tab, page boot and the extension e2e harness
+
+**Files:**
+- Create: `shells/extension/app.html`, `shells/extension/panel.html`, `shells/extension/panel.js`, `tests/e2e/extension.spec.js`, `tests/fixtures/http/html/find-page.html`
+- Modify: `tests/e2e/helpers/net.js`
+
+**Interfaces:**
+- Consumes: `boot(platform) → Promise<App>` (`ui/boot.js`); `createExtensionPlatform` (Task 3); bg message `stumble` (Task 4); Plan 01's `test`, `expect`, `mockNet`, `unmocked`, `pageProblems` and the `ignoreProblems` option (`tests/e2e/helpers/net.js`); `installFakeSpeech(page)` (`tests/e2e/helpers/fakes.js`, Plans 01 and 03; it also records `window.__spoken` and `window.__announcements`); `SOURCES` (`core/sources/index.js`), `openStore`, `idbBackend` (`core/store/db.js`), `saveSettings(store, patch)` (`core/settings.js`); Plan 04's fixtures `daily/daily-2026-11-11.json`, `ia/vault-index.json`, `ia/thumb.svg`, `itch/itch.json` and `itch/platform-web.xml`, and its `routes.js` catch-all that answers every other file under the Pages `data/` URL with `pages/empty.json` (`{"v":1}`); Plan 02's `routes.js` entries for Wikipedia and APOD, which answer the Daily backup recipe whenever it runs (Plan 04 adds no Daily routes); Plan 04's Daily view fetching `app.dataUrl('daily.json') + '?d=' + date`, and its snapshot readers using `readSnapshot(ctx, file)` with `ctx.dataUrl`; Plan 06's Lab link and `licenses.json`.
+- Produces: `mockNet(target: Page|BrowserContext, {overrides?})`, `unmocked(target) → string[]` and `pageProblems(target, {ignore = []} = {}) → string[]`, now accepting a `BrowserContext`. Spec helpers local to `extension.spec.js` and reused by Tasks 6 and 7: `extPage(context, extId, path) → Promise<Page>`, `tabInfo(page) → Promise<{id, windowId}>`, `useSources(page, ids = ['library']) → Promise<void>`, `stumbleTab(page, tabId) → Promise<{ok, find?, reason?}>`, `tell(sw, msg, session?) → Promise<void>`, `grantMic(context, extId) → Promise<void>`, `said(page) → Promise<string[]>`, and the fixture's `EXT_ROUTES` list.
+
+- [ ] **Step 1: Let `mockNet`, `unmocked` and `pageProblems` take a `BrowserContext`**
+
+In `tests/e2e/helpers/net.js`, the three functions accept a `Page` or a `BrowserContext`. Both have `route()` and `on('request')`, so routing and recording do not change. The problem listeners do: a context has no `pageerror` event, so for a context `mockNet` adds `context.on('console', …)` with the page listener's rule (every console message of type `error`, as `console: <text> (<url>)`, or `console: <text>` when it has no source URL) and `context.on('weberror', (e) => …)`, which pushes `pageerror: <e.error().message>` for an uncaught error in any of its pages. Only http(s) requests are routed, so `chrome-extension://` requests are never routed or recorded. Run: `npm run e2e`. Expected: the existing web specs still pass.
+
+- [ ] **Step 2: Write the pages**
+
+- `app.html` and `panel.html` are `shells/pwa/index.html` (Plan 01) with exactly these changes. Everything else stays as it is: the skip link, `<header class="topbar">` with `<nav aria-label="Main">` and its links (Plan 06 appends the Lab link there), `#hf-bar`, `<main id="main"><div id="app"></div></main>`, `#toasts`, the two live regions and the `<noscript>`.
+  1. The root is `<html lang="en" data-shell="extension" data-theme="system" data-motion="system" data-font="system">`, so `bootFromShell()`, which boots only `'pwa'`, does nothing.
+  2. The CSP `<meta>` content is `EXT_PAGE_CSP` (Task 2).
+  3. There is no `<link rel="manifest">` and no service worker.
+  4. The one script is `<script type="module" src="panel.js"></script>`.
+  5. `app.html` has `<body data-surface="tab">` and `<title>Byways</title>`; `panel.html` has `<body data-surface="panel">` and `<title>Byways panel</title>`.
+- `tests/fixtures/http/html/find-page.html`: `<!doctype html><title>Mock find</title><p>Mock find</p>`.
+
+- [ ] **Step 3: Write the harness and the first three tests** in `tests/e2e/extension.spec.js`
+
+```js
+const DIST = fileURLToPath(new URL('../../dist/chrome', import.meta.url));
+const EXT_ROUTES = [            // tried before tests/fixtures/routes.js; its Pages catch-all answers the other data files with {"v":1}
+  { match: /^https:\/\/itch\.io\/byways-sw-probe$/, file: 'html/find-page.html', headers: { 'content-type': 'text/html' } },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/daily\.json(\?d=\d{4}-\d{2}-\d{2})?$/, file: 'daily/daily-2026-11-11.json' },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/vault-index\.json$/, file: 'ia/vault-index.json' },
+  { match: /^https:\/\/iteatsthesalt\.github\.io\/Game-Dev-Resources\/byways\/data\/itch\.json$/, file: 'itch/itch.json' },
+  { match: /^https:\/\/itch\.io\/games\//, file: 'itch/platform-web.xml' },          // the extension reads itch.io live
+  { match: /^https:\/\/img\.itch\.zone\//, file: 'ia/thumb.svg', headers: { 'content-type': 'image/svg+xml' } },
+];
+const test = base.extend({
+  extArgs: [['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'], { option: true }],
+  context: async ({ extArgs, ignoreProblems }, use) => {
+    const context = await chromium.launchPersistentContext('', { channel: 'chromium',
+      headless: process.env.BYWAYS_EXT_HEADED !== '1',
+      args: [`--disable-extensions-except=${DIST}`, `--load-extension=${DIST}`, ...extArgs] });
+    await mockNet(context, { overrides: [...libraryRoutes(), ...EXT_ROUTES] });
+    await use(context);
+    expect(unmocked(context)).toEqual([]);
+    expect(pageProblems(context, { ignore: ignoreProblems })).toEqual([]);
+    await context.close();
+  },
+  sw: async ({ context }, use) => use(context.serviceWorkers()[0] ?? await context.waitForEvent('serviceworker')),
+  extId: async ({ sw }, use) => use(new URL(sw.url()).host),
+});
+
+test('loads the extension service worker', async ({ sw }) => {
+  expect(sw.url()).toMatch(/^chrome-extension:\/\/[a-p]{32}\/bg\.js$/);
+});
+
+test('service worker requests go through the mocks', async ({ sw }) => {
+  expect(await sw.evaluate(() => fetch('https://itch.io/byways-sw-probe').then((r) => r.text(), () => ''))).toContain('Mock find');
+});
+
+test.describe('harness', () => {
+  test.use({ ignoreProblems: [/Content Security Policy/] });
+  test('pageProblems sees a CSP violation on an extension page', async ({ context, extId }) => {
+    const page = await extPage(context, extId, 'app.html');
+    await useSources(page);
+    await page.evaluate(() => document.body.setAttribute('style', 'color: red'));
+    await expect.poll(() => pageProblems(context).join('\n')).toMatch(/Content Security Policy/);
+  });
+});
+```
+
+`test` here extends the `test` from `helpers/net.js`, for its `ignoreProblems` option, and replaces its `context` fixture with a persistent one that loads the extension. The extension tests never use the `page` fixture. The context is launched by hand, so the config's `use` block (including `serviceWorkers: 'block'`) does not apply to it.
+
+Helpers in the same file:
+- `escapeRe(s)`: `s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')`.
+- `libraryRoutes()` reads `src/data/library.json` and maps each entry to `{match: new RegExp('^' + escapeRe(url without its trailing slash) + '/?$'), file: 'html/find-page.html', headers: {'content-type': 'text/html'}}`.
+- `extPage(context, extId, path)`: `context.newPage()`, then `installFakeSpeech(page)`, then `goto` `chrome-extension://${extId}/${path}`. Every extension page so gets the fake speech, the fake wake lock and the `window.__announcements` log.
+- `tabInfo(page)`: `page.evaluate(() => chrome.tabs.getCurrent().then((t) => ({ id: t.id, windowId: t.windowId })))`. Only call it while the page is an extension page.
+- `useSources(page, ids = ['library'])`: in an extension page, import `core/sources/index.js` (`SOURCES`), `core/store/db.js` (`openStore`, `idbBackend`) and `core/settings.js` (`saveSettings`) through `chrome.runtime.getURL`. Save `{sources: <every SOURCES id → {enabled: ids.includes(id), fateWeight: 1}>, mode: 'tuned', checkLinks: false, firstRunDone: true}`, then reload the page. Plan 01's `boot()` waits for first run, so every test that opens a boot page calls this first.
+- `stumbleTab(page, tabId)`: `page.evaluate((id) => chrome.runtime.sendMessage({ type: 'stumble', tabId: id }), tabId)`. This runs the same `stumble(tab)` handler as the toolbar click.
+- `tell(sw, msg, session = null)`: in the service worker, `chrome.storage.session.set(session)` first when `session` is given, then `chrome.runtime.sendMessage(msg).catch(() => {})`. Pages never reply, and a send that gets no reply may reject. This is how the tests play the background's side of a message.
+- `grantMic(context, extId)`: opens `permission.html` (Task 7) with `extPage` and waits for its `close` event. `--use-fake-ui-for-media-stream` accepts the prompt.
+- `said(page)`: `page.evaluate(() => window.__announcements.map(([, text]) => text))`. Tests read live-region text from this log, because the Stumble view's `Now showing: <title>` can replace the text of `#live-polite` at any moment.
+
+- [ ] **Step 4: Run the spike and record the result**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
+Expected: PASS, 3 tests.
+- If `loads the extension service worker` times out in `waitForEvent('serviceworker')`, headless does not load extensions. Run it again as `BYWAYS_EXT_HEADED=1 xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js` (check `command -v xvfb-run` first; when it is missing here, CI proves it in Task 8).
+- If `service worker requests go through the mocks` does not get the fixture text, service-worker requests bypass the mocks, whatever came back instead (`''`, a real 404 from itch.io, or a proxy's 403 page). Add `process.env.PW_EXPERIMENTAL_SERVICE_WORKER_NETWORK_EVENTS = '1';` as the first line of the spec and run it again. If it still fails, mark that test `test.fixme` with the comment `// Service worker fetches bypass context.route here. The background uses only the library source in these tests, which makes no request.`
+- Put the outcome on the spec's first comment line, either `// Headless extensions in Playwright 1.63: work.` or `// Headless extensions in Playwright 1.63: fail. CI runs this spec under xvfb-run.` Task 8 reads it.
+
+- [ ] **Step 5: Add the failing tests**
+
+```js
+test('toolbar Stumble loads a find in the tab', async ({ context, extId }) => {
+  const app = await extPage(context, extId, 'app.html#/saved');
+  await useSources(app);
+  const site = await extPage(context, extId, 'app.html#/saved');
+  const { id } = await tabInfo(site);
+  const r = await stumbleTab(app, id);
+  expect(r.ok).toBe(true);
+  expect(r.find.source).toBe('library');
+  await expect(site).toHaveTitle('Mock find');
+  expect(new URL(site.url()).host).toBe(new URL(r.find.url).host);
+  const stored = await app.evaluate((k) => chrome.storage.session.get(k), `find:${id}`);
+  expect(stored[`find:${id}`].find.url).toBe(r.find.url);
+});
+
+test('the Byways tab routes between views', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await useSources(page);
+  // Daily Fate is the backup pick unless today is the date of the mocked daily.json, so only its start is fixed.
+  for (const [hash, heading] of [['#/feed', /^Feed$/], ['#/daily', /^Daily Fate/], ['#/vault', /^Vault$/], ['#/saved', /^Saved$/], ['#/settings', /^Settings$/]]) {
+    await page.goto(`chrome-extension://${extId}/app.html${hash}`);
+    await expect(page.getByRole('heading', { level: 1 })).toHaveText(heading);
+  }
+});
+
+test('Daily Fate in the Byways tab reads the file from the Pages site', async ({ context, extId }) => {
+  await context.clock.setFixedTime('2026-11-11T12:00:00Z');                // the date in daily-2026-11-11.json
+  const asked = []; context.on('request', (r) => asked.push(r.url()));
+  const page = await extPage(context, extId, 'app.html#/daily');
+  await useSources(page);
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('Daily Fate');
+  expect(asked).toContain('https://iteatsthesalt.github.io/Game-Dev-Resources/byways/data/daily.json?d=2026-11-11');
+  expect(asked.some((u) => u.includes('/feed/featured/'))).toBe(false);   // the backup recipe never ran
+});
+
+test('the Licenses screen lists what the extension ships', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html#/settings/licenses');
+  await useSources(page);
+  await expect(page.locator('#main')).toContainText('Atkinson Hyperlegible');
+  await expect(page.getByText('Could not load the licence list.')).toHaveCount(0);
+});
+
+test('the Lab button opens the hosted web Lab', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await useSources(page);
+  await expect(page.getByRole('link', { name: 'Lab' }))
+    .toHaveAttribute('href', 'https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/');
+});
+
+test('Open in the Byways tab uses a new tab', async ({ context, extId }) => {
+  const page = await extPage(context, extId, 'app.html');
+  await useSources(page);
+  await page.goto(`chrome-extension://${extId}/app.html#/stumble`);
+  const [opened] = await Promise.all([context.waitForEvent('page'), page.getByRole('button', { name: 'Open' }).click()]);
+  await expect(opened).toHaveTitle('Mock find');
+  expect(page.url()).toContain('app.html#/stumble');
+});
+```
+
+- [ ] **Step 6: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js`
+Expected: the five page tests FAIL. `panel.js` does not exist yet, so the pages stay blank and the `h1`, the Licenses text, the `Lab` link and the `Open` button time out. `toolbar Stumble loads a find in the tab` may already pass, because `bg.js` handles `stumble`. `Daily Fate in the Byways tab reads the file from the Pages site` also needs Plan 04's Daily view to fetch `app.dataUrl('daily.json') + '?d=' + date`, the contract's address, and not a path under the page.
+
+- [ ] **Step 7: Write `panel.js` (boot only)**
+
+`const ext = globalThis.browser ?? globalThis.chrome`; `surface = document.body.dataset.surface`. Before `boot`, add the page's one `ext.runtime.onMessage` listener (it replies to nothing; Tasks 6 and 7 add its cases) and every click handler that needs no `app`. A case that needs `app` first awaits `ready`, a promise that resolves with `app` once `boot` returns, so a message that arrives during first run waits instead of being lost. Then `const app = await boot(createExtensionPlatform({ext, win: window, surface}))` and resolve `ready`. On `app.engine.on('taste', …)`, send `{type: 'stateChanged'}`.
+
+- [ ] **Step 8: Run them and see them pass**
+
+Run the Step 6 command again.
+Expected: PASS, 9 tests (or 8 and 1 fixme).
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add shells/extension/app.html shells/extension/panel.html shells/extension/panel.js tests/e2e/extension.spec.js tests/e2e/helpers/net.js tests/fixtures/http/html/find-page.html
+git commit -m "Add the Byways tab and an e2e harness that loads the Chrome build"
+```
+
+### Task 6: Side panel and sidebar extras
+
+**Files:**
+- Modify: `shells/extension/panel.html`, `shells/extension/app.html`, `shells/extension/panel.js`
+- Test: `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: `showResult(result)` (`ui/views/stumble.js`); `navigate(route)` (`ui/router.js`); `announce(text, opts)` (`ui/a11y.js`); `renderCard(find, {onAction, compact: true})` and `makeActionHandler(app, {advance, whyLine}) → (action, find, extra) => Promise<void>` (`ui/components/card.js`, Plan 02); `app.getSettings()`; `app.history.push(find)`; `app.engine.current()`, `.next({mode})`, `.feed(n)`, `.on(event, fn)`, `.rabbit.start(find)` and `.rabbit.climbOut()`; `domainOf`; bg messages `tabFind`, `rabbit`, `accessChanged`, `checkAccess`; `storage.session` keys `find:<tabId>` and `pendingRabbit`; `storage.local.needsAccess` (Task 4); the Task 5 spec helpers and `EXT_ROUTES`; `expectNoSeriousA11y(page, {exclude?})` (`tests/e2e/helpers/axe.js`, Plan 01).
+- Produces: nothing new for other tasks.
+
+All extras are only on `data-surface="panel"`, except the access banner, which both pages show.
+
+- [ ] **Step 1: Write the failing tests** in `tests/e2e/extension.spec.js`
+
+```js
+test.describe('side panel', () => {
+  test('the side panel shows the card for the stumbled tab', async ({ context, sw, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const site = await extPage(context, extId, 'app.html#/saved');
+    const s = await tabInfo(site); const p = await tabInfo(panel);
+    await sw.evaluate(([t, w]) => chrome.tabs.move(t, { windowId: w, index: -1 }), [s.id, p.windowId]);
+    const r = await stumbleTab(panel, s.id);
+    await expect(panel.locator('#main')).toContainText(r.find.title);
+    await expect(panel.getByRole('button', { name: 'Start' })).toBeVisible();
+  });
+
+  test("a side panel that opens after a toolbar Stumble shows that tab's find", async ({ context, sw, extId }) => {
+    const app = await extPage(context, extId, 'app.html#/saved');
+    await useSources(app);
+    const site = await extPage(context, extId, 'app.html#/saved');
+    const s = await tabInfo(site);
+    const r = await stumbleTab(app, s.id);
+    await expect(site).toHaveTitle('Mock find');
+    const [panel] = await Promise.all([context.waitForEvent('page'),       // opened behind the site, so the site stays the active tab
+      sw.evaluate((w) => chrome.tabs.create({ url: chrome.runtime.getURL('panel.html'), windowId: w, active: false }), s.windowId)]);
+    await expect(panel.locator('#main')).toContainText(r.find.title);
+  });
+
+  test('Open Byways tab opens app.html', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const [tab] = await Promise.all([context.waitForEvent('page'), panel.getByRole('button', { name: 'Open Byways tab' }).click()]);
+    expect(tab.url()).toBe(`chrome-extension://${extId}/app.html`);
+  });
+
+  test('the mini feed shows compact cards', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    const feed = panel.getByRole('region', { name: 'More finds' });
+    await expect(feed.locator('#mini-feed-list > *')).toHaveCount(6);
+  });
+
+  test('More like this on a mini-feed card starts a Rabbit Hole', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
+    await panel.locator('#mini-feed-list > *').first().getByRole('button', { name: 'More like this' }).click();
+    await expect(panel.locator('#main').getByRole('button', { name: 'Climb out' })).toBeVisible();
+  });
+
+  test('the panel explains a not-web page and a refused consent', async ({ context, sw, extId }) => {   // Review Focus 4
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    await tell(sw, { type: 'rabbit' }, { pendingRabbit: { error: 'not-web' } });
+    await expect.poll(() => said(panel)).toContain('More like this page works only on web pages.');
+    await tell(sw, { type: 'rabbit' }, { pendingRabbit: { error: 'no-consent' } });
+    await expect.poll(() => said(panel)).toContain("More like this page needs permission to send this site's address to Marginalia. Nothing was sent.");
+  });
+
+  test.describe('Marginalia busy', () => {
+    test.use({ ignoreProblems: [/status of 503/] });  // the mocked 503 logs "Failed to load resource"
+    test('a page seed asks Marginalia for similar sites and says when it finds none', async ({ context, sw, extId }) => {
+      const asked = [];
+      context.on('request', (r) => asked.push(r.url()));
+      const panel = await extPage(context, extId, 'panel.html');
+      await useSources(panel, ['marginalia']);         // Marginalia's random gives nothing, so no local find can stand in
+      await tell(sw, { type: 'rabbit' }, { pendingRabbit: { id: 'url:x', source: 'marginalia', kind: 'site',
+        title: 'Small blog', description: '', url: 'https://small.example/blog/', tags: [], why: [], safety: 'mostly' } });
+      await expect.poll(() => asked.some((u) => u.startsWith('https://api2.marginalia-search.com/api/v2/site/small.example/similar'))).toBe(true);
+      await expect.poll(() => said(panel)).toContain('No similar sites found for small.example.');
+    });
+  });
+
+  for (const path of ['panel.html', 'app.html']) {
+    test(`the access banner on ${path} grants and disappears`, async ({ context, sw, extId }) => {     // Review Focus 5
+      const page = await extPage(context, extId, path);
+      await useSources(page);
+      await sw.evaluate(() => chrome.storage.local.set({ needsAccess: true }));
+      await tell(sw, { type: 'accessChanged', needsAccess: true });
+      const banner = page.locator('#access-banner');
+      await expect(banner).toContainText('Byways lost access to some sites. Grant access to turn them back on.');
+      await banner.getByRole('button', { name: 'Grant access' }).click();
+      await expect(banner).toBeHidden();
+    });
+  }
+
+  test('the panel has no serious accessibility issues', async ({ context, extId }) => {
+    const panel = await extPage(context, extId, 'panel.html');
+    await useSources(panel);
+    await expect(panel.locator('#mini-feed-list > *')).toHaveCount(6);
+    await expectNoSeriousA11y(panel);                       // tests/e2e/helpers/axe.js (Plan 01)
+  });
+});
+```
+
+Add to `EXT_ROUTES`: `{match: /^https:\/\/api2\.marginalia-search\.com\/api\/v2\/site\/small\.example\/similar/, file: 'html/find-page.html', status: 503}`. Marginalia's 503 means "busy", and the panel must say so plainly rather than fail. Chromium logs that 503 as a `Failed to load resource` console error, so only that test ignores `/status of 503/`.
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "side panel"`
+Expected: FAIL. The two tab-find tests fail on `toContainText(r.find.title)` and the others on missing elements or missing announcements.
+
+- [ ] **Step 3: Add the markup**
+
+In `panel.html`, above `#main` and so outside `#app`, which first run clears: `<div id="access-banner" hidden>` holding `<p>Byways lost access to some sites. Grant access to turn them back on.</p>` and `<button type="button">Grant access</button>`, then `<button type="button" id="open-tab">Open Byways tab</button>`. Below `#main`: `<section id="mini-feed" aria-labelledby="mini-feed-h"><h2 id="mini-feed-h">More finds</h2><div id="mini-feed-list"></div></section>`. `app.html` gets the same banner markup only.
+
+- [ ] **Step 4: Implement the extras in `panel.js`**
+
+Before `boot` (Task 5's rule), so they work while first run is on screen:
+- **Open Byways tab.** `#open-tab` calls `ext.tabs.create({url: ext.runtime.getURL('app.html')})`.
+- **Access banner** (both surfaces). On load, show it when `storage.local.needsAccess` is `true`. On `accessChanged`, show or hide it. The **Grant access** click calls `ext.permissions.request({origins: ext.runtime.getManifest().host_permissions})` as its first statement (a user gesture is needed), then sends `{type: 'checkAccess'}` and hides the banner when the reply has `needsAccess: false`.
+
+After `ready`, with `settle(app)`: an internal helper that resolves at once when `app.engine.current()` is set, else on the engine's next `find` or `empty` event, or after 10 s. It lets the Stumble view's first `engine.next` finish before the panel shows anything of its own, so the two never race:
+- **This tab's find.** On load, read the active tab of this window (`tabs.query({active: true, currentWindow: true})`) and its `storage.session['find:<id>']`. On `tabFind`, use the message when its `windowId` equals `(await ext.windows.getCurrent()).id`. Either way: `await settle(app)`; unless `app.engine.current()?.id` is that find's id, `app.history.push(find)`; then `navigate('stumble')`. The Stumble view renders `engine.current()`, which is now that find.
+- **Mini feed.** `await settle(app)`, then `app.engine.feed(6)`, and append `renderCard(find, {onAction, compact: true})` for each to `#mini-feed-list`. `onAction(action, find, extra)` runs Plan 02's `makeActionHandler(app, {advance, whyLine: (f) => f.why.join(' · ')})(action, find, extra)`, so every card button does what its label says. Its `advance` is the next find in the main view for `more` (as in the Rabbit Hole seed below), and removing that card from `#mini-feed-list` for `neverSite` and `broken`. Open uses a new tab, as on the main card.
+- **Rabbit Hole seed.** On load and on `rabbit`, take `pendingRabbit` from `storage.session` and remove it. `{error: 'not-web'}` → `announce('More like this page works only on web pages.')`. `{error: 'no-consent'}` → `announce("More like this page needs permission to send this site's address to Marginalia. Nothing was sent.")`. A find → `await settle(app)`, `app.engine.rabbit.start(seed)`, `navigate('stumble')` unless the route is already `stumble`, then `const r = await app.engine.next({mode: app.getSettings().mode})`. While the trail is not empty, the engine serves the Rabbit Hole, so this is the first similar site, shown, added to the seen-set and to history like any other find. A find → `showResult(r)`. `{empty}` or a rejection (Marginalia's 503 included) → `app.engine.rabbit.climbOut()` and `announce('No similar sites found for ' + domainOf(seed.url) + '.')`.
+
+- [ ] **Step 5: Run them and see them pass**
+
+Run the Step 2 command again.
+Expected: PASS, 10 tests.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add shells/extension/panel.html shells/extension/app.html shells/extension/panel.js tests/e2e/extension.spec.js
+git commit -m "Show the tab's find, a mini feed and Grant access in the side panel"
+```
+
+### Task 7: Mic grant page and hands-free on each surface
+
+**Files:**
+- Create: `shells/extension/permission.html`, `shells/extension/permission.js`
+- Modify: `shells/extension/panel.js`
+- Test: `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: bg `openPermission` (Task 4); `gateVoice` sending `{type: 'openPermission'}`, `toggleListening(hf, {activated, start})` and `caps.leanBack: false` on the panel surface (Task 3); Plan 03's `app.handsFree`, the one controller that `installHandsFreeUi(app)` (`ui/handsfree-ui.js`) makes at boot with `leanBack: app.platform.caps.leanBack !== false`, whose `start() → Promise<void>` runs the whole Start routine, with the contract's `listening` and `setListening(on)`; the `#hf-listening` and `#hf-countdown` elements; `announce`; `expectNoSeriousA11y` (`tests/e2e/helpers/axe.js`); the Task 5 spec helpers and the `extArgs` fixture option; Playwright's `context.clock`.
+- Produces: the `micGranted` message `{type: 'micGranted', granted: boolean}`.
+
+- [ ] **Step 1: Write the failing tests**
+
+```js
+test.describe('hands-free', () => {
+  test('the mic page grants, tells the open pages and closes', async ({ context, extId }) => {
+    const app = await extPage(context, extId, 'app.html');
+    await useSources(app);
+    const perm = await extPage(context, extId, 'permission.html');
+    const closed = perm.waitForEvent('close');
+    await expect(perm.locator('#status')).toHaveText('Microphone ready. This tab will close.');
+    await closed;
+    await expect.poll(() => said(app)).toContain('Microphone ready. Press Start.');
+  });
+
+  test.describe('mic blocked', () => {
+    test.use({ extArgs: ['--deny-permission-prompts'] });         // the page stays open
+    test('the mic page says the mic is blocked and stays open', async ({ context, extId }) => {
+      const perm = await extPage(context, extId, 'permission.html');
+      await expect(perm.getByRole('heading', { level: 1 })).toHaveText('Enable hands-free');
+      await expect(perm.locator('#status')).toHaveText('Microphone blocked. Allow it for Byways in your browser settings, then press Start again.');
+      expect(perm.isClosed()).toBe(false);
+    });
+    test('the mic page has no serious accessibility issues', async ({ context, extId }) => {
+      const perm = await extPage(context, extId, 'permission.html');
+      await expect(perm.locator('#status')).not.toBeEmpty();
+      await expectNoSeriousA11y(perm);
+    });
+  });
+
+  test('the first Start opens the mic page when the mic is not granted', async ({ context, extId }) => {
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    const [perm] = await Promise.all([context.waitForEvent('page', (p) => p.url().endsWith('/permission.html')),
+      app.getByRole('button', { name: 'Start' }).click()]);
+    expect(perm.url()).toBe(`chrome-extension://${extId}/permission.html`);
+  });
+
+  test('Alt+Shift+V turns listening on, off and on again in the Byways tab', async ({ context, sw, extId }) => {
+    await grantMic(context, extId);
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    await app.getByRole('heading', { level: 1 }).click();             // a press on the page, so speech may start
+    const { id, windowId } = await tabInfo(app);
+    const toggle = () => tell(sw, { type: 'toggleListening', tabId: id, windowId, inBywaysTab: true });
+    await toggle();
+    await expect(app.locator('#hf-listening')).toHaveText('Listening');
+    await toggle();
+    await expect.poll(() => said(app)).toContain('Listening off');     // Plan 03's stopListening announcement
+    await expect(app.locator('#hf-listening')).toHaveText('Not listening');
+    await toggle();
+    await expect(app.locator('#hf-listening')).toHaveText('Listening');
+  });
+
+  test('Start in panel.html reads aloud but never moves on by itself', async ({ context, extId }) => {
+    await grantMic(context, extId);
+    await context.clock.install();
+    const panel = await extPage(context, extId, 'panel.html#/stumble');
+    await useSources(panel);
+    await panel.getByRole('button', { name: 'Start' }).click();
+    await expect.poll(() => panel.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
+    const title = panel.locator('#main article.card h2').first();
+    const shown = await title.textContent();
+    await context.clock.runFor(60000);
+    await expect(title).toHaveText(shown);
+    await expect(panel.locator('#hf-countdown')).toBeEmpty();
+  });
+
+  test('Start in the Byways tab moves on by itself after the dwell', async ({ context, extId }) => {
+    await grantMic(context, extId);
+    await context.clock.install();
+    const app = await extPage(context, extId, 'app.html#/stumble');
+    await useSources(app);
+    await app.getByRole('button', { name: 'Start' }).click();
+    await expect.poll(() => app.evaluate(() => window.__spoken.length)).toBeGreaterThan(0);
+    const title = app.locator('#main article.card h2').first();
+    const shown = await title.textContent();
+    await context.clock.runFor(21000);                                  // the default 20 s dwell
+    await expect(title).not.toHaveText(shown);
+  });
+});
+```
+
+- [ ] **Step 2: Run them and see them fail**
+
+Run: `node tools/build.js --target extension && npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js -g "hands-free"`
+Expected: FAIL. `permission.html` is missing, so `#status` and `grantMic`'s `close` time out, and the first Start opens no mic page.
+
+- [ ] **Step 3: Write `permission.html`**
+
+It has the Task 5 CSP `<meta>`, `<title>Enable hands-free</title>`, the `ui/styles/app.css` link, `<h1>Enable hands-free</h1>`, `<p>Byways needs the microphone once, so it can hear voice commands in the side panel and the Byways tab. Byways does not record or keep any audio.</p>`, `<p id="status" role="status"></p>` and `<script type="module" src="permission.js"></script>`.
+
+- [ ] **Step 4: Write `permission.js`**
+
+It calls `navigator.mediaDevices.getUserMedia({audio: true})` on load and stops every track at once.
+- On success: `#status` reads `Microphone ready. This tab will close.` It sends `{type: 'micGranted', granted: true}`, and after 1500 ms it closes its own tab with `ext.tabs.getCurrent()` and `ext.tabs.remove(id)`.
+- On any rejection: `#status` gets `role="alert"` and reads `Microphone blocked. Allow it for Byways in your browser settings, then press Start again.` It sends `{type: 'micGranted', granted: false}` and stays open.
+
+- [ ] **Step 5: Handle the voice messages in `panel.js`** (both surfaces)
+
+- `micGranted` (before `boot`, since it needs no `app`): `announce('Microphone ready. Press Start.')` when granted, else `announce('Microphone blocked', {assertive: true})`, Plan 03's wording for a blocked mic.
+- `toggleListening` (after `ready`): only the page the message names acts. The Byways tab acts when `msg.inBywaysTab` and `msg.tabId` is its own tab id (`ext.tabs.getCurrent()`); the panel acts when `!msg.inBywaysTab` and `msg.windowId` is its window (`ext.windows.getCurrent()`). That page runs `toggleListening(app.handsFree, {activated: navigator.userActivation?.hasBeenActive ?? true, start: () => app.handsFree.start()})` and announces `Press Start to turn on hands-free.` when the result is `'needs-start'`, and `Voice is not available here. Settings → Voice says why.` with `{assertive: true}` when it is `'not-listening'`. A command relayed from the background gives the page no user activation, and a page that was never pressed cannot start speech.
+
+The side panel never auto-advances because its platform sets `caps.leanBack: false` (Task 3), and Plan 03's `installHandsFreeUi` creates the controller with `leanBack: app.platform.caps.leanBack !== false`. The Byways tab leaves `caps.leanBack` out, so lean-back runs there. `panel.js` adds no hands-free code of its own for this. The toggle test needs Plan 03's `listening` and `setListening`.
+
+- [ ] **Step 6: Run them and see them pass**
+
+Run the Step 2 command again.
+Expected: PASS, 7 tests.
+
+- [ ] **Step 7: Run the whole suite**
+
+Run: `npm test && npm run e2e`
+Expected: both exit with code 0.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add shells/extension/permission.html shells/extension/permission.js shells/extension/panel.js tests/e2e/extension.spec.js
+git commit -m "Add the one-time mic grant page, the listening toggle and lean-back per surface"
+```
+
+### Task 8: CI: extension zips and the extension spec
+
+**Files:**
+- Modify: `.github/workflows/byways.yml` at the repo root (`../../.github/workflows/byways.yml` from `Apps/Byways`; the web job), `tests/unit/workflows.test.js`, and, only if the Task 5 spike recorded "fail", `tests/e2e/extension.spec.js`
+
+**Interfaces:**
+- Consumes: `dist/chrome/` and `dist/firefox/` from `npm run e2e` (Task 2); Plan 01's web job, whose last step uploads those two folders as the `byways-extensions` artifact, and Plan 01's test `byways.yml runs the web job on Byways changes` in `tests/unit/workflows.test.js`; the spike line at the top of `tests/e2e/extension.spec.js` (Task 5).
+- Produces: the `byways-extensions` workflow artifact, now holding `byways-chrome.zip` and `byways-firefox.zip` (§17.1: "It uploads the extension zips as artifacts").
+
+- [ ] **Step 1: Write the failing test**
+
+In `tests/unit/workflows.test.js`, Plan 01's `byways.yml runs the web job on Byways changes` lists `'Apps/Byways/dist/chrome'` and `'Apps/Byways/dist/firefox'`. Replace those two strings with `'name: byways-extensions'`, `'Apps/Byways/dist/byways-chrome.zip'`, `'Apps/Byways/dist/byways-firefox.zip'` and `'if-no-files-found: error'`.
+
+- [ ] **Step 2: Run it and see it fail**
+
+Run: `node --test tests/unit/workflows.test.js`
+Expected: FAIL on `Apps/Byways/dist/byways-chrome.zip`.
+
+- [ ] **Step 3: Zip the builds and upload the zips**
+
+In the web job, add the zip step right after the e2e step, and change Plan 01's upload step (`name: byways-extensions`) to upload the zips instead of the folders, so that CI keeps one artifact:
+
+```yaml
+      - name: Zip the extension builds
+        working-directory: Apps/Byways/dist
+        run: |
+          (cd chrome && zip -qr ../byways-chrome.zip .)
+          (cd firefox && zip -qr ../byways-firefox.zip .)
+      - uses: actions/upload-artifact@v7
+        with:
+          name: byways-extensions
+          path: |
+            Apps/Byways/dist/byways-chrome.zip
+            Apps/Byways/dist/byways-firefox.zip
+          if-no-files-found: error
+```
+
+- [ ] **Step 4: Only if the spike line says "fail", run the extension spec under `xvfb-run`**
+
+Add `test.skip(process.env.BYWAYS_SKIP_EXT === '1', 'This spec runs in its own xvfb-run step.');` at the top level of `tests/e2e/extension.spec.js`. Set `BYWAYS_SKIP_EXT: '1'` in the `env:` of the existing e2e step. Then add this step after it:
+
+```yaml
+      - name: Extension e2e (headed, under xvfb)
+        working-directory: Apps/Byways
+        env:
+          BYWAYS_EXT_HEADED: '1'
+        run: xvfb-run -a npx playwright test -c tests/e2e/playwright.config.js tests/e2e/extension.spec.js
+```
+
+- [ ] **Step 5: Run the test and check the workflow parses**
+
+Run: `node --test tests/unit/workflows.test.js && npx --yes js-yaml@4.1.0 ../../.github/workflows/byways.yml > /dev/null && echo ok`
+Expected: PASS, then `ok`.
+
+- [ ] **Step 6: Check the zip command locally**
+
+Run: `npm run build && cd dist/chrome && zip -qr ../byways-chrome.zip . && unzip -l ../byways-chrome.zip | grep -c manifest.json`
+Expected: `1`. (`dist/` is gitignored.)
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add ../../.github/workflows/byways.yml tests/unit/workflows.test.js tests/e2e/extension.spec.js
+git commit -m "Upload the extension zips from CI and run the extension spec there"
+```
+
+Expected on the next CI run: the web job passes and lists the `byways-extensions` artifact with two zips.
+
+### Task 9: Manual extension checks
+
+Playwright cannot drive Firefox extensions, press the real toolbar button or send real browser shortcuts, so these checks are done by hand before each release.
+
+**Files:**
+- Create: `CHECKLIST.md`. Plan 07 runs before Plan 09, so it creates the file; Plan 09 adds its own sections and keeps these two.
+
+**Interfaces:**
+- Consumes: `dist/firefox/` and `dist/chrome/` (Task 2).
+- Produces: the `## Firefox extension (manual)` and `## Chrome and Edge extension (manual)` sections.
+
+- [ ] **Step 1: Write the two sections**
+
+Each is a short numbered list, each item one check with its expected result.
+
+`## Firefox extension (manual)`:
+1. Run `npm run build`. In Firefox 140 or later, open `about:debugging#/runtime/this-firefox`, choose **Load Temporary Add-on…** and pick `dist/firefox/manifest.json`. It loads with no errors. The only expected warning is about `background.service_worker`.
+2. The module background starts (spec §20, "Firefox module background"). `about:debugging` → **Inspect** shows `bg.js` with no errors.
+3. The toolbar button loads a find in the current tab.
+4. Alt+Shift+B opens the sidebar, which shows that find's card.
+5. Alt+Shift+M on a web page opens the sidebar and asks once for Firefox's browsing-activity data permission. Refuse: the sidebar says "More like this page needs permission to send this site's address to Marginalia. Nothing was sent." Allow: a Rabbit Hole starts. On `about:addons` the sidebar says "More like this page works only on web pages." This also checks that Firefox 140 knows `permissions.request({data_collection})` and `permissions.contains({data_collection})`, which could not be read on MDN when this plan was written. With AI set up, search once from the Stumble form (Firefox asks for search terms: allow it), restart Firefox, then say "search for old web" in the sidebar: the AI search runs with no new prompt, from the stored grant.
+6. In `about:addons` → Byways → Permissions, turn off one site, then restart Firefox. The toolbar badge shows `!`, and the sidebar shows **Grant access**. Pressing it brings the access back and hides the banner.
+7. **Start** in the sidebar opens `permission.html` once when the mic is not granted. After the grant, press **Start** again and say "next". This works on Firefox 160 or later. On older versions, Settings → Voice says why there is no voice. The sidebar reads cards aloud but never moves on by itself.
+8. In the Byways tab, **Open** uses a new tab, and lean-back moves on by itself after the dwell time.
+9. The Lab button opens `https://iteatsthesalt.github.io/Game-Dev-Resources/byways/lab/`.
+10. Settings → AI → **Connect OpenRouter** asks for the identity permission, finishes in Firefox's sign-in window, and saves the key.
+11. The install prompt shows no required data collection. Check `data_collection_permissions` against AMO's current list (by hand only: there is no automatic check).
+
+`## Chrome and Edge extension (manual)`:
+1. Run `npm run build`, open `chrome://extensions` (or `edge://extensions`), turn on developer mode and **Load unpacked** `dist/chrome`. The toolbar button loads a find in the current tab, and Alt+Shift+S does the same.
+2. Alt+Shift+B opens the side panel, which shows that find's card.
+3. Alt+Shift+M on a web page opens the side panel and starts a Rabbit Hole. On `chrome://newtab` the panel says "More like this page works only on web pages."
+4. With the side panel open next to a web page, Alt+Shift+V turns listening off and on in the panel. With a Byways tab in front, it does so in that tab only.
+5. Settings → AI → **Connect OpenRouter** asks for the identity permission, finishes in the browser's sign-in window, and saves the key (spec §12.8, "to verify").
+
+- [ ] **Step 2: Check the sections are there**
+
+Run: `grep -c "Load Temporary Add-on" CHECKLIST.md && grep -c "extension (manual)$" CHECKLIST.md`
+Expected: `1`, then `2`.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add CHECKLIST.md
+git commit -m "Add the manual extension checks"
+```

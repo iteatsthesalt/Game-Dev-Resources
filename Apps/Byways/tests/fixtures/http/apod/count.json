@@ -1,0 +1,26 @@
+[
+  {
+    "date": "2025-03-14",
+    "media_type": "image",
+    "title": "A Total Lunar Eclipse",
+    "explanation": "The Moon passes through Earth's shadow.",
+    "copyright": " Jane Sky ",
+    "url": "https://apod.nasa.gov/apod/image/2503/eclipse.jpg",
+    "hdurl": "https://apod.nasa.gov/apod/image/2503/eclipse_big.jpg"
+  },
+  {
+    "date": "2024-01-02",
+    "media_type": "video",
+    "title": "Launch Day",
+    "explanation": "A rocket rises from the pad.",
+    "url": "https://www.youtube.com/embed/abc123",
+    "thumbnail_url": "https://apod.nasa.gov/apod/image/2401/thumb.jpg"
+  },
+  {
+    "date": "2024-01-03",
+    "media_type": "video",
+    "title": "A Video Without A Still",
+    "explanation": "No thumbnail was provided for this one.",
+    "url": "https://www.youtube.com/embed/def456"
+  }
+]

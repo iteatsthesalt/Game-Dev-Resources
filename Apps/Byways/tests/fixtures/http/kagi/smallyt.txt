@@ -1,0 +1,2 @@
+https://www.youtube.com/feeds/videos.xml?channel_id=UCabc # Tom S https://www.youtube.com/channel/UCabc
+https://www.youtube.com/feeds/videos.xml?channel_id=UCxyz

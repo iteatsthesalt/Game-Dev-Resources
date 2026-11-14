@@ -1,0 +1,13 @@
+{
+  "key": "/subjects/example",
+  "work_count": 1,
+  "works": [
+    {
+      "key": "/works/OL2W",
+      "title": "A Book of Maps",
+      "authors": [{ "key": "/authors/OL1A", "name": "Ann Mapper" }],
+      "cover_id": 777,
+      "first_publish_year": 1998
+    }
+  ]
+}

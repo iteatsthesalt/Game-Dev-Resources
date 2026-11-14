@@ -1,0 +1,31 @@
+{
+  "result_count": 2,
+  "page_count": 1,
+  "page_size": 20,
+  "page": 1,
+  "results": [
+    {
+      "id": "ov1",
+      "title": "A red fox in the snow",
+      "creator": "Ann Photographer",
+      "foreign_landing_url": "https://www.flickr.com/photos/x/1",
+      "url": "https://live.staticflickr.com/x/1.jpg",
+      "thumbnail": "https://api.openverse.org/v1/images/ov1/thumb/",
+      "license": "by",
+      "license_version": "2.0",
+      "attribution": "\"A red fox in the snow\" by Ann Photographer is licensed under CC BY 2.0.",
+      "mature": false
+    },
+    {
+      "id": "ov2",
+      "title": "Not for work",
+      "creator": "Someone",
+      "foreign_landing_url": "https://www.flickr.com/photos/x/2",
+      "url": "https://live.staticflickr.com/x/2.jpg",
+      "thumbnail": "https://api.openverse.org/v1/images/ov2/thumb/",
+      "license": "by",
+      "license_version": "2.0",
+      "mature": true
+    }
+  ]
+}

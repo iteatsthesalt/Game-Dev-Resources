@@ -1,0 +1,9 @@
+{
+  "type": "disambiguation",
+  "title": "Mercury",
+  "titles": { "canonical": "Mercury", "normalized": "Mercury", "display": "Mercury" },
+  "extract": "Mercury most commonly refers to:",
+  "content_urls": {
+    "desktop": { "page": "https://en.wikipedia.org/wiki/Mercury" }
+  }
+}

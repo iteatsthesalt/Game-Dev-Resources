@@ -1,0 +1,23 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "pages": {
+      "2": {
+        "pageid": 2,
+        "title": "Moth trap",
+        "index": 2,
+        "extract": "A moth trap is a device used to attract moths for study.",
+        "fullurl": "https://en.wikipedia.org/wiki/Moth_trap",
+        "thumbnail": { "source": "https://upload.wikimedia.org/moth-trap.jpg", "width": 640, "height": 480 }
+      },
+      "1": {
+        "pageid": 1,
+        "title": "Moth",
+        "index": 1,
+        "extract": "Moths are a group of insects that includes all members of the order Lepidoptera that are not butterflies.",
+        "fullurl": "https://en.wikipedia.org/wiki/Moth",
+        "thumbnail": { "source": "https://upload.wikimedia.org/moth.jpg", "width": 640, "height": 427 }
+      }
+    }
+  }
+}

@@ -1,0 +1,32 @@
+{
+  "status": 200,
+  "response": {
+    "rowCount": 2,
+    "rows": [
+      {
+        "id": "edanmdm:nmah_1234",
+        "title": "Crazy quilt",
+        "content": {
+          "descriptiveNonRepeating": {
+            "record_link": "https://www.si.edu/object/crazy-quilt:nmah_1234",
+            "data_source": "National Museum of American History",
+            "metadata_usage": { "access": "CC0" },
+            "online_media": { "media": [{ "thumbnail": "https://ids.si.edu/ids/deliveryService?id=NMAH-1234", "type": "Images" }] }
+          }
+        }
+      },
+      {
+        "id": "edanmdm:nmah_5678",
+        "title": "Not open",
+        "content": {
+          "descriptiveNonRepeating": {
+            "record_link": "https://www.si.edu/object/not-open:nmah_5678",
+            "data_source": "National Museum of American History",
+            "metadata_usage": { "access": "usage conditions apply" },
+            "online_media": { "media": [{ "thumbnail": "https://ids.si.edu/ids/deliveryService?id=NMAH-5678", "type": "Images" }] }
+          }
+        }
+      }
+    ]
+  }
+}

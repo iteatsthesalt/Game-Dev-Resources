@@ -1,0 +1,16 @@
+{
+  "pagination": { "current": 1, "total": 1 },
+  "results": [
+    {
+      "id": "http://www.loc.gov/item/2003623456/",
+      "url": "https://www.loc.gov/item/2003623456/",
+      "title": "Map of Boston",
+      "description": ["An old map.", "A second note."],
+      "image_url": [
+        "https://tile.loc.gov/storage-services/service/pnp/2003623456/2003623456_150px.jpg",
+        "https://tile.loc.gov/storage-services/service/pnp/2003623456/2003623456_640px.jpg"
+      ]
+    },
+    { "id": "http://www.loc.gov/item/none/", "title": "No link here" }
+  ]
+}

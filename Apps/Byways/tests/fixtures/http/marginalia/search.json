@@ -1,0 +1,16 @@
+{
+  "license": "CC-BY-NC-SA 4.0",
+  "query": "synth",
+  "results": [
+    {
+      "url": "https://synth.example.net/notes/",
+      "title": "A synth page",
+      "description": "Notes on building a small analogue synth."
+    },
+    {
+      "url": "https://oscillators.example.org/",
+      "title": "Oscillators, by hand",
+      "description": "A hand-written guide to oscillator circuits."
+    }
+  ]
+}

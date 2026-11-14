@@ -1,0 +1,23 @@
+{
+  "info": { "total": 30000, "parameters": { "cc": "1", "has_image": "1", "limit": "10" } },
+  "data": [
+    {
+      "id": 94979,
+      "title": "Twilight in the Wilderness",
+      "url": "https://clevelandart.org/art/1965.233",
+      "creation_date": "1860",
+      "creators": [{ "description": "Frederic Edwin Church (American, 1826–1900)" }],
+      "share_license_status": "CC0",
+      "images": { "web": { "url": "https://openaccess-cdn.clevelandart.org/1965.233/1965.233_web.jpg" } }
+    },
+    {
+      "id": 95000,
+      "title": "Portrait of a Lady",
+      "url": "https://clevelandart.org/art/1999.1",
+      "creation_date": "1950",
+      "creators": [{ "description": "Some Artist (American, 1900–1980)" }],
+      "share_license_status": "Copyrighted",
+      "images": { "web": { "url": "https://openaccess-cdn.clevelandart.org/1999.1/1999.1_web.jpg" } }
+    }
+  ]
+}

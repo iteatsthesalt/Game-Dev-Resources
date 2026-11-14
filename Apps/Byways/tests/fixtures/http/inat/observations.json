@@ -1,0 +1,39 @@
+{
+  "total_results": 2,
+  "page": 1,
+  "per_page": 30,
+  "results": [
+    {
+      "id": 101,
+      "uri": "https://www.inaturalist.org/observations/101",
+      "observed_on": "2026-06-01",
+      "place_guess": "Oslo, Norway",
+      "user": { "login": "beefan" },
+      "taxon": { "id": 47219, "name": "Apis mellifera", "preferred_common_name": "Western Honey Bee" },
+      "photos": [
+        {
+          "id": 1,
+          "url": "https://static.inaturalist.org/photos/1/square.jpg",
+          "license_code": "cc-by",
+          "attribution": "(c) beefan, some rights reserved (CC BY)"
+        }
+      ]
+    },
+    {
+      "id": 102,
+      "uri": "https://www.inaturalist.org/observations/102",
+      "observed_on": "2026-06-02",
+      "place_guess": "Bergen, Norway",
+      "user": { "login": "allrights" },
+      "taxon": { "id": 12345, "name": "Bombus terrestris", "preferred_common_name": "Buff-tailed Bumblebee" },
+      "photos": [
+        {
+          "id": 2,
+          "url": "https://static.inaturalist.org/photos/2/square.jpg",
+          "license_code": null,
+          "attribution": "(c) allrights, all rights reserved"
+        }
+      ]
+    }
+  ]
+}

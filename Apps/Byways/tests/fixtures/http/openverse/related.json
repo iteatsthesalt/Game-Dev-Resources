@@ -1,0 +1,17 @@
+{
+  "result_count": 1,
+  "page_count": 1,
+  "results": [
+    {
+      "id": "ov3",
+      "title": "A grey fox at dusk",
+      "creator": "Bo Camera",
+      "foreign_landing_url": "https://www.flickr.com/photos/x/3",
+      "url": "https://live.staticflickr.com/x/3.jpg",
+      "thumbnail": "https://api.openverse.org/v1/images/ov3/thumb/",
+      "license": "cc0",
+      "license_version": "1.0",
+      "mature": false
+    }
+  ]
+}

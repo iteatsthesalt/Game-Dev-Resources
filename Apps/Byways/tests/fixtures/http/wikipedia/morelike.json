@@ -1,0 +1,15 @@
+{
+  "batchcomplete": "",
+  "query": {
+    "pages": {
+      "7": {
+        "pageid": 7,
+        "title": "Charles Babbage",
+        "index": 1,
+        "extract": "Charles Babbage was an English polymath who originated the concept of a digital programmable computer.",
+        "fullurl": "https://en.wikipedia.org/wiki/Charles_Babbage",
+        "thumbnail": { "source": "https://upload.wikimedia.org/babbage.jpg", "width": 640, "height": 800 }
+      }
+    }
+  }
+}
