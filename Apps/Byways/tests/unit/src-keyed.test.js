@@ -138,6 +138,39 @@ test('openverse more gives nothing without an id and encodes the id in the path'
   await openverse.more({ meta: { ovId: 'a/b c' } }, ctx); assert.equal(new URL(calls.at(-1).url).pathname, '/v1/images/a%2Fb%20c/related/');
 });
 
+// Added in Task 19b: Openverse polish from the Task 17 review.
+const tokenCalls = calls => calls.filter(c => c.url.includes('auth_tokens'));
+test('a 401 for an old openverse token keeps the newer token that replaced it', async () => {
+  const routes = [{ match: /images\/\?q=owl/, status: 401, json: { detail: 'expired' } }];
+  const { ctx, calls } = await adapterCtx({ secrets: ov, extraRoutes: routes });
+  await openverse.search('fox', ctx);
+  // Hold the owl search, which has already sent TOK, until a newer token has been kept.
+  let release; const held = new Promise(resolve => { release = resolve; });
+  const getJson = ctx.http.getJson;
+  ctx.http.getJson = async (url, opts) => { if (url.includes('q=owl')) await held; return getJson(url, opts); };
+  const owl = openverse.search('owl', ctx);
+  await new Promise(resolve => setTimeout(resolve, 0));
+  assert.equal(calls.length, 2, 'the owl search waits');
+  ctx.clock.advance(43200e3);
+  routes.push({ match: /auth_tokens/, json: { access_token: 'NEW', expires_in: 43200 } });
+  await openverse.search('fern', ctx); assert.equal(tokenCalls(calls).length, 2); assert.equal(calls.at(-1).headers.authorization, 'Bearer NEW');
+  release(); await assert.rejects(owl, { kind: 'http', status: 401 }); assert.equal(calls.at(-1).headers.authorization, 'Bearer TOK');
+  await openverse.search('moss', ctx);
+  assert.equal(tokenCalls(calls).length, 2); assert.equal(calls.at(-1).headers.authorization, 'Bearer NEW');
+});
+test('openverse warns once about one unparsable stored value', async t => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const { ctx } = await adapterCtx({ secrets: { 'src:openverse': '{"clientId": "ID",' } });
+  await openverse.search('fox', ctx); await openverse.random(ctx); assert.equal(warn.mock.callCount(), 1);
+  await ctx.secrets.set('src:openverse', '{"clientId": "OTHER",'); await openverse.search('fox', ctx); assert.equal(warn.mock.callCount(), 2);
+});
+test('openverse adds the licence version only when it is a string or a number', async () => {
+  const result = (id, license_version) => ({ id, title: 'Fox ' + id, foreign_landing_url: `https://x.example/${id}`, license: 'by', license_version });
+  const results = [result('a', '4.0'), result('b', 3), result('c', { v: 4 }), result('d', ['2.0']), result('e', undefined)];
+  const { ctx } = await adapterCtx({ secrets: ov, extraRoutes: [{ match: /v1\/images\/\?/, json: { results } }] });
+  assert.deepEqual((await openverse.search('fox', ctx)).map(f => f.licence), ['CC BY 4.0', 'CC BY 3', 'CC BY', 'CC BY', 'CC BY']);
+});
+
 // Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
 test('europeana does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
   match: /api\.europeana\.eu/, bad: { success: false, error: 'busy' }, empty: { success: true, itemsCount: 0, totalResults: 0, items: [] },

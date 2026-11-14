@@ -86,6 +86,12 @@ test('entries makeFind rejects or that lack an id are dropped, and callers canno
   assert.deepEqual((await library.random(ctx))[0].tags, ['music', 'toy']);
   assert.equal((await library.random(ctx))[0].title, 'Tiny Synth');
 });
+test('library more keeps two entries that share an id apart', async () => {
+  const twins = [entries[0], { ...entries[1], id: 'lib-twin' }, { ...entries[2], id: 'lib-twin', tags: ['toy'] }];
+  const { ctx } = await adapterCtx({ data: { library: { entries: twins } } });
+  const [synth] = await library.search('synth', ctx);
+  assert.deepEqual((await library.more(synth, ctx)).map(f => f.title).sort(), ['Moth Atlas', 'Pixel Garden']);
+});
 test('a reloaded library is picked up', async () => {
   const { ctx } = await adapterCtx({ data: { library: { entries: [entries[0]] } } });
   assert.equal((await library.random(ctx)).length, 1);

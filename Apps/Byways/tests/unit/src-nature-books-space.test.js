@@ -75,6 +75,14 @@ test('apod counts each DEMO_KEY request, never counts a keyed one, and search an
   assert.deepEqual(await apod.search('x', ctx), []); assert.deepEqual(await apod.more({}, ctx), []);
 });
 
+test('inat skips an observation whose id is missing or not a string or number', async () => {
+  const photo = { url: 'https://static.inaturalist.org/photos/7/square.jpg', license_code: 'cc0' };
+  const observation = id => ({ id, uri: `https://www.inaturalist.org/observations/${id}`, taxon: { id: 9, name: 'Quercus' }, photos: [photo] });
+  const results = [observation(undefined), observation({ n: 1 }), observation(null), observation('o7'), observation(8)];
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /api\.inaturalist\.org/, json: { results } }] });
+  assert.deepEqual((await inat.random(ctx)).map(f => f.id), ['inat:o7', 'inat:8']);
+});
+
 // Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
 test('inat does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
   match: /api\.inaturalist\.org/, bad: { error: 'busy' }, empty: { total_results: 0, results: [] }, call: ctx => inat.search('bee', ctx),

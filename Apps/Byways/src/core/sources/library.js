@@ -38,6 +38,7 @@ function load(ctx) {
   const entries = lib?.entries;
   if (!lib || typeof lib !== 'object' || !Array.isArray(entries)) return [];
   const hit = converted.get(lib);
+  // Identity only: the data loader must replace the library object, not push into its entries array.
   if (hit?.entries === entries) return hit.items;
   const items = entries.map(convert).filter(Boolean);
   converted.set(lib, { entries, items });
@@ -85,8 +86,9 @@ const library = {
 
   async more(find, ctx) {
     const pool = counted(ctx);
-    const byId = new Map(pool.map(item => [item.find.id, item]));
-    return similarLocal(find, pool.map(item => item.find), MORE_LIMIT).map(match => fresh(byId.get(match.id)));
+    // similarLocal returns the candidate objects it was given, so key by object: two entries may share an id.
+    const byFind = new Map(pool.map(item => [item.find, item]));
+    return similarLocal(find, pool.map(item => item.find), MORE_LIMIT).map(match => fresh(byFind.get(match)));
   },
 };
 

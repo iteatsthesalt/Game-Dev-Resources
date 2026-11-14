@@ -20,6 +20,8 @@ function describe(taxon, observation) {
 
 function observationFind(observation) {
   if (!observation || typeof observation !== 'object') return null;
+  // Without a usable id every such observation would share the Find id 'inat:undefined' (shared adapter rule 10).
+  if (typeof observation.id !== 'string' && typeof observation.id !== 'number') return null;
   const photo = (Array.isArray(observation.photos) ? observation.photos : [])
     .find(p => p && LICENCES.includes(p.license_code) && typeof p.url === 'string');
   if (!photo) return null;

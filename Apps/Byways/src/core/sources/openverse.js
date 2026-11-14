@@ -20,6 +20,8 @@ const EARLY_MS = 60e3;
 const states = new WeakMap();
 
 const NO_TOKEN = Symbol('no token');
+/** Hashes of the unparsable stored values already warned about. */
+const warned = new Set();
 
 function stateOf(secrets) {
   if (!states.has(secrets)) states.set(secrets, { kept: new Map(), pending: new Map() });
@@ -34,7 +36,12 @@ async function credentialsOf(ctx) {
   try {
     parsed = JSON.parse(raw);
   } catch {
-    console.warn('Openverse credentials are not valid JSON');
+    // Once per bad stored value, not on every call; the set holds a hash, so it never keeps the secret itself.
+    const bad = hash64(raw);
+    if (!warned.has(bad)) {
+      warned.add(bad);
+      console.warn('Openverse credentials are not valid JSON');
+    }
     return null;
   }
   const clientId = text(parsed?.clientId);
@@ -78,21 +85,29 @@ const isReply = body => Array.isArray(body?.results);
 
 /**
  * GET JSON from the API with a bearer token. `cache` keeps the response for a day (the token is fetched only on
- * a miss). A reply to the token request without a token gives null. A 401 drops the kept token, then rethrows.
+ * a miss). A reply to the token request without a token gives null. A 401 drops the kept token when it is the one
+ * that was sent, then rethrows.
  */
 async function getJson(ctx, credentials, url, cache) {
+  let sent;
   const headers = async () => {
-    const token = await tokenFor(ctx, credentials);
-    if (!token) throw NO_TOKEN;
-    return { Authorization: `Bearer ${token}` };
+    sent = await tokenFor(ctx, credentials);
+    if (!sent) throw NO_TOKEN;
+    return { Authorization: `Bearer ${sent}` };
   };
   try {
     return cache ? await cachedJson(ctx, ID, url, { headers, accept: isReply }) : await ctx.http.getJson(url, { source: ID, headers: await headers() });
   } catch (error) {
     if (error === NO_TOKEN) return null;
-    if (error instanceof NetError && error.kind === 'http' && error.status === 401) stateOf(ctx.secrets).kept.delete(credentials.key);
+    if (error instanceof NetError && error.kind === 'http' && error.status === 401) forget(ctx, credentials, sent);
     throw error;
   }
+}
+
+// Drop the kept token only if it is the one that was refused: a newer token may have replaced it meanwhile.
+function forget(ctx, credentials, token) {
+  const { kept } = stateOf(ctx.secrets);
+  if (kept.get(credentials.key)?.token === token) kept.delete(credentials.key);
 }
 
 function licenceOf(item) {
@@ -100,7 +115,8 @@ function licenceOf(item) {
   if (!license) return undefined;
   if (license === 'cc0') return 'CC0 1.0';
   if (license === 'pdm') return 'Public Domain Mark 1.0';
-  return 'CC ' + license.toUpperCase() + (item.license_version ? ' ' + item.license_version : '');
+  const version = typeof item.license_version === 'number' ? String(item.license_version) : text(item.license_version);
+  return 'CC ' + license.toUpperCase() + (version ? ' ' + version : '');
 }
 
 function image(item) {
