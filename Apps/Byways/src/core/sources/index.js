@@ -23,9 +23,12 @@ import hn from './hn.js';
 import aic from './aic.js';
 import met from './met.js';
 import cleveland from './cleveland.js';
+import nasaimages from './nasaimages.js';
+import loc from './loc.js';
+import smithsonian from './smithsonian.js';
 
 // Each adapter task adds one import above this line and one entry below it.
-const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland];
+const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian];
 
 /** id -> adapter, in the order of ADAPTERS. */
 export const SOURCES = Object.fromEntries(ADAPTERS.map(adapter => [adapter.id, adapter]));

@@ -1,0 +1,30 @@
+{
+  "collection": {
+    "version": "1.0",
+    "href": "https://images-api.nasa.gov/search?q=nebula&media_type=image&page_size=20",
+    "items": [
+      {
+        "href": "https://images-assets.nasa.gov/image/PIA123/collection.json",
+        "data": [
+          {
+            "center": "GSFC",
+            "title": "Pillars of a Distant Nebula",
+            "nasa_id": "PIA123",
+            "media_type": "image",
+            "date_created": "2015-04-10T00:00:00Z",
+            "description": "Towers of gas and dust in a stellar nursery."
+          }
+        ],
+        "links": [
+          { "href": "https://images-assets.nasa.gov/image/PIA123/PIA123~thumb.jpg", "rel": "preview", "render": "image" }
+        ]
+      },
+      {
+        "href": "https://images-assets.nasa.gov/image/PIA999/collection.json",
+        "data": [{ "title": "No id here", "media_type": "image" }],
+        "links": [{ "href": "https://images-assets.nasa.gov/image/PIA999/PIA999~thumb.jpg", "rel": "preview" }]
+      }
+    ],
+    "metadata": { "total_hits": 2 }
+  }
+}

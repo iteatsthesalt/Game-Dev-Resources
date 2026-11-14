@@ -21,4 +21,7 @@ export default [
   { match: /collectionapi\.metmuseum\.org\/public\/collection\/v1\.1\/search/, file: 'met/search.json' },
   { match: /collectionapi\.metmuseum\.org\/public\/collection\/v1\/objects\//, file: 'met/object.json' },
   { match: /openaccess-api\.clevelandart\.org\/api\/artworks\//, file: 'cleveland/artworks.json' },
+  { match: /images-api\.nasa\.gov\/search/, file: 'nasaimages/search.json' },
+  { match: /www\.loc\.gov\/photos\//, file: 'loc/photos.json' },
+  { match: /api\.si\.edu\/openaccess\/api\/v1\.0\/search/, file: 'smithsonian/search.json' },
 ];
