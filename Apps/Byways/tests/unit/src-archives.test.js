@@ -19,6 +19,7 @@ test('loc reads JSON, shows no image and treats HTML as a failure', async () => 
   assert.equal(f.title, 'Map of Boston'); assert.equal(f.description, 'An old map.'); assert.equal(f.imageUrl, undefined);
   const html = await adapterCtx({ extraRoutes: [{ match: /loc\.gov/, file: 'loc/captcha.html', headers: { 'content-type': 'text/html' } }] });
   await assert.rejects(loc.search('map', html.ctx));
+  assert.deepEqual(await html.store.keys('cache'), []);
 });
 test('smithsonian needs the api.data.gov key, shows CC0 images only and keeps the key out of the cache', async () => {
   const none = await adapterCtx(); assert.deepEqual(await smithsonian.search('quilt', none.ctx), []); assert.equal(none.calls.length, 0);

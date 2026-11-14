@@ -75,7 +75,20 @@ test('two loads of one list share a single download', async () => {
   const { ctx, calls } = await adapterCtx();
   const [a, b] = await Promise.all([loadKagiList(ctx, 'smallweb'), loadKagiList(ctx, 'smallweb')]);
   assert.equal(calls.length, 1); assert.equal(a.length, 3); assert.deepEqual(a, b);
-  ctx.rand = () => 0.1; await Promise.all([kagi.random(ctx), kagi.random(ctx)]); assert.equal(calls.length, 1);
+  // kagi.random and a load on a fresh app, before any list is stored, share one download too.
+  const fresh = await adapterCtx(); fresh.ctx.rand = () => 0.1;
+  const [picked, loaded] = await Promise.all([kagi.random(fresh.ctx), loadKagiList(fresh.ctx, 'smallweb')]);
+  assert.deepEqual(picked, []); assert.equal(loaded.length, 3); assert.equal(fresh.calls.length, 1);
+});
+test('a failed refresh of an old list is not retried within the hour, and is after it', async (t) => {
+  const warn = t.mock.method(console, 'warn', () => {});
+  const extra = []; const { ctx, calls } = await adapterCtx({ extraRoutes: extra });
+  await loadKagiList(ctx, 'smallweb');
+  extra.push({ match: /smallweb\.txt/, error: true }); ctx.clock.advance(7 * 864e5 + 1);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await tick(); assert.equal(calls.length, 2); assert.equal(warn.mock.callCount(), 1);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await tick(); assert.equal(calls.length, 2);
+  ctx.clock.advance(3600e3 + 1);
+  assert.equal((await loadKagiList(ctx, 'smallweb')).length, 3); await tick(); assert.equal(calls.length, 3); assert.equal(warn.mock.callCount(), 2);
 });
 test('a failed background download is not retried within the hour', async (t) => {
   const warn = t.mock.method(console, 'warn', () => {});

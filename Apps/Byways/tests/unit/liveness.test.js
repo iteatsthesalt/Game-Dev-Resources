@@ -19,6 +19,7 @@ test('the privileged check reads the status', async () => {
 test('a hung site counts as not live', async () => {
   const hang = tr((u, init) => new Promise((_, rej) => init.signal.addEventListener('abort', () => rej(new Error('aborted')))));
   assert.equal(await checkLive('https://slow.example/', { transport: hang, timeoutMs: 20 }), false);
+  assert.equal(hang.calls[0].init.signal.aborted, true);
 });
 test('the web check never fetches an http: site', async () => {
   const t = tr(async () => ({ status: 0, type: 'opaque' }));

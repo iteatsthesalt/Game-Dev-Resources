@@ -50,6 +50,34 @@ test('hn random asks for a 30-day window', async () => {
   assert.equal(+m[2] - +m[1], 30 * 86400); assert.ok(+m[2] <= ctx.clock.now() / 1000);
 });
 
+// Added in Task 19b: the Task 14 tests its review found missing.
+test('a github repository without an id or a web address is skipped', async () => {
+  const repo = { id: 7, name: 'kept', html_url: 'https://github.com/a/kept' };
+  const items = [{ ...repo, id: undefined, name: 'no id' }, { ...repo, id: 8, name: 'no url', html_url: undefined }, repo];
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /api\.github\.com/, json: { items } }] });
+  assert.deepEqual((await github.search('x', ctx)).map(f => f.id), ['github:7']);
+});
+test('an hn hit without an id is skipped', async () => {
+  const hit = { objectID: '9', title: 'Show HN: Kept', url: 'https://kept.example.com/' };
+  const hits = [{ ...hit, objectID: undefined }, { ...hit, objectID: '' }, { ...hit, objectID: { id: 1 } }, hit];
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /hn\.algolia\.com/, json: { hits } }] });
+  assert.deepEqual((await hn.search('x', ctx)).map(f => f.id), ['hn:9']);
+});
+test('a marginalia result without a web address is skipped', async () => {
+  const results = [{ title: 'No url' }, { url: '', title: 'Empty url' }, { url: 'ftp://files.example.com/', title: 'Not http' }, { url: 'https://kept.example.com/', title: 'Kept' }];
+  const { ctx } = await adapterCtx({ extraRoutes: [{ match: /api\/v2\/search/, json: { results } }] });
+  assert.deepEqual((await marginalia.search('x', ctx)).map(f => f.id), ['marginalia:https://kept.example.com/']);
+});
+test('github more without topics, marginalia more without a web address, and hn more make no request', async () => {
+  const { ctx, calls } = await adapterCtx();
+  assert.deepEqual(await github.more({ url: 'https://github.com/a/b', meta: {} }, ctx), []);
+  assert.deepEqual(await github.more({ url: 'https://github.com/a/b' }, ctx), []);
+  assert.deepEqual(await marginalia.more({ url: 'ftp://files.example.com/' }, ctx), []);
+  assert.deepEqual(await marginalia.more({ url: 'javascript:alert(1)' }, ctx), []);
+  assert.deepEqual(await hn.more({ url: 'https://tinygame.example.com/' }, ctx), []);
+  assert.equal(calls.length, 0);
+});
+
 // Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
 test('marginalia does not cache a surprise-shaped search or similar-sites reply', async () => {
   await assertSurpriseNotCached({
