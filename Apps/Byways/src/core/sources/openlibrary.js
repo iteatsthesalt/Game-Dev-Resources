@@ -1,5 +1,6 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { list } from './parse.js';
 
 const ID = 'openlibrary';
 const TAGS = ['books'];
@@ -25,8 +26,6 @@ function book({ key, title, author, cover, year, subject }) {
     ...(subject ? { meta: { subject } } : {}),
   });
 }
-
-const list = value => (Array.isArray(value) ? value : []);
 
 /** The shape fromSearch() relies on: a reply without it is not cached. */
 const isSearchReply = body => Array.isArray(body?.docs);

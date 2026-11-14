@@ -1,11 +1,10 @@
 import { makeFind } from '../model/find.js';
 import { isHttpUrl } from '../util/url.js';
+import { optionalText } from './parse.js';
 
 const ID = 'kagirandom';
 const TAGS = ['web', 'essays'];
 const API = 'https://kagi.com/smallweb/api/random';
-
-const text = value => (typeof value === 'string' && value ? value : undefined);
 
 // The category names that are tag ids in the tag vocabulary, in the reply's order.
 function knownTags(categories, vocabulary) {
@@ -28,16 +27,16 @@ const kagirandom = {
 
   async random(ctx) {
     const body = await ctx.http.getJson(API, { source: ID });
-    const url = text(body?.url);
+    const url = optionalText(body?.url);
     if (!url || !isHttpUrl(url)) return [];
     const known = knownTags(body.categories, ctx.data?.tags);
     const find = makeFind({
       id: `kagirandom:${url}`,
       source: ID,
       kind: 'site',
-      title: text(body.title) ?? text(body.domain),
+      title: optionalText(body.title) ?? optionalText(body.domain),
       url,
-      author: text(body.author),
+      author: optionalText(body.author),
       tags: known.length ? known : TAGS,
       why: ['Kagi Small Web: random'],
       safety: kagirandom.safety,

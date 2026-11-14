@@ -1,10 +1,5 @@
-import { APP_VERSION } from '../version.js';
-
-/**
- * The value of the Api-User-Agent and AIC-User-Agent headers. Adapters read it inside functions only:
- * this module imports the adapters, so a top-level read in an adapter would hit the import cycle.
- */
-export const IDENT = `Byways/${APP_VERSION} (+https://github.com/iteatsthesalt/Game-Dev-Resources)`;
+/** Re-exported for callers of the registry; adapters import IDENT from ident.js, never from here. */
+export { IDENT } from './ident.js';
 
 /**
  * Source ids that never get an `http.register` call. Plan 04's Archive queue alone paces and backs off

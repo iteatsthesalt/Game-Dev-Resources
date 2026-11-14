@@ -1,13 +1,12 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'nasaimages';
 const TAGS = ['space'];
 const API = 'https://images-api.nasa.gov/search';
 const WORDS = ['nebula', 'aurora', 'rover', 'launch', 'galaxy', 'eclipse', 'saturn', 'apollo', 'comet', 'earth'];
 const MAX_PAGE = 5;
-
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 function image(item) {
   const data = item?.data?.[0];

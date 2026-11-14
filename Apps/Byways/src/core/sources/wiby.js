@@ -1,6 +1,7 @@
 import { makeFind } from '../model/find.js';
 import { isHttpUrl } from '../util/url.js';
 import { cachedJson } from './cached.js';
+import { list } from './parse.js';
 
 const ID = 'wiby';
 const TAGS = ['oldweb', 'web'];
@@ -44,7 +45,7 @@ const wiby = {
   async search(q, ctx) {
     // A reply is kept for a day only when it is a list, so a busy or odd reply is asked for again next time.
     const body = await cachedJson(ctx, ID, `${API}?${new URLSearchParams({ q })}`, { accept: Array.isArray });
-    return (Array.isArray(body) ? body : []).map(page).filter(Boolean);
+    return list(body).map(page).filter(Boolean);
   },
 
   async more() {

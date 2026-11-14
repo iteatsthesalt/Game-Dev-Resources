@@ -1,6 +1,7 @@
 import { makeFind } from '../model/find.js';
 import { domainOf } from '../util/url.js';
 import { cachedJson } from './cached.js';
+import { list, optionalText } from './parse.js';
 
 const ID = 'marginalia';
 const TAGS = ['web'];
@@ -8,19 +9,16 @@ const API = 'https://api2.marginalia-search.com/api/v2';
 const KEY_NAME = 'src:marginalia';
 const PUBLIC_KEY = 'public';
 
-const list = value => (Array.isArray(value) ? value : []);
-const text = value => (typeof value === 'string' && value ? value : undefined);
-
 function site(entry, why, { urlFromDomain = false } = {}) {
   if (!entry || typeof entry !== 'object') return null;
-  const domain = text(entry.domain);
-  const url = text(entry.url) ?? (urlFromDomain && domain ? `https://${domain}/` : undefined);
+  const domain = optionalText(entry.domain);
+  const url = optionalText(entry.url) ?? (urlFromDomain && domain ? `https://${domain}/` : undefined);
   if (!url) return null;
   return makeFind({
     id: 'marginalia:' + url,
     source: ID,
     kind: 'site',
-    title: text(entry.title) ?? domain,
+    title: optionalText(entry.title) ?? domain,
     description: entry.description,
     url,
     tags: TAGS,

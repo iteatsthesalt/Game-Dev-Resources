@@ -1,13 +1,12 @@
 import { makeFind } from '../model/find.js';
-import { IDENT } from './index.js';
+import { IDENT } from './ident.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'aic';
 const TAGS = ['art'];
 const API = 'https://api.artic.edu/api/v1/artworks/search';
 const MAX_PAGE = 500;
-
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 function artwork(item, iiifUrl) {
   if (!item || typeof item !== 'object') return null;

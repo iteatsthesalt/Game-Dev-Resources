@@ -2,6 +2,7 @@ import { makeFind } from '../model/find.js';
 import { NetError } from '../net/errors.js';
 import { hash64 } from '../util/hash.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'openverse';
 const TAGS = ['photography'];
@@ -19,7 +20,6 @@ const EARLY_MS = 60e3;
 const states = new WeakMap();
 
 const NO_TOKEN = Symbol('no token');
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 function stateOf(secrets) {
   if (!states.has(secrets)) states.set(secrets, { kept: new Map(), pending: new Map() });

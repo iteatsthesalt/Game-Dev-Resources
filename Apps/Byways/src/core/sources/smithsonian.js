@@ -1,5 +1,6 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'smithsonian';
 const TAGS = ['history'];
@@ -7,8 +8,6 @@ const API = 'https://api.si.edu/openaccess/api/v1.0/search';
 const KEY_NAME = 'src:datagov';
 const WORDS = ['quilt', 'fossil', 'meteorite', 'toy', 'clock', 'mask', 'telescope', 'shell', 'banjo', 'kite'];
 const MAX_START = 200;
-
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 function object(row) {
   const info = row?.content?.descriptiveNonRepeating;

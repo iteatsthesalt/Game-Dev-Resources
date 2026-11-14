@@ -1,9 +1,9 @@
-import { IDENT } from './index.js';
+import { IDENT } from './ident.js';
 import { SEARCH_TTL_MS, cachedJson as cachedJsonWith } from './cached.js';
 
 export { SEARCH_TTL_MS };
 
-/** GET JSON from a Wikimedia host. IDENT is read here, inside a function, because index.js imports the adapters (an import cycle). */
+/** GET JSON from a Wikimedia host, with the Api-User-Agent header. */
 export const getJson = (ctx, source, url) =>
   ctx.http.getJson(url, { source, headers: { 'Api-User-Agent': IDENT } });
 

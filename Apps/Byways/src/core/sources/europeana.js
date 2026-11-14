@@ -1,5 +1,6 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'europeana';
 const TAGS = ['culture', 'history'];
@@ -8,7 +9,6 @@ const KEY_NAME = 'src:europeana';
 const WORDS = ['map', 'clock', 'poster', 'bird', 'ship', 'mask', 'garden', 'tile', 'toy', 'letter'];
 const MAX_START = 100;
 
-const text = value => (typeof value === 'string' ? value.trim() : '');
 /** Europeana fields are arrays: the first string, or undefined for a missing or oddly shaped field. */
 const first = list => (Array.isArray(list) && typeof list[0] === 'string' && list[0].trim() ? list[0] : undefined);
 

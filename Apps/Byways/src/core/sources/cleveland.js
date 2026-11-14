@@ -1,13 +1,12 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'cleveland';
 const TAGS = ['art'];
 const API = 'https://openaccess-api.clevelandart.org/api/artworks/';
 const TOTAL_KEY = 'cleveland:total';
 const TOTAL_TTL_MS = 7 * 24 * 3600e3;
-
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 function artwork(item) {
   if (!item || typeof item !== 'object' || item.share_license_status !== 'CC0') return null;

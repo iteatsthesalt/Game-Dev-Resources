@@ -2,6 +2,7 @@ import { makeFind } from '../model/find.js';
 import { toPlainText } from '../util/text.js';
 import { utcDate } from '../util/clock.js';
 import { cachedJson } from './cached.js';
+import { list } from './parse.js';
 
 const ID = 'hn';
 const TAGS = ['tech', 'indie'];
@@ -10,7 +11,6 @@ const WINDOW_S = 30 * 86400;
 const SPAN_S = 3 * 365 * 86400;
 const SHOW_HN = /^\s*Show HN:\s*/i;
 
-const list = value => (Array.isArray(value) ? value : []);
 const count = value => (Number.isFinite(value) ? value : 0);
 
 function story(hit) {

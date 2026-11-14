@@ -1,5 +1,6 @@
 import { makeFind } from '../model/find.js';
 import { cachedJson } from './cached.js';
+import { text } from './parse.js';
 
 const ID = 'met';
 const TAGS = ['art', 'history'];
@@ -9,8 +10,6 @@ const TOTAL_KEY = 'met:total';
 const MAX_OFFSET_RANGE = 10000;
 const DAY_MS = 24 * 3600e3;
 const OBJECT_TTL_MS = 7 * DAY_MS;
-
-const text = value => (typeof value === 'string' ? value.trim() : '');
 
 const isId = value => typeof value === 'number' || typeof value === 'string';
 /** A search reply worth keeping: a list of object ids, or a total of 0 (the Met answers no hits with objectIDs null). */

@@ -1,6 +1,7 @@
 import { makeFind } from '../model/find.js';
 import { isHttpUrl } from '../util/url.js';
 import { cachedJson } from './cached.js';
+import { list } from './parse.js';
 
 const ID = 'github';
 const TAGS = ['indie', 'programming'];
@@ -9,8 +10,6 @@ const KEY_NAME = 'src:github';
 const HOUR_MS = 3600e3;
 const TOPICS = ['game-jam', 'js13k', 'pico-8', 'html5-game', 'ludum-dare', 'godot-game'];
 const JAM_TOPICS = new Set(['game-jam', 'ludum-dare', 'js13k']);
-
-const list = value => (Array.isArray(value) ? value : []);
 
 function repository(item, why) {
   if (!item || typeof item !== 'object') return null;
