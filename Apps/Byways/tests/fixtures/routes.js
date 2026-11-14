@@ -24,4 +24,8 @@ export default [
   { match: /images-api\.nasa\.gov\/search/, file: 'nasaimages/search.json' },
   { match: /www\.loc\.gov\/photos\//, file: 'loc/photos.json' },
   { match: /api\.si\.edu\/openaccess\/api\/v1\.0\/search/, file: 'smithsonian/search.json' },
+  { match: /api\.europeana\.eu\/record\/v2\/search\.json/, file: 'europeana/search.json' },
+  { match: /api\.openverse\.org\/v1\/auth_tokens\/token\//, file: 'openverse/token.json' },
+  { match: /api\.openverse\.org\/v1\/images\/[^/?]+\/related\//, file: 'openverse/related.json' },
+  { match: /api\.openverse\.org\/v1\/images\/\?/, file: 'openverse/images.json' },
 ];

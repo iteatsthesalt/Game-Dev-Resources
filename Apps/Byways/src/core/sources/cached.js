@@ -17,9 +17,18 @@ async function cached(ctx, url, ttlMs, fetchBody) {
   return body;
 }
 
-/** GET JSON through ctx.cache: the parsed response is kept for ttlMs. `headers` are sent only when given. */
+/** The request options: `headers` (an object, or an async function called now) are sent only when given. */
+async function requestOptions(source, headers) {
+  const resolved = typeof headers === 'function' ? await headers() : headers;
+  return resolved ? { source, headers: resolved } : { source };
+}
+
+/**
+ * GET JSON through ctx.cache: the parsed response is kept for ttlMs. `headers` are sent only when given; an async
+ * function is called on a cache miss only, so a credential is never fetched for a cache hit.
+ */
 export function cachedJson(ctx, source, url, { ttlMs = SEARCH_TTL_MS, headers } = {}) {
-  return cached(ctx, url, ttlMs, () => ctx.http.getJson(url, headers ? { source, headers } : { source }));
+  return cached(ctx, url, ttlMs, async () => ctx.http.getJson(url, await requestOptions(source, headers)));
 }
 
 /** GET text through ctx.cache: the response text is kept for ttlMs. `headers` are sent only when given. */

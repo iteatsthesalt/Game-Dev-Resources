@@ -1,0 +1,29 @@
+{
+  "success": true,
+  "itemsCount": 3,
+  "totalResults": 3,
+  "items": [
+    {
+      "id": "/2021672/resource_vase",
+      "title": ["Attic red-figure vase"],
+      "dcDescription": ["A mixing bowl painted with a feast scene."],
+      "edmPreview": ["https://api.europeana.eu/thumbnail/v2/url.json?uri=https%3A%2F%2Fmuseum.example%2Fvase.jpg&type=IMAGE"],
+      "edmIsShownAt": ["https://museum.example/vase"],
+      "guid": "https://www.europeana.eu/item/2021672/resource_vase",
+      "rights": ["http://creativecommons.org/publicdomain/zero/1.0/"],
+      "dataProvider": ["Example Museum"]
+    },
+    {
+      "id": "/2021672/resource_map",
+      "title": ["Map of the harbour"],
+      "edmPreview": ["https://api.europeana.eu/thumbnail/v2/url.json?uri=https%3A%2F%2Fmuseum.example%2Fmap.jpg&type=IMAGE"],
+      "guid": "https://www.europeana.eu/item/2021672/resource_map",
+      "rights": ["http://creativecommons.org/publicdomain/mark/1.0/"],
+      "dataProvider": ["Example Archive"]
+    },
+    {
+      "title": ["A record with no id"],
+      "edmIsShownAt": ["https://museum.example/no-id"]
+    }
+  ]
+}

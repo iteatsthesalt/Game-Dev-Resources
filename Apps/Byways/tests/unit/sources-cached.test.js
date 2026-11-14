@@ -20,6 +20,12 @@ test('cachedJson honours ttlMs and sends headers only when given', async () => {
   ctx.clock.advance(6 * DAY); await cachedJson(ctx, 'wikipedia', PING, { ttlMs: week }); assert.equal(calls.length, 2);
   ctx.clock.advance(DAY); await cachedJson(ctx, 'wikipedia', PING, { ttlMs: week }); assert.equal(calls.length, 3);
 });
+test('cachedJson calls an async headers function only on a cache miss', async () => {
+  const { ctx, calls } = await adapterCtx(); let asked = 0;
+  const headers = async () => { asked += 1; return { 'X-Test': 'late' }; };
+  await cachedJson(ctx, 'wikipedia', PING, { headers }); await cachedJson(ctx, 'wikipedia', PING, { headers });
+  assert.equal(asked, 1); assert.equal(calls.length, 1); assert.equal(calls[0].headers['x-test'], 'late');
+});
 test('the cache key leaves out api_key, so a key never reaches the store', async () => {
   const { ctx, calls, store } = await adapterCtx({ extraRoutes: [{ match: /example\.test\/ping\?/, json: { ok: true } }] });
   await cachedJson(ctx, 'wikipedia', PING + '?api_key=SECRET&x=1');
