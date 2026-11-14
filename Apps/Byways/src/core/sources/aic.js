@@ -37,6 +37,9 @@ function finds(body) {
   return (Array.isArray(body.data) ? body.data : []).map(item => artwork(item, iiifUrl)).filter(Boolean);
 }
 
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.data) && Boolean(text(body.config?.iiif_url));
+
 function searchUrl(page, q) {
   const params = new URLSearchParams({
     'query[term][is_public_domain]': 'true',
@@ -65,7 +68,7 @@ const aic = {
   },
 
   async search(q, ctx) {
-    return finds(await cachedJson(ctx, ID, searchUrl(1, q), { headers: { 'AIC-User-Agent': IDENT } }));
+    return finds(await cachedJson(ctx, ID, searchUrl(1, q), { headers: { 'AIC-User-Agent': IDENT }, accept: isReply }));
   },
 
   async more() {

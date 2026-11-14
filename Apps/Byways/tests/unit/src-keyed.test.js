@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import europeana from '../../src/core/sources/europeana.js';
 import openverse from '../../src/core/sources/openverse.js';
 
@@ -135,4 +136,19 @@ test('openverse more gives nothing without an id and encodes the id in the path'
   const { ctx, calls } = await adapterCtx({ secrets: ov });
   assert.deepEqual(await openverse.more({ meta: {} }, ctx), []); assert.deepEqual(await openverse.more({}, ctx), []); assert.equal(calls.length, 0);
   await openverse.more({ meta: { ovId: 'a/b c' } }, ctx); assert.equal(new URL(calls.at(-1).url).pathname, '/v1/images/a%2Fb%20c/related/');
+});
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+test('europeana does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /api\.europeana\.eu/, bad: { success: false, error: 'busy' }, empty: { success: true, itemsCount: 0, totalResults: 0, items: [] },
+  call: ctx => europeana.search('vase', ctx), options: { secrets: { 'src:europeana': 'EUKEY' } },
+}));
+test('openverse does not cache a surprise-shaped search or related reply', async () => {
+  await assertSurpriseNotCached({
+    match: /v1\/images\/\?/, bad: { detail: 'busy' }, empty: { result_count: 0, results: [] }, call: ctx => openverse.search('fox', ctx), options: { secrets: ov },
+  });
+  await assertSurpriseNotCached({
+    match: /\/related\//, bad: { detail: 'busy' }, empty: { result_count: 0, results: [] },
+    call: ctx => openverse.more({ meta: { ovId: 'ov1' } }, ctx), options: { secrets: ov },
+  });
 });

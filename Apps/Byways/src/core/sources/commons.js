@@ -1,7 +1,7 @@
 import { makeFind } from '../model/find.js';
 import { toPlainText } from '../util/text.js';
 import { utcDate } from '../util/clock.js';
-import { cachedJson, searchPages } from './wikimedia.js';
+import { cachedJson, isSearchReply, searchPages } from './wikimedia.js';
 
 const ID = 'commons';
 const TAGS = ['photography'];
@@ -14,6 +14,8 @@ const MIN_WIDTH = 400;
 const fileName = title => String(title).replace(/^File:/i, '').replace(/\.[^./]+$/, '').replaceAll('_', ' ');
 const idOf = title => 'commons:' + String(title).replaceAll(' ', '_');
 const credit = (...parts) => parts.filter(Boolean).join(' · ');
+/** A featured feed is kept only when it holds a picture of the day; one without is asked for again. */
+const hasPicture = body => typeof body?.image?.title === 'string';
 
 function image(fields) {
   return makeFind({ source: ID, kind: 'image', tags: TAGS, ...fields });
@@ -32,7 +34,7 @@ const commons = {
 
   async random(ctx) {
     const day = utcDate(ctx.clock.now()).replaceAll('-', '/');
-    const picture = (await cachedJson(ctx, ID, FEATURED_URL + day))?.image;
+    const picture = (await cachedJson(ctx, ID, FEATURED_URL + day, { accept: hasPicture }))?.image;
     if (!picture || typeof picture.title !== 'string') return [];
     const author = toPlainText(picture.artist?.text);
     const licence = picture.license?.type;
@@ -64,7 +66,7 @@ const commons = {
       format: 'json',
       origin: '*',
     });
-    return searchPages(await cachedJson(ctx, ID, `${SEARCH_API}?${params}`))
+    return searchPages(await cachedJson(ctx, ID, `${SEARCH_API}?${params}`, { accept: isSearchReply }))
       .map(page => {
         const info = page.imageinfo?.[0];
         const meta = info?.extmetadata ?? {};

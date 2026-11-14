@@ -1,5 +1,5 @@
 import { makeFind } from '../model/find.js';
-import { getJson, cachedJson, searchPages } from './wikimedia.js';
+import { getJson, cachedJson, isSearchReply, searchPages } from './wikimedia.js';
 
 const ID = 'wikipedia';
 const TAGS = ['education'];
@@ -43,7 +43,7 @@ async function query(text, why, ctx) {
     format: 'json',
     origin: '*',
   });
-  return searchPages(await cachedJson(ctx, ID, `${API}?${params}`))
+  return searchPages(await cachedJson(ctx, ID, `${API}?${params}`, { accept: isSearchReply }))
     .map(page => article({
       id: idOf(page.title),
       title: page.title,

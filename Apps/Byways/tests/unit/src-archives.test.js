@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import { SOURCES } from '../../src/core/sources/index.js';
 import nasaimages from '../../src/core/sources/nasaimages.js';
 import loc from '../../src/core/sources/loc.js';
@@ -82,3 +83,15 @@ test('a second identical search makes no new request', async () => {
     assert.ok(made > 0); assert.deepEqual(await adapter.search('same', ctx), first); assert.equal(calls.length, made, adapter.id);
   }
 });
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+test('nasaimages does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /images-api\.nasa\.gov/, bad: { reason: 'busy' }, empty: { collection: { items: [] } }, call: ctx => nasaimages.search('nebula', ctx),
+}));
+test('loc does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /loc\.gov/, bad: { status: 503 }, empty: { results: [] }, call: ctx => loc.search('map', ctx),
+}));
+test('smithsonian does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /api\.si\.edu/, bad: { error: { code: 'OVER_RATE_LIMIT' } }, empty: { status: 200, response: { rows: [] } },
+  call: ctx => smithsonian.search('quilt', ctx), options: withKey,
+}));

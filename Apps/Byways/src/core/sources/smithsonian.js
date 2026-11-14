@@ -30,6 +30,8 @@ function object(row) {
 }
 
 const finds = body => (Array.isArray(body?.response?.rows) ? body.response.rows : []).map(object).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.response?.rows);
 
 function searchUrl(q, key, start) {
   const params = new URLSearchParams({ q, rows: '20', api_key: key });
@@ -66,7 +68,7 @@ const smithsonian = {
   async search(q, ctx) {
     const key = await keyOf(ctx);
     if (!key) return [];
-    return finds(await cachedJson(ctx, ID, searchUrl(q, key)));
+    return finds(await cachedJson(ctx, ID, searchUrl(q, key), { accept: isReply }));
   },
 
   async more() {

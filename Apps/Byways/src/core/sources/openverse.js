@@ -73,6 +73,9 @@ async function tokenFor(ctx, credentials) {
   return state.pending.get(credentials.key);
 }
 
+/** The shape finds() relies on: a search or related reply without it is not cached. */
+const isReply = body => Array.isArray(body?.results);
+
 /**
  * GET JSON from the API with a bearer token. `cache` keeps the response for a day (the token is fetched only on
  * a miss). A reply to the token request without a token gives null. A 401 drops the kept token, then rethrows.
@@ -84,7 +87,7 @@ async function getJson(ctx, credentials, url, cache) {
     return { Authorization: `Bearer ${token}` };
   };
   try {
-    return cache ? await cachedJson(ctx, ID, url, { headers }) : await ctx.http.getJson(url, { source: ID, headers: await headers() });
+    return cache ? await cachedJson(ctx, ID, url, { headers, accept: isReply }) : await ctx.http.getJson(url, { source: ID, headers: await headers() });
   } catch (error) {
     if (error === NO_TOKEN) return null;
     if (error instanceof NetError && error.kind === 'http' && error.status === 401) stateOf(ctx.secrets).kept.delete(credentials.key);

@@ -37,3 +37,15 @@ test('cachedText caches the text of a response', async () => {
   assert.equal(await cachedText(ctx, 'wikipedia', 'https://text.example/a'), 'hello');
   assert.equal(await cachedText(ctx, 'wikipedia', 'https://text.example/a'), 'hello'); assert.equal(calls.length, 1);
 });
+test('accept decides whether a reply is kept: a refused reply is returned but not stored', async () => {
+  const { ctx, calls, store } = await adapterCtx(); const seen = [];
+  const refuse = body => { seen.push(body); return false; };
+  assert.deepEqual(await cachedJson(ctx, 'wikipedia', PING, { accept: refuse }), { pong: true });
+  assert.deepEqual(seen, [{ pong: true }]); assert.deepEqual(await store.keys('cache'), []);
+  await cachedJson(ctx, 'wikipedia', PING, { accept: () => true }); assert.equal(calls.length, 2);
+  assert.equal((await store.keys('cache')).length, 1);
+  await cachedJson(ctx, 'wikipedia', PING, { accept: () => true }); assert.equal(calls.length, 2);
+  const text = await adapterCtx({ extraRoutes: [{ match: /text\.example/, body: 'busy' }] });
+  assert.equal(await cachedText(text.ctx, 'wikipedia', 'https://text.example/a', { accept: () => false }), 'busy');
+  assert.deepEqual(await text.store.keys('cache'), []);
+});

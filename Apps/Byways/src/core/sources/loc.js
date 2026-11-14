@@ -27,6 +27,8 @@ function photo(item) {
 }
 
 const finds = body => (Array.isArray(body?.results) ? body.results : []).map(photo).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.results);
 
 function searchUrl(q, page) {
   return `${API}?${new URLSearchParams({ q, fo: 'json', c: '25', sp: String(page) })}`;
@@ -52,7 +54,7 @@ const loc = {
   },
 
   async search(q, ctx) {
-    return finds(await cachedJson(ctx, ID, searchUrl(q, 1)));
+    return finds(await cachedJson(ctx, ID, searchUrl(q, 1), { accept: isReply }));
   },
 
   async more() {

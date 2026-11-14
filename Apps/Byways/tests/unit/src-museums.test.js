@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import { IDENT } from '../../src/core/sources/index.js';
 import aic from '../../src/core/sources/aic.js';
 import met from '../../src/core/sources/met.js';
@@ -78,3 +79,18 @@ test('met and cleveland do not cache a reply without a total', async () => {
     assert.equal((await adapter.random(ctx)).length, 1, adapter.id);
   }
 });
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+test('aic does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /api\.artic\.edu/, bad: { error: 'busy' }, empty: { data: [], config: { iiif_url: 'https://www.artic.edu/iiif/2' } },
+  call: ctx => aic.search('seurat', ctx),
+}));
+test('met does not cache a surprise-shaped search reply or object lookup', async () => {
+  await assertSurpriseNotCached({
+    match: /\/v1\.1\/search/, bad: { message: 'busy' }, empty: { total: 0, objectIDs: null }, call: ctx => met.search('van gogh', ctx),
+  });
+  await assertSurpriseNotCached({ match: /\/v1\/objects\//, bad: { message: 'ObjectID not found' }, call: ctx => met.search('van gogh', ctx) });
+});
+test('cleveland does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /clevelandart\.org/, bad: { error: 'busy' }, empty: { info: { total: 0 }, data: [] }, call: ctx => cleveland.search('twilight', ctx),
+}));

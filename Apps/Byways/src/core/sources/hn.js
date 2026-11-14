@@ -35,6 +35,8 @@ function story(hit) {
 }
 
 const stories = body => list(body?.hits).map(story).filter(Boolean);
+/** The shape stories() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.hits);
 
 const hn = {
   id: ID,
@@ -60,7 +62,7 @@ const hn = {
 
   async search(q, ctx) {
     const params = new URLSearchParams({ tags: 'show_hn', query: q, hitsPerPage: '20' });
-    return stories(await cachedJson(ctx, ID, `${API}/search?${params}`));
+    return stories(await cachedJson(ctx, ID, `${API}/search?${params}`, { accept: isReply }));
   },
 
   async more() {

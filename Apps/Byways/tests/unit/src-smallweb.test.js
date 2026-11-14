@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import kagi, { KAGI_LISTS, loadKagiList, parseKagiList } from '../../src/core/sources/kagi.js';
 import kagirandom from '../../src/core/sources/kagirandom.js';
 import wiby, { WIBY_LEAP_URL } from '../../src/core/sources/wiby.js';
@@ -138,3 +139,8 @@ test('wiby does not cache an unusable reply, and random and more make no request
   assert.deepEqual(await wiby.random(ctx), []); assert.deepEqual(await wiby.more({ url: 'https://a.example/' }, ctx), []);
   assert.equal(calls.length, 2); assert.equal(wiby.probeUrl, 'https://wiby.me/json/?q=games');
 });
+
+// Added in Task 19b: wiby uses cachedJson, so a well-formed empty reply is cached like any other source's.
+test('wiby does not cache a surprise-shaped reply but caches an empty list', () => assertSurpriseNotCached({
+  match: /wiby\.me/, bad: { error: 'busy' }, empty: [], call: ctx => wiby.search('nothing', ctx),
+}));

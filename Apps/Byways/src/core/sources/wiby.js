@@ -1,6 +1,6 @@
 import { makeFind } from '../model/find.js';
 import { isHttpUrl } from '../util/url.js';
-import { SEARCH_TTL_MS } from './cached.js';
+import { cachedJson } from './cached.js';
 
 const ID = 'wiby';
 const TAGS = ['oldweb', 'web'];
@@ -24,15 +24,6 @@ function page(entry) {
   });
 }
 
-// A reply is kept for a day only when it holds results, so a busy or odd reply is asked for again next time.
-async function results(ctx, url) {
-  const hit = await ctx.cache.get(url);
-  if (hit !== undefined) return hit;
-  const body = await ctx.http.getJson(url, { source: ID });
-  if (!Array.isArray(body) || !body.length) return [];
-  await ctx.cache.set(url, body, SEARCH_TTL_MS);
-  return body;
-}
 
 const wiby = {
   id: ID,
@@ -51,8 +42,9 @@ const wiby = {
   },
 
   async search(q, ctx) {
-    const entries = await results(ctx, `${API}?${new URLSearchParams({ q })}`);
-    return entries.map(page).filter(Boolean);
+    // A reply is kept for a day only when it is a list, so a busy or odd reply is asked for again next time.
+    const body = await cachedJson(ctx, ID, `${API}?${new URLSearchParams({ q })}`, { accept: Array.isArray });
+    return (Array.isArray(body) ? body : []).map(page).filter(Boolean);
   },
 
   async more() {

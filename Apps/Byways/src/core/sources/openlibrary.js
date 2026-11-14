@@ -28,6 +28,9 @@ function book({ key, title, author, cover, year, subject }) {
 
 const list = value => (Array.isArray(value) ? value : []);
 
+/** The shape fromSearch() relies on: a reply without it is not cached. */
+const isSearchReply = body => Array.isArray(body?.docs);
+
 function fromSearch(body) {
   return list(body?.docs)
     .map(doc => doc && book({
@@ -77,7 +80,7 @@ const openlibrary = {
       fields: 'key,title,author_name,cover_i,first_publish_year',
       limit: '10',
     });
-    return fromSearch(await cachedJson(ctx, ID, `${SITE}/search.json?${params}`));
+    return fromSearch(await cachedJson(ctx, ID, `${SITE}/search.json?${params}`, { accept: isSearchReply }));
   },
 
   async more(find, ctx) {

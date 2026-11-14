@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import inat from '../../src/core/sources/inat.js';
 import openlibrary from '../../src/core/sources/openlibrary.js';
 import apod from '../../src/core/sources/apod.js';
@@ -73,3 +74,11 @@ test('apod counts each DEMO_KEY request, never counts a keyed one, and search an
   assert.equal(await keyed.ctx.cache.get('apod:count:2026-11-11'), undefined);
   assert.deepEqual(await apod.search('x', ctx), []); assert.deepEqual(await apod.more({}, ctx), []);
 });
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+test('inat does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /api\.inaturalist\.org/, bad: { error: 'busy' }, empty: { total_results: 0, results: [] }, call: ctx => inat.search('bee', ctx),
+}));
+test('openlibrary does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /openlibrary\.org\/search\.json/, bad: { error: 'busy' }, empty: { numFound: 0, docs: [] }, call: ctx => openlibrary.search('le guin', ctx),
+}));

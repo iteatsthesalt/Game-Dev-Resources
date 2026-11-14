@@ -12,13 +12,19 @@ const OBJECT_TTL_MS = 7 * DAY_MS;
 
 const text = value => (typeof value === 'string' ? value.trim() : '');
 
+const isId = value => typeof value === 'number' || typeof value === 'string';
+/** A search reply worth keeping: a list of object ids, or a total of 0 (the Met answers no hits with objectIDs null). */
+const isSearchReply = body => Array.isArray(body?.objectIDs) || body?.total === 0;
+/** An object lookup worth keeping: one with an object id, which objectFind() relies on. */
+const isObjectReply = body => isId(body?.objectID);
+
 function searchUrl(params) {
   return `${SEARCH}?${new URLSearchParams({ hasImages: 'true', isPublicDomain: 'true', ...params })}`;
 }
 
 function objectFind(item) {
   if (!item || typeof item !== 'object' || item.isPublicDomain !== true) return null;
-  if (typeof item.objectID !== 'string' && typeof item.objectID !== 'number') return null;
+  if (!isId(item.objectID)) return null;
   const imageUrl = text(item.primaryImageSmall);
   if (!imageUrl) return null;
   const artist = text(item.artistDisplayName);
@@ -39,9 +45,10 @@ function objectFind(item) {
 }
 
 async function objects(ctx, ids) {
-  const list = (Array.isArray(ids) ? ids : []).filter(id => typeof id === 'number' || typeof id === 'string');
+  const list = (Array.isArray(ids) ? ids : []).filter(isId);
   // One stale id (a 404) must not sink the others, so each lookup settles on its own and failures are dropped.
-  const settled = await Promise.allSettled(list.map(id => cachedJson(ctx, ID, `${API}/v1/objects/${encodeURIComponent(id)}`, { ttlMs: OBJECT_TTL_MS })));
+  const lookup = id => cachedJson(ctx, ID, `${API}/v1/objects/${encodeURIComponent(id)}`, { ttlMs: OBJECT_TTL_MS, accept: isObjectReply });
+  const settled = await Promise.allSettled(list.map(lookup));
   return settled.filter(result => result.status === 'fulfilled').map(result => objectFind(result.value)).filter(Boolean);
 }
 
@@ -78,7 +85,7 @@ const met = {
   },
 
   async search(q, ctx) {
-    const body = await cachedJson(ctx, ID, searchUrl({ q, limit: '5' }));
+    const body = await cachedJson(ctx, ID, searchUrl({ q, limit: '5' }), { accept: isSearchReply });
     return objects(ctx, body?.objectIDs);
   },
 

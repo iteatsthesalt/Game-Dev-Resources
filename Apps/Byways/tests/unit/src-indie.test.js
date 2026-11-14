@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import marginalia from '../../src/core/sources/marginalia.js';
 import github from '../../src/core/sources/github.js';
 import hn from '../../src/core/sources/hn.js';
@@ -48,3 +49,20 @@ test('hn random asks for a 30-day window', async () => {
   const m = new URL(calls[0].url).searchParams.get('numericFilters').match(/^points>20,created_at_i>(\d+),created_at_i<(\d+)$/);
   assert.equal(+m[2] - +m[1], 30 * 86400); assert.ok(+m[2] <= ctx.clock.now() / 1000);
 });
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+test('marginalia does not cache a surprise-shaped search or similar-sites reply', async () => {
+  await assertSurpriseNotCached({
+    match: /api\/v2\/search/, bad: { error: 'busy' }, empty: { results: [] }, call: ctx => marginalia.search('synth', ctx),
+  });
+  await assertSurpriseNotCached({
+    match: /\/similar$/, bad: { error: 'busy' }, empty: { domain: 'example.com', similar: [] },
+    call: ctx => marginalia.more({ url: 'https://www.example.com/x', kind: 'site' }, ctx),
+  });
+});
+test('github does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /api\.github\.com/, bad: { message: 'busy' }, empty: { total_count: 0, items: [] }, call: ctx => github.search('synth', ctx),
+}));
+test('hn does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /hn\.algolia\.com/, bad: { message: 'busy' }, empty: { hits: [] }, call: ctx => hn.search('game', ctx),
+}));

@@ -29,9 +29,14 @@ function site(entry, why, { urlFromDomain = false } = {}) {
   });
 }
 
-async function get(url, ctx) {
+// The list a search or similar-sites reply holds; the similar-sites shape is unverified, so either field name counts.
+const searchItems = body => body?.results;
+const similarItems = body => body?.results ?? body?.similar;
+
+// A reply whose list is missing is not cached (shared adapter rule 12).
+async function get(url, ctx, items) {
   const key = (await ctx.secrets.get(KEY_NAME)) || PUBLIC_KEY;
-  return cachedJson(ctx, ID, url, { headers: { 'API-Key': key } });
+  return items(await cachedJson(ctx, ID, url, { headers: { 'API-Key': key }, accept: body => Array.isArray(items(body)) }));
 }
 
 const marginalia = {
@@ -52,17 +57,15 @@ const marginalia = {
 
   async search(q, ctx) {
     const params = new URLSearchParams({ query: q, count: '20' });
-    const body = await get(`${API}/search?${params}`, ctx);
-    return list(body?.results).map(entry => site(entry, 'Marginalia search')).filter(Boolean);
+    const items = await get(`${API}/search?${params}`, ctx, searchItems);
+    return list(items).map(entry => site(entry, 'Marginalia search')).filter(Boolean);
   },
 
   async more(find, ctx) {
     const domain = domainOf(find?.url);
     if (!domain) return [];
-    // The reply shape of the similar-sites endpoint is unverified, so accept either field name.
-    const body = await get(`${API}/site/${encodeURIComponent(domain)}/similar`, ctx);
-    const items = list(body?.results ?? body?.similar);
-    return items.map(entry => site(entry, `Marginalia: similar to ${domain}`, { urlFromDomain: true })).filter(Boolean);
+    const items = await get(`${API}/site/${encodeURIComponent(domain)}/similar`, ctx, similarItems);
+    return list(items).map(entry => site(entry, `Marginalia: similar to ${domain}`, { urlFromDomain: true })).filter(Boolean);
   },
 };
 

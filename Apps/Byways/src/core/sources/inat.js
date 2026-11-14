@@ -54,6 +54,8 @@ function observationUrl(extra) {
 }
 
 const finds = body => (Array.isArray(body?.results) ? body.results : []).map(observationFind).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.results);
 
 const inat = {
   id: ID,
@@ -72,13 +74,13 @@ const inat = {
   },
 
   async search(q, ctx) {
-    return finds(await cachedJson(ctx, ID, observationUrl({ q, page: '1' })));
+    return finds(await cachedJson(ctx, ID, observationUrl({ q, page: '1' }), { accept: isReply }));
   },
 
   async more(find, ctx) {
     const taxonId = find?.meta?.taxonId;
     if (taxonId === undefined || taxonId === null) return [];
-    return finds(await cachedJson(ctx, ID, observationUrl({ taxon_id: String(taxonId), page: '1' })));
+    return finds(await cachedJson(ctx, ID, observationUrl({ taxon_id: String(taxonId), page: '1' }), { accept: isReply }));
   },
 };
 

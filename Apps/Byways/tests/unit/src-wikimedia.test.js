@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { adapterCtx } from './helpers/fixture-http.js';
+import { assertSurpriseNotCached } from './helpers/surprise.js';
 import { IDENT } from '../../src/core/sources/index.js';
 import wikipedia from '../../src/core/sources/wikipedia.js';
 import commons from '../../src/core/sources/commons.js';
@@ -75,4 +76,16 @@ test('commons picture of the day feed is cached for 24 hours', async () => {
   const { ctx, calls } = await adapterCtx(); const first = await commons.random(ctx);
   assert.deepEqual(await commons.random(ctx), first); assert.equal(calls.length, 1);
   ctx.clock.advance(DAY + 1); await commons.random(ctx); assert.equal(calls.length, 2);
+});
+
+// Added in Task 19b: a surprise-shaped 200 reply is never cached (shared adapter rule 12).
+const maxlag = { error: { code: 'maxlag', info: 'Waiting for a database server' } };
+test('wikipedia does not cache a surprise-shaped search reply', () => assertSurpriseNotCached({
+  match: /en\.wikipedia\.org\/w\/api\.php/, bad: maxlag, empty: { batchcomplete: '' }, call: ctx => wikipedia.search('moth', ctx),
+}));
+test('commons does not cache a surprise-shaped search reply or a feed without a picture', async () => {
+  await assertSurpriseNotCached({
+    match: /commons\.wikimedia\.org\/w\/api\.php/, bad: maxlag, empty: { batchcomplete: '' }, call: ctx => commons.search('map', ctx),
+  });
+  await assertSurpriseNotCached({ match: /feed\/featured\//, bad: { tfa: {} }, call: ctx => commons.random(ctx) });
 });

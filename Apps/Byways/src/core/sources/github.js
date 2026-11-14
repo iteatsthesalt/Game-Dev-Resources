@@ -38,7 +38,8 @@ async function repositories(ctx, params, why) {
   const headers = { Accept: 'application/vnd.github+json' };
   const token = await ctx.secrets.get(KEY_NAME);
   if (token) headers.Authorization = `Bearer ${token}`;
-  const body = await cachedJson(ctx, ID, `${API}?${params}`, { ttlMs: HOUR_MS, headers });
+  // A reply without an items list is not cached (shared adapter rule 12).
+  const body = await cachedJson(ctx, ID, `${API}?${params}`, { ttlMs: HOUR_MS, headers, accept: reply => Array.isArray(reply?.items) });
   return list(body?.items).map(item => repository(item, why)).filter(Boolean);
 }
 

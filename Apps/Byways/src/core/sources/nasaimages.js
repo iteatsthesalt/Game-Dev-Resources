@@ -34,6 +34,8 @@ function image(item) {
 }
 
 const finds = body => (Array.isArray(body?.collection?.items) ? body.collection.items : []).map(image).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.collection?.items);
 
 function searchUrl(q, page) {
   const params = new URLSearchParams({ q, media_type: 'image', page_size: '20' });
@@ -60,7 +62,7 @@ const nasaimages = {
   },
 
   async search(q, ctx) {
-    return finds(await cachedJson(ctx, ID, searchUrl(q)));
+    return finds(await cachedJson(ctx, ID, searchUrl(q), { accept: isReply }));
   },
 
   async more() {

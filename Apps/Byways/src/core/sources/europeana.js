@@ -32,6 +32,8 @@ function record(item) {
 }
 
 const finds = body => (Array.isArray(body?.items) ? body.items : []).map(record).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.items);
 
 function searchUrl(q, start) {
   const params = new URLSearchParams({ query: q, reusability: 'open', media: 'true', rows: '20' });
@@ -67,7 +69,7 @@ const europeana = {
   async search(q, ctx) {
     const key = await keyOf(ctx);
     if (!key) return [];
-    return finds(await cachedJson(ctx, ID, searchUrl(q), { headers: { 'X-Api-Key': key } }));
+    return finds(await cachedJson(ctx, ID, searchUrl(q), { headers: { 'X-Api-Key': key }, accept: isReply }));
   },
 
   async more() {

@@ -30,6 +30,8 @@ function artwork(item) {
 }
 
 const finds = body => (Array.isArray(body?.data) ? body.data : []).map(artwork).filter(Boolean);
+/** The shape finds() relies on: a reply without it is not cached. */
+const isReply = body => Array.isArray(body?.data);
 
 function artworksUrl(params) {
   return `${API}?${new URLSearchParams({ cc: '1', has_image: '1', ...params })}`;
@@ -67,7 +69,7 @@ const cleveland = {
   },
 
   async search(q, ctx) {
-    return finds(await cachedJson(ctx, ID, artworksUrl({ q, limit: '20' })));
+    return finds(await cachedJson(ctx, ID, artworksUrl({ q, limit: '20' }), { accept: isReply }));
   },
 
   async more() {
