@@ -1,0 +1,6 @@
+[DEBUG] Cross-domain redirect: https://apply.example.com -> https://www.example.com/careers, following
+http://0x80.example/feed.xml
+https://blog.example.net/index.xml
+
+not a url
+https://www.blog.example.org/atom.xml

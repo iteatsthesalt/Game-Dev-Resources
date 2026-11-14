@@ -1,0 +1,5 @@
+[
+  { "URL": "https://old.example.com/", "Title": "My old site", "Snippet": "Hand coded since 1999." },
+  { "URL": "ftp://files.example.com/", "Title": "Not a web page", "Snippet": "Skipped." },
+  { "Title": "No address", "Snippet": "Skipped too." }
+]

@@ -28,4 +28,9 @@ export default [
   { match: /api\.openverse\.org\/v1\/auth_tokens\/token\//, file: 'openverse/token.json' },
   { match: /api\.openverse\.org\/v1\/images\/[^/?]+\/related\//, file: 'openverse/related.json' },
   { match: /api\.openverse\.org\/v1\/images\/\?/, file: 'openverse/images.json' },
+  { match: /raw\.githubusercontent\.com\/kagisearch\/smallweb\/main\/smallweb\.txt/, file: 'kagi/smallweb.txt' },
+  { match: /raw\.githubusercontent\.com\/kagisearch\/smallweb\/main\/smallyt\.txt/, file: 'kagi/smallyt.txt' },
+  { match: /raw\.githubusercontent\.com\/kagisearch\/smallweb\/main\/smallcomic\.txt/, file: 'kagi/smallcomic.txt' },
+  { match: /kagi\.com\/smallweb\/api\/random/, file: 'kagirandom/random.json' },
+  { match: /wiby\.me\/json\//, file: 'wiby/search.json' },
 ];

@@ -28,9 +28,12 @@ import loc from './loc.js';
 import smithsonian from './smithsonian.js';
 import europeana from './europeana.js';
 import openverse from './openverse.js';
+import kagi from './kagi.js';
+import kagirandom from './kagirandom.js';
+import wiby from './wiby.js';
 
 // Each adapter task adds one import above this line and one entry below it.
-const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian, europeana, openverse];
+const ADAPTERS = [wikipedia, commons, inat, openlibrary, apod, marginalia, github, hn, aic, met, cleveland, nasaimages, loc, smithsonian, europeana, openverse, kagi, kagirandom, wiby];
 
 /** id -> adapter, in the order of ADAPTERS. */
 export const SOURCES = Object.fromEntries(ADAPTERS.map(adapter => [adapter.id, adapter]));

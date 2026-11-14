@@ -1,0 +1,7 @@
+{
+  "url": "https://small.example.org/a-small-post",
+  "title": "A small post",
+  "author": "Sam",
+  "domain": "small.example.org",
+  "categories": ["programming", "retro", "unknowncat"]
+}
